@@ -40,16 +40,21 @@ cargo-mobench build --target ios --release --crate-path bench-mobile
 cargo-mobench build --target android --release --crate-path bench-mobile
 ```
 
-## BrowserStack device matrix
+## BrowserStack device profiles
 
-PR benchmarks run the same three-device matrix on each platform:
+PR benchmarks run the smoke profile by default:
+
+- Android: `Google Pixel 7-13.0`
+- iOS: `iPhone 16 Pro-18`
+
+Manual workflow dispatches can still select the triad profile:
 
 - Android:
-  - `Google Pixel 6-12.0`
+  - `Vivo Y21-11.0`
   - `Google Pixel 7-13.0`
   - `Samsung Galaxy S24-14.0`
 - iOS:
-  - `iPhone 13-15`
+  - `iPhone 7-10`
   - `iPhone 14-16`
   - `iPhone 16 Pro-18`
 

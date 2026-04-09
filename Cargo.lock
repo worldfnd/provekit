@@ -722,7 +722,9 @@ dependencies = [
  "provekit-prover",
  "provekit-r1cs-compiler",
  "provekit-verifier",
+ "serde",
  "serde_json",
+ "thiserror 1.0.69",
  "uniffi",
 ]
 
@@ -3172,9 +3174,9 @@ dependencies = [
 
 [[package]]
 name = "mobench-macros"
-version = "0.1.28"
+version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6abbfb1ce761f4def20602ab713dd3a3de8352fa8ceb8bb6ed26d057f07f9a3"
+checksum = "b309b9830bc4299d67bbfed50926e1760f8585b9b04a83a30d3c987ec3f11ed5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3183,14 +3185,13 @@ dependencies = [
 
 [[package]]
 name = "mobench-sdk"
-version = "0.1.28"
+version = "0.1.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d36d8af93c9fb45d9b11a9f643948c37d2449677f732c9213b1fff98ac7940e"
+checksum = "a0cee20835509241eb49f12c9433172a39226b4826202489d72fc8dcf7c82b3e"
 dependencies = [
  "anyhow",
  "include_dir",
  "inventory",
- "libc",
  "mobench-macros",
  "serde",
  "serde_json",

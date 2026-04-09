@@ -22,6 +22,7 @@ jobs:
     outputs:
       trusted: ${{ steps.trust.outputs.trusted }}
       platform: ${{ steps.parse.outputs.platform }}
+      device_profile: ${{ steps.parse.outputs.device_profile }}
       iterations: ${{ steps.parse.outputs.iterations }}
       warmup: ${{ steps.parse.outputs.warmup }}
       head_sha: ${{ steps.pr.outputs.head_sha }}
@@ -63,9 +64,9 @@ jobs:
             *) echo "::warning::Invalid platform '${platform}', defaulting to 'both'"; platform="both" ;;
           esac
 
-          case "${device_profile:-triad}" in
-            triad|low-spec|mid-spec|high-spec|flagship) device_profile="${device_profile:-triad}" ;;
-            *) echo "::warning::Invalid device_profile '${device_profile}', defaulting to 'triad'"; device_profile="triad" ;;
+          case "${device_profile:-smoke}" in
+            smoke|triad) device_profile="${device_profile:-smoke}" ;;
+            *) echo "::warning::Invalid device_profile '${device_profile}', defaulting to 'smoke'"; device_profile="smoke" ;;
           esac
 
           if ! [[ "${iterations:-2}" =~ ^[0-9]+$ ]]; then
@@ -109,6 +110,7 @@ jobs:
       functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       functions_android: '["bench_mobile::bench_passport_complete_age_check_prove"]'
       platform: ${{ needs.resolve.outputs.platform }}
+      device_profile: ${{ needs.resolve.outputs.device_profile }}
       iterations: ${{ needs.resolve.outputs.iterations }}
       warmup: ${{ needs.resolve.outputs.warmup }}
       pr_number: ${{ needs.resolve.outputs.pr_number }}

@@ -33,10 +33,13 @@ on:
           - ios
           - both
       device_profile:
-        description: "Accepted for PR command compatibility; this workflow always runs the three-device matrix."
+        description: "Device profile to run"
         required: false
-        type: string
+        type: choice
         default: "triad"
+        options:
+          - smoke
+          - triad
       iterations:
         description: "Number of benchmark iterations"
         required: false
@@ -105,6 +108,7 @@ jobs:
       functions_ios: ${{ inputs.functions_ios }}
       functions_android: ${{ inputs.functions_android }}
       platform: ${{ inputs.platform }}
+      device_profile: ${{ inputs.device_profile }}
       iterations: ${{ inputs.iterations }}
       warmup: ${{ inputs.warmup }}
       pr_number: ${{ inputs.pr_number }}

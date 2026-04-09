@@ -36,6 +36,11 @@ on:
         required: false
         type: string
         default: "both"
+      device_profile:
+        description: "Device profile to run (smoke or triad)"
+        required: false
+        type: string
+        default: "triad"
       rust_targets_ios:
         description: "Comma-separated iOS Rust targets"
         required: false
@@ -88,8 +93,6 @@ env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: nightly-2026-03-04
   MOBENCH_PATCH_PATH: caller/.github/patches/mobile-bench-rs-browserstack-devices.patch
-  IOS_DEVICE_SPECS: "iPhone 13-15,iPhone 14-16,iPhone 16 Pro-18"
-  ANDROID_DEVICE_SPECS: "Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
 
 jobs:
   ios:
@@ -113,6 +116,40 @@ jobs:
         with:
           path: caller
           ref: ${{ inputs.head_sha || github.sha }}
+
+      - name: Resolve iOS device profile
+        shell: bash
+        env:
+          DEVICE_PROFILE: ${{ inputs.device_profile }}
+        run: |
+          set -euo pipefail
+          case "${DEVICE_PROFILE}" in
+            smoke)
+              device_specs="iPhone 16 Pro-18"
+              fetch_timeout_secs="1200"
+              benchmark_timeout_secs="600"
+              ;;
+            triad)
+              device_specs="iPhone 7-10,iPhone 14-16,iPhone 16 Pro-18"
+              fetch_timeout_secs="2400"
+              benchmark_timeout_secs="1200"
+              ;;
+            *)
+              echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad."
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "MOBENCH_DEVICE_PROFILE=${DEVICE_PROFILE}"
+            echo "IOS_DEVICE_SPECS=${device_specs}"
+            echo "MOBENCH_FETCH_TIMEOUT_SECS=${fetch_timeout_secs}"
+            echo "MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS=${benchmark_timeout_secs}"
+          } >> "$GITHUB_ENV"
+
+          echo "Resolved iOS device profile '${DEVICE_PROFILE}' to ${device_specs}"
+          echo "Resolved iOS fetch timeout to ${fetch_timeout_secs}s"
+          echo "Resolved iOS benchmark completion timeout to ${benchmark_timeout_secs}s"
 
       - name: Setup Rust
         shell: bash
@@ -141,22 +178,21 @@ jobs:
           MOBENCH_REF: ${{ inputs.mobench_ref }}
         run: |
           set -euo pipefail
-          if [ -n "${MOBENCH_REF:-}" ]; then
-            git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
-            git -C mobench-src checkout "$MOBENCH_REF"
-            if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
-              git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
-            else
-              echo "Skipping local mobench patch; already included or not applicable"
-            fi
-            grep -F 'recover_benchmark_results_from_fetched_artifacts' mobench-src/crates/mobench/src/lib.rs >/dev/null
-            grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-            grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-            cargo install --path mobench-src/crates/mobench --locked --force
+          source_ref="${MOBENCH_REF:-v${MOBENCH_VERSION}}"
+          echo "Installing mobench from ${source_ref}"
+          git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
+          git -C mobench-src checkout "$source_ref"
+          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
+            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
           else
-            cargo info "mobench@${MOBENCH_VERSION}" >/dev/null
-            cargo install "mobench@${MOBENCH_VERSION}" --locked --force
+            echo "Skipping local mobench patch; already included or not applicable"
           fi
+          grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template >/dev/null
+          grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
+          cargo install --path mobench-src/crates/mobench --locked --force
 
       - name: Install iOS tooling
         run: brew install xcodegen swiftformat
@@ -169,6 +205,8 @@ jobs:
           CRATE_PATH: ${{ inputs.crate_path }}
         run: |
           set -euo pipefail
+          echo "Building iOS artifacts for profile ${MOBENCH_DEVICE_PROFILE}"
+          echo "Using iOS benchmark completion timeout ${MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS}s"
           cargo-mobench build --target ios $RELEASE_FLAG --crate-path "$CRATE_PATH"
           cargo-mobench package-ipa --method adhoc --crate-path "$CRATE_PATH"
           cargo-mobench package-xcuitest --crate-path "$CRATE_PATH"
@@ -191,6 +229,9 @@ jobs:
           if [[ "${FUNCTIONS}" == \[* ]]; then
             functions_arg=$(jq -r 'join(",")' <<<"${FUNCTIONS}")
           fi
+          echo "Running iOS benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
+          echo "iOS devices: ${IOS_DEVICE_SPECS}"
+          echo "iOS fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
           device_args=()
           IFS=',' read -r -a device_specs <<<"${IOS_DEVICE_SPECS}"
           for device in "${device_specs[@]}"; do
@@ -209,21 +250,20 @@ jobs:
             --crate-path "$CRATE_PATH" \
             $RELEASE_FLAG \
             --fetch \
-            --fetch-timeout-secs 1800 \
+            --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
+            --fetch-output-dir target/browserstack/ios \
             --output-dir target/mobench/ci/ios
 
-      - name: Validate iOS benchmark outputs
+      - name: Diagnose and validate iOS benchmark outputs
         if: always()
         working-directory: caller
         shell: bash
         run: |
           set -euo pipefail
-          json_count=$(find target/mobench/ci/ios -type f -name summary.json 2>/dev/null | wc -l | tr -d ' ')
-          csv_count=$(find target/mobench/ci/ios -type f -name results.csv 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$json_count" -eq 0 ] || [ "$csv_count" -eq 0 ]; then
-            echo "::error::iOS benchmark artifacts were not produced"
-            exit 1
-          fi
+          bash .github/scripts/validate_mobile_bench_outputs.sh \
+            ios \
+            target/mobench/ci/ios \
+            target/browserstack/ios
 
       - name: Upload iOS results
         if: always()
@@ -232,7 +272,7 @@ jobs:
           name: mobench-results-ios
           path: |
             caller/target/mobench/ci/ios/**
-            caller/target/browserstack/**
+            caller/target/browserstack/ios/**
           if-no-files-found: warn
 
   android:
@@ -249,6 +289,36 @@ jobs:
         with:
           path: caller
           ref: ${{ inputs.head_sha || github.sha }}
+
+      - name: Resolve Android device profile
+        shell: bash
+        env:
+          DEVICE_PROFILE: ${{ inputs.device_profile }}
+        run: |
+          set -euo pipefail
+          case "${DEVICE_PROFILE}" in
+            smoke)
+              device_specs="Google Pixel 7-13.0"
+              fetch_timeout_secs="1200"
+              ;;
+            triad)
+              device_specs="Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
+              fetch_timeout_secs="2400"
+              ;;
+            *)
+              echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad."
+              exit 1
+              ;;
+          esac
+
+          {
+            echo "MOBENCH_DEVICE_PROFILE=${DEVICE_PROFILE}"
+            echo "ANDROID_DEVICE_SPECS=${device_specs}"
+            echo "MOBENCH_FETCH_TIMEOUT_SECS=${fetch_timeout_secs}"
+          } >> "$GITHUB_ENV"
+
+          echo "Resolved Android device profile '${DEVICE_PROFILE}' to ${device_specs}"
+          echo "Resolved Android fetch timeout to ${fetch_timeout_secs}s"
 
       - name: Setup Rust
         shell: bash
@@ -306,22 +376,21 @@ jobs:
           MOBENCH_REF: ${{ inputs.mobench_ref }}
         run: |
           set -euo pipefail
-          if [ -n "${MOBENCH_REF:-}" ]; then
-            git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
-            git -C mobench-src checkout "$MOBENCH_REF"
-            if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
-              git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
-            else
-              echo "Skipping local mobench patch; already included or not applicable"
-            fi
-            grep -F 'recover_benchmark_results_from_fetched_artifacts' mobench-src/crates/mobench/src/lib.rs >/dev/null
-            grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-            grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-            cargo install --path mobench-src/crates/mobench --locked --force
+          source_ref="${MOBENCH_REF:-v${MOBENCH_VERSION}}"
+          echo "Installing mobench from ${source_ref}"
+          git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
+          git -C mobench-src checkout "$source_ref"
+          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
+            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
           else
-            cargo info "mobench@${MOBENCH_VERSION}" >/dev/null
-            cargo install "mobench@${MOBENCH_VERSION}" --locked --force
+            echo "Skipping local mobench patch; already included or not applicable"
           fi
+          grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template >/dev/null
+          grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
+          cargo install --path mobench-src/crates/mobench --locked --force
 
       - name: Build Android artifacts
         working-directory: caller
@@ -349,6 +418,9 @@ jobs:
           if [[ "${FUNCTIONS}" == \[* ]]; then
             functions_arg=$(jq -r 'join(",")' <<<"${FUNCTIONS}")
           fi
+          echo "Running Android benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
+          echo "Android devices: ${ANDROID_DEVICE_SPECS}"
+          echo "Android fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
           device_args=()
           IFS=',' read -r -a device_specs <<<"${ANDROID_DEVICE_SPECS}"
           for device in "${device_specs[@]}"; do
@@ -367,21 +439,20 @@ jobs:
             --crate-path "$CRATE_PATH" \
             $RELEASE_FLAG \
             --fetch \
-            --fetch-timeout-secs 1800 \
+            --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
+            --fetch-output-dir target/browserstack/android \
             --output-dir target/mobench/ci/android
 
-      - name: Validate Android benchmark outputs
+      - name: Diagnose and validate Android benchmark outputs
         if: always()
         working-directory: caller
         shell: bash
         run: |
           set -euo pipefail
-          json_count=$(find target/mobench/ci/android -type f -name summary.json 2>/dev/null | wc -l | tr -d ' ')
-          csv_count=$(find target/mobench/ci/android -type f -name results.csv 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$json_count" -eq 0 ] || [ "$csv_count" -eq 0 ]; then
-            echo "::error::Android benchmark artifacts were not produced"
-            exit 1
-          fi
+          bash .github/scripts/validate_mobile_bench_outputs.sh \
+            android \
+            target/mobench/ci/android \
+            target/browserstack/android
 
       - name: Upload Android results
         if: always()
@@ -390,7 +461,7 @@ jobs:
           name: mobench-results-android
           path: |
             caller/target/mobench/ci/android/**
-            caller/target/browserstack/**
+            caller/target/browserstack/android/**
           if-no-files-found: warn
 
   summarize:
@@ -421,22 +492,21 @@ jobs:
           MOBENCH_REF: ${{ inputs.mobench_ref }}
         run: |
           set -euo pipefail
-          if [ -n "${MOBENCH_REF:-}" ]; then
-            git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
-            git -C mobench-src checkout "$MOBENCH_REF"
-            if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
-              git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
-            else
-              echo "Skipping local mobench patch; already included or not applicable"
-            fi
-            grep -F 'recover_benchmark_results_from_fetched_artifacts' mobench-src/crates/mobench/src/lib.rs >/dev/null
-            grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-            grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-            cargo install --path mobench-src/crates/mobench --locked --force
+          source_ref="${MOBENCH_REF:-v${MOBENCH_VERSION}}"
+          echo "Installing mobench from ${source_ref}"
+          git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
+          git -C mobench-src checkout "$source_ref"
+          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
+            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
           else
-            cargo info "mobench@${MOBENCH_VERSION}" >/dev/null
-            cargo install "mobench@${MOBENCH_VERSION}" --locked --force
+            echo "Skipping local mobench patch; already included or not applicable"
           fi
+          grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
+          grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
+          grep -F 'benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template >/dev/null
+          grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
+          cargo install --path mobench-src/crates/mobench --locked --force
 
       - name: Download iOS results
         if: always()
@@ -466,6 +536,7 @@ jobs:
           python -m pip install matplotlib
 
       - name: Render plot-capable platform summaries
+        id: render_summaries
         shell: bash
         run: |
           set -euo pipefail
@@ -483,6 +554,25 @@ jobs:
             summary_json=$(find "${results_dir}" -type f -name summary.json | head -1)
             if [ -z "${summary_json}" ]; then
               echo "::warning::No ${platform} summary.json found under ${results_dir}"
+              return 0
+            fi
+
+            local results_csv
+            results_csv=$(find "${results_dir}" -type f -name results.csv | head -1)
+            if [ -z "${results_csv}" ]; then
+              echo "::warning::No ${platform} results.csv found under ${results_dir}"
+              return 0
+            fi
+
+            if ! jq -e '(.device_summaries // []) | length > 0' "${summary_json}" >/dev/null; then
+              echo "::warning::Skipping ${platform} summary render because device_summaries is empty."
+              return 0
+            fi
+
+            local csv_line_count
+            csv_line_count=$(wc -l < "${results_csv}" | tr -d ' ')
+            if [ "${csv_line_count}" -le 1 ]; then
+              echo "::warning::Skipping ${platform} summary render because results.csv has no data rows."
               return 0
             fi
 
@@ -512,6 +602,8 @@ jobs:
             echo "::error::No benchmark summaries were rendered."
             exit 1
           fi
+
+          echo "rendered_count=${rendered_count}" >> "$GITHUB_OUTPUT"
 
       - name: Publish plot assets
         id: publish_plots
@@ -585,7 +677,7 @@ jobs:
           rewrite_platform_summary android
 
       - name: Post sticky PR comment
-        if: inputs.pr_number != ''
+        if: inputs.pr_number != '' && steps.render_summaries.outputs.rendered_count != '0'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pr_number }}
