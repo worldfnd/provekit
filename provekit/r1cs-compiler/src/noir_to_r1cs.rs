@@ -350,13 +350,32 @@ impl NoirToR1CSCompiler {
             (fe.into_bigint().0[bit_offset / 64] >> (bit_offset % 64)) as u8 as u64
         }
 
-        /// Assert that a field element fits in 32 bits.
-        fn assert_fits_32_bits(fe: &FieldElement) {
+        /// Assert that a field element fits in `num_bits` bits.
+        fn assert_fits_num_bits(fe: &FieldElement, num_bits: u32) {
             let bigint = fe.into_bigint();
-            assert!(
-                bigint.0[1..].iter().all(|&limb| limb == 0) && bigint.0[0] <= u32::MAX as u64,
-                "AND/XOR constant exceeds 32 bits: {fe}"
-            );
+            let limbs = bigint.0;
+            let fits = if num_bits == 0 {
+                limbs.iter().all(|&l| l == 0)
+            } else if num_bits >= 256 {
+                true
+            } else {
+                let full_limbs = (num_bits / 64) as usize;
+                let rem = num_bits % 64;
+                // All limbs strictly above the partially-used one must be zero.
+                let high_zero = limbs
+                    .iter()
+                    .skip(full_limbs + usize::from(rem != 0))
+                    .all(|&l| l == 0);
+                let partial_ok = if rem == 0 {
+                    true
+                } else if full_limbs < limbs.len() {
+                    limbs[full_limbs] >> rem == 0
+                } else {
+                    true
+                };
+                high_zero && partial_ok
+            };
+            assert!(fits, "AND/XOR constant exceeds {num_bits} bits: {fe}");
         }
 
         match (lhs, rhs) {
@@ -365,8 +384,8 @@ impl NoirToR1CSCompiler {
             (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Constant(rhs_c)) => {
                 let lhs_fe = noir_to_native(lhs_c);
                 let rhs_fe = noir_to_native(rhs_c);
-                assert_fits_32_bits(&lhs_fe);
-                assert_fits_32_bits(&rhs_fe);
+                assert_fits_num_bits(&lhs_fe, num_bits);
+                assert_fits_num_bits(&rhs_fe, num_bits);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![out_idx]);
                 for byte_idx in 0..num_digits {
@@ -383,7 +402,7 @@ impl NoirToR1CSCompiler {
             // lhs constant, rhs witness
             (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Witness(rhs_w)) => {
                 let lhs_fe = noir_to_native(lhs_c);
-                assert_fits_32_bits(&lhs_fe);
+                assert_fits_num_bits(&lhs_fe, num_bits);
                 let rhs_witness = self.fetch_r1cs_witness_index(rhs_w);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![rhs_witness, out_idx]);
@@ -400,7 +419,7 @@ impl NoirToR1CSCompiler {
             // lhs witness, rhs constant
             (ConstantOrACIRWitness::Witness(lhs_w), ConstantOrACIRWitness::Constant(rhs_c)) => {
                 let rhs_fe = noir_to_native(rhs_c);
-                assert_fits_32_bits(&rhs_fe);
+                assert_fits_num_bits(&rhs_fe, num_bits);
                 let lhs_witness = self.fetch_r1cs_witness_index(lhs_w);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![lhs_witness, out_idx]);
