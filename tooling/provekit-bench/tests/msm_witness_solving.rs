@@ -197,6 +197,20 @@ struct SinglePointMsmFixture {
     layout:         SinglePointMsmLayout,
 }
 
+/// Return the secp256r1 generator coordinates.
+fn secp256r1_generator() -> ([u64; 4], [u64; 4]) {
+    let curve = Secp256r1;
+    (curve.generator().0, curve.generator().1)
+}
+
+/// Return the secp256r1 generator together with curve parameters used by
+/// the local scalar-multiplication helpers in this test file.
+fn secp256r1_generator_params() -> ([u64; 4], [u64; 4], [u64; 4], [u64; 4]) {
+    let curve = Secp256r1;
+    let (gx, gy) = secp256r1_generator();
+    (gx, gy, curve.curve_a(), curve.field_modulus_p())
+}
+
 #[derive(Clone, Copy, Debug)]
 struct SinglePointGeneratorCase {
     point_x:    [u64; 4],
@@ -208,16 +222,9 @@ struct SinglePointGeneratorCase {
 
 /// Build a single-point secp256r1 generator case for the given scalar.
 fn secp256r1_generator_case(scalar: [u64; 4]) -> SinglePointGeneratorCase {
-    let curve = Secp256r1;
-    let point_x = curve.generator().0;
-    let point_y = curve.generator().1;
-    let (expected_x, expected_y) = ec_scalar_mul(
-        &point_x,
-        &point_y,
-        &scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
+    let (point_x, point_y, curve_a, field_modulus_p) = secp256r1_generator_params();
+    let (expected_x, expected_y) =
+        ec_scalar_mul(&point_x, &point_y, &scalar, &curve_a, &field_modulus_p);
 
     SinglePointGeneratorCase {
         point_x,
@@ -239,6 +246,113 @@ fn build_generator_single_point_fixture(case: SinglePointGeneratorCase) -> Singl
         &case.expected_y,
         false,
     )
+}
+
+/// Build the single-point generator fixture directly from the scalar.
+fn generator_fixture(scalar: [u64; 4]) -> SinglePointMsmFixture {
+    build_generator_single_point_fixture(secp256r1_generator_case(scalar))
+}
+
+struct TwoPointMsmFixture {
+    compiler:    NoirToR1CSCompiler,
+    witness:     Vec<FieldElement>,
+    out_x_limbs: Vec<usize>,
+}
+
+/// Build the shared two-point generator-based MSM witness used by the
+/// positive and negative two-point tests.
+fn build_default_two_point_msm_fixture() -> TwoPointMsmFixture {
+    let (gx, gy, curve_a, field_modulus_p) = secp256r1_generator_params();
+    let curve = Secp256r1;
+    let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 2);
+    let stride = 2 * num_limbs + 1;
+
+    // P1 = 3·G, P2 = 5·G
+    let (p1x, p1y) = ec_scalar_mul(&gx, &gy, &[3, 0, 0, 0], &curve_a, &field_modulus_p);
+    let (p2x, p2y) = ec_scalar_mul(&gx, &gy, &[5, 0, 0, 0], &curve_a, &field_modulus_p);
+    let s1: [u64; 4] = [2, 0, 0, 0];
+    let s2: [u64; 4] = [3, 0, 0, 0];
+    // Expected: 2·(3G) + 3·(5G) = 6G + 15G = 21G
+    let (ex, ey) = ec_scalar_mul(&gx, &gy, &[21, 0, 0, 0], &curve_a, &field_modulus_p);
+
+    let (s1_lo, s1_hi) = split_scalar(&s1);
+    let (s2_lo, s2_hi) = split_scalar(&s2);
+
+    let p1x_fes = u256_to_limb_fes(&p1x, limb_bits, num_limbs);
+    let p1y_fes = u256_to_limb_fes(&p1y, limb_bits, num_limbs);
+    let p2x_fes = u256_to_limb_fes(&p2x, limb_bits, num_limbs);
+    let p2y_fes = u256_to_limb_fes(&p2y, limb_bits, num_limbs);
+    let ex_fes = u256_to_limb_fes(&ex, limb_bits, num_limbs);
+    let ey_fes = u256_to_limb_fes(&ey, limb_bits, num_limbs);
+
+    let mut compiler = NoirToR1CSCompiler::new();
+    let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
+
+    let base = compiler.num_witnesses();
+    let total = 2 * stride + 4 + stride;
+    compiler.r1cs.add_witnesses(total);
+
+    let points: Vec<ConstantOrR1CSWitness> = (0..2 * stride)
+        .map(|j| ConstantOrR1CSWitness::Witness(base + j))
+        .collect();
+    let scalar_base = base + 2 * stride;
+    let scalars = vec![
+        ConstantOrR1CSWitness::Witness(scalar_base),
+        ConstantOrR1CSWitness::Witness(scalar_base + 1),
+        ConstantOrR1CSWitness::Witness(scalar_base + 2),
+        ConstantOrR1CSWitness::Witness(scalar_base + 3),
+    ];
+    let out_base = scalar_base + 4;
+    let out_x_limbs: Vec<usize> = (0..num_limbs).map(|j| out_base + j).collect();
+    let out_y_limbs: Vec<usize> = (0..num_limbs).map(|j| out_base + num_limbs + j).collect();
+    let out_inf = out_base + 2 * num_limbs;
+
+    let outputs = MsmLimbedOutputs {
+        out_x_limbs: out_x_limbs.clone(),
+        out_y_limbs: out_y_limbs.clone(),
+        out_inf,
+    };
+    let msm_ops = vec![(points, scalars, outputs)];
+    add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
+    add_range_checks(&mut compiler, range_checks);
+
+    let num_witnesses = compiler.num_witnesses();
+
+    let mut initial_values = vec![(0, FieldElement::from(1u64))];
+    for (j, fe) in p1x_fes.iter().enumerate() {
+        initial_values.push((base + j, *fe));
+    }
+    for (j, fe) in p1y_fes.iter().enumerate() {
+        initial_values.push((base + num_limbs + j, *fe));
+    }
+    initial_values.push((base + 2 * num_limbs, FieldElement::zero()));
+    let p2_base = base + stride;
+    for (j, fe) in p2x_fes.iter().enumerate() {
+        initial_values.push((p2_base + j, *fe));
+    }
+    for (j, fe) in p2y_fes.iter().enumerate() {
+        initial_values.push((p2_base + num_limbs + j, *fe));
+    }
+    initial_values.push((p2_base + 2 * num_limbs, FieldElement::zero()));
+    initial_values.push((scalar_base, u256_to_fe(&s1_lo)));
+    initial_values.push((scalar_base + 1, u256_to_fe(&s1_hi)));
+    initial_values.push((scalar_base + 2, u256_to_fe(&s2_lo)));
+    initial_values.push((scalar_base + 3, u256_to_fe(&s2_hi)));
+    for (j, fe) in ex_fes.iter().enumerate() {
+        initial_values.push((out_x_limbs[j], *fe));
+    }
+    for (j, fe) in ey_fes.iter().enumerate() {
+        initial_values.push((out_y_limbs[j], *fe));
+    }
+    initial_values.push((out_inf, FieldElement::zero()));
+
+    let witness = solve_witnesses(&compiler.witness_builders, num_witnesses, &initial_values);
+
+    TwoPointMsmFixture {
+        compiler,
+        witness,
+        out_x_limbs,
+    }
 }
 
 /// Locate the single FakeGLV hint used by the single-point MSM circuit.
@@ -431,17 +545,9 @@ fn run_single_point_msm_test_limbed(
 /// The generator's x-coordinate exceeds BN254 Fr.
 #[test]
 fn test_single_point_generator() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
+    let (gx, gy, curve_a, field_modulus_p) = secp256r1_generator_params();
     let scalar: [u64; 4] = [7, 0, 0, 0];
-    let (ex, ey) = ec_scalar_mul(
-        &gx,
-        &gy,
-        &scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
+    let (ex, ey) = ec_scalar_mul(&gx, &gy, &scalar, &curve_a, &field_modulus_p);
 
     run_single_point_msm_test_limbed(&gx, &gy, false, &scalar, &ex, &ey, false);
 }
@@ -449,9 +555,7 @@ fn test_single_point_generator() {
 /// Scalar = 1: result should equal the input point.
 #[test]
 fn test_scalar_one() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
+    let (gx, gy) = secp256r1_generator();
     let scalar: [u64; 4] = [1, 0, 0, 0];
 
     // 1·G = G
@@ -461,17 +565,9 @@ fn test_scalar_one() {
 /// Large scalar spanning both lo and hi halves of the 256-bit representation.
 #[test]
 fn test_large_scalar() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
+    let (gx, gy, curve_a, field_modulus_p) = secp256r1_generator_params();
     let scalar: [u64; 4] = [0xcafebabe, 0x12345678, 0x42, 0];
-    let (ex, ey) = ec_scalar_mul(
-        &gx,
-        &gy,
-        &scalar,
-        &curve.curve_a(),
-        &curve.field_modulus_p(),
-    );
+    let (ex, ey) = ec_scalar_mul(&gx, &gy, &scalar, &curve_a, &field_modulus_p);
 
     run_single_point_msm_test_limbed(&gx, &gy, false, &scalar, &ex, &ey, false);
 }
@@ -479,9 +575,7 @@ fn test_large_scalar() {
 /// Zero scalar: result should be point at infinity.
 #[test]
 fn test_zero_scalar() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
+    let (gx, gy) = secp256r1_generator();
     let zero_scalar: [u64; 4] = [0, 0, 0, 0];
     let zero_point: [u64; 4] = [0, 0, 0, 0];
 
@@ -500,10 +594,8 @@ fn test_zero_scalar() {
 /// of scalar.
 #[test]
 fn test_point_at_infinity_input() {
-    let curve = Secp256r1;
     // Use generator coords as placeholder (they're ignored due to inf=1 select)
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
+    let (gx, gy) = secp256r1_generator();
     let scalar: [u64; 4] = [42, 0, 0, 0];
     let zero_point: [u64; 4] = [0, 0, 0, 0];
 
@@ -514,17 +606,13 @@ fn test_point_at_infinity_input() {
 /// wNAF + FakeGLV pipeline.
 #[test]
 fn test_arbitrary_point_and_scalar() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let a = &curve.curve_a();
-    let p = &curve.field_modulus_p();
+    let (gx, gy, curve_a, field_modulus_p) = secp256r1_generator_params();
 
     // P = 2·G
-    let (px, py) = ec_scalar_mul(&gx, &gy, &[2, 0, 0, 0], a, p);
+    let (px, py) = ec_scalar_mul(&gx, &gy, &[2, 0, 0, 0], &curve_a, &field_modulus_p);
     let scalar: [u64; 4] = [17, 0, 0, 0];
     // Expected: 17·(2G) = 34G
-    let (ex, ey) = ec_scalar_mul(&gx, &gy, &[34, 0, 0, 0], a, p);
+    let (ex, ey) = ec_scalar_mul(&gx, &gy, &[34, 0, 0, 0], &curve_a, &field_modulus_p);
 
     run_single_point_msm_test_limbed(&px, &py, false, &scalar, &ex, &ey, false);
 }
@@ -533,12 +621,10 @@ fn test_arbitrary_point_and_scalar() {
 /// equality constraints.
 #[test]
 fn test_single_point_rejects_wrong_output_coordinates() {
-    let case = secp256r1_generator_case([7, 0, 0, 0]);
-
     let get_x: fn(&SinglePointMsmLayout) -> usize = |l| l.out_x_limbs[0];
     let get_y: fn(&SinglePointMsmLayout) -> usize = |l| l.out_y_limbs[0];
     for (label, get_idx) in [("out_x", get_x), ("out_y", get_y)] {
-        let fixture = build_generator_single_point_fixture(case);
+        let fixture = generator_fixture([7, 0, 0, 0]);
         assert_single_point_corruption_is_rejected(
             fixture,
             &format!("wrong output coordinate ({label})"),
@@ -553,8 +639,7 @@ fn test_single_point_rejects_wrong_output_coordinates() {
 /// Corrupting the output infinity flag must violate the output constraints.
 #[test]
 fn test_single_point_rejects_wrong_output_inf() {
-    let case = secp256r1_generator_case([7, 0, 0, 0]);
-    let fixture = build_generator_single_point_fixture(case);
+    let fixture = generator_fixture([7, 0, 0, 0]);
 
     assert_single_point_corruption_is_rejected(
         fixture,
@@ -603,10 +688,9 @@ fn test_single_point_rejects_wrong_scalar_output_pairing() {
 /// Replacing the scalar input while keeping the original output must fail.
 #[test]
 fn test_single_point_rejects_scalar_corruption() {
-    let case = secp256r1_generator_case([7, 0, 0, 0]);
     let wrong_scalar: [u64; 4] = [5, 0, 0, 0];
     let (wrong_lo, wrong_hi) = split_scalar(&wrong_scalar);
-    let fixture = build_generator_single_point_fixture(case);
+    let fixture = generator_fixture([7, 0, 0, 0]);
 
     assert_single_point_corruption_is_rejected(
         fixture,
@@ -621,8 +705,7 @@ fn test_single_point_rejects_scalar_corruption() {
 /// Zeroing s2 must violate the explicit s2 != 0 soundness check.
 #[test]
 fn test_single_point_rejects_zero_s2_forgery() {
-    let case = secp256r1_generator_case([17, 0, 0, 0]);
-    let fixture = build_generator_single_point_fixture(case);
+    let fixture = generator_fixture([17, 0, 0, 0]);
 
     assert_single_point_corruption_is_rejected(fixture, "s2 forgery", |layout, corrupted| {
         assert_ne!(
@@ -643,12 +726,10 @@ fn test_single_point_rejects_zero_s2_forgery() {
 /// decomposition back to the original scalar.
 #[test]
 fn test_single_point_rejects_flipped_neg_bits() {
-    let case = secp256r1_generator_case([17, 0, 0, 0]);
-
     let get_neg1: fn(&FakeGlvWitnessIndices) -> usize = |g| g.neg1;
     let get_neg2: fn(&FakeGlvWitnessIndices) -> usize = |g| g.neg2;
     for (label, get_idx) in [("neg1", get_neg1), ("neg2", get_neg2)] {
-        let fixture = build_generator_single_point_fixture(case);
+        let fixture = generator_fixture([17, 0, 0, 0]);
         assert_single_point_corruption_is_rejected(
             fixture,
             &format!("flipped {label} bit"),
@@ -663,101 +744,9 @@ fn test_single_point_rejects_flipped_neg_bits() {
 /// Two-point MSM: s1·P1 + s2·P2 with arbitrary coordinates.
 #[test]
 fn test_two_point_msm() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let a = &curve.curve_a();
-    let p = &curve.field_modulus_p();
-    let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 2);
-    let stride = 2 * num_limbs + 1;
+    let fixture = build_default_two_point_msm_fixture();
 
-    // P1 = 3·G, P2 = 5·G
-    let (p1x, p1y) = ec_scalar_mul(&gx, &gy, &[3, 0, 0, 0], a, p);
-    let (p2x, p2y) = ec_scalar_mul(&gx, &gy, &[5, 0, 0, 0], a, p);
-    let s1: [u64; 4] = [2, 0, 0, 0];
-    let s2: [u64; 4] = [3, 0, 0, 0];
-    // Expected: 2·(3G) + 3·(5G) = 6G + 15G = 21G
-    let (ex, ey) = ec_scalar_mul(&gx, &gy, &[21, 0, 0, 0], a, p);
-
-    let (s1_lo, s1_hi) = split_scalar(&s1);
-    let (s2_lo, s2_hi) = split_scalar(&s2);
-
-    let p1x_fes = u256_to_limb_fes(&p1x, limb_bits, num_limbs);
-    let p1y_fes = u256_to_limb_fes(&p1y, limb_bits, num_limbs);
-    let p2x_fes = u256_to_limb_fes(&p2x, limb_bits, num_limbs);
-    let p2y_fes = u256_to_limb_fes(&p2y, limb_bits, num_limbs);
-    let ex_fes = u256_to_limb_fes(&ex, limb_bits, num_limbs);
-    let ey_fes = u256_to_limb_fes(&ey, limb_bits, num_limbs);
-
-    let mut compiler = NoirToR1CSCompiler::new();
-    let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
-
-    let base = compiler.num_witnesses();
-    let total = 2 * stride + 4 + stride;
-    compiler.r1cs.add_witnesses(total);
-
-    let points: Vec<ConstantOrR1CSWitness> = (0..2 * stride)
-        .map(|j| ConstantOrR1CSWitness::Witness(base + j))
-        .collect();
-    let scalar_base = base + 2 * stride;
-    let scalars = vec![
-        ConstantOrR1CSWitness::Witness(scalar_base),
-        ConstantOrR1CSWitness::Witness(scalar_base + 1),
-        ConstantOrR1CSWitness::Witness(scalar_base + 2),
-        ConstantOrR1CSWitness::Witness(scalar_base + 3),
-    ];
-    let out_base = scalar_base + 4;
-    let out_x_limbs: Vec<usize> = (0..num_limbs).map(|j| out_base + j).collect();
-    let out_y_limbs: Vec<usize> = (0..num_limbs).map(|j| out_base + num_limbs + j).collect();
-    let out_inf = out_base + 2 * num_limbs;
-
-    let outputs = MsmLimbedOutputs {
-        out_x_limbs: out_x_limbs.clone(),
-        out_y_limbs: out_y_limbs.clone(),
-        out_inf,
-    };
-    let msm_ops = vec![(points, scalars, outputs)];
-    add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
-    add_range_checks(&mut compiler, range_checks);
-
-    let num_witnesses = compiler.num_witnesses();
-
-    let mut initial_values = vec![(0, FieldElement::from(1u64))];
-    for (j, fe) in p1x_fes.iter().enumerate() {
-        initial_values.push((base + j, *fe));
-    }
-    for (j, fe) in p1y_fes.iter().enumerate() {
-        initial_values.push((base + num_limbs + j, *fe));
-    }
-    initial_values.push((base + 2 * num_limbs, FieldElement::zero()));
-    let p2_base = base + stride;
-    for (j, fe) in p2x_fes.iter().enumerate() {
-        initial_values.push((p2_base + j, *fe));
-    }
-    for (j, fe) in p2y_fes.iter().enumerate() {
-        initial_values.push((p2_base + num_limbs + j, *fe));
-    }
-    initial_values.push((p2_base + 2 * num_limbs, FieldElement::zero()));
-    initial_values.push((scalar_base, u256_to_fe(&s1_lo)));
-    initial_values.push((scalar_base + 1, u256_to_fe(&s1_hi)));
-    initial_values.push((scalar_base + 2, u256_to_fe(&s2_lo)));
-    initial_values.push((scalar_base + 3, u256_to_fe(&s2_hi)));
-    for (j, fe) in ex_fes.iter().enumerate() {
-        initial_values.push((out_x_limbs[j], *fe));
-    }
-    for (j, fe) in ey_fes.iter().enumerate() {
-        initial_values.push((out_y_limbs[j], *fe));
-    }
-    initial_values.push((out_inf, FieldElement::zero()));
-
-    let witness = solve_witnesses(&compiler.witness_builders, num_witnesses, &initial_values);
-    println!(">>> number of witnesses : {:?}", witness.len());
-    println!(
-        ">>> number of constraints : {:?}",
-        compiler.r1cs.num_constraints()
-    );
-
-    check_r1cs_satisfaction(&compiler.r1cs, &witness)
+    check_r1cs_satisfaction(&fixture.compiler.r1cs, &fixture.witness)
         .expect("R1CS satisfaction check failed for two-point MSM");
 }
 
@@ -765,20 +754,17 @@ fn test_two_point_msm() {
 /// should contribute.
 #[test]
 fn test_two_point_one_zero_scalar() {
+    let (gx, gy, curve_a, field_modulus_p) = secp256r1_generator_params();
     let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let a = &curve.curve_a();
-    let p = &curve.field_modulus_p();
     let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 2);
     let stride = 2 * num_limbs + 1;
 
     // P1 = G (scalar=5), P2 = 2G (scalar=0)
-    let (p2x, p2y) = ec_scalar_mul(&gx, &gy, &[2, 0, 0, 0], a, p);
+    let (p2x, p2y) = ec_scalar_mul(&gx, &gy, &[2, 0, 0, 0], &curve_a, &field_modulus_p);
     let s1: [u64; 4] = [5, 0, 0, 0];
     let s2: [u64; 4] = [0, 0, 0, 0];
     // Expected: 5·G + 0·(2G) = 5G
-    let (ex, ey) = ec_scalar_mul(&gx, &gy, &[5, 0, 0, 0], a, p);
+    let (ex, ey) = ec_scalar_mul(&gx, &gy, &[5, 0, 0, 0], &curve_a, &field_modulus_p);
 
     let (s1_lo, s1_hi) = split_scalar(&s1);
     let (s2_lo, s2_hi) = split_scalar(&s2);
@@ -865,103 +851,16 @@ fn test_two_point_one_zero_scalar() {
 /// multi-point accumulation and output-constraining path.
 #[test]
 fn test_two_point_msm_rejects_wrong_output() {
-    let curve = Secp256r1;
-    let gx = curve.generator().0;
-    let gy = curve.generator().1;
-    let a = &curve.curve_a();
-    let p = &curve.field_modulus_p();
-    let (num_limbs, limb_bits) = msm_params_for_curve(&curve, 2);
-    let stride = 2 * num_limbs + 1;
-
-    // P1 = 3·G, P2 = 5·G
-    let (p1x, p1y) = ec_scalar_mul(&gx, &gy, &[3, 0, 0, 0], a, p);
-    let (p2x, p2y) = ec_scalar_mul(&gx, &gy, &[5, 0, 0, 0], a, p);
-    let s1: [u64; 4] = [2, 0, 0, 0];
-    let s2: [u64; 4] = [3, 0, 0, 0];
-    // Expected: 2·(3G) + 3·(5G) = 6G + 15G = 21G
-    let (ex, ey) = ec_scalar_mul(&gx, &gy, &[21, 0, 0, 0], a, p);
-
-    let (s1_lo, s1_hi) = split_scalar(&s1);
-    let (s2_lo, s2_hi) = split_scalar(&s2);
-
-    let p1x_fes = u256_to_limb_fes(&p1x, limb_bits, num_limbs);
-    let p1y_fes = u256_to_limb_fes(&p1y, limb_bits, num_limbs);
-    let p2x_fes = u256_to_limb_fes(&p2x, limb_bits, num_limbs);
-    let p2y_fes = u256_to_limb_fes(&p2y, limb_bits, num_limbs);
-    let ex_fes = u256_to_limb_fes(&ex, limb_bits, num_limbs);
-    let ey_fes = u256_to_limb_fes(&ey, limb_bits, num_limbs);
-
-    let mut compiler = NoirToR1CSCompiler::new();
-    let mut range_checks: BTreeMap<u32, Vec<usize>> = BTreeMap::new();
-
-    let base = compiler.num_witnesses();
-    let total = 2 * stride + 4 + stride;
-    compiler.r1cs.add_witnesses(total);
-
-    let points: Vec<ConstantOrR1CSWitness> = (0..2 * stride)
-        .map(|j| ConstantOrR1CSWitness::Witness(base + j))
-        .collect();
-    let scalar_base = base + 2 * stride;
-    let scalars = vec![
-        ConstantOrR1CSWitness::Witness(scalar_base),
-        ConstantOrR1CSWitness::Witness(scalar_base + 1),
-        ConstantOrR1CSWitness::Witness(scalar_base + 2),
-        ConstantOrR1CSWitness::Witness(scalar_base + 3),
-    ];
-    let out_base = scalar_base + 4;
-    let out_x_limbs: Vec<usize> = (0..num_limbs).map(|j| out_base + j).collect();
-    let out_y_limbs: Vec<usize> = (0..num_limbs).map(|j| out_base + num_limbs + j).collect();
-    let out_inf = out_base + 2 * num_limbs;
-
-    let outputs = MsmLimbedOutputs {
-        out_x_limbs: out_x_limbs.clone(),
-        out_y_limbs: out_y_limbs.clone(),
-        out_inf,
-    };
-    let msm_ops = vec![(points, scalars, outputs)];
-    add_msm_with_curve(&mut compiler, msm_ops, &mut range_checks, &curve);
-    add_range_checks(&mut compiler, range_checks);
-
-    let num_witnesses = compiler.num_witnesses();
-
-    let mut initial_values = vec![(0, FieldElement::from(1u64))];
-    for (j, fe) in p1x_fes.iter().enumerate() {
-        initial_values.push((base + j, *fe));
-    }
-    for (j, fe) in p1y_fes.iter().enumerate() {
-        initial_values.push((base + num_limbs + j, *fe));
-    }
-    initial_values.push((base + 2 * num_limbs, FieldElement::zero()));
-    let p2_base = base + stride;
-    for (j, fe) in p2x_fes.iter().enumerate() {
-        initial_values.push((p2_base + j, *fe));
-    }
-    for (j, fe) in p2y_fes.iter().enumerate() {
-        initial_values.push((p2_base + num_limbs + j, *fe));
-    }
-    initial_values.push((p2_base + 2 * num_limbs, FieldElement::zero()));
-    initial_values.push((scalar_base, u256_to_fe(&s1_lo)));
-    initial_values.push((scalar_base + 1, u256_to_fe(&s1_hi)));
-    initial_values.push((scalar_base + 2, u256_to_fe(&s2_lo)));
-    initial_values.push((scalar_base + 3, u256_to_fe(&s2_hi)));
-    for (j, fe) in ex_fes.iter().enumerate() {
-        initial_values.push((out_x_limbs[j], *fe));
-    }
-    for (j, fe) in ey_fes.iter().enumerate() {
-        initial_values.push((out_y_limbs[j], *fe));
-    }
-    initial_values.push((out_inf, FieldElement::zero()));
-
-    let witness = solve_witnesses(&compiler.witness_builders, num_witnesses, &initial_values);
-    check_r1cs_satisfaction(&compiler.r1cs, &witness)
+    let fixture = build_default_two_point_msm_fixture();
+    check_r1cs_satisfaction(&fixture.compiler.r1cs, &fixture.witness)
         .expect("valid two-point MSM witness should satisfy R1CS");
 
     // Corrupt the output x-limb
-    let mut corrupted = witness;
-    corrupted[out_x_limbs[0]] = corrupt_field_element(corrupted[out_x_limbs[0]]);
+    let mut corrupted = fixture.witness;
+    corrupted[fixture.out_x_limbs[0]] = corrupt_field_element(corrupted[fixture.out_x_limbs[0]]);
 
     assert!(
-        check_r1cs_satisfaction(&compiler.r1cs, &corrupted).is_err(),
+        check_r1cs_satisfaction(&fixture.compiler.r1cs, &corrupted).is_err(),
         "corrupted two-point MSM output should fail R1CS satisfaction"
     );
 }
