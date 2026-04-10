@@ -701,38 +701,34 @@ impl NoirToR1CSCompiler {
                         // has no such mechanism. This is an inherent cost of R1CS for runtime
                         // conditional operations.
                         let predicate = self.fetch_constant_or_r1cs_witness(*predicate);
-                        let mut skip_msm = false;
+                        let (out_x, out_y, out_inf) = (
+                            self.fetch_r1cs_witness_index(outputs.0),
+                            self.fetch_r1cs_witness_index(outputs.1),
+                            self.fetch_r1cs_witness_index(outputs.2),
+                        );
                         match predicate {
                             ConstantOrR1CSWitness::Constant(c) => {
                                 if c.is_zero() {
-                                    // Statically inactive branch. The output is fully determined
-                                    // at compile time: identity (0, 0, 1). Skip the MSM pipeline
-                                    // entirely — no GLV/bit-decomp/EC-add constraints needed.
-                                    skip_msm = true;
+                                    constrain_to_constant(self, out_x, FieldElement::zero());
+                                    constrain_to_constant(self, out_y, FieldElement::zero());
+                                    constrain_to_constant(self, out_inf, FieldElement::one());
+                                    continue;
                                 } else if !c.is_one() {
                                     bail!("MSM predicate constant must be 0 or 1, got {c:?}");
                                 }
-                                // c.is_one(): statically active branch — no
-                                // modification needed.
                             }
                             ConstantOrR1CSWitness::Witness(predicate_wit) => {
-                                // Runtime predicate. Noir guarantees it is boolean (product of
-                                // branch conditions), but we constrain defensively.
                                 constrain_boolean(self, predicate_wit);
-                                // not_predicate = 1 - predicate_wit
                                 let not_predicate = self.add_sum(vec![
                                     SumTerm(Some(FieldElement::one()), self.witness_one()),
                                     SumTerm(Some(-FieldElement::one()), predicate_wit),
                                 ]);
-                                // new_is_infinite[i] = old_is_infinite[i] OR not_predicate
                                 for i in (2..point_wits.len()).step_by(3) {
                                     point_wits[i] = match point_wits[i] {
                                         ConstantOrR1CSWitness::Constant(c) if c.is_one() => {
-                                            // Already infinite regardless of predicate.
                                             ConstantOrR1CSWitness::Constant(FieldElement::one())
                                         }
                                         ConstantOrR1CSWitness::Constant(c) if c.is_zero() => {
-                                            // 0 OR not_predicate = not_predicate
                                             ConstantOrR1CSWitness::Witness(not_predicate)
                                         }
                                         ConstantOrR1CSWitness::Constant(c) => {
@@ -742,7 +738,6 @@ impl NoirToR1CSCompiler {
                                             );
                                         }
                                         ConstantOrR1CSWitness::Witness(inf_wit) => {
-                                            // inf_wit OR not_predicate
                                             ConstantOrR1CSWitness::Witness(compute_boolean_or(
                                                 self,
                                                 inf_wit,
@@ -753,22 +748,7 @@ impl NoirToR1CSCompiler {
                                 }
                             }
                         }
-                        let out_x = self.fetch_r1cs_witness_index(outputs.0);
-                        let out_y = self.fetch_r1cs_witness_index(outputs.1);
-                        let out_inf = self.fetch_r1cs_witness_index(outputs.2);
-                        if skip_msm {
-                            // Constrain outputs directly to the Grumpkin identity point.
-                            // ACVM sets (0, 0, 1) for predicate=0 in the ACIR witness map, so
-                            // the WitnessBuilder::Acir created by fetch_r1cs_witness_index will
-                            // assign the correct values. constrain_to_constant adds a soundness
-                            // check (1 * w = value * 1) to prevent a malicious prover from
-                            // substituting different output values.
-                            constrain_to_constant(self, out_x, FieldElement::zero());
-                            constrain_to_constant(self, out_y, FieldElement::zero());
-                            constrain_to_constant(self, out_inf, FieldElement::one());
-                        } else {
-                            msm_ops.push((point_wits, scalar_wits, (out_x, out_y, out_inf)));
-                        }
+                        msm_ops.push((point_wits, scalar_wits, (out_x, out_y, out_inf)));
                     }
                     _ => {
                         unimplemented!("Other black box function: {:?}", black_box_func_call);
