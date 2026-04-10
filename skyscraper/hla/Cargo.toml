@@ -9,6 +9,9 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[lib]
+name = "hla"
+
 [dependencies]
 # 3rd party
 paste.workspace = true

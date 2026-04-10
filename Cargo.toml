@@ -98,12 +98,12 @@ ntt = { package = "provekit-ntt", version = "0.1.0" }
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
-provekit-common = { path = "provekit/common", version = "0.1.1" }
+provekit-common = { path = "provekit/common", version = "0.1.2" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
-provekit-prover = { path = "provekit/prover", version = "0.1.1" }
-provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
-provekit-verifier = { path = "provekit/verifier" }
+provekit-prover = { path = "provekit/prover", version = "0.1.2" }
+provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "0.1.2" }
+provekit-verifier = { path = "provekit/verifier", version = "0.1.2" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
 
 # 3rd party
@@ -156,7 +156,7 @@ zstd = "0.13"
 acir = { package = "provekit_acir", version = "1.0.0-beta.11-alpha.1" }
 bn254_blackbox_solver = { package = "provekit_bn254_blackbox_solver", version = "1.0.0-beta.11-alpha.1" }
 nargo = { package = "provekit_nargo", version = "1.0.0-beta.11-alpha.4" }
-nargo_cli = { package = "provekit_nargo_cli", version = "1.0.0-beta.11-alpha.1" }
+nargo_cli = { package = "provekit_nargo_cli", version = "1.0.0-beta.11-alpha.6" }
 nargo_toml = { package = "provekit_nargo_toml", version = "1.0.0-beta.11-alpha.4" }
 noir_artifact_cli = { package = "provekit_noir_artifact_cli", version = "1.0.0-beta.11-alpha.4" }
 noirc_abi = { package = "provekit_noirc_abi", version = "1.0.0-beta.11-alpha.1" }

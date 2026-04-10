@@ -3,6 +3,9 @@ name = "provekit-fp-rounding"
 version = "0.1.0"
 description = "Floating-point rounding utilities for BN254 arithmetic"
 edition.workspace = true
+
+[lib]
+name = "fp_rounding"
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true

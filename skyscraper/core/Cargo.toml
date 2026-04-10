@@ -9,6 +9,9 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[lib]
+name = "skyscraper"
+
 [dependencies]
 # Workspace crates
 bn254-multiplier.workspace = true

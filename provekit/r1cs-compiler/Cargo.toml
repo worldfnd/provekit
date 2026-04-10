@@ -1,6 +1,7 @@
 [package]
 name = "provekit-r1cs-compiler"
-version = "0.1.0"
+version = "0.1.2"
+description = "R1CS compiler for ProveKit, translating Noir programs to R1CS constraints"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true

@@ -9,6 +9,9 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[lib]
+name = "bn254_multiplier_codegen"
+
 [dependencies]
 # Workspace crates
 hla.workspace = true

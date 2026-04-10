@@ -10,7 +10,7 @@ use {
     bn254_blackbox_solver::Bn254BlackBoxSolver,
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::InputMap,
+    noirc_abi::{input_parser::Format, InputMap},
     provekit_common::{
         utils::noir_to_native, FieldElement, NoirElement, NoirProof, Prover, PublicInputs,
         TranscriptSponge,
@@ -30,6 +30,8 @@ pub trait Prove {
     fn prove(self, input_map: InputMap) -> Result<NoirProof>;
 
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
+
+    fn prove_with_json(self, inputs_json: &str) -> Result<NoirProof>;
 
     fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof>;
 }
@@ -73,6 +75,16 @@ impl Prove for Prover {
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         let (input_map, _expected_return) =
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+        self.prove(input_map)
+    }
+
+    #[instrument(skip_all)]
+    fn prove_with_json(self, inputs_json: &str) -> Result<NoirProof> {
+        let json_format = Format::from_ext("json")
+            .context("JSON format not supported by noirc_abi")?;
+        let input_map = json_format
+            .parse(inputs_json, self.witness_generator.abi())
+            .context("While parsing JSON inputs")?;
         self.prove(input_map)
     }
 
