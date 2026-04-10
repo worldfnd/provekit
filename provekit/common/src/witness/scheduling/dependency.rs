@@ -387,4 +387,75 @@ impl DependencyInfo {
             WitnessBuilder::BytePartition { lo, hi, .. } => vec![*lo, *hi],
         }
     }
+
+    /// Whether this builder writes to a contiguous range of output columns
+    /// (i.e. its outputs are addressed as `output_start..output_start + N`,
+    /// not as a `Vec<usize>` of individual indices).
+    ///
+    /// Builders with contiguous output ranges must be protected from
+    /// non-contiguous remapping during dead-column removal: if any output
+    /// column in the range is live, ALL columns in the range must be kept
+    /// (possibly as virtual witnesses) to preserve the layout invariant.
+    ///
+    /// Adding a new variant to `WitnessBuilder` will produce a compiler
+    /// error here, forcing the developer to classify it explicitly. Failure
+    /// to do so would silently corrupt builder outputs at runtime.
+    pub fn requires_contiguous_outputs(wb: &WitnessBuilder) -> bool {
+        match wb {
+            // Multi-output, contiguous range — require protection.
+            WitnessBuilder::SignedBitHint { .. }
+            | WitnessBuilder::MultiplicitiesForRange(..)
+            | WitnessBuilder::SpiceWitnesses(..)
+            | WitnessBuilder::MultiplicitiesForBinOp(..)
+            | WitnessBuilder::MultiplicitiesForSpread(..)
+            | WitnessBuilder::MultiLimbMulModHint { .. }
+            | WitnessBuilder::MultiLimbModularInverse { .. }
+            | WitnessBuilder::EcDoubleHint { .. }
+            | WitnessBuilder::EcAddHint { .. }
+            | WitnessBuilder::NonNativeEcHint { .. }
+            | WitnessBuilder::FakeGLVHint { .. }
+            | WitnessBuilder::EcScalarMulHint { .. } => true,
+
+            // Multi-output, individually-addressed — outputs are independent
+            // fields or a `Vec<usize>` of indices, so non-contiguous remapping
+            // is safe.
+            WitnessBuilder::DigitalDecomposition(..)
+            | WitnessBuilder::ChunkDecompose { .. }
+            | WitnessBuilder::SpreadBitExtract { .. }
+            | WitnessBuilder::U32Addition(..)
+            | WitnessBuilder::U32AdditionMulti(..)
+            | WitnessBuilder::BytePartition { .. } => false,
+
+            // Single-output builders — `extract_writes` returns a one-element
+            // vec, so the protection logic short-circuits before reaching
+            // this method. Classified as `false` for completeness.
+            WitnessBuilder::Constant(..)
+            | WitnessBuilder::Acir(..)
+            | WitnessBuilder::Sum(..)
+            | WitnessBuilder::Product(..)
+            | WitnessBuilder::Challenge(..)
+            | WitnessBuilder::IndexedLogUpDenominator(..)
+            | WitnessBuilder::Inverse(..)
+            | WitnessBuilder::SafeInverse(..)
+            | WitnessBuilder::ModularInverse(..)
+            | WitnessBuilder::IntegerQuotient(..)
+            | WitnessBuilder::ProductLinearOperation(..)
+            | WitnessBuilder::LogUpDenominator(..)
+            | WitnessBuilder::LogUpInverse(..)
+            | WitnessBuilder::SpiceMultisetFactor(..)
+            | WitnessBuilder::BinOpLookupDenominator(..)
+            | WitnessBuilder::CombinedBinOpLookupDenominator(..)
+            | WitnessBuilder::And(..)
+            | WitnessBuilder::Xor(..)
+            | WitnessBuilder::CombinedTableEntryInverse(..)
+            | WitnessBuilder::SpreadWitness(..)
+            | WitnessBuilder::SpreadLookupDenominator(..)
+            | WitnessBuilder::SpreadTableQuotient { .. }
+            | WitnessBuilder::SumQuotient { .. }
+            | WitnessBuilder::SelectWitness { .. }
+            | WitnessBuilder::BooleanOr { .. }
+            | WitnessBuilder::MultiLimbAddQuotient { .. }
+            | WitnessBuilder::MultiLimbSubBorrow { .. } => false,
+        }
+    }
 }

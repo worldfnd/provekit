@@ -240,17 +240,6 @@ impl Prove for NoirProver {
         )
         .context("While verifying R1CS instance")?;
 
-        let public_inputs = if num_public_inputs == 0 {
-            PublicInputs::new()
-        } else {
-            PublicInputs::from_vec(
-                witness[1..=num_public_inputs]
-                    .iter()
-                    .map(|w| w.ok_or_else(|| anyhow::anyhow!("Missing public input witness")))
-                    .collect::<Result<Vec<FieldElement>>>()?,
-            )
-        };
-
         // Extract only real witnesses (first num_witnesses) for the sumcheck.
         // Virtual witnesses at [num_witnesses, num_witnesses+num_virtual) were
         // needed for builder computation but have zero entries in A/B/C.

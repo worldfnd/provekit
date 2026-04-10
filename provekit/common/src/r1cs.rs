@@ -109,10 +109,27 @@ impl R1CS {
         self.a.num_rows
     }
 
-    /// The number of witnesses in the R1CS instance (including the constant one
-    /// witness).
+    /// The number of *real* witnesses in the R1CS instance (matrix columns,
+    /// including the constant-one witness at index 0).
+    ///
+    /// **Does NOT include virtual witnesses.** Virtual witnesses are
+    /// computation-only columns excluded from the A/B/C matrices and the WHIR
+    /// commitment, but still needed by witness builders for intermediate
+    /// values. For total allocation needed by the witness solver, use
+    /// [`Self::num_witnesses_for_solving`] (or compute
+    /// `num_witnesses() + num_virtual`).
     pub const fn num_witnesses(&self) -> usize {
         self.a.num_cols
+    }
+
+    /// Total witnesses needed for solving: real witnesses (matrix columns)
+    /// plus virtual witnesses (computation-only).
+    ///
+    /// Use this when allocating the witness vector for the solver. Use
+    /// [`Self::num_witnesses`] when reasoning about matrix dimensions or
+    /// the WHIR-committed witness.
+    pub const fn num_witnesses_for_solving(&self) -> usize {
+        self.a.num_cols + self.num_virtual
     }
 
     /// Compute a SHA3-256 hash of the serialized R1CS matrices.

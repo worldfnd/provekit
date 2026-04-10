@@ -448,11 +448,24 @@ fn remove_dead_columns(
     // Step 2: Build witness builder dependency graph and find reachable builders.
     // A builder is "live" if any of its output columns is NOT dead, OR if a
     // live builder reads any of its output columns.
+    //
+    // Cache extract_reads/extract_writes once per builder to avoid repeated
+    // heap allocation across the 5 downstream uses (col_to_builder build,
+    // builder_reads_from build, BFS seed, contiguous protection, and
+    // live_read_cols build).
+    let builder_writes: Vec<Vec<usize>> = witness_builders
+        .iter()
+        .map(DependencyInfo::extract_writes)
+        .collect();
+    let builder_reads: Vec<Vec<usize>> = witness_builders
+        .iter()
+        .map(DependencyInfo::extract_reads)
+        .collect();
 
     // Map: witness column -> builder index
     let mut col_to_builder: HashMap<usize, usize> = HashMap::new();
-    for (builder_idx, builder) in witness_builders.iter().enumerate() {
-        for col in DependencyInfo::extract_writes(builder) {
+    for (builder_idx, writes) in builder_writes.iter().enumerate() {
+        for &col in writes {
             col_to_builder.insert(col, builder_idx);
         }
     }
@@ -461,9 +474,8 @@ fn remove_dead_columns(
     // (reverse of the normal dependency graph: we want "builder X reads from
     // builder Y")
     let mut builder_reads_from: Vec<HashSet<usize>> = vec![HashSet::new(); witness_builders.len()];
-    for (builder_idx, builder) in witness_builders.iter().enumerate() {
-        let reads = DependencyInfo::extract_reads(builder);
-        for read_col in reads {
+    for (builder_idx, reads) in builder_reads.iter().enumerate() {
+        for &read_col in reads {
             if let Some(&producer_idx) = col_to_builder.get(&read_col) {
                 if producer_idx != builder_idx {
                     builder_reads_from[builder_idx].insert(producer_idx);
@@ -479,8 +491,7 @@ fn remove_dead_columns(
     let mut num_live_builders = 0usize;
     let mut queue: Vec<usize> = Vec::new();
 
-    for (builder_idx, builder) in witness_builders.iter().enumerate() {
-        let writes = DependencyInfo::extract_writes(builder);
+    for (builder_idx, writes) in builder_writes.iter().enumerate() {
         let is_directly_live = writes.iter().any(|c| !dead_cols[*c]);
         if is_directly_live {
             live_builders[builder_idx] = true;
@@ -534,32 +545,23 @@ fn remove_dead_columns(
     // protect multi-output builders whose output ranges must stay contiguous.
     // If ANY column in a multi-output builder's range is live (non-dead),
     // ALL columns in that range must stay real to preserve the contiguous
-    // output_start + num_witnesses layout.
-    // Protect contiguous-range multi-output builders. Builders with
-    // individually-addressed outputs don't need protection:
-    //   - U32Addition/Multi, BytePartition: independent index fields
-    //   - ChunkDecompose, SpreadBitExtract: output_indices Vec
-    //   - DigitalDecomposition: output_indices Vec
+    // `output_start + num_witnesses` layout.
+    //
+    // Classification is delegated to `requires_contiguous_outputs`, which uses
+    // an exhaustive `match` so adding a new `WitnessBuilder` variant fails to
+    // compile until it is explicitly classified.
     let mut protected_cols = vec![false; num_cols];
-    for builder in witness_builders.iter() {
-        let writes = DependencyInfo::extract_writes(builder);
-        if writes.len() <= 1 {
+    for (builder_idx, builder) in witness_builders.iter().enumerate() {
+        if !DependencyInfo::requires_contiguous_outputs(builder) {
             continue;
         }
-        if matches!(
-            builder,
-            WitnessBuilder::U32Addition(..)
-                | WitnessBuilder::U32AdditionMulti(..)
-                | WitnessBuilder::BytePartition { .. }
-                | WitnessBuilder::ChunkDecompose { .. }
-                | WitnessBuilder::SpreadBitExtract { .. }
-                | WitnessBuilder::DigitalDecomposition(..)
-        ) {
+        let writes = &builder_writes[builder_idx];
+        if writes.len() <= 1 {
             continue;
         }
         let has_live = writes.iter().any(|c| !dead_cols[*c]);
         if has_live && writes.iter().any(|c| dead_cols[*c]) {
-            for &c in &writes {
+            for &c in writes {
                 protected_cols[c] = true;
             }
         }
@@ -593,9 +595,9 @@ fn remove_dead_columns(
     // (even if its producer is dead) — this can happen after builder rewriting
     // changes dependency chains.
     let mut live_read_cols = vec![false; num_cols];
-    for (bi, b) in witness_builders.iter().enumerate() {
+    for (bi, reads) in builder_reads.iter().enumerate() {
         if live_builders[bi] {
-            for c in DependencyInfo::extract_reads(b) {
+            for &c in reads {
                 if removable_cols[c] {
                     live_read_cols[c] = true;
                 }
