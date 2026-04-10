@@ -9,6 +9,9 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[lib]
+name = "bn254_multiplier"
+
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # Workspace crates
 fp-rounding.workspace = true

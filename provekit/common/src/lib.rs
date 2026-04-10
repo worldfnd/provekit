@@ -19,6 +19,7 @@ pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
     noir_proof_scheme::{NoirProof, NoirProofScheme},
+    noirc_abi::{input_parser::InputValue, InputMap},
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
     prover::Prover,
     r1cs::R1CS,

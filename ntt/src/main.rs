@@ -1,7 +1,7 @@
 /// Executable for profiling NTT
 use {
     ark_bn254::Fr,
-    provekit_ntt::{ntt_nr, NTT},
+    ntt::{ntt_nr, NTT},
     std::hint::black_box,
 };
 
