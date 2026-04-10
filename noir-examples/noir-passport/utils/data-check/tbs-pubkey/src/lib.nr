@@ -128,80 +128,6 @@ pub fn verify_rsa_pubkey_in_tbs<let DSC_KEY_SIZE: u32, let TBS_CERT_SIZE: u32>(
     }
 }
 
-#[test]
-fn test_verify_rsa_pubkey_in_tbs_with_allowed_exponent_65537() {
-    let modulus: [u8; 4] = [0x90, 0x11, 0x22, 0x33];
-    let mut tbs: [u8; 32] = [0; 32];
-
-    // Modulus at offset 0 (no DER header needed, offset is provided directly)
-    for i in 0..4 {
-        tbs[i] = modulus[i];
-    }
-    // Exponent 65537 = [0x01, 0x00, 0x01] at offset 4
-    tbs[4] = 0x01;
-    tbs[5] = 0x00;
-    tbs[6] = 0x01;
-
-    verify_rsa_pubkey_in_tbs(modulus, tbs, 7, 0, 65537, 4);
-}
-
-#[test]
-fn test_verify_rsa_pubkey_in_tbs_with_allowed_exponent_3() {
-    let modulus: [u8; 4] = [0x10, 0x11, 0x22, 0x33];
-    let mut tbs: [u8; 32] = [0; 32];
-
-    for i in 0..4 {
-        tbs[i] = modulus[i];
-    }
-    // Exponent 3 = [0x03] at offset 4 (1 byte)
-    tbs[4] = 0x03;
-
-    verify_rsa_pubkey_in_tbs(modulus, tbs, 5,0, 3, 4);
-}
-
-#[test]
-fn test_verify_rsa_pubkey_in_tbs_with_allowed_exponent_56611() {
-    let modulus: [u8; 4] = [0x90, 0x11, 0x22, 0x33];
-    let mut tbs: [u8; 32] = [0; 32];
-
-    for i in 0..4 {
-        tbs[i] = modulus[i];
-    }
-    // 56611 = 0xDD23, MSB >= 128, DER sign byte needed -> [0x00, 0xDD, 0x23]
-    tbs[4] = 0x00;
-    tbs[5] = 0xDD;
-    tbs[6] = 0x23;
-
-    verify_rsa_pubkey_in_tbs(modulus, tbs, 7, 0, 56611, 4);
-}
-
-#[test(should_fail_with = "Unsupported RSA exponent")]
-fn test_verify_rsa_pubkey_in_tbs_rejects_exponent_1() {
-    let modulus: [u8; 4] = [0x90, 0x11, 0x22, 0x33];
-    let mut tbs: [u8; 32] = [0; 32];
-
-    for i in 0..4 {
-        tbs[i] = modulus[i];
-    }
-    tbs[4] = 0x01;
-
-    verify_rsa_pubkey_in_tbs(modulus, tbs, 5, 0, 1, 4);
-}
-
-#[test(should_fail_with = "Exponent mismatch in TBS")]
-fn test_verify_rsa_pubkey_in_tbs_rejects_wrong_exponent_bytes() {
-    let modulus: [u8; 4] = [0x90, 0x11, 0x22, 0x33];
-    let mut tbs: [u8; 32] = [0; 32];
-
-    for i in 0..4 {
-        tbs[i] = modulus[i];
-    }
-    // TBS has exponent byte = 0x07, but we claim exponent = 3
-    tbs[4] = 0x07;
-
-    verify_rsa_pubkey_in_tbs(modulus, tbs,5, 0, 3, 4);
-}
-
 /// Build a 300-byte TBS with a 256-byte pubkey embedded at `offset` with correct
 /// DER SubjectPublicKeyInfo structure: SEQUENCE { INTEGER(modulus), INTEGER(exponent) }
 /// Exponent 65537 (0x010001) is written as DER INTEGER at offset+256:
@@ -244,6 +170,67 @@ fn build_test_tbs(pubkey: [u8; 256], offset: u32) -> [u8; 300] {
     tbs[offset + 259] = 0x00; // exponent value byte 1
     tbs[offset + 260] = 0x01; // exponent value byte 2
     tbs
+}
+
+#[test]
+fn test_verify_rsa_pubkey_in_tbs_with_allowed_exponent_65537() {
+    let mut modulus: [u8; 256] = [0xAA; 256];
+    modulus[0] = 0x90; // leading-zero DER INTEGER form
+    let offset: u32 = 15;
+    let tbs = build_test_tbs(modulus, offset);
+    let tbs_len: u32 = 271;
+    verify_rsa_pubkey_in_tbs(modulus, tbs, offset, tbs_len, 65537, offset + 258);
+}
+
+#[test]
+fn test_verify_rsa_pubkey_in_tbs_with_allowed_exponent_3() {
+    let mut modulus: [u8; 256] = [0xAA; 256];
+    modulus[0] = 0x90;
+    let offset: u32 = 15;
+    let mut tbs = build_test_tbs(modulus, offset);
+    // Replace default exponent (65537) with exponent=3 encoded at the same value offset.
+    tbs[offset + 257] = 0x01; // DER INTEGER length
+    tbs[offset + 258] = 0x03;
+    let tbs_len: u32 = 271;
+    verify_rsa_pubkey_in_tbs(modulus, tbs, offset, tbs_len, 3, offset + 258);
+}
+
+#[test]
+fn test_verify_rsa_pubkey_in_tbs_with_allowed_exponent_56611() {
+    let mut modulus: [u8; 256] = [0xAA; 256];
+    modulus[0] = 0x90;
+    let offset: u32 = 15;
+    let mut tbs = build_test_tbs(modulus, offset);
+    // 56611 = 0xDD23 -> DER value bytes [0x00, 0xDD, 0x23] (sign byte required).
+    tbs[offset + 258] = 0x00;
+    tbs[offset + 259] = 0xDD;
+    tbs[offset + 260] = 0x23;
+    let tbs_len: u32 = 271;
+    verify_rsa_pubkey_in_tbs(modulus, tbs, offset, tbs_len, 56611, offset + 258);
+}
+
+#[test(should_fail_with = "Unsupported RSA exponent")]
+fn test_verify_rsa_pubkey_in_tbs_rejects_exponent_1() {
+    let mut modulus: [u8; 256] = [0xAA; 256];
+    modulus[0] = 0x90;
+    let offset: u32 = 15;
+    let mut tbs = build_test_tbs(modulus, offset);
+    tbs[offset + 258] = 0x01;
+    let tbs_len: u32 = 271;
+    verify_rsa_pubkey_in_tbs(modulus, tbs, offset, tbs_len, 1, offset + 258);
+}
+
+#[test(should_fail_with = "Exponent mismatch in TBS")]
+fn test_verify_rsa_pubkey_in_tbs_rejects_wrong_exponent_bytes() {
+    let mut modulus: [u8; 256] = [0xAA; 256];
+    modulus[0] = 0x90;
+    let offset: u32 = 15;
+    let mut tbs = build_test_tbs(modulus, offset);
+    // TBS has exponent byte = 0x07, but we claim exponent = 3.
+    tbs[offset + 257] = 0x01; // DER INTEGER length
+    tbs[offset + 258] = 0x07;
+    let tbs_len: u32 = 271;
+    verify_rsa_pubkey_in_tbs(modulus, tbs, offset, tbs_len, 3, offset + 258);
 }
 
 /// Valid case: pubkey within signed region, correct SPKI structure (leading zero case).
