@@ -356,27 +356,21 @@ fn build_default_two_point_msm_fixture() -> TwoPointMsmFixture {
 }
 
 /// Locate the single FakeGLV hint used by the single-point MSM circuit.
-fn locate_single_point_fake_glv(builders: &[WitnessBuilder]) -> FakeGlvWitnessIndices {
-    let fake_glv_indices: Vec<FakeGlvWitnessIndices> = builders
-        .iter()
-        .filter_map(|builder| match builder {
-            WitnessBuilder::FakeGLVHint { output_start, .. } => Some(FakeGlvWitnessIndices {
-                s1:   *output_start,
-                s2:   *output_start + 1,
-                neg1: *output_start + 2,
-                neg2: *output_start + 3,
-            }),
-            _ => None,
-        })
-        .collect();
+  fn locate_single_point_fake_glv(builders: &[WitnessBuilder]) -> FakeGlvWitnessIndices {
+      let mut iter = builders.iter().filter_map(|builder| match builder {
+          WitnessBuilder::FakeGLVHint { output_start, .. } => Some(FakeGlvWitnessIndices {
+              s1:   *output_start,
+              s2:   *output_start + 1,
+              neg1: *output_start + 2,
+              neg2: *output_start + 3,
+          }),
+          _ => None,
+      });
 
-    assert_eq!(
-        fake_glv_indices.len(),
-        1,
-        "single-point MSM circuit should contain exactly one FakeGLV hint"
-    );
-    fake_glv_indices[0]
-}
+      let result = iter.next().expect("should have at least one FakeGLV hint");
+      assert!(iter.next().is_none(), "should have exactly one FakeGLV hint");
+      result
+  }
 
 /// Build the single-point secp256r1 MSM circuit together with stable witness
 /// metadata used by the negative tests.
