@@ -95,6 +95,11 @@ impl NTTEngine {
     fn order(&self) -> usize {
         self.0.len() * 2
     }
+
+    /// Returns the precomputed roots of unity as a slice.
+    pub fn roots(&self) -> &[Fr] {
+        &self.0
+    }
 }
 
 static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEngine::new()));

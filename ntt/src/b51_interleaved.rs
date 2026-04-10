@@ -16,12 +16,8 @@ pub fn ntt_nr_b51(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
     let new_root = extend_roots_table(codeword_size);
     // SAFETY: `Fr` is `#[repr(transparent)]` over `BigInt<4>`, which is
     // `#[repr(transparent)]` over `[u64; 4]`, so the layouts are identical.
-    let (roots, raw): (&[[u64; 4]], &mut [[u64; 4]]) = unsafe {
-        (
-            mem::transmute(new_root.0.as_slice()),
-            mem::transmute(values),
-        )
-    };
+    let (roots, raw): (&[[u64; 4]], &mut [[u64; 4]]) =
+        unsafe { (mem::transmute(new_root.roots()), mem::transmute(values)) };
     interleaved_ntt_nr(roots, raw, codeword_size, num_groups);
     canonicalize_b51(raw);
 }
