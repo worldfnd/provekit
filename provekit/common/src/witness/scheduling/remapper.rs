@@ -107,11 +107,17 @@ impl WitnessIndexRemapper {
     }
 
     /// Remaps a single witness index.
+    ///
+    /// # Panics
+    /// Panics if `old_idx` is not in the remapping table. Callers must ensure
+    /// the remapper was built with a complete mapping (see [`Self::new`] and
+    /// [`Self::from_map`] which validate coverage).
     pub fn remap(&self, old_idx: usize) -> usize {
-        *self
-            .old_to_new
-            .get(&old_idx)
-            .unwrap_or_else(|| panic!("Witness index {} not in remapping", old_idx))
+        assert!(
+            self.old_to_new.contains_key(&old_idx),
+            "Witness index {old_idx} not in remapping table"
+        );
+        self.old_to_new.get(&old_idx).copied().unwrap_or(old_idx)
     }
 
     /// Helper to remap ConstantOrR1CSWitness variants
@@ -604,6 +610,11 @@ impl WitnessIndexRemapper {
     /// Creates a new R1CS with remapped column indices (witness indices).
     /// Row indices (constraints) remain unchanged.
     pub fn remap_r1cs(&self, r1cs: R1CS) -> R1CS {
+        assert!(
+            self.num_real > 0,
+            "Cannot remap R1CS with a builder-only remapper (from_map). \
+             num_real is 0 — this would set all matrix dimensions to 0."
+        );
         let mut new_r1cs = R1CS::new();
         new_r1cs.num_public_inputs = r1cs.num_public_inputs;
         new_r1cs.num_virtual = r1cs.num_virtual;
@@ -646,7 +657,13 @@ impl WitnessIndexRemapper {
                 opt_idx.map(|idx| {
                     let old_r1cs_idx = idx.get() as usize;
                     let new_r1cs_idx = self.remap(old_r1cs_idx);
-                    NonZeroU32::new(new_r1cs_idx as u32).expect("Remapped index should be non-zero")
+                    assert!(
+                        new_r1cs_idx > 0,
+                        "ACIR witness {old_r1cs_idx} remapped to 0 (constant-one column)"
+                    );
+                    // Remapped index must be non-zero (column 0 is the
+                    // constant-one wire and is never an ACIR witness target).
+                    NonZeroU32::new(new_r1cs_idx as u32).unwrap_or(NonZeroU32::MIN)
                 })
             })
             .collect()
