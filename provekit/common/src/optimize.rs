@@ -14,10 +14,11 @@ use {
         witness::{DependencyInfo, WitnessBuilder},
         FieldElement, InternedFieldElement, SparseMatrix, R1CS,
     },
+    anyhow::{bail, Context as _, Result},
     ark_ff::Field,
     ark_std::{One, Zero},
     std::collections::{HashMap, HashSet},
-    tracing::info,
+    tracing::{debug, info},
 };
 
 /// A substitution: pivot_col = sum of (coeff * col) for each entry.
@@ -72,7 +73,7 @@ pub fn optimize_r1cs(
     r1cs: &mut R1CS,
     witness_builders: &mut Vec<WitnessBuilder>,
     witness_map: &mut [Option<std::num::NonZeroU32>],
-) -> OptimizationStats {
+) -> Result<OptimizationStats> {
     let constraints_before = r1cs.num_constraints();
     let witnesses_before = r1cs.num_witnesses();
 
@@ -132,7 +133,9 @@ pub fn optimize_r1cs(
 
         // pivot_coeff * w_pivot + sum(other_coeff_i * w_i) = 0
         // => w_pivot = -sum(other_coeff_i / pivot_coeff * w_i)
-        let pivot_inv = pivot_coeff.inverse().expect("pivot coefficient is zero");
+        let pivot_inv = pivot_coeff
+            .inverse()
+            .context("pivot coefficient is zero — cannot invert")?;
 
         let raw_terms: Vec<(FieldElement, usize)> = expr
             .iter()
@@ -205,7 +208,7 @@ pub fn optimize_r1cs(
     );
 
     if substitutions.is_empty() {
-        return OptimizationStats {
+        return Ok(OptimizationStats {
             constraints_before,
             constraints_after: constraints_before,
             witnesses_before,
@@ -213,7 +216,7 @@ pub fn optimize_r1cs(
             eliminated: 0,
             builders_removed: 0,
             num_virtual: 0,
-        };
+        });
     }
 
     // Phase 2b: Resolve backward chains.
@@ -271,21 +274,21 @@ pub fn optimize_r1cs(
             &substitutions,
             &sub_map,
             &mut r1cs.interner,
-        );
+        )?;
         apply_substitutions_to_row(
             &mut r1cs.b,
             row,
             &substitutions,
             &sub_map,
             &mut r1cs.interner,
-        );
+        )?;
         apply_substitutions_to_row(
             &mut r1cs.c,
             row,
             &substitutions,
             &sub_map,
             &mut r1cs.interner,
-        );
+        )?;
     }
 
     // Phase 4: Remove eliminated constraint rows
@@ -295,14 +298,14 @@ pub fn optimize_r1cs(
     let constraints_after = r1cs.num_constraints();
     let eliminated = substitutions.len();
 
-    info!(
+    debug!(
         "Phase 3 done: {} constraints remaining after substitution",
         constraints_after
     );
 
     // Phase 5: Remove dead witness columns and prune unreachable builders
-    info!("Phase 5: starting dead column removal + virtual witness assignment");
-    let col_stats = remove_dead_columns(r1cs, witness_builders, witness_map);
+    debug!("Phase 5: starting dead column removal + virtual witness assignment");
+    let col_stats = remove_dead_columns(r1cs, witness_builders, witness_map)?;
     r1cs.num_virtual = col_stats.num_virtual;
 
     let stats = OptimizationStats {
@@ -330,7 +333,7 @@ pub fn optimize_r1cs(
         stats.builders_removed
     );
 
-    stats
+    Ok(stats)
 }
 
 /// Build combined occurrence counts across A, B, C matrices.
@@ -373,48 +376,50 @@ fn remove_dead_columns(
     r1cs: &mut R1CS,
     witness_builders: &mut Vec<WitnessBuilder>,
     witness_map: &mut [Option<std::num::NonZeroU32>],
-) -> ColumnRemovalStats {
+) -> Result<ColumnRemovalStats> {
     let num_cols = r1cs.num_witnesses();
     if num_cols == 0 || witness_builders.is_empty() {
-        return ColumnRemovalStats {
+        return Ok(ColumnRemovalStats {
             witnesses_after:  num_cols,
             builders_removed: 0,
             num_virtual:      0,
-        };
+        });
     }
 
     // Step 1: Find dead columns (zero occurrence across A, B, C)
     // Also collect columns referenced by the ACIR witness map — these are
     // entry points for witness data and must stay alive.
     let occurrence_counts = build_occurrence_counts(r1cs);
-    let mut acir_referenced: HashSet<usize> = HashSet::new();
+    let mut acir_referenced = vec![false; num_cols];
     for entry in witness_map.iter() {
         if let Some(nz) = entry {
-            acir_referenced.insert(nz.get() as usize);
+            acir_referenced[nz.get() as usize] = true;
         }
     }
 
-    let mut dead_cols: HashSet<usize> = HashSet::new();
+    let mut dead_cols = vec![false; num_cols];
+    let mut num_dead = 0usize;
     for col in 0..num_cols {
         // Never remove column 0 (constant one) or public input columns
         if col == 0 || col <= r1cs.num_public_inputs {
             continue;
         }
         // Never remove columns referenced by the ACIR witness map
-        if acir_referenced.contains(&col) {
+        if acir_referenced[col] {
             continue;
         }
         if occurrence_counts[col] == 0 {
-            dead_cols.insert(col);
+            dead_cols[col] = true;
+            num_dead += 1;
         }
     }
 
-    if dead_cols.is_empty() {
-        return ColumnRemovalStats {
+    if num_dead == 0 {
+        return Ok(ColumnRemovalStats {
             witnesses_after:  num_cols,
             builders_removed: 0,
             num_virtual:      0,
-        };
+        });
     }
 
     // Diagnostic: count how many zero-occurrence cols are blocked by each mechanism
@@ -423,28 +428,26 @@ fn remove_dead_columns(
         .count();
     let blocked_by_acir = (0..num_cols)
         .filter(|&c| {
-            c > r1cs.num_public_inputs && occurrence_counts[c] == 0 && acir_referenced.contains(&c)
+            c > r1cs.num_public_inputs && occurrence_counts[c] == 0 && acir_referenced[c]
         })
         .count();
-    info!(
+    debug!(
         "Column removal: {} zero-occurrence cols (excl public), {} blocked by ACIR witness map, \
          {} truly dead",
         zero_occ_total,
         blocked_by_acir,
-        dead_cols.len()
+        num_dead
     );
 
-    info!(
+    debug!(
         "Column removal: {} dead columns found out of {} total",
-        dead_cols.len(),
+        num_dead,
         num_cols
     );
 
     // Step 2: Build witness builder dependency graph and find reachable builders.
     // A builder is "live" if any of its output columns is NOT dead, OR if a
     // live builder reads any of its output columns.
-    // We use the existing DependencyInfo infrastructure.
-    let live_cols: HashSet<usize> = (0..num_cols).filter(|c| !dead_cols.contains(c)).collect();
 
     // Map: witness column -> builder index
     let mut col_to_builder: HashMap<usize, usize> = HashMap::new();
@@ -472,41 +475,44 @@ fn remove_dead_columns(
     // Step 3: BFS/DFS from live builders to find all transitively reachable
     // builders. A builder is live if any of its output columns is live
     // (referenced by constraints).
-    let mut live_builders: HashSet<usize> = HashSet::new();
+    let mut live_builders = vec![false; witness_builders.len()];
+    let mut num_live_builders = 0usize;
     let mut queue: Vec<usize> = Vec::new();
 
     for (builder_idx, builder) in witness_builders.iter().enumerate() {
         let writes = DependencyInfo::extract_writes(builder);
-        let is_directly_live = writes.iter().any(|c| live_cols.contains(c));
+        let is_directly_live = writes.iter().any(|c| !dead_cols[*c]);
         if is_directly_live {
-            if live_builders.insert(builder_idx) {
-                queue.push(builder_idx);
-            }
+            live_builders[builder_idx] = true;
+            num_live_builders += 1;
+            queue.push(builder_idx);
         }
     }
 
     // BFS: if a live builder reads from another builder, that builder is also live
     while let Some(builder_idx) = queue.pop() {
         for &dep_idx in &builder_reads_from[builder_idx] {
-            if live_builders.insert(dep_idx) {
+            if !live_builders[dep_idx] {
+                live_builders[dep_idx] = true;
+                num_live_builders += 1;
                 queue.push(dep_idx);
             }
         }
     }
 
-    info!(
+    debug!(
         "Column removal: {} total builders, {} live (directly or transitively), {} dead",
         witness_builders.len(),
-        live_builders.len(),
-        witness_builders.len() - live_builders.len()
+        num_live_builders,
+        witness_builders.len() - num_live_builders
     );
 
-    let blocked_by_bfs = dead_cols
-        .iter()
-        .filter(|&&col| {
-            col_to_builder
-                .get(&col)
-                .map_or(false, |&b| live_builders.contains(&b))
+    let blocked_by_bfs = (0..num_cols)
+        .filter(|&col| {
+            dead_cols[col]
+                && col_to_builder
+                    .get(&col)
+                    .map_or(false, |&b| live_builders[b])
         })
         .count();
 
@@ -517,11 +523,11 @@ fn remove_dead_columns(
     //
     // See git history for the full diagnostic block.
 
-    info!(
+    debug!(
         "Column removal: of {} dead cols, {} blocked by live builder BFS, {} removable",
-        dead_cols.len(),
+        num_dead,
         blocked_by_bfs,
-        dead_cols.len() - blocked_by_bfs
+        num_dead - blocked_by_bfs
     );
 
     // Step 4: Dead columns are removable from R1CS matrices — BUT we must
@@ -534,7 +540,7 @@ fn remove_dead_columns(
     //   - U32Addition/Multi, BytePartition: independent index fields
     //   - ChunkDecompose, SpreadBitExtract: output_indices Vec
     //   - DigitalDecomposition: output_indices Vec
-    let mut protected_cols: HashSet<usize> = HashSet::new();
+    let mut protected_cols = vec![false; num_cols];
     for builder in witness_builders.iter() {
         let writes = DependencyInfo::extract_writes(builder);
         if writes.len() <= 1 {
@@ -551,70 +557,75 @@ fn remove_dead_columns(
         ) {
             continue;
         }
-        let has_live = writes.iter().any(|c| !dead_cols.contains(c));
-        if has_live && writes.iter().any(|c| dead_cols.contains(c)) {
+        let has_live = writes.iter().any(|c| !dead_cols[*c]);
+        if has_live && writes.iter().any(|c| dead_cols[*c]) {
             for &c in &writes {
-                protected_cols.insert(c);
+                protected_cols[c] = true;
             }
         }
     }
-    let removable_cols: HashSet<usize> = dead_cols
-        .iter()
-        .filter(|c| !protected_cols.contains(c))
-        .copied()
-        .collect();
-    let protected_count = dead_cols.len() - removable_cols.len();
+    let mut removable_cols = vec![false; num_cols];
+    let mut num_removable = 0usize;
+    for col in 0..num_cols {
+        if dead_cols[col] && !protected_cols[col] {
+            removable_cols[col] = true;
+            num_removable += 1;
+        }
+    }
+    let protected_count = num_dead - num_removable;
     if protected_count > 0 {
-        info!(
+        debug!(
             "Column removal: {protected_count} dead cols protected (contiguous-range multi-output \
              builders with mixed live/dead outputs)"
         );
     }
 
-    if removable_cols.is_empty() {
-        return ColumnRemovalStats {
+    if num_removable == 0 {
+        return Ok(ColumnRemovalStats {
             witnesses_after:  num_cols,
             builders_removed: 0,
             num_virtual:      0,
-        };
+        });
     }
 
     // Partition dead cols: dead producers (fully removable) vs live producers
     // (virtual). A column must also be virtual if ANY live builder reads it
     // (even if its producer is dead) — this can happen after builder rewriting
     // changes dependency chains.
-    let live_read_cols: HashSet<usize> = {
-        let mut s = HashSet::new();
-        for (bi, b) in witness_builders.iter().enumerate() {
-            if live_builders.contains(&bi) {
-                for c in DependencyInfo::extract_reads(b) {
-                    if removable_cols.contains(&c) {
-                        s.insert(c);
-                    }
+    let mut live_read_cols = vec![false; num_cols];
+    for (bi, b) in witness_builders.iter().enumerate() {
+        if live_builders[bi] {
+            for c in DependencyInfo::extract_reads(b) {
+                if removable_cols[c] {
+                    live_read_cols[c] = true;
                 }
             }
         }
-        s
-    };
-    let mut fully_dead_cols: HashSet<usize> = HashSet::new();
-    let mut virtual_cols: HashSet<usize> = HashSet::new();
-    for &col in &removable_cols {
+    }
+    let mut virtual_cols = vec![false; num_cols];
+    let mut num_virtual = 0usize;
+    let mut num_fully_dead = 0usize;
+    for col in 0..num_cols {
+        if !removable_cols[col] {
+            continue;
+        }
         let producer_is_live = col_to_builder
             .get(&col)
-            .map_or(false, |&b| live_builders.contains(&b));
-        if producer_is_live || live_read_cols.contains(&col) {
-            virtual_cols.insert(col);
+            .map_or(false, |&b| live_builders[b]);
+        if producer_is_live || live_read_cols[col] {
+            virtual_cols[col] = true;
+            num_virtual += 1;
         } else {
-            fully_dead_cols.insert(col);
+            num_fully_dead += 1;
         }
     }
 
-    info!(
+    debug!(
         "Column removal: {} dead cols total, {} fully dead (producer dead), {} virtual (producer \
          live, computation-only)",
-        removable_cols.len(),
-        fully_dead_cols.len(),
-        virtual_cols.len()
+        num_removable,
+        num_fully_dead,
+        num_virtual
     );
 
     // Step 5: Build remap table with two regions:
@@ -625,7 +636,7 @@ fn remove_dead_columns(
     let mut next_real = 0usize;
     // First pass: assign real column indices
     for col in 0..num_cols {
-        if !removable_cols.contains(&col) {
+        if !removable_cols[col] {
             remap[col] = Some(next_real);
             next_real += 1;
         }
@@ -634,44 +645,53 @@ fn remove_dead_columns(
     // Second pass: assign virtual column indices (after real)
     let mut next_virtual = num_real;
     for col in 0..num_cols {
-        if virtual_cols.contains(&col) {
+        if virtual_cols[col] {
             remap[col] = Some(next_virtual);
             next_virtual += 1;
         }
     }
-    let num_virtual = next_virtual - num_real;
+    assert_eq!(next_virtual - num_real, num_virtual);
 
     // Step 6: Remap R1CS matrices — only uses [0, num_real) columns.
     // Virtual columns had zero entries so remove_columns drops them cleanly.
     let matrix_remap: Vec<Option<usize>> = (0..num_cols)
         .map(|col| {
-            if removable_cols.contains(&col) {
+            if removable_cols[col] {
                 None // Remove from matrices (both virtual and fully dead)
             } else {
                 remap[col] // Real column → compact index
             }
         })
         .collect();
-    r1cs.a = r1cs.a.remove_columns(&matrix_remap);
-    r1cs.b = r1cs.b.remove_columns(&matrix_remap);
-    r1cs.c = r1cs.c.remove_columns(&matrix_remap);
+    // A, B, C removal is independent — parallelize for large matrices.
+    let (new_a, (new_b, new_c)) = rayon::join(
+        || r1cs.a.remove_columns(&matrix_remap),
+        || {
+            rayon::join(
+                || r1cs.b.remove_columns(&matrix_remap),
+                || r1cs.c.remove_columns(&matrix_remap),
+            )
+        },
+    );
+    r1cs.a = new_a;
+    r1cs.b = new_b;
+    r1cs.c = new_c;
 
     // Step 6b: Remap ACIR witness map (ACIR index -> R1CS column)
     for entry in witness_map.iter_mut() {
         if let Some(nz) = entry {
             let old_col = nz.get() as usize;
-            let new_col = remap[old_col].unwrap_or_else(|| {
-                panic!(
-                    "ACIR witness map references removed column {} (should be live)",
-                    old_col
-                )
-            });
-            *nz = std::num::NonZeroU32::new(new_col as u32).unwrap_or_else(|| {
-                panic!(
-                    "ACIR witness col {} remapped to 0 (constant-one column)",
-                    old_col
-                )
-            });
+            let Some(new_col) = remap[old_col] else {
+                bail!(
+                    "ACIR witness map references removed column {old_col} (should be live)"
+                );
+            };
+            let Some(new_nz) = std::num::NonZeroU32::new(new_col as u32) else {
+                bail!(
+                    "ACIR witness col {old_col} remapped to 0 (constant-one column)"
+                );
+            };
+            *nz = new_nz;
         }
     }
 
@@ -679,9 +699,11 @@ fn remove_dead_columns(
     // A builder must be kept if it's live OR if it produces any virtual column
     // (needed for computation even though its outputs are zero in A/B/C).
     let mut keep_builders = live_builders.clone();
-    for &col in &virtual_cols {
-        if let Some(&producer_idx) = col_to_builder.get(&col) {
-            keep_builders.insert(producer_idx);
+    for col in 0..num_cols {
+        if virtual_cols[col] {
+            if let Some(&producer_idx) = col_to_builder.get(&col) {
+                keep_builders[producer_idx] = true;
+            }
         }
     }
     let builders_before = witness_builders.len();
@@ -696,9 +718,10 @@ fn remove_dead_columns(
             .collect();
         WitnessIndexRemapper::from_map(old_to_new)
     };
-    let mut new_builders: Vec<WitnessBuilder> = Vec::with_capacity(keep_builders.len());
+    let num_kept = keep_builders.iter().filter(|&&b| b).count();
+    let mut new_builders: Vec<WitnessBuilder> = Vec::with_capacity(num_kept);
     for (idx, builder) in witness_builders.drain(..).enumerate() {
-        if keep_builders.contains(&idx) {
+        if keep_builders[idx] {
             new_builders.push(remapper.remap_builder(&builder));
         }
     }
@@ -715,11 +738,11 @@ fn remove_dead_columns(
         builders_removed
     );
 
-    ColumnRemovalStats {
+    Ok(ColumnRemovalStats {
         witnesses_after: num_real,
         builders_removed,
         num_virtual,
-    }
+    })
 }
 
 /// Apply all relevant substitutions to a single row of a matrix.
@@ -733,20 +756,22 @@ fn apply_substitutions_to_row(
     substitutions: &[Substitution],
     sub_map: &HashMap<usize, usize>,
     interner: &mut crate::Interner,
-) {
+) -> Result<()> {
     let entries = matrix.get_row_entries(row);
 
     // Check if any entry references a pivot column
     let has_pivot = entries.iter().any(|(col, _)| sub_map.contains_key(col));
     if !has_pivot {
-        return;
+        return Ok(());
     }
 
     // Accumulate new row as HashMap<col, FieldElement>
     let mut new_entries: HashMap<usize, FieldElement> = HashMap::new();
 
     for (col, interned_val) in &entries {
-        let val = interner.get(*interned_val).expect("interned value missing");
+        let val = interner
+            .get(*interned_val)
+            .context("interned value missing during constraint substitution")?;
 
         if let Some(&sub_idx) = sub_map.get(col) {
             // This column is a pivot — replace with substitution terms
@@ -772,6 +797,7 @@ fn apply_substitutions_to_row(
     sorted_entries.sort_by_key(|(col, _)| *col);
 
     matrix.replace_row(row, &sorted_entries);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -813,7 +839,7 @@ mod tests {
 
         let stats = {
             let mut wmap = vec![];
-            optimize_r1cs(&mut r1cs, &mut witness_builders, &mut wmap)
+            optimize_r1cs(&mut r1cs, &mut witness_builders, &mut wmap).unwrap()
         };
 
         // Constraint 0 should be eliminated (it's linear)
@@ -869,7 +895,7 @@ mod tests {
         assert_eq!(r1cs.num_constraints(), 3);
         let stats = {
             let mut wmap = vec![];
-            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap)
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap).unwrap()
         };
 
         // Both linear constraints eliminated, Q remains
@@ -961,7 +987,7 @@ mod tests {
         assert_eq!(r1cs.num_constraints(), 5);
         let stats = {
             let mut wmap = vec![];
-            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap)
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap).unwrap()
         };
 
         // Both linear constraints eliminated, Q1, Q2, Q3 remain
@@ -1061,7 +1087,7 @@ mod tests {
 
         let stats = {
             let mut wmap = vec![];
-            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap)
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap).unwrap()
         };
 
         assert_eq!(stats.eliminated, 2, "Should eliminate 2 linear constraints");
@@ -1110,5 +1136,106 @@ mod tests {
         }
 
         assert_r1cs_satisfied(&r1cs, &opt_witness);
+    }
+
+    #[test]
+    fn test_deep_chain_elimination() {
+        // Chain of depth 4: L0→L1→L2→L3→Q. Exercises transitive chain
+        // resolution at a depth beyond what test_chained_linear_elimination
+        // (depth 2) covers — catches off-by-one or infinite-loop bugs.
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg = -one;
+
+        r1cs.add_witnesses(8);
+
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (neg, 3)]);
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 3), (neg, 4)]);
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 4), (neg, 5)]);
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 5), (neg, 6)]);
+        r1cs.add_constraint(&[(one, 6)], &[(one, 2)], &[(one, 7)]);
+
+        let mut builders = vec![
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Acir(1, 0),
+            WitnessBuilder::Acir(2, 1),
+            WitnessBuilder::Sum(3, vec![SumTerm(Some(neg), 0), SumTerm(None, 1)]),
+            WitnessBuilder::Sum(4, vec![SumTerm(Some(neg), 0), SumTerm(None, 3)]),
+            WitnessBuilder::Sum(5, vec![SumTerm(Some(neg), 0), SumTerm(None, 4)]),
+            WitnessBuilder::Sum(6, vec![SumTerm(Some(neg), 0), SumTerm(None, 5)]),
+            WitnessBuilder::Product(7, 6, 2),
+        ];
+
+        assert_eq!(r1cs.num_constraints(), 5);
+        let stats = {
+            let mut wmap = vec![];
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap).unwrap()
+        };
+
+        assert_eq!(stats.eliminated, 4);
+        assert_eq!(stats.constraints_after, 1);
+    }
+
+    #[test]
+    fn test_branch_coverage() {
+        // Exercises all extract_linear_expression branches:
+        //   L_a:    A=[2*w0],   B=[w2],    C=[w3]       A-only const
+        //   L_b:    A=[w4,w2],  B=[3*w0],  C=[w5]       B-only const
+        //   L_sr0:  A=[w0],     B=[w0],    C=[2*w6,-w7]  both const
+        //   L_sr1:  A=[w0],     B=[w0],    C=[w7,-w6]    self-ref rescaling
+        //   L_deg0: A=[w0],     B=[w0],    C=[w8,-w9]    both const
+        //   L_deg1: A=[w0],     B=[w0],    C=[w8,-w9]    degenerate (1-r_p=0)
+        //   Q:      A=[w4],     B=[w7],    C=[w10]       non-linear
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg = -one;
+        let two = FieldElement::from(2u64);
+        let three = FieldElement::from(3u64);
+
+        r1cs.add_witnesses(11);
+
+        r1cs.add_constraint(&[(two, 0)], &[(one, 2)], &[(one, 3)]);
+        r1cs.add_constraint(&[(one, 4), (one, 2)], &[(three, 0)], &[(one, 5)]);
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(two, 6), (neg, 7)]);
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 7), (neg, 6)]);
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 8), (neg, 9)]);
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 8), (neg, 9)]);
+        r1cs.add_constraint(&[(one, 4)], &[(one, 7)], &[(one, 10)]);
+
+        let witness: Vec<FieldElement> = [1u64, 5, 4, 8, 5, 27, 2, 3, 11, 10, 15]
+            .iter()
+            .map(|v| FieldElement::from(*v))
+            .collect();
+        assert_r1cs_satisfied(&r1cs, &witness);
+
+        let mut builders = vec![
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Acir(1, 0),
+            WitnessBuilder::Acir(2, 1),
+            WitnessBuilder::Sum(3, vec![SumTerm(Some(two), 2)]),
+            WitnessBuilder::Acir(4, 2),
+            WitnessBuilder::Sum(5, vec![SumTerm(Some(three), 4), SumTerm(Some(three), 2)]),
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(6, two)),
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(7, three)),
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(
+                8,
+                FieldElement::from(11u64),
+            )),
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(
+                9,
+                FieldElement::from(10u64),
+            )),
+            WitnessBuilder::Product(10, 4, 7),
+        ];
+
+        let stats = {
+            let mut wmap = vec![];
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap).unwrap()
+        };
+
+        // 5 eliminated: L_a(w3), L_b(w5), L_sr0(w6), L_sr1(w7),
+        // L_deg0(w8 or w9). L_deg1 skipped (degenerate). Q non-linear.
+        assert_eq!(stats.eliminated, 5);
+        assert_eq!(stats.constraints_after, 2);
     }
 }

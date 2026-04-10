@@ -587,9 +587,16 @@ impl SparseMatrix {
                 if let Some(new_col) = remap[old_col] {
                     new_col_indices.push(new_col as u32);
                     new_values.push(self.values[i]);
+                } else {
+                    // Dead columns should have no entries (zero occurrence).
+                    // If we reach here, a non-zero entry is being dropped —
+                    // this indicates a bug in dead-column classification.
+                    assert!(
+                        false,
+                        "remove_columns: dropping non-zero entry at row {row}, col {old_col} \
+                         — column was classified as dead but has entries"
+                    );
                 }
-                // Dead columns should have no entries (zero occurrence),
-                // so this branch should never drop data.
             }
         }
 

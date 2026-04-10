@@ -98,7 +98,7 @@ fn analyze_circuit(program: Program<FieldElement>, path: &Path) -> Result<()> {
 
     // Run Gaussian elimination optimization and display results
     let mut optimized_r1cs = r1cs.clone();
-    let opt_stats = optimize_r1cs(&mut optimized_r1cs, &mut witness_builders, &mut witness_map);
+    let opt_stats = optimize_r1cs(&mut optimized_r1cs, &mut witness_builders, &mut witness_map)?;
 
     display::print_ge_optimization(&r1cs, &optimized_r1cs, &opt_stats);
 

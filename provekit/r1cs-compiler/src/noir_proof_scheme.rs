@@ -65,7 +65,7 @@ impl NoirCompiler {
             &mut r1cs,
             &mut witness_builders,
             &mut witness_map,
-        );
+        )?;
         info!(
             "After GE optimization: {} constraints, {} witnesses ({} eliminated, {:.1}% \
              constraint reduction)",
@@ -79,13 +79,14 @@ impl NoirCompiler {
             main.public_inputs().indices().iter().cloned().collect();
 
         let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
-        let (split_witness_builders, remapped_r1cs, remapped_witness_map, num_challenges) =
+        let (split_witness_builders, remapped_r1cs, remapped_witness_map, challenge_offsets) =
             WitnessBuilder::split_and_prepare_layers(
                 &witness_builders,
                 r1cs,
                 witness_map,
                 acir_public_inputs_indices_set,
             )?;
+        let num_challenges = challenge_offsets.len();
         let num_real = remapped_r1cs.num_witnesses();
         let num_virtual = remapped_r1cs.num_virtual;
         info!(
@@ -102,6 +103,7 @@ impl NoirCompiler {
             &remapped_r1cs,
             split_witness_builders.w1_size,
             num_challenges,
+            challenge_offsets,
             has_public_inputs,
             hash_config.engine_id(),
         );
