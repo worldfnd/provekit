@@ -6,7 +6,7 @@
 // the WHIR library's whir_zk::verify + whir::Config::verify.
 //
 // Protocol phases:
-//   0. Initialize Fiat-Shamir transcript (SHA256 SHO)
+//   0. Initialize Fiat-Shamir transcript (Skyscraper duplex sponge)
 //   1. Receive commitments (f_hat + blinding)
 //   2. Run Spartan sumcheck
 //   3. Verify public input binding (Skyscraper hash + geometric eval)
@@ -41,7 +41,7 @@ use types::{
     MAX_GAMMAS, INNER_WHIR_CONSTRAINT_COUNT, BLINDING_WHIR_CONSTRAINT_COUNT,
     STIR_BYTES_PER_INDEX, BLINDING_STIR_BYTES_PER_INDEX,
 };
-use transcript::SHO;
+use transcript::Sponge;
 use sumcheck::{run_sumcheck_verifier, SumcheckResult};
 use merkle::verify_merkle_proof_dynamic;
 use matrix_eval::{eq_over_hypercube, calculate_eq, evaluate_r1cs_matrices};
@@ -71,10 +71,10 @@ fn main(
     instance: [u8; INSTANCE_SIZE],
 
     // --- Phase 1: Commitment data ---
-    initial_root_hash: [u8; 32],
+    initial_root_hash: Field,
     initial_ood_answers: [Field; OOD_SAMPLES],
 
-    blinding_root_hash: [u8; 32],
+    blinding_root_hash: Field,
     blinding_ood_answers: [Field; BLINDING_OOD_SAMPLES],
 
     // --- Phase 2: Spartan sumcheck prover messages ---
@@ -101,12 +101,12 @@ fn main(
     initial_whir_sumcheck_coeffs: [[Field; 2]; FOLDING_FACTOR],
 
     // Per-round WHIR data (uses ROUND_ARRAY_SIZE = max(NUM_WHIR_ROUNDS, 1))
-    round_root_hashes: [[u8; 32]; ROUND_ARRAY_SIZE],
+    round_root_hashes: [Field; ROUND_ARRAY_SIZE],
     round_ood_answers: [[Field; OOD_SAMPLES]; ROUND_ARRAY_SIZE],
     round_whir_sumcheck_coeffs: [[[Field; 2]; FOLDING_FACTOR]; ROUND_ARRAY_SIZE],
 
     round_merkle_leaves: [[[Field; FOLD_SIZE]; MAX_QUERIES_PER_ROUND]; ROUND_ARRAY_SIZE],
-    round_merkle_siblings: [[[[u8; 32]; TREE_HEIGHT]; MAX_QUERIES_PER_ROUND]; ROUND_ARRAY_SIZE],
+    round_merkle_siblings: [[[Field; TREE_HEIGHT]; MAX_QUERIES_PER_ROUND]; ROUND_ARRAY_SIZE],
     round_merkle_indices: [[u32; MAX_QUERIES_PER_ROUND]; ROUND_ARRAY_SIZE],
     round_merkle_leaf_sizes: [u32; ROUND_ARRAY_SIZE],
     round_merkle_tree_heights: [u32; ROUND_ARRAY_SIZE],
@@ -119,7 +119,7 @@ fn main(
     final_pow_nonce: u64,
 
     final_merkle_leaves: [[Field; FOLD_SIZE]; MAX_QUERIES_PER_ROUND],
-    final_merkle_siblings: [[[u8; 32]; TREE_HEIGHT]; MAX_QUERIES_PER_ROUND],
+    final_merkle_siblings: [[Field; TREE_HEIGHT]; MAX_QUERIES_PER_ROUND],
     final_merkle_indices: [u32; MAX_QUERIES_PER_ROUND],
     final_merkle_leaf_size: u32,
     final_merkle_tree_height: u32,
@@ -137,11 +137,11 @@ fn main(
 
     // --- Phase 4c: Blinding WHIR verification ---
     blinding_whir_initial_coeffs: [[Field; 2]; FOLDING_FACTOR],
-    blinding_round_root_hashes: [[u8; 32]; BLINDING_ROUND_ARRAY_SIZE],
+    blinding_round_root_hashes: [Field; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_ood_answers: [[Field; BLINDING_OOD_SAMPLES]; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_sumcheck_coeffs: [[[Field; 2]; FOLDING_FACTOR]; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_merkle_leaves: [[[Field; BLINDING_MERKLE_LEAF_SIZE]; BLINDING_MAX_QUERIES]; BLINDING_ROUND_ARRAY_SIZE],
-    blinding_round_merkle_siblings: [[[[u8; 32]; BLINDING_TREE_HEIGHT]; BLINDING_MAX_QUERIES]; BLINDING_ROUND_ARRAY_SIZE],
+    blinding_round_merkle_siblings: [[[Field; BLINDING_TREE_HEIGHT]; BLINDING_MAX_QUERIES]; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_merkle_indices: [[u32; BLINDING_MAX_QUERIES]; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_merkle_leaf_sizes: [u32; BLINDING_ROUND_ARRAY_SIZE],
     blinding_round_merkle_tree_heights: [u32; BLINDING_ROUND_ARRAY_SIZE],
@@ -151,7 +151,7 @@ fn main(
     blinding_final_pow_nonce: u64,
     blinding_final_sumcheck_coeffs: [[Field; 2]; BLINDING_FINAL_SC_ARRAY_SIZE],
     blinding_final_merkle_leaves: [[Field; BLINDING_MERKLE_LEAF_SIZE]; BLINDING_MAX_QUERIES],
-    blinding_final_merkle_siblings: [[[u8; 32]; BLINDING_TREE_HEIGHT]; BLINDING_MAX_QUERIES],
+    blinding_final_merkle_siblings: [[Field; BLINDING_TREE_HEIGHT]; BLINDING_MAX_QUERIES],
     blinding_final_merkle_indices: [u32; BLINDING_MAX_QUERIES],
     blinding_final_merkle_leaf_size: u32,
     blinding_final_merkle_tree_height: u32,
@@ -175,9 +175,9 @@ fn main(
     // Phase 0: Initialize Fiat-Shamir transcript
     // ===================================================================
 
-    let mut sho = SHO::new();
-    sho.absorb(protocol_id);
-    sho.absorb(instance);
+    let mut sho = Sponge::new();
+    sho.absorb_bytes(protocol_id);
+    sho.absorb_bytes(instance);
 
     // ===================================================================
     // Phase 1: Receive commitments
@@ -186,7 +186,7 @@ fn main(
     // irs_commit::receive_commitment -> absorb Merkle root + squeeze/absorb OOD
 
     // Phase 1a: f_hat commitment (blinded_commitment)
-    sho.absorb(initial_root_hash);
+    sho.absorb_field(initial_root_hash);
 
     for _i in 0..OOD_SAMPLES {
         let _ood_query = sho.squeeze_field();
@@ -196,7 +196,7 @@ fn main(
     }
 
     // Phase 1b: Blinding commitment
-    sho.absorb(blinding_root_hash);
+    sho.absorb_field(blinding_root_hash);
 
     for _i in 0..BLINDING_OOD_SAMPLES {
         let _blinding_ood_query = sho.squeeze_field();
@@ -325,7 +325,7 @@ fn main(
     // 4a.4: Per-round WHIR verification (for NUM_WHIR_ROUNDS > 0)
     for r in 0..NUM_WHIR_ROUNDS {
         // Receive round commitment (irs_commit::receive_commitment)
-        sho.absorb(round_root_hashes[r]);
+        sho.absorb_field(round_root_hashes[r]);
 
         for _i in 0..OOD_SAMPLES {
             let _ood_pt = sho.squeeze_field();
@@ -448,7 +448,7 @@ fn main(
 
     // Per-round blinding WHIR verification
     for r in 0..BLINDING_WHIR_ROUNDS {
-        sho.absorb(blinding_round_root_hashes[r]);
+        sho.absorb_field(blinding_round_root_hashes[r]);
 
         for _i in 0..BLINDING_OOD_SAMPLES {
             let _ood_pt = sho.squeeze_field();

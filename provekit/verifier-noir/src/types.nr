@@ -117,15 +117,6 @@ pub global INTERLEAVING_DEPTH: u32 = 8; // = 1 << FOLDING_FACTOR
 // Number of gammas in the zkWHIR per-gamma loop.
 pub global MAX_GAMMAS: u32 = 1016;
 
-// --- SHA256 constants ---
-
-pub global SHA256_BLOCK_SIZE: u32 = 64;
-pub global SHA256_DIGEST_SIZE: u32 = 32;
-pub global SHA256_INIT: [u32; 8] = [
-    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
-    0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
-];
-
 // --- Sparse matrix representation ---
 
 pub struct MatrixCell {
@@ -146,27 +137,10 @@ pub fn field_to_bytes_le(f: Field) -> [u8; 32] {
 // Assumes the value is already reduced mod p.
 pub fn bytes_le_to_field(bytes: [u8; 32]) -> Field {
     let mut result: Field = 0;
-    let mut pow: Field = 1;
     for i in 0..32 {
-        result += (bytes[i] as Field) * pow;
-        pow *= 256;
+        result += (bytes[i] as Field) * skyscraper_noir::POW256[i];
     }
     result
-}
-
-// Convert a u64 to 8 bytes big-endian (for spongefish SHO internal counters,
-// which use usize::to_be_bytes()).
-pub fn u64_to_be_bytes(val: u64) -> [u8; 8] {
-    let mut out: [u8; 8] = [0; 8];
-    out[0] = ((val >> 56) & 0xFF) as u8;
-    out[1] = ((val >> 48) & 0xFF) as u8;
-    out[2] = ((val >> 40) & 0xFF) as u8;
-    out[3] = ((val >> 32) & 0xFF) as u8;
-    out[4] = ((val >> 24) & 0xFF) as u8;
-    out[5] = ((val >> 16) & 0xFF) as u8;
-    out[6] = ((val >> 8) & 0xFF) as u8;
-    out[7] = (val & 0xFF) as u8;
-    out
 }
 
 // Convert a u64 to 8 bytes little-endian (for WHIR transcript messages,
@@ -181,16 +155,6 @@ pub fn u64_to_le_bytes(val: u64) -> [u8; 8] {
     out[5] = ((val >> 40) & 0xFF) as u8;
     out[6] = ((val >> 48) & 0xFF) as u8;
     out[7] = ((val >> 56) & 0xFF) as u8;
-    out
-}
-
-// Convert a u32 to 4 bytes big-endian.
-pub fn u32_to_be_bytes(val: u32) -> [u8; 4] {
-    let mut out: [u8; 4] = [0; 4];
-    out[0] = ((val >> 24) & 0xFF) as u8;
-    out[1] = ((val >> 16) & 0xFF) as u8;
-    out[2] = ((val >> 8) & 0xFF) as u8;
-    out[3] = (val & 0xFF) as u8;
     out
 }
 

@@ -91,6 +91,17 @@ fn parse_hash(narg: &[u8], offset: usize) -> [u8; 32] {
     narg[offset..offset + 32].try_into().unwrap()
 }
 
+/// Convert a 32-byte LE Skyscraper hash output to a quoted Field decimal string.
+///
+/// Skyscraper's `compress(l, r)` outputs a single BN254 field element, which
+/// the WHIR `Hash` type stores as 32 LE bytes (`into_bigint().to_bytes_le()`).
+/// The Noir verifier consumes these as `Field` values, so we re-decode them
+/// here. This is only valid when the proof was produced with `HashConfig::Skyscraper`.
+fn hash_field_str(hash: &[u8; 32]) -> String {
+    let f = FieldElement::from_le_bytes_mod_order(hash);
+    format!("\"{f}\"")
+}
+
 /// Parse a u64 (LE 8 bytes) from a byte slice at the given offset.
 fn parse_u64_le(narg: &[u8], offset: usize) -> u64 {
     let bytes: [u8; 8] = narg[offset..offset + 8].try_into().unwrap();
@@ -1348,9 +1359,9 @@ impl Command for Args {
         write_byte_array(&mut out, "instance", &instance)?;
         writeln!(out)?;
 
-        write_byte_array(&mut out, "initial_root_hash", &initial_root_hash)?;
+        writeln!(out, "initial_root_hash = {}", hash_field_str(&initial_root_hash))?;
         write_field_array(&mut out, "initial_ood_answers", &initial_ood_answers)?;
-        write_byte_array(&mut out, "blinding_root_hash", &blinding_root_hash)?;
+        writeln!(out, "blinding_root_hash = {}", hash_field_str(&blinding_root_hash))?;
         write_field_array(&mut out, "blinding_ood_answers", &blinding_ood_answers)?;
         writeln!(out)?;
 
@@ -1444,9 +1455,9 @@ impl Command for Args {
         for r in 0..round_array_size {
             let comma = if r < round_array_size - 1 { "," } else { "" };
             if r < round_root_hashes.len() {
-                writeln!(out, "  {:?}{comma}", round_root_hashes[r])?;
+                writeln!(out, "  {}{comma}", hash_field_str(&round_root_hashes[r]))?;
             } else {
-                writeln!(out, "  [0; 32]{comma}")?;
+                writeln!(out, "  \"0\"{comma}")?;
             }
         }
         writeln!(out, "]")?;
@@ -1557,9 +1568,9 @@ impl Command for Args {
                     let sibs = (0..tree_height)
                         .map(|h| {
                             if h < merkle.inner_round[r].siblings[q].len() {
-                                format!("{:?}", merkle.inner_round[r].siblings[q][h])
+                                hash_field_str(&merkle.inner_round[r].siblings[q][h])
                             } else {
-                                "[0; 32]".to_string()
+                                "\"0\"".to_string()
                             }
                         })
                         .collect::<Vec<_>>();
@@ -1568,7 +1579,7 @@ impl Command for Args {
                     write!(
                         out,
                         "[{}]{q_comma}",
-                        vec!["[0; 32]"; tree_height].join(", ")
+                        vec!["\"0\""; tree_height].join(", ")
                     )?;
                 }
             }
@@ -1654,9 +1665,9 @@ impl Command for Args {
                             if q < merkle.inner_final.siblings.len()
                                 && h < merkle.inner_final.siblings[q].len()
                             {
-                                format!("{:?}", merkle.inner_final.siblings[q][h])
+                                hash_field_str(&merkle.inner_final.siblings[q][h])
                             } else {
-                                "[0; 32]".to_string()
+                                "\"0\"".to_string()
                             }
                         })
                         .collect::<Vec<_>>();
@@ -1735,9 +1746,9 @@ impl Command for Args {
         for r in 0..blinding_round_array_size {
             let comma = if r < blinding_round_array_size - 1 { "," } else { "" };
             if r < blinding_round_root_hashes.len() {
-                writeln!(out, "  {:?}{comma}", blinding_round_root_hashes[r])?;
+                writeln!(out, "  {}{comma}", hash_field_str(&blinding_round_root_hashes[r]))?;
             } else {
-                writeln!(out, "  [0; 32]{comma}")?;
+                writeln!(out, "  \"0\"{comma}")?;
             }
         }
         writeln!(out, "]")?;
@@ -1848,9 +1859,9 @@ impl Command for Args {
                     let sibs = (0..blinding_tree_height)
                         .map(|h| {
                             if h < merkle.blinding_round[r].siblings[q].len() {
-                                format!("{:?}", merkle.blinding_round[r].siblings[q][h])
+                                hash_field_str(&merkle.blinding_round[r].siblings[q][h])
                             } else {
-                                "[0; 32]".to_string()
+                                "\"0\"".to_string()
                             }
                         })
                         .collect::<Vec<_>>();
@@ -1859,7 +1870,7 @@ impl Command for Args {
                     write!(
                         out,
                         "[{}]{q_comma}",
-                        vec!["[0; 32]"; blinding_tree_height].join(", ")
+                        vec!["\"0\""; blinding_tree_height].join(", ")
                     )?;
                 }
             }
@@ -1947,9 +1958,9 @@ impl Command for Args {
                             if q < merkle.blinding_final.siblings.len()
                                 && h < merkle.blinding_final.siblings[q].len()
                             {
-                                format!("{:?}", merkle.blinding_final.siblings[q][h])
+                                hash_field_str(&merkle.blinding_final.siblings[q][h])
                             } else {
-                                "[0; 32]".to_string()
+                                "\"0\"".to_string()
                             }
                         })
                         .collect::<Vec<_>>();

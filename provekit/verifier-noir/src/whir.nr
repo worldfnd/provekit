@@ -8,7 +8,7 @@
 //   whir/src/protocols/whir.rs (Config::verify)
 //   provekit/verifier/src/whir_r1cs.rs (WhirR1CSScheme::verify)
 
-use crate::transcript::SHO;
+use crate::transcript::Sponge;
 
 // --- WHIR Quadratic Sumcheck ---
 //
@@ -23,7 +23,7 @@ use crate::transcript::SHO;
 // Run WHIR sumcheck WITHOUT per-round PoW.
 // Used when round_pow difficulty is 0 (threshold == u64::MAX).
 pub fn run_whir_sumcheck<let FF: u32>(
-    sho: &mut SHO,
+    sho: &mut Sponge,
     sum: Field,
     round_coeffs: [[Field; 2]; FF],
 ) -> ([Field; FF], Field) {
@@ -50,7 +50,7 @@ pub fn run_whir_sumcheck<let FF: u32>(
 // Run WHIR sumcheck WITH per-round PoW.
 // Used when round_pow difficulty > 0 (threshold < u64::MAX).
 pub fn run_whir_sumcheck_with_pow<let FF: u32>(
-    sho: &mut SHO,
+    sho: &mut Sponge,
     sum: Field,
     round_coeffs: [[Field; 2]; FF],
     pow_nonces: [u64; FF],
@@ -166,7 +166,7 @@ pub fn dot_product<let N: u32>(a: [Field; N], b: [Field; N], n: u32) -> Field {
 // IMPORTANT: The WHIR library (geometric_challenge.rs) returns vec![F::ONE]
 // for count <= 1 with ZERO transcript operations. Only squeeze when count >= 2.
 pub fn generate_combination_randomness<let N: u32>(
-    sho: &mut SHO,
+    sho: &mut Sponge,
     n: u32,
 ) -> [Field; N] {
     let mut powers: [Field; N] = [0; N];
@@ -198,10 +198,10 @@ pub fn generate_combination_randomness<let N: u32>(
 //
 // The nonce is encoded as LITTLE-ENDIAN per the U64 codec (whir/transcript/codecs.rs).
 // We replay the transcript operations and trust the Rust verifier validated the PoW.
-pub fn check_pow(sho: &mut SHO, nonce: u64) {
-    let _challenge = sho.squeeze_32();
+pub fn check_pow(sho: &mut Sponge, nonce: u64) {
+    let _challenge = sho.squeeze_32_bytes();
     let nonce_bytes = crate::types::u64_to_le_bytes(nonce);
-    sho.absorb(nonce_bytes);
+    sho.absorb_bytes(nonce_bytes);
 }
 
 // --- STIR challenge indices ---
@@ -219,7 +219,7 @@ pub fn check_pow(sho: &mut SHO, nonce: u64) {
 //
 // BYTES_PER_INDEX must match the WHIR config: ceil(log2(folded_domain_size)) / 8.
 pub fn squeeze_stir_challenges(
-    sho: &mut SHO,
+    sho: &mut Sponge,
     num_queries: u32,
     bytes_per_index: u32,
 ) {

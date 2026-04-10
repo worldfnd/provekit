@@ -1,144 +1,65 @@
-// SHA256 Merkle Tree Verification
+// Skyscraper Merkle Tree Verification
 //
 // Verifies Merkle inclusion proofs for WHIR commitment queries.
 //
 // Reference: recursive-verifier/app/circuit/whir_utilities.go (verifyMerkleTreeProofs)
+//            provekit/common/src/skyscraper/whir.rs (SkyscraperHashEngine::hash_many)
 //
-// Leaf hashing: hash the FOLD_SIZE field elements together.
+// Leaf hashing: left-fold compress(acc, field[i]) over the leaf field elements.
+// Node hashing: compress(left, right).
 // Path verification: walk up using sibling hashes, select left/right by index bits.
 
-use crate::types::{
-    SHA256_INIT,
-    field_to_bytes_le, u64_to_be_bytes,
-};
-use std::hash::sha256_compression;
+use skyscraper_noir::compress;
 
-// --- SHA256 helpers for Merkle ---
-
-// Convert 64 bytes to 16 big-endian u32 words.
-fn bytes_to_u32x16(bytes: [u8; 64]) -> [u32; 16] {
-    let mut words: [u32; 16] = [0; 16];
-    for i in 0..16 {
-        let off = i * 4;
-        words[i] = ((bytes[off] as u32) << 24)
-            | ((bytes[off + 1] as u32) << 16)
-            | ((bytes[off + 2] as u32) << 8)
-            | (bytes[off + 3] as u32);
-    }
-    words
-}
-
-// Convert SHA256 state (8 x u32) to 32 bytes big-endian.
-fn state_to_bytes(state: [u32; 8]) -> [u8; 32] {
-    let mut out: [u8; 32] = [0; 32];
-    for i in 0..8 {
-        out[4 * i]     = ((state[i] >> 24) & 0xFF) as u8;
-        out[4 * i + 1] = ((state[i] >> 16) & 0xFF) as u8;
-        out[4 * i + 2] = ((state[i] >> 8) & 0xFF) as u8;
-        out[4 * i + 3] = (state[i] & 0xFF) as u8;
-    }
-    out
-}
-
-// SHA256 of exactly 64 bytes (one block, with padding).
-// Used for hashing two 32-byte siblings together.
-fn sha256_two_blocks(left: [u8; 32], right: [u8; 32]) -> [u8; 32] {
-    // Block 1: the 64 data bytes
-    let mut block1_bytes: [u8; 64] = [0; 64];
-    for i in 0..32 {
-        block1_bytes[i] = left[i];
-        block1_bytes[32 + i] = right[i];
-    }
-    let block1 = bytes_to_u32x16(block1_bytes);
-    let state1 = sha256_compression(block1, SHA256_INIT);
-
-    // Block 2: padding
-    // 0x80 at byte 0, then zeros, length = 512 bits = 0x0200 at last 8 bytes
-    let mut block2_bytes: [u8; 64] = [0; 64];
-    block2_bytes[0] = 0x80;
-    block2_bytes[62] = 0x02; // 512 >> 8
-    block2_bytes[63] = 0x00; // 512 & 0xFF
-    let block2 = bytes_to_u32x16(block2_bytes);
-    let state2 = sha256_compression(block2, state1);
-
-    state_to_bytes(state2)
-}
-
-// SHA256 of the first `n_fields` 32-byte field element encodings.
-// Used to hash Merkle leaf values with runtime row width.
-fn sha256_field_elements_prefix<let MAX_N: u32>(
-    fields: [Field; MAX_N],
+/// Hash a prefix of field elements into a single Merkle leaf hash.
+///
+/// Equivalent to Rust's `elements.reduce(|acc, x| compress(acc, x))`.
+/// For a single element (n_fields == 1), returns that element directly
+/// (matches SkyscraperHashEngine::hash_many with size == 32).
+fn hash_leaf<let MAX_LEAF_SIZE: u32>(
+    fields: [Field; MAX_LEAF_SIZE],
     n_fields: u32,
-) -> [u8; 32] {
-    assert(n_fields <= MAX_N, "leaf_size exceeds MAX_N");
-    let total_bytes: u32 = n_fields * 32;
+) -> Field {
+    assert(n_fields > 0, "leaf must have at least one element");
+    assert(n_fields <= MAX_LEAF_SIZE, "n_fields exceeds MAX_LEAF_SIZE");
 
-    // Process 64-byte blocks
-    let mut state = SHA256_INIT;
-    let mut byte_buf: [u8; 64] = [0; 64];
-    let mut buf_pos: u32 = 0;
+    let mut acc = fields[0];
 
-    for i in 0..MAX_N {
-        if (i as u32) < n_fields {
-            let f_bytes = field_to_bytes_le(fields[i]);
-            for j in 0..32 {
-                byte_buf[buf_pos] = f_bytes[j];
-                buf_pos += 1;
-                if buf_pos == 64 {
-                    let block = bytes_to_u32x16(byte_buf);
-                    state = sha256_compression(block, state);
-                    byte_buf = [0; 64];
-                    buf_pos = 0;
-                }
+    // For n_fields >= 2: acc = compress(f[0], f[1]), then fold remaining
+    if n_fields >= 2 {
+        acc = compress(fields[0], fields[1]);
+
+        for i in 2..MAX_LEAF_SIZE {
+            if (i as u32) < n_fields {
+                acc = compress(acc, fields[i]);
             }
         }
     }
 
-    // Padding
-    let total_bits: u64 = (total_bytes as u64) * 8;
-    byte_buf[buf_pos] = 0x80;
-    buf_pos += 1;
-
-    // Check if we need an extra block for padding
-    if buf_pos > 56 {
-        // Fill rest with zeros and process
-        let block = bytes_to_u32x16(byte_buf);
-        state = sha256_compression(block, state);
-        byte_buf = [0; 64];
-    }
-
-    // Write length at end
-    let len_bytes = u64_to_be_bytes(total_bits);
-    for i in 0..8 {
-        byte_buf[56 + i] = len_bytes[i];
-    }
-    let block = bytes_to_u32x16(byte_buf);
-    state = sha256_compression(block, state);
-
-    state_to_bytes(state)
+    acc
 }
 
-// --- Merkle Proof Verification ---
-
-// Verify a single Merkle inclusion proof.
-//
-// - leaf_values: the FOLD_SIZE field elements at this leaf
-// - siblings: sibling hashes along the path (bottom to top)
-// - index: leaf index in the tree (used for left/right selection)
-// - root: expected Merkle root hash
+/// Verify a single Merkle inclusion proof.
+///
+/// - leaf_values: the field elements at this leaf
+/// - leaf_size: number of actual field elements in the leaf
+/// - siblings: sibling hashes along the path (bottom to top)
+/// - path_len: number of levels in the path
+/// - index: leaf index in the tree (used for left/right selection)
+/// - root: expected Merkle root hash
 pub fn verify_merkle_proof_dynamic<let MAX_LEAF_SIZE: u32, let MAX_HEIGHT: u32>(
     leaf_values: [Field; MAX_LEAF_SIZE],
     leaf_size: u32,
-    siblings: [[u8; 32]; MAX_HEIGHT],
+    siblings: [Field; MAX_HEIGHT],
     path_len: u32,
     index: u32,
-    root: [u8; 32],
+    root: Field,
 ) {
     assert(leaf_size <= MAX_LEAF_SIZE, "leaf_size exceeds max");
     assert(path_len <= MAX_HEIGHT, "path_len exceeds max");
 
     // Step 1: Hash the leaf values
-    let mut current = sha256_field_elements_prefix(leaf_values, leaf_size);
+    let mut current = hash_leaf(leaf_values, leaf_size);
 
     // Step 2: Walk up the tree
     let mut idx = index;
@@ -150,10 +71,10 @@ pub fn verify_merkle_proof_dynamic<let MAX_LEAF_SIZE: u32, let MAX_HEIGHT: u32>(
 
             if is_right == 1 {
                 // current is right child
-                current = sha256_two_blocks(sibling, current);
+                current = compress(sibling, current);
             } else {
                 // current is left child
-                current = sha256_two_blocks(current, sibling);
+                current = compress(current, sibling);
             }
         }
     }

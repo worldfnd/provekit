@@ -13,7 +13,7 @@
 //   4. Read blinding_eval, compute f_at_alpha = saved - rho * blinding_eval
 
 use crate::types::eval_cubic_poly;
-use crate::transcript::SHO;
+use crate::transcript::Sponge;
 
 // Data produced by the sumcheck verifier, consumed by the final check.
 pub struct SumcheckResult<let M0: u32> {
@@ -33,7 +33,7 @@ pub struct SumcheckResult<let M0: u32> {
 //
 // Returns the sumcheck result containing r, alpha, blinding_eval, f_at_alpha.
 pub fn run_sumcheck_verifier<let M0: u32>(
-    sho: &mut SHO,
+    sho: &mut Sponge,
     prover_coeffs: [[Field; 4]; M0],
     sum_g: Field,
     blinding_eval: Field,
