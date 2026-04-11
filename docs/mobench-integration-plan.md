@@ -134,9 +134,9 @@ Add mobile-benchmark CI workflow with explicit contract outputs:
 - `target/mobench/ci/results.csv`
 
 Current PR workflow shape:
-- `mobile-bench.yml` is dispatchable, BrowserStack-gated on secrets, and exposes `device_profile=smoke|triad`.
+- `mobile-bench.yml` is dispatchable, BrowserStack-gated on secrets, and exposes `device_profile=smoke|triad|worst`.
 - `mobile-bench-pr-command.yml` enables `/mobench` PR comments and dispatches `mobile-bench.yml` from the PR base ref.
-- `mobile-bench-pr-command.yml` defaults PR-triggered runs to `device_profile=smoke` and allows `device_profile=triad` for manual escalation.
+- `mobile-bench-pr-command.yml` defaults PR-triggered runs to `device_profile=smoke` and allows `device_profile=triad|worst` for manual escalation.
 - `mobile-bench-pr-auto.yml` auto-dispatches when a PR has the `bench` label and `Cargo Build & Test` has passed, using the PR base ref rather than the repository default branch and forcing the smoke profile.
 - Sticky comment updates use the `<!-- mobench-summary -->` marker.
 
@@ -144,6 +144,9 @@ Current BrowserStack device profiles:
 - Smoke:
   - Android: `Google Pixel 7-13.0`
   - iOS: `iPhone 16 Pro-18`
+- Worst:
+  - Android: `Vivo Y21-11.0`
+  - iOS: `iPhone 7-10`
 - Triad:
   - Android: `Vivo Y21-11.0`, `Google Pixel 7-13.0`, `Samsung Galaxy S24-14.0`
   - iOS: `iPhone 7-10`, `iPhone 14-16`, `iPhone 16 Pro-18`

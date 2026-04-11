@@ -37,7 +37,7 @@ on:
         type: string
         default: "both"
       device_profile:
-        description: "Device profile to run (smoke or triad)"
+        description: "Device profile to run (smoke, triad, or worst)"
         required: false
         type: string
         default: "triad"
@@ -129,13 +129,18 @@ jobs:
               fetch_timeout_secs="1200"
               benchmark_timeout_secs="600"
               ;;
+            worst)
+              device_specs="iPhone 7-10"
+              fetch_timeout_secs="1800"
+              benchmark_timeout_secs="1200"
+              ;;
             triad)
               device_specs="iPhone 7-10,iPhone 14-16,iPhone 16 Pro-18"
               fetch_timeout_secs="2400"
               benchmark_timeout_secs="1200"
               ;;
             *)
-              echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad."
+              echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad, worst."
               exit 1
               ;;
           esac
@@ -307,12 +312,16 @@ jobs:
               device_specs="Google Pixel 7-13.0"
               fetch_timeout_secs="1200"
               ;;
+            worst)
+              device_specs="Vivo Y21-11.0"
+              fetch_timeout_secs="1800"
+              ;;
             triad)
               device_specs="Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
               fetch_timeout_secs="2400"
               ;;
             *)
-              echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad."
+              echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad, worst."
               exit 1
               ;;
           esac
