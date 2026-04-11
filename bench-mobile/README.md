@@ -50,18 +50,18 @@ PR benchmarks run the smoke profile by default:
 Manual workflow dispatches can still select the triad profile:
 
 - Android:
-  - `Vivo Y21-11.0`
+  - `Motorola Moto G9 Play-10.0`
   - `Google Pixel 7-13.0`
   - `Samsung Galaxy S24-14.0`
 - iOS:
-  - `iPhone 14-16.3`
+  - `iPhone 12-14`
   - `iPhone 15-17`
   - `iPhone 16 Pro-18`
 
 The worst-device profile currently targets:
 
-- Android: `Vivo Y21-11.0`
-- iOS: `iPhone 14-16.3`
+- Android: `Motorola Moto G9 Play-10.0`
+- iOS: `iPhone 12-14`
 
 The sticky PR comment is updated in place using the `<!-- mobench-summary -->`
 marker so each rerun replaces the previous report.

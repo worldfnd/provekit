@@ -129,12 +129,12 @@ jobs:
               benchmark_timeout_secs="600"
               ;;
             worst)
-              device_specs="iPhone 14-16.3"
+              device_specs="iPhone 12-14"
               fetch_timeout_secs="1800"
               benchmark_timeout_secs="1200"
               ;;
             triad)
-              device_specs="iPhone 14-16.3,iPhone 15-17,iPhone 16 Pro-18"
+              device_specs="iPhone 12-14,iPhone 15-17,iPhone 16 Pro-18"
               fetch_timeout_secs="2400"
               benchmark_timeout_secs="1200"
               ;;
@@ -206,7 +206,11 @@ jobs:
           set -euo pipefail
           echo "Building iOS artifacts for profile ${MOBENCH_DEVICE_PROFILE}"
           echo "Using iOS benchmark completion timeout ${MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS}s"
-          cargo-mobench build --target ios $RELEASE_FLAG --crate-path "$CRATE_PATH"
+          cargo-mobench build \
+            --target ios \
+            $RELEASE_FLAG \
+            --crate-path "$CRATE_PATH" \
+            --ios-completion-timeout-secs "${MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS}"
           cargo-mobench package-ipa --method adhoc --crate-path "$CRATE_PATH"
           cargo-mobench package-xcuitest --crate-path "$CRATE_PATH"
           test -f target/mobench/ios/BenchRunner.ipa
@@ -245,6 +249,7 @@ jobs:
             --functions "${functions_arg}" \
             --iterations "${ITERATIONS}" \
             --warmup "${WARMUP}" \
+            --ios-completion-timeout-secs "${MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS}" \
             "${device_args[@]}" \
             --crate-path "$CRATE_PATH" \
             $RELEASE_FLAG \
@@ -306,11 +311,11 @@ jobs:
               fetch_timeout_secs="1200"
               ;;
             worst)
-              device_specs="Vivo Y21-11.0"
+              device_specs="Motorola Moto G9 Play-10.0"
               fetch_timeout_secs="1800"
               ;;
             triad)
-              device_specs="Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
+              device_specs="Motorola Moto G9 Play-10.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
               fetch_timeout_secs="2400"
               ;;
             *)
