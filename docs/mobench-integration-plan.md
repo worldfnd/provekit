@@ -146,7 +146,7 @@ Current BrowserStack device profiles:
   - iOS: `iPhone 16 Pro-18`
 - Worst:
   - Android: `Vivo Y21-11.0`
-  - iOS: `iPhone 11-13`
+  - iOS: `iPhone 14-16`
 - Triad:
   - Android: `Vivo Y21-11.0`, `Google Pixel 7-13.0`, `Samsung Galaxy S24-14.0`
   - iOS: `iPhone 7-10`, `iPhone 14-16`, `iPhone 16 Pro-18`
