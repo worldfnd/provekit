@@ -145,11 +145,11 @@ Current BrowserStack device profiles:
   - Android: `Google Pixel 7-13.0`
   - iOS: `iPhone 16 Pro-18`
 - Worst:
-  - Android: `Vivo Y21-11.0`
-  - iOS: `iPhone 14-16.3`
+  - Android: `Motorola Moto G9 Play-10.0`
+  - iOS: `iPhone 12-14`
 - Triad:
-  - Android: `Vivo Y21-11.0`, `Google Pixel 7-13.0`, `Samsung Galaxy S24-14.0`
-  - iOS: `iPhone 14-16.3`, `iPhone 15-17`, `iPhone 16 Pro-18`
+  - Android: `Motorola Moto G9 Play-10.0`, `Google Pixel 7-13.0`, `Samsung Galaxy S24-14.0`
+  - iOS: `iPhone 12-14`, `iPhone 15-17`, `iPhone 16 Pro-18`
 
 Gate regressions using baseline comparison threshold.
 
