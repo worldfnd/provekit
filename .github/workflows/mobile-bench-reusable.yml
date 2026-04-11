@@ -129,12 +129,12 @@ jobs:
               benchmark_timeout_secs="600"
               ;;
             worst)
-              device_specs="iPhone 12-14"
+              device_specs="iPhone SE 2020-16"
               fetch_timeout_secs="1800"
               benchmark_timeout_secs="1200"
               ;;
             triad)
-              device_specs="iPhone 12-14,iPhone 15-17,iPhone 16 Pro-18"
+              device_specs="iPhone SE 2020-16,iPhone 15-17,iPhone 16 Pro-18"
               fetch_timeout_secs="2400"
               benchmark_timeout_secs="1200"
               ;;
