@@ -1,4 +1,4 @@
-# mobench 0.1.29 Integration Plan (Noir Circuits)
+# mobench 0.1.30 Integration Plan (Noir Circuits)
 
 Status: Draft plan
 Owner: ProveKit maintainers
@@ -6,7 +6,7 @@ Scope start: passport end-to-end circuit
 
 ## 1. Objective
 
-Add `mobench` `0.1.29` based mobile benchmarking so we can run selected Noir proving workloads on Android/iOS devices, starting with passport end-to-end proving.
+Add `mobench` `0.1.30` based mobile benchmarking so we can run selected Noir proving workloads on Android/iOS devices, starting with passport end-to-end proving.
 
 ## 2. Primary target for phase 1
 
@@ -18,7 +18,7 @@ Reason:
 - Already used in CI/workflows (`circuit_keys.yml`) and compiler tests.
 - Good baseline before fragmented passport chain and other examples.
 
-## 3. Constraints discovered from mobench 0.1.29
+## 3. Constraints discovered from mobench 0.1.30
 
 From published crate APIs and README behavior:
 - `mobench` build/run pipeline expects a benchmark crate that can be cross-compiled and exposed via UniFFI.
@@ -146,10 +146,10 @@ Current BrowserStack device profiles:
   - iOS: `iPhone 16 Pro-18`
 - Worst:
   - Android: `Vivo Y21-11.0`
-  - iOS: `iPhone 14-16`
+  - iOS: `iPhone 14-16.3`
 - Triad:
   - Android: `Vivo Y21-11.0`, `Google Pixel 7-13.0`, `Samsung Galaxy S24-14.0`
-  - iOS: `iPhone 7-10`, `iPhone 14-16`, `iPhone 16 Pro-18`
+  - iOS: `iPhone 14-16.3`, `iPhone 15-17`, `iPhone 16 Pro-18`
 
 Gate regressions using baseline comparison threshold.
 

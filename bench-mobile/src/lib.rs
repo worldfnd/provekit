@@ -100,7 +100,7 @@ impl From<mobench_sdk::RunnerReport> for BenchReport {
             spec:           report.spec.into(),
             samples:        report.samples.into_iter().map(Into::into).collect(),
             phases:         report.phases.into_iter().map(Into::into).collect(),
-            // mobench-sdk 0.1.29 no longer reports aggregated resource usage on RunnerReport.
+            // mobench-sdk still does not report aggregated resource usage on RunnerReport.
             resource_usage: None,
         }
     }

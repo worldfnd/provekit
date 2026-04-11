@@ -60,7 +60,7 @@ on:
         description: "Mobench version to install"
         required: false
         type: string
-        default: "0.1.29"
+        default: "0.1.30"
       mobench_ref:
         description: "Git ref for mobile-bench-rs"
         required: false
@@ -92,7 +92,6 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: nightly-2026-03-04
-  MOBENCH_PATCH_PATH: caller/.github/patches/mobile-bench-rs-browserstack-devices.patch
 
 jobs:
   ios:
@@ -130,12 +129,12 @@ jobs:
               benchmark_timeout_secs="600"
               ;;
             worst)
-              device_specs="iPhone 14-16"
+              device_specs="iPhone 14-16.3"
               fetch_timeout_secs="1800"
               benchmark_timeout_secs="1200"
               ;;
             triad)
-              device_specs="iPhone 7-10,iPhone 14-16,iPhone 16 Pro-18"
+              device_specs="iPhone 14-16.3,iPhone 15-17,iPhone 16 Pro-18"
               fetch_timeout_secs="2400"
               benchmark_timeout_secs="1200"
               ;;
@@ -183,27 +182,16 @@ jobs:
           MOBENCH_REF: ${{ inputs.mobench_ref }}
         run: |
           set -euo pipefail
-          source_ref="${MOBENCH_REF:-v${MOBENCH_VERSION}}"
-          echo "Installing mobench from ${source_ref}"
-          git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
-          git -C mobench-src checkout "$source_ref"
-          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
-            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
+          if [[ -n "${MOBENCH_REF}" ]]; then
+            echo "Installing mobench from ${MOBENCH_REF}"
+            git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
+            git -C mobench-src checkout "${MOBENCH_REF}"
+            cargo install --path mobench-src/crates/mobench --locked --force
           else
-            echo "Skipping local mobench patch; already included or not applicable"
+            echo "Installing mobench ${MOBENCH_VERSION} from crates.io"
+            cargo install mobench --version "${MOBENCH_VERSION}" --locked --force
           fi
-          grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'collect_preserved_ios_resources' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'test_generate_ios_project_includes_raw_resource_metrics_in_json_report' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template >/dev/null
-          grep -F 'ProcessResourceSampler' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
-          grep -F 'resources["elapsed_cpu_ms"] = elapsedCpuMs' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
-          grep -F 'resources["peak_memory_kb"] = peakMemoryKb' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
-          grep -F 'test_extract_resource_usage_reads_explicit_peak_memory_kb' mobench-src/crates/mobench/src/lib.rs >/dev/null
-          grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
-          cargo install --path mobench-src/crates/mobench --locked --force
+          cargo-mobench --version
 
       - name: Install iOS tooling
         run: brew install xcodegen swiftformat
@@ -275,6 +263,11 @@ jobs:
             ios \
             target/mobench/ci/ios \
             target/browserstack/ios
+
+          summary_md=$(find target/mobench/ci/ios -type f -name summary.md | head -1)
+          if [ -n "${summary_md}" ]; then
+            bash .github/scripts/normalize_mobench_summary_headers.sh "${summary_md}"
+          fi
 
       - name: Upload iOS results
         if: always()
@@ -391,27 +384,16 @@ jobs:
           MOBENCH_REF: ${{ inputs.mobench_ref }}
         run: |
           set -euo pipefail
-          source_ref="${MOBENCH_REF:-v${MOBENCH_VERSION}}"
-          echo "Installing mobench from ${source_ref}"
-          git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
-          git -C mobench-src checkout "$source_ref"
-          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
-            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
+          if [[ -n "${MOBENCH_REF}" ]]; then
+            echo "Installing mobench from ${MOBENCH_REF}"
+            git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
+            git -C mobench-src checkout "${MOBENCH_REF}"
+            cargo install --path mobench-src/crates/mobench --locked --force
           else
-            echo "Skipping local mobench patch; already included or not applicable"
+            echo "Installing mobench ${MOBENCH_VERSION} from crates.io"
+            cargo install mobench --version "${MOBENCH_VERSION}" --locked --force
           fi
-          grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'collect_preserved_ios_resources' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'test_generate_ios_project_includes_raw_resource_metrics_in_json_report' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template >/dev/null
-          grep -F 'ProcessResourceSampler' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
-          grep -F 'resources["elapsed_cpu_ms"] = elapsedCpuMs' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
-          grep -F 'resources["peak_memory_kb"] = peakMemoryKb' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
-          grep -F 'test_extract_resource_usage_reads_explicit_peak_memory_kb' mobench-src/crates/mobench/src/lib.rs >/dev/null
-          grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
-          cargo install --path mobench-src/crates/mobench --locked --force
+          cargo-mobench --version
 
       - name: Build Android artifacts
         working-directory: caller
@@ -475,6 +457,11 @@ jobs:
             target/mobench/ci/android \
             target/browserstack/android
 
+          summary_md=$(find target/mobench/ci/android -type f -name summary.md | head -1)
+          if [ -n "${summary_md}" ]; then
+            bash .github/scripts/normalize_mobench_summary_headers.sh "${summary_md}"
+          fi
+
       - name: Upload Android results
         if: always()
         uses: actions/upload-artifact@v4
@@ -513,27 +500,16 @@ jobs:
           MOBENCH_REF: ${{ inputs.mobench_ref }}
         run: |
           set -euo pipefail
-          source_ref="${MOBENCH_REF:-v${MOBENCH_VERSION}}"
-          echo "Installing mobench from ${source_ref}"
-          git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
-          git -C mobench-src checkout "$source_ref"
-          if git -C mobench-src apply --check "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}" >/dev/null 2>&1; then
-            git -C mobench-src apply "${GITHUB_WORKSPACE}/${MOBENCH_PATCH_PATH}"
+          if [[ -n "${MOBENCH_REF}" ]]; then
+            echo "Installing mobench from ${MOBENCH_REF}"
+            git clone https://github.com/worldcoin/mobile-bench-rs mobench-src
+            git -C mobench-src checkout "${MOBENCH_REF}"
+            cargo install --path mobench-src/crates/mobench --locked --force
           else
-            echo "Skipping local mobench patch; already included or not applicable"
+            echo "Installing mobench ${MOBENCH_VERSION} from crates.io"
+            cargo install mobench --version "${MOBENCH_VERSION}" --locked --force
           fi
-          grep -F 'DEFAULT_ANDROID_ABIS: &[&str] = &["arm64-v8a"];' mobench-src/crates/mobench-sdk/src/builders/android.rs >/dev/null
-          grep -F 'collect_preserved_android_assets' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'collect_preserved_ios_resources' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'test_generate_ios_project_includes_raw_resource_metrics_in_json_report' mobench-src/crates/mobench-sdk/src/codegen.rs >/dev/null
-          grep -F 'benchmarkTimeout: TimeInterval = {{BENCHMARK_TIMEOUT_SECS}}' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunnerUITests/BenchRunnerUITests.swift.template >/dev/null
-          grep -F 'ProcessResourceSampler' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
-          grep -F 'resources["elapsed_cpu_ms"] = elapsedCpuMs' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
-          grep -F 'resources["peak_memory_kb"] = peakMemoryKb' mobench-src/crates/mobench-sdk/templates/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift.template >/dev/null
-          grep -F 'test_extract_resource_usage_reads_explicit_peak_memory_kb' mobench-src/crates/mobench/src/lib.rs >/dev/null
-          grep -F 'fetch did not recover any benchmark payloads' mobench-src/crates/mobench/src/lib.rs >/dev/null
-          cargo install --path mobench-src/crates/mobench --locked --force
+          cargo-mobench --version
 
       - name: Download iOS results
         if: always()
@@ -700,6 +676,8 @@ jobs:
             fi
 
             cp "${input}" "${output}"
+            bash caller/.github/scripts/normalize_mobench_summary_headers.sh "${input}"
+            bash caller/.github/scripts/normalize_mobench_summary_headers.sh "${output}"
             if [ -n "${PLOT_BASE_URL:-}" ] && [ -d "rendered/${platform}/plots" ]; then
               sed -i "s#](plots/#](${PLOT_BASE_URL}/${platform}/plots/#g" "${output}"
             fi

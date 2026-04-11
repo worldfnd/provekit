@@ -54,9 +54,14 @@ Manual workflow dispatches can still select the triad profile:
   - `Google Pixel 7-13.0`
   - `Samsung Galaxy S24-14.0`
 - iOS:
-  - `iPhone 7-10`
-  - `iPhone 14-16`
+  - `iPhone 14-16.3`
+  - `iPhone 15-17`
   - `iPhone 16 Pro-18`
+
+The worst-device profile currently targets:
+
+- Android: `Vivo Y21-11.0`
+- iOS: `iPhone 14-16.3`
 
 The sticky PR comment is updated in place using the `<!-- mobench-summary -->`
 marker so each rerun replaces the previous report.
