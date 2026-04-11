@@ -65,7 +65,7 @@ jobs:
           esac
 
           case "${device_profile:-smoke}" in
-            smoke|triad) device_profile="${device_profile:-smoke}" ;;
+            smoke|triad|worst) device_profile="${device_profile:-smoke}" ;;
             *) echo "::warning::Invalid device_profile '${device_profile}', defaulting to 'smoke'"; device_profile="smoke" ;;
           esac
 
