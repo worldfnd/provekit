@@ -130,7 +130,7 @@ jobs:
               benchmark_timeout_secs="600"
               ;;
             worst)
-              device_specs="iPhone 11-13"
+              device_specs="iPhone 14-16"
               fetch_timeout_secs="1800"
               benchmark_timeout_secs="1200"
               ;;
