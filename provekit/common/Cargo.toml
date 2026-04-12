@@ -53,6 +53,9 @@ mavros-vm.workspace = true
 mavros-artifacts.workspace = true
 xz2.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+metal.workspace = true
+
 [dev-dependencies]
 divan.workspace = true
 proptest.workspace = true

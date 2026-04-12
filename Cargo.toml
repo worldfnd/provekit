@@ -153,6 +153,7 @@ xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
 zstd = "0.13"
+metal = "0.33.0"
 
 # WASM-specific dependencies
 js-sys = "0.3"

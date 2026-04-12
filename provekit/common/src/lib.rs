@@ -52,9 +52,23 @@ pub fn register_ntt() {
 
         #[cfg(feature = "provekit_ntt")]
         let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(crate::ntt::RSFr);
+            match crate::ntt::MetalBn254Ntt::new() {
+                Ok(ntt) => Arc::new(ntt),
+                Err(err) => {
+                    tracing::info!(
+                        error = %err,
+                        "Metal BN254 NTT unavailable, using ProveKit CPU NTT fallback"
+                    );
+                    Arc::new(crate::ntt::RSFr)
+                }
+            };
 
         whir::algebra::ntt::NTT.insert(ntt);
+
+        #[cfg(all(feature = "provekit_ntt", target_os = "macos"))]
+        if let Ok(accelerator) = crate::ntt::MetalBn254Ntt::new() {
+            whir::protocols::irs_commit::ACCELERATED_COMMITTERS.insert(Arc::new(accelerator));
+        }
 
         // Register Skyscraper (ProveKit-specific); WHIR's built-in engines
         // (SHA2, Keccak, Blake3, etc.) are pre-registered via whir::hash::ENGINES.
