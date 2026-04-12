@@ -65,7 +65,7 @@ on:
         description: "Git ref for mobile-bench-rs (pinned until post-v0.1.30 formatter/CSV fixes are released)"
         required: false
         type: string
-        default: "afca7fe26fa3d462688a9506426df4b91c7c5232"
+        default: "b1ee42deb3757aabfc41a223bda55133403b9b5a"
       pr_number:
         description: "PR number for reporting"
         required: false
