@@ -62,10 +62,10 @@ on:
         type: string
         default: "0.1.30"
       mobench_ref:
-        description: "Git ref for mobile-bench-rs"
+        description: "Git ref for mobile-bench-rs (pinned until post-v0.1.30 formatter/CSV fixes are released)"
         required: false
         type: string
-        default: ""
+        default: "afca7fe26fa3d462688a9506426df4b91c7c5232"
       pr_number:
         description: "PR number for reporting"
         required: false
@@ -264,21 +264,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          summary_json=$(find target/mobench/ci/ios -type f -name summary.json | head -1)
-          results_csv=$(find target/mobench/ci/ios -type f -name results.csv | head -1)
-          if [ -n "${summary_json}" ] && [ -n "${results_csv}" ]; then
-            python3 .github/scripts/enrich_mobench_results_csv.py "${summary_json}" "${results_csv}"
-          fi
-
           bash .github/scripts/validate_mobile_bench_outputs.sh \
             ios \
             target/mobench/ci/ios \
             target/browserstack/ios
-
-          summary_md=$(find target/mobench/ci/ios -type f -name summary.md | head -1)
-          if [ -n "${summary_md}" ]; then
-            bash .github/scripts/normalize_mobench_summary_headers.sh "${summary_md}"
-          fi
 
       - name: Upload iOS results
         if: always()
@@ -463,21 +452,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          summary_json=$(find target/mobench/ci/android -type f -name summary.json | head -1)
-          results_csv=$(find target/mobench/ci/android -type f -name results.csv | head -1)
-          if [ -n "${summary_json}" ] && [ -n "${results_csv}" ]; then
-            python3 .github/scripts/enrich_mobench_results_csv.py "${summary_json}" "${results_csv}"
-          fi
-
           bash .github/scripts/validate_mobile_bench_outputs.sh \
             android \
             target/mobench/ci/android \
             target/browserstack/android
-
-          summary_md=$(find target/mobench/ci/android -type f -name summary.md | head -1)
-          if [ -n "${summary_md}" ]; then
-            bash .github/scripts/normalize_mobench_summary_headers.sh "${summary_md}"
-          fi
 
       - name: Upload Android results
         if: always()
@@ -693,8 +671,6 @@ jobs:
             fi
 
             cp "${input}" "${output}"
-            bash caller/.github/scripts/normalize_mobench_summary_headers.sh "${input}"
-            bash caller/.github/scripts/normalize_mobench_summary_headers.sh "${output}"
             if [ -n "${PLOT_BASE_URL:-}" ] && [ -d "rendered/${platform}/plots" ]; then
               sed -i "s#](plots/#](${PLOT_BASE_URL}/${platform}/plots/#g" "${output}"
             fi
