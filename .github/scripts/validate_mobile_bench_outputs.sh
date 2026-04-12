@@ -19,6 +19,8 @@ requested_spec='{}'
 actual_specs='[]'
 benchmarks_with_resource_usage=0
 benchmarks_missing_resource_usage=0
+csv_rows_with_resource_usage=0
+csv_rows_missing_resource_usage=0
 
 error() {
   echo "::error::$1"
@@ -158,8 +160,32 @@ if [ -n "$results_csv" ]; then
   if [ "$csv_line_count" -gt 0 ]; then
     csv_data_rows=$((csv_line_count - 1))
   fi
+  read -r csv_rows_with_resource_usage csv_rows_missing_resource_usage < <(
+    python3 - "$results_csv" <<'PY'
+import csv
+import sys
+
+path = sys.argv[1]
+with_usage = 0
+missing = 0
+
+with open(path, newline="", encoding="utf-8") as handle:
+    reader = csv.DictReader(handle)
+    for row in reader:
+        cpu_total_ms = (row.get("cpu_total_ms") or "").strip()
+        peak_memory_kb = (row.get("peak_memory_kb") or "").strip()
+        if cpu_total_ms and peak_memory_kb:
+            with_usage += 1
+        else:
+            missing += 1
+
+print(with_usage, missing)
+PY
+  )
   echo "  results_csv=${results_csv}"
   echo "  csv_data_rows=${csv_data_rows}"
+  echo "  csv_rows_with_resource_usage=${csv_rows_with_resource_usage}"
+  echo "  csv_rows_missing_resource_usage=${csv_rows_missing_resource_usage}"
 else
   warn "${platform}: results.csv was not found under ${results_dir}"
 fi
@@ -258,6 +284,14 @@ fi
 
 if [ "$csv_data_rows" -le 0 ]; then
   error "${platform}: results.csv has no benchmark data rows"
+fi
+
+if [ "$csv_rows_with_resource_usage" -le 0 ]; then
+  error "${platform}: no results.csv rows reported both cpu_total_ms and peak_memory_kb"
+fi
+
+if [ "$csv_rows_missing_resource_usage" -gt 0 ]; then
+  error "${platform}: ${csv_rows_missing_resource_usage} results.csv row(s) were missing cpu_total_ms or peak_memory_kb"
 fi
 
 if [ "$benchmarks_with_resource_usage" -le 0 ]; then

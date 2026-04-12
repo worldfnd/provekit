@@ -264,6 +264,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          summary_json=$(find target/mobench/ci/ios -type f -name summary.json | head -1)
+          results_csv=$(find target/mobench/ci/ios -type f -name results.csv | head -1)
+          if [ -n "${summary_json}" ] && [ -n "${results_csv}" ]; then
+            python3 .github/scripts/enrich_mobench_results_csv.py "${summary_json}" "${results_csv}"
+          fi
+
           bash .github/scripts/validate_mobile_bench_outputs.sh \
             ios \
             target/mobench/ci/ios \
@@ -457,6 +463,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          summary_json=$(find target/mobench/ci/android -type f -name summary.json | head -1)
+          results_csv=$(find target/mobench/ci/android -type f -name results.csv | head -1)
+          if [ -n "${summary_json}" ] && [ -n "${results_csv}" ]; then
+            python3 .github/scripts/enrich_mobench_results_csv.py "${summary_json}" "${results_csv}"
+          fi
+
           bash .github/scripts/validate_mobile_bench_outputs.sh \
             android \
             target/mobench/ci/android \
