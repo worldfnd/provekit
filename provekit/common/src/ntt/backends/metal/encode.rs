@@ -1,22 +1,20 @@
 use {
     super::{
-        field::{fr_to_gpu, gpu_to_fr},
-        logging::trace_event,
-        types::{
+        MetalBn254Ntt, field::{fr_to_gpu, gpu_to_fr}, logging::trace_event, types::{
             DeviceMatrix, EncodeShape, GpuField, NttStageParams, ReplicateCosetsParams,
             TransposeParams,
-        },
-        MetalBn254Ntt,
-    },
-    ark_bn254::Fr,
-    ark_ff::AdditiveGroup,
-    metal::{MTLSize, NSUInteger},
-    rayon::prelude::*,
-    std::{ffi::c_void, mem::size_of},
-    whir::algebra::ntt::ReedSolomon,
+        }
+    }, ark_bn254::Fr, ark_ff::AdditiveGroup, metal::{MTLSize, NSUInteger}, rayon::prelude::*, std::{ffi::c_void, mem::size_of}, tracing::instrument, whir::algebra::ntt::ReedSolomon
 };
 
 impl MetalBn254Ntt {
+
+    #[instrument(skip(self, messages, masks), fields(
+        num_messages = messages.len(),
+        message_len = messages.first().map(|c| c.len()),
+        codeword_length = codeword_length,
+        mask_len = masks.len().checked_div(messages.len())
+    ))]
     pub fn gpu_encode(
         &self,
         messages: &[&[Fr]],
@@ -27,18 +25,31 @@ impl MetalBn254Ntt {
         let fields = self
             .runtime()?
             .buffer_slice::<GpuField>(matrix.buffer.as_ref(), matrix.rows * matrix.cols);
-        let mut output = vec![Fr::ZERO; matrix.rows * matrix.cols];
-        for natural_row in 0..matrix.rows {
-            let dst_row = reverse_bit_index(natural_row, matrix.rows);
-            let src_start = natural_row * matrix.cols;
-            let dst_start = dst_row * matrix.cols;
-            for col in 0..matrix.cols {
-                output[dst_start + col] = gpu_to_fr(fields[src_start + col]);
-            }
+        if matrix.rows == 0 || matrix.cols == 0 {
+            return Ok(Vec::new());
         }
+
+        let mut output = vec![Fr::ZERO; matrix.rows * matrix.cols];
+        output
+            .par_chunks_mut(matrix.cols)
+            .enumerate()
+            .for_each(|(dst_row, dst)| {
+                let natural_row = reverse_bit_index(dst_row, matrix.rows);
+                let src_start = natural_row * matrix.cols;
+                let src = &fields[src_start..src_start + matrix.cols];
+                dst.iter_mut()
+                    .zip(src.iter().copied())
+                    .for_each(|(dst, src)| *dst = gpu_to_fr(src));
+            });
         Ok(output)
     }
 
+    #[instrument(skip(self, messages, masks), fields(
+        num_messages = messages.len(),
+        message_len = messages.first().map(|c| c.len()),
+        codeword_length = codeword_length,
+        mask_len = masks.len().checked_div(messages.len())
+    ))]
     pub fn encode_matrix(
         &self,
         messages: &[&[Fr]],
