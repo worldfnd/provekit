@@ -1,0 +1,13 @@
+[project]
+crate = "bench-mobile"
+library_name = "bench_mobile"
+
+[android]
+package = "dev.world.benchmobile"
+min_sdk = 24
+target_sdk = 34
+abis = ["arm64-v8a"]
+
+[ios]
+bundle_id = "dev.world.benchmobile"
+deployment_target = "13.0"
