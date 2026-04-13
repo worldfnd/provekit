@@ -50,7 +50,7 @@ on:
         description: "Comma-separated Android Rust targets"
         required: false
         type: string
-        default: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android"
+        default: "aarch64-linux-android"
       build_release:
         description: "Build in release mode"
         required: false

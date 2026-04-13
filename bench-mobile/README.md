@@ -209,6 +209,11 @@ cargo-mobench build --target ios --release --crate-path bench-mobile
 cargo-mobench build --target android --release --crate-path bench-mobile
 ```
 
+Repo-level `mobench` defaults live in `mobench.toml` at the workspace root. In
+this repository that file pins Android packaging to `arm64-v8a`, which matches
+the real-device CI path and avoids unsupported `armeabi-v7a` builds in
+`skyscraper/fp-rounding`.
+
 Run a local or CI-managed benchmark by selecting one of the exported benchmark
 function names. The important knobs are:
 
