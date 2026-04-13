@@ -15,6 +15,12 @@ pub fn verify_rsa_pubkey_in_tbs<let DSC_KEY_SIZE: u32, let TBS_CERT_SIZE: u32>(
     exponent: u32,
     exponent_offset: u32,
 ) {
+    // Ensure the given bounds respect the absolute length of our buffer.
+    assert(
+        tbs_certificate_len <= TBS_CERT_SIZE,
+        "tbs_certificate_len exceeds maximum TBS_CERT_SIZE",
+    );
+
     // Ensure the pubkey lies entirely within the signed (authenticated) region of the TBS,
     assert(
         pubkey_offset + DSC_KEY_SIZE <= tbs_certificate_len,
@@ -89,13 +95,13 @@ pub fn verify_rsa_pubkey_in_tbs<let DSC_KEY_SIZE: u32, let TBS_CERT_SIZE: u32>(
     // All 8 allowed exponents are either 1 byte (exponent=3) or 3 bytes (all others).
     //
     // 3-byte exponents and their expected DER value bytes:
-    //   38129  (0x94B1)   -> [0x00, 0x94, 0xB1]  (sign byte needed, MSB >= 128)
+    //   38129  (0x94F1)   -> [0x00, 0x94, 0xF1]  (sign byte needed, MSB >= 128)
     //   56611  (0xDD23)   -> [0x00, 0xDD, 0x23]  (sign byte needed, MSB >= 128)
     //   65537  (0x010001) -> [0x01, 0x00, 0x01]
     //   107903 (0x01A57F) -> [0x01, 0xA5, 0x7F]
-    //   109729 (0x01AC61) -> [0x01, 0xAC, 0x61]
-    //   122125 (0x01DC0D) -> [0x01, 0xDC, 0x0D]
-    //   130689 (0x01FF01) -> [0x01, 0xFF, 0x01]
+    //   109729 (0x01ACA1) -> [0x01, 0xAC, 0xA1]
+    //   122125 (0x01DD0D) -> [0x01, 0xDD, 0x0D]
+    //   130689 (0x01FE81) -> [0x01, 0xFE, 0x81]
     //
     // For the 3-byte case, u32 >> 16 naturally gives 0x00 for exponents needing a sign byte,
     // and the expected 3-byte sequence matches the DER value encoding directly.
