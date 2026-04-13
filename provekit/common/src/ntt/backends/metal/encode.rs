@@ -1,14 +1,23 @@
 use {
     super::{
-        MetalBn254Ntt, field::{fr_to_gpu, gpu_to_fr}, logging::trace_event, types::{
+        field::{fr_to_gpu, gpu_to_fr},
+        logging::trace_event,
+        types::{
             DeviceMatrix, EncodeShape, GpuField, NttStageParams, ReplicateCosetsParams,
             TransposeParams,
-        }
-    }, ark_bn254::Fr, ark_ff::AdditiveGroup, metal::{MTLSize, NSUInteger}, rayon::prelude::*, std::{ffi::c_void, mem::size_of}, tracing::instrument, whir::algebra::ntt::ReedSolomon
+        },
+        MetalBn254Ntt,
+    },
+    ark_bn254::Fr,
+    ark_ff::AdditiveGroup,
+    metal::{MTLSize, NSUInteger},
+    rayon::prelude::*,
+    std::{ffi::c_void, mem::size_of},
+    tracing::instrument,
+    whir::algebra::ntt::ReedSolomon,
 };
 
 impl MetalBn254Ntt {
-
     #[instrument(skip(self, messages, masks), fields(
         num_messages = messages.len(),
         message_len = messages.first().map(|c| c.len()),
