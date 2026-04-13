@@ -15,19 +15,13 @@
 //! the Fiat-Shamir transcript. No Fiat-Shamir challenges are needed before
 //! witness commitment, so all witnesses can live in w1.
 //!
-//! # Soundness Note
+//! # Soundness
 //!
-//! The current implementation verifies **internal consistency** of the sorted
-//! trace (value and address checks) but does NOT include a **permutation
-//! argument** linking the sorted trace to the actual memory operations in the
-//! R1CS execution trace. The full Jolt protocol (Section 5.3) uses a LogUp
-//! multiset equality check for this purpose.
-//!
-//! Without the permutation argument, a malicious prover can commit to a valid
-//! but unrelated sorted trace. This is sound for honest provers (the prover
-//! constructs the trace from the actual execution) but **not sound against
-//! adversarial provers**. A permutation argument must be added before this
-//! can be used in production.
+//! The Twist sumcheck verifies **internal consistency** of the sorted trace
+//! (value and address checks). A separate **LogUp permutation argument**
+//! (added as R1CS constraints during compilation) links the sorted trace to
+//! the actual memory operations in the R1CS execution trace, ensuring a
+//! malicious prover cannot substitute an unrelated sorted trace.
 
 pub mod sumcheck;
 
