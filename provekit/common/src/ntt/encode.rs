@@ -10,9 +10,9 @@ use {
     },
     ark_bn254::Fr,
     ark_ff::AdditiveGroup,
-    metal::{Buffer, MTLSize, NSUInteger},
+    metal::{MTLSize, NSUInteger},
     rayon::prelude::*,
-    std::{ffi::c_void, mem::size_of, sync::Arc},
+    std::{ffi::c_void, mem::size_of},
     whir::algebra::ntt::ReedSolomon,
 };
 
@@ -72,7 +72,6 @@ impl MetalBn254Ntt {
             masks,
             shape,
         );
-        run_coset_replication(runtime, current.as_ref(), shape)?;
         let roots = runtime.roots_buffer(codeword_length)?;
 
         let scratch = runtime.pooled_buffer::<GpuField>(shape.total_elements);
@@ -91,6 +90,36 @@ impl MetalBn254Ntt {
         };
 
         let command_buffer = runtime.queue.new_command_buffer();
+        let replicate_params = ReplicateCosetsParams {
+            row_len:           shape.codeword_length as u32,
+            coset_size:        shape.coset_size as u32,
+            trailing_elements: shape
+                .row_count
+                .saturating_mul(shape.codeword_length - shape.coset_size) as u32,
+        };
+        if replicate_params.trailing_elements != 0 {
+            let replicate_encoder = command_buffer.new_compute_command_encoder();
+            replicate_encoder.set_compute_pipeline_state(&runtime.replicate_cosets_pipeline);
+            replicate_encoder.set_buffer(0, Some(current.as_ref()), 0);
+            replicate_encoder.set_bytes(
+                1,
+                size_of::<ReplicateCosetsParams>() as u64,
+                (&replicate_params as *const ReplicateCosetsParams).cast::<c_void>(),
+            );
+            let replicate_threads = runtime.threads_per_threadgroup(
+                &runtime.replicate_cosets_pipeline,
+                replicate_params.trailing_elements as usize,
+            );
+            replicate_encoder.dispatch_threads(
+                MTLSize {
+                    width:  replicate_params.trailing_elements as u64,
+                    height: 1,
+                    depth:  1,
+                },
+                replicate_threads,
+            );
+            replicate_encoder.end_encoding();
+        }
         let stage_encoder = command_buffer.new_compute_command_encoder();
         stage_encoder.set_compute_pipeline_state(&runtime.ntt_stage_pipeline);
 
@@ -293,52 +322,6 @@ fn pack_messages_and_masks_into_buffer(
                     fr_to_gpu(masks[mask_column * shape.row_count + row_index]);
             }
         });
-}
-
-fn run_coset_replication(
-    runtime: &Arc<super::engine::MetalRuntime>,
-    buffer: &Buffer,
-    shape: EncodeShape,
-) -> Result<(), String> {
-    let trailing_elements = shape
-        .row_count
-        .checked_mul(shape.codeword_length - shape.coset_size)
-        .ok_or_else(|| "GPU coset replication exceeds current 32-bit grid limit".to_string())?;
-    if trailing_elements == 0 {
-        return Ok(());
-    }
-    if trailing_elements > u32::MAX as usize {
-        return Err("GPU coset replication exceeds current 32-bit grid limit".into());
-    }
-
-    let params = ReplicateCosetsParams {
-        row_len:           shape.codeword_length as u32,
-        coset_size:        shape.coset_size as u32,
-        trailing_elements: trailing_elements as u32,
-    };
-    let command_buffer = runtime.queue.new_command_buffer();
-    let encoder = command_buffer.new_compute_command_encoder();
-    encoder.set_compute_pipeline_state(&runtime.replicate_cosets_pipeline);
-    encoder.set_buffer(0, Some(buffer), 0);
-    encoder.set_bytes(
-        1,
-        size_of::<ReplicateCosetsParams>() as NSUInteger,
-        (&params as *const ReplicateCosetsParams).cast::<c_void>(),
-    );
-    let threads =
-        runtime.threads_per_threadgroup(&runtime.replicate_cosets_pipeline, trailing_elements);
-    encoder.dispatch_threads(
-        MTLSize {
-            width:  trailing_elements as u64,
-            height: 1,
-            depth:  1,
-        },
-        threads,
-    );
-    encoder.end_encoding();
-    command_buffer.commit();
-    command_buffer.wait_until_completed();
-    Ok(())
 }
 
 #[cfg(all(test, target_os = "macos"))]
