@@ -66,7 +66,7 @@ pub fn register_ntt() {
         whir::algebra::ntt::NTT.insert(ntt);
 
         #[cfg(all(feature = "provekit_ntt", target_os = "macos"))]
-        if let Ok(accelerator) = crate::ntt::MetalBn254Ntt::new() {
+        if let Ok(accelerator) = crate::ntt::backends::MetalBn254Ntt::new() {
             whir::protocols::irs_commit::ACCELERATED_COMMITTERS.insert(Arc::new(accelerator));
         }
 

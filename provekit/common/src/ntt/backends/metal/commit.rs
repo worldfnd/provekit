@@ -29,7 +29,9 @@ impl AcceleratedCommitter<Fr> for MetalBn254Ntt {
         codeword_length: usize,
         matrix_commit: &MatrixCommitConfig<Fr>,
     ) -> Result<Option<AcceleratedCommit<Fr>>, String> {
-        if !Self::supports_gpu_shape(codeword_length, messages) || !Self::supports_gpu_commit(matrix_commit) {
+        if !Self::supports_gpu_shape(codeword_length, messages)
+            || !Self::supports_gpu_commit(matrix_commit)
+        {
             return Ok(None);
         }
 
@@ -183,8 +185,16 @@ impl MetalBn254Ntt {
             let current_offset = previous_offset + previous_len;
             let encoder = command_buffer.new_compute_command_encoder();
             encoder.set_compute_pipeline_state(&runtime.sha256_pipeline);
-            encoder.set_buffer(0, Some(tree.as_ref()), (previous_offset * size_of::<Hash>()) as u64);
-            encoder.set_buffer(1, Some(tree.as_ref()), (current_offset * size_of::<Hash>()) as u64);
+            encoder.set_buffer(
+                0,
+                Some(tree.as_ref()),
+                (previous_offset * size_of::<Hash>()) as u64,
+            );
+            encoder.set_buffer(
+                1,
+                Some(tree.as_ref()),
+                (current_offset * size_of::<Hash>()) as u64,
+            );
             encoder.set_bytes(
                 2,
                 size_of::<HashManyParams>() as NSUInteger,
@@ -228,7 +238,10 @@ impl AcceleratedWitness for DeviceMerkleWitness {
 
     fn read_nodes(&self, indices: &[usize]) -> Vec<Hash> {
         let nodes = unsafe {
-            std::slice::from_raw_parts(self.buffer.as_ref().contents().cast::<Hash>(), self.num_nodes)
+            std::slice::from_raw_parts(
+                self.buffer.as_ref().contents().cast::<Hash>(),
+                self.num_nodes,
+            )
         };
         let mut out = Vec::with_capacity(indices.len());
         for &index in indices {
@@ -238,7 +251,6 @@ impl AcceleratedWitness for DeviceMerkleWitness {
         out
     }
 }
-
 
 impl std::fmt::Debug for DeviceRows {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -257,7 +269,10 @@ impl MatrixRows<Fr> for DeviceRows {
     fn read_rows(&self, indices: &[usize]) -> Vec<Fr> {
         let mut out = Vec::with_capacity(indices.len() * self.cols);
         let fields = unsafe {
-            std::slice::from_raw_parts(self.buffer.as_ref().contents().cast::<GpuField>(), self.len())
+            std::slice::from_raw_parts(
+                self.buffer.as_ref().contents().cast::<GpuField>(),
+                self.len(),
+            )
         };
         for &row in indices {
             assert!(row < self.rows, "row index out of bounds");

@@ -17,7 +17,7 @@ use {
 };
 
 impl MetalBn254Ntt {
-    pub(super) fn gpu_encode(
+    pub fn gpu_encode(
         &self,
         messages: &[&[Fr]],
         masks: &[Fr],
@@ -39,7 +39,7 @@ impl MetalBn254Ntt {
         Ok(output)
     }
 
-    pub(super) fn encode_matrix(
+    pub fn encode_matrix(
         &self,
         messages: &[&[Fr]],
         masks: &[Fr],
@@ -56,7 +56,8 @@ impl MetalBn254Ntt {
         }
 
         trace_event(format_args!(
-            "encode rows={} codeword_length={} num_cosets={} coset_size={} polynomials={} path=coset",
+            "encode rows={} codeword_length={} num_cosets={} coset_size={} polynomials={} \
+             path=coset",
             shape.row_count,
             codeword_length,
             shape.num_cosets,
@@ -95,7 +96,8 @@ impl MetalBn254Ntt {
             coset_size:        shape.coset_size as u32,
             trailing_elements: shape
                 .row_count
-                .saturating_mul(shape.codeword_length - shape.coset_size) as u32,
+                .saturating_mul(shape.codeword_length - shape.coset_size)
+                as u32,
         };
         if replicate_params.trailing_elements != 0 {
             let replicate_encoder = command_buffer.new_compute_command_encoder();
@@ -159,7 +161,8 @@ impl MetalBn254Ntt {
         }
         stage_encoder.end_encoding();
 
-        let final_source = choose_final_buffer(stage_count - skipped_stage_count, &current, &scratch);
+        let final_source =
+            choose_final_buffer(stage_count - skipped_stage_count, &current, &scratch);
         let transpose_encoder = command_buffer.new_compute_command_encoder();
         transpose_encoder.set_compute_pipeline_state(&runtime.transpose_pipeline);
         transpose_encoder.set_buffer(0, Some(final_source.as_ref()), 0);
@@ -189,7 +192,7 @@ impl MetalBn254Ntt {
         })
     }
 
-    pub(super) fn encode_shape(
+    pub fn encode_shape(
         messages: &[&[Fr]],
         masks: &[Fr],
         codeword_length: usize,
@@ -248,7 +251,7 @@ impl MetalBn254Ntt {
     }
 
     #[cfg(all(test, target_os = "macos"))]
-    pub(super) fn gpu_mul_pairs(&self, lhs: &[Fr], rhs: &[Fr]) -> Result<Vec<Fr>, String> {
+    pub fn gpu_mul_pairs(&self, lhs: &[Fr], rhs: &[Fr]) -> Result<Vec<Fr>, String> {
         if lhs.len() != rhs.len() {
             return Err("lhs/rhs length mismatch".into());
         }
@@ -314,7 +317,10 @@ fn pack_messages_and_masks_into_buffer(
         .par_chunks_mut(shape.codeword_length)
         .enumerate()
         .for_each(|(row_index, row)| {
-            for (dst, &coeff) in row[..shape.message_length].iter_mut().zip(messages[row_index]) {
+            for (dst, &coeff) in row[..shape.message_length]
+                .iter_mut()
+                .zip(messages[row_index])
+            {
                 *dst = fr_to_gpu(coeff);
             }
             for mask_column in 0..shape.mask_length {
