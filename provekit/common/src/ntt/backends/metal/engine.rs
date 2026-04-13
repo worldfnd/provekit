@@ -15,7 +15,18 @@ use {
     },
 };
 
-const SHADER_SOURCE: &str = include_str!("shader.metal");
+const SHADER_SOURCE: &str = concat!(
+    include_str!("kernels/common.metal"),
+    "\n",
+    include_str!("kernels/field.metal"),
+    "\n",
+    include_str!("kernels/ntt.metal"),
+    "\n",
+    include_str!("kernels/matrix.metal"),
+    "\n",
+    include_str!("kernels/sha256.metal"),
+    "\n",
+);
 
 struct PooledBufferInner {
     runtime:      Arc<MetalRuntime>,
