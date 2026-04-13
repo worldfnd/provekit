@@ -60,12 +60,12 @@ on:
         description: "Mobench version to install"
         required: false
         type: string
-        default: "0.1.30"
+        default: "0.1.31"
       mobench_ref:
-        description: "Git ref for mobile-bench-rs (pinned until post-v0.1.30 formatter/CSV fixes are released)"
+        description: "Optional Git ref for mobile-bench-rs to override the released mobench install"
         required: false
         type: string
-        default: "b1ee42deb3757aabfc41a223bda55133403b9b5a"
+        default: ""
       pr_number:
         description: "PR number for reporting"
         required: false
@@ -235,28 +235,18 @@ jobs:
           echo "Running iOS benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
           echo "iOS devices: ${IOS_DEVICE_SPECS}"
           echo "iOS fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
-          device_args=()
-          IFS=',' read -r -a device_specs <<<"${IOS_DEVICE_SPECS}"
-          for device in "${device_specs[@]}"; do
-            device="$(echo "$device" | xargs)"
-            if [[ -n "$device" ]]; then
-              device_args+=(--devices "$device")
-            fi
-          done
-
-          cargo-mobench ci run \
-            --target ios \
-            --functions "${functions_arg}" \
-            --iterations "${ITERATIONS}" \
-            --warmup "${WARMUP}" \
-            --ios-completion-timeout-secs "${MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS}" \
-            "${device_args[@]}" \
-            --crate-path "$CRATE_PATH" \
-            $RELEASE_FLAG \
-            --fetch \
-            --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
-            --fetch-output-dir target/browserstack/ios \
-            --output-dir target/mobench/ci/ios
+          bash .github/scripts/run_mobile_bench_with_retry.sh \
+            ios \
+            "${functions_arg}" \
+            "${ITERATIONS}" \
+            "${WARMUP}" \
+            "$CRATE_PATH" \
+            "${RELEASE_FLAG}" \
+            "${IOS_DEVICE_SPECS}" \
+            "${MOBENCH_FETCH_TIMEOUT_SECS}" \
+            target/mobench/ci/ios \
+            target/browserstack/ios \
+            "${MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS}"
 
       - name: Diagnose and validate iOS benchmark outputs
         if: always()
@@ -424,27 +414,17 @@ jobs:
           echo "Running Android benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
           echo "Android devices: ${ANDROID_DEVICE_SPECS}"
           echo "Android fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
-          device_args=()
-          IFS=',' read -r -a device_specs <<<"${ANDROID_DEVICE_SPECS}"
-          for device in "${device_specs[@]}"; do
-            device="$(echo "$device" | xargs)"
-            if [[ -n "$device" ]]; then
-              device_args+=(--devices "$device")
-            fi
-          done
-
-          cargo-mobench ci run \
-            --target android \
-            --functions "${functions_arg}" \
-            --iterations "${ITERATIONS}" \
-            --warmup "${WARMUP}" \
-            "${device_args[@]}" \
-            --crate-path "$CRATE_PATH" \
-            $RELEASE_FLAG \
-            --fetch \
-            --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
-            --fetch-output-dir target/browserstack/android \
-            --output-dir target/mobench/ci/android
+          bash .github/scripts/run_mobile_bench_with_retry.sh \
+            android \
+            "${functions_arg}" \
+            "${ITERATIONS}" \
+            "${WARMUP}" \
+            "$CRATE_PATH" \
+            "${RELEASE_FLAG}" \
+            "${ANDROID_DEVICE_SPECS}" \
+            "${MOBENCH_FETCH_TIMEOUT_SECS}" \
+            target/mobench/ci/android \
+            target/browserstack/android
 
       - name: Diagnose and validate Android benchmark outputs
         if: always()
