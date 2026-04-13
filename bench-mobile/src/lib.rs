@@ -21,7 +21,9 @@ pub struct BenchSpec {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
 pub struct BenchSample {
-    pub duration_ns: u64,
+    pub duration_ns:    u64,
+    pub cpu_time_ms:    Option<u64>,
+    pub peak_memory_kb: Option<u64>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
@@ -31,17 +33,19 @@ pub struct SemanticPhase {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
-pub struct BenchResourceUsage {
-    pub cpu_median_ms:  Option<u64>,
-    pub peak_memory_kb: Option<u64>,
+pub struct HarnessTimelineSpan {
+    pub phase:           String,
+    pub start_offset_ns: u64,
+    pub end_offset_ns:   u64,
+    pub iteration:       Option<u32>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
 pub struct BenchReport {
-    pub spec:           BenchSpec,
-    pub samples:        Vec<BenchSample>,
-    pub phases:         Vec<SemanticPhase>,
-    pub resource_usage: Option<BenchResourceUsage>,
+    pub spec:     BenchSpec,
+    pub samples:  Vec<BenchSample>,
+    pub phases:   Vec<SemanticPhase>,
+    pub timeline: Vec<HarnessTimelineSpan>,
 }
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
@@ -80,7 +84,9 @@ impl From<BenchSpec> for mobench_sdk::BenchSpec {
 impl From<mobench_sdk::BenchSample> for BenchSample {
     fn from(sample: mobench_sdk::BenchSample) -> Self {
         Self {
-            duration_ns: sample.duration_ns,
+            duration_ns:    sample.duration_ns,
+            cpu_time_ms:    sample.cpu_time_ms,
+            peak_memory_kb: sample.peak_memory_kb,
         }
     }
 }
@@ -94,14 +100,24 @@ impl From<mobench_sdk::SemanticPhase> for SemanticPhase {
     }
 }
 
+impl From<mobench_sdk::HarnessTimelineSpan> for HarnessTimelineSpan {
+    fn from(span: mobench_sdk::HarnessTimelineSpan) -> Self {
+        Self {
+            phase:           span.phase,
+            start_offset_ns: span.start_offset_ns,
+            end_offset_ns:   span.end_offset_ns,
+            iteration:       span.iteration,
+        }
+    }
+}
+
 impl From<mobench_sdk::RunnerReport> for BenchReport {
     fn from(report: mobench_sdk::RunnerReport) -> Self {
         Self {
-            spec:           report.spec.into(),
-            samples:        report.samples.into_iter().map(Into::into).collect(),
-            phases:         report.phases.into_iter().map(Into::into).collect(),
-            // mobench-sdk still does not report aggregated resource usage on RunnerReport.
-            resource_usage: None,
+            spec:     report.spec.into(),
+            samples:  report.samples.into_iter().map(Into::into).collect(),
+            phases:   report.phases.into_iter().map(Into::into).collect(),
+            timeline: report.timeline.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -172,7 +188,13 @@ pub fn run_benchmark(spec: BenchSpec) -> Result<BenchReport, BenchError> {
                     "sample_count": report.samples.len(),
                     "phase_count": report.phases.len(),
                     "timeline_span_count": report.timeline.len(),
-                    "has_resource_usage": false,
+                    "sample_resource_count": report
+                        .samples
+                        .iter()
+                        .filter(|sample| {
+                            sample.cpu_time_ms.is_some() || sample.peak_memory_kb.is_some()
+                        })
+                        .count(),
                 }),
             );
             Ok(report.into())
@@ -285,4 +307,64 @@ pub fn bench_passport_complete_age_check_e2e() {
     });
 
     black_box(verified);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BenchReport;
+
+    #[test]
+    fn report_conversion_preserves_sample_resource_metrics() {
+        let report = mobench_sdk::RunnerReport {
+            spec:     mobench_sdk::BenchSpec {
+                name:       "bench_mobile::bench_passport_complete_age_check_prove".to_string(),
+                iterations: 1,
+                warmup:     0,
+            },
+            samples:  vec![mobench_sdk::BenchSample {
+                duration_ns:    123,
+                cpu_time_ms:    Some(7),
+                peak_memory_kb: Some(48),
+            }],
+            phases:   vec![],
+            timeline: vec![],
+        };
+
+        let value =
+            serde_json::to_value(BenchReport::from(report)).expect("serialize bench report");
+
+        assert_eq!(value["samples"][0]["cpu_time_ms"], 7);
+        assert_eq!(value["samples"][0]["peak_memory_kb"], 48);
+    }
+
+    #[test]
+    fn report_conversion_preserves_timeline_spans() {
+        let report = mobench_sdk::RunnerReport {
+            spec:     mobench_sdk::BenchSpec {
+                name:       "bench_mobile::bench_passport_complete_age_check_verify".to_string(),
+                iterations: 1,
+                warmup:     0,
+            },
+            samples:  vec![mobench_sdk::BenchSample {
+                duration_ns:    321,
+                cpu_time_ms:    None,
+                peak_memory_kb: None,
+            }],
+            phases:   vec![],
+            timeline: vec![mobench_sdk::HarnessTimelineSpan {
+                phase:           "measured".to_string(),
+                start_offset_ns: 10,
+                end_offset_ns:   20,
+                iteration:       Some(0),
+            }],
+        };
+
+        let value =
+            serde_json::to_value(BenchReport::from(report)).expect("serialize bench report");
+
+        assert_eq!(value["timeline"][0]["phase"], "measured");
+        assert_eq!(value["timeline"][0]["start_offset_ns"], 10);
+        assert_eq!(value["timeline"][0]["end_offset_ns"], 20);
+        assert_eq!(value["timeline"][0]["iteration"], 0);
+    }
 }
