@@ -1,11 +1,12 @@
 use commitment::hash_salt_country_tbs;
-use partial_sha256::{
-    SHA256State, sha256_continue, sha256_finalize, verify_sha256_state_and_data_commitment, commit_to_data_chunk,
-};
 use fragmented_sig_check_rsa::verify_rsa_signature;
+use partial_sha256::{
+    commit_to_data_chunk, sha256_continue, sha256_finalize, SHA256State,
+    verify_sha256_state_and_data_commitment,
+};
+use sig_check_rsa::compute_key_ne_hash;
 use utils::check_zero_padding;
 use utils::get_asn1_element_length;
-use sig_check_rsa::compute_key_ne_hash;
 use utils::types::{Alpha3CountryCode, SHA256Digest};
 
 global CHUNK1_SIZE: u32 = 640;
@@ -35,10 +36,7 @@ fn main(
     // Validate prover-supplied tbs_certificate_len against ASN.1 DER header
     assert(tbs_certificate[0] == 0x30, "TBS must start with SEQUENCE tag");
     let computed_len = get_asn1_element_length(tbs_certificate);
-    assert(
-        tbs_certificate_len == computed_len,
-        "tbs_certificate_len does not match ASN.1 header",
-    );
+    assert(tbs_certificate_len == computed_len, "tbs_certificate_len does not match ASN.1 header");
 
     // Ensure all bytes beyond the signed length are zero so that trailing
     // bytes cannot carry attacker-controlled data into the commitment.
@@ -80,7 +78,12 @@ fn main(
         }
     }
 
-    let tbs_hash: SHA256Digest = sha256_finalize(state2, final_block, final_partial_bytes, tbs_certificate_len);
+    let tbs_hash: SHA256Digest = sha256_finalize(
+        state2,
+        final_block,
+        final_partial_bytes,
+        tbs_certificate_len,
+    );
 
     assert(
         verify_rsa_signature::<512>(
@@ -93,11 +96,7 @@ fn main(
         "RSA signature verification failed",
     );
 
-    let comm_out = hash_salt_country_tbs(
-        salt_out,
-        country,
-        tbs_certificate,
-    );
+    let comm_out = hash_salt_country_tbs(salt_out, country, tbs_certificate);
 
     comm_out
 }
