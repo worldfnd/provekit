@@ -7207,6 +7207,7 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
+source = "git+https://github.com/zkfriendly/whir.git?branch=zkfr%2Fadd-metal-gpu#bf677220a7c6333070d00ca032015a5c9c5d6fd5"
 dependencies = [
  "ark-ff 0.5.0",
  "ark-serialize 0.5.0",
