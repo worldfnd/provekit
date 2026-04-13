@@ -33,6 +33,9 @@ pub struct MetalBn254Ntt;
 static RUNTIME: OnceLock<Result<Arc<MetalRuntime>, String>> = OnceLock::new();
 
 impl MetalBn254Ntt {
+    const MIN_GPU_TOTAL_ELEMENTS: usize = 1 << 20;
+    const MIN_GPU_ROW_COUNT: usize = 64;
+
     #[cfg(target_os = "macos")]
     pub fn new() -> Result<Self, String> {
         if env::var_os("PROVEKIT_DISABLE_METAL_NTT").is_some() {
@@ -81,7 +84,11 @@ impl MetalBn254Ntt {
         if row_coeffs.is_empty() {
             return false;
         }
-        codeword_length > 1 && codeword_length.is_power_of_two()
+        if codeword_length <= 1 || !codeword_length.is_power_of_two() {
+            return false;
+        }
+        let total_elements = row_coeffs.len().saturating_mul(codeword_length);
+        total_elements >= Self::MIN_GPU_TOTAL_ELEMENTS || row_coeffs.len() >= Self::MIN_GPU_ROW_COUNT
     }
 
     #[cfg(target_os = "macos")]
