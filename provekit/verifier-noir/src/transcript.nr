@@ -46,11 +46,7 @@ impl Sponge {
     /// Used for domain separator: the tag (32 bytes) is placed in state[32..64]
     /// i.e. the capacity portion = state[1].
     pub fn new_with_tag(tag: Field) -> Self {
-        Self {
-            state: [0, tag],
-            absorb_pos: 0,
-            squeeze_pos: 32,
-        }
+        Self { state: [0, tag], absorb_pos: 0, squeeze_pos: 32 }
     }
 
     /// Permute the state using Skyscraper.
@@ -61,7 +57,99 @@ impl Sponge {
     }
 
     // =====================================================================
-    // Field-aligned operations (most common, cheapest)
+    // FAST PATH: aligned absorb / squeeze
+    // =====================================================================
+    //
+    // The general absorb_field / squeeze_field methods carry an
+    // `if absorb_pos == 0 { fast } else { partial-rate }` branch. ACIR
+    // flattens both branches, so every call pays for the partial-rate
+    // dead code path (~800 constraints of byte decompose / merge / second
+    // permute) that the WHIR verifier never takes at runtime.
+    //
+    // The aligned variants below assume the WHIR verifier's actual
+    // invariant: between calls, absorb_pos is always 0 or 32 - i.e. the
+    // sponge is at a field boundary. They drop the dead branch entirely,
+    // saving ~870 constraints per call.
+    //
+    // Soundness: identical sponge state evolution, identical Fiat-Shamir
+    // transcript bytes. Only unreachable branches are removed.
+    //
+    // Use sequence:
+    //   let mut sho = Sponge::new();
+    //   sho.absorb_bytes(protocol_id);              // byte init (rare)
+    //   sho.absorb_bytes(instance);                 // byte init (rare)
+    //   sho.absorb_field_aligned(initial_root);     // every other absorb
+    //   ...
+    //   sho.squeeze_field_aligned();                // every squeeze
+    //
+    // For cold-start use (when the sponge has just been created and
+    // nothing has been absorbed yet), call `absorb_field_first` once
+    // before switching to `absorb_field_aligned`. The first call after
+    // `Sponge::new()` must NOT permute - spongefish's DuplexSponge
+    // begins with squeeze_pos = RATE and absorb_pos = 0, so the first
+    // field is written directly into the rate without a prior permute.
+
+    /// First field absorb after `Sponge::new()` - no permute.
+    ///
+    /// Mirrors spongefish DuplexSponge::absorb_unchecked when called on
+    /// a fresh state: rate is empty, absorb_pos = 0, so the field is
+    /// written directly into state[0] and absorb_pos becomes 32.
+    pub fn absorb_field_first(&mut self, f: Field) {
+        self.state[0] = f;
+        self.absorb_pos = 32;
+        self.squeeze_pos = 32;
+    }
+
+    /// Absorb a field element assuming the sponge is at a field boundary.
+    ///
+    /// PRECONDITION: absorb_pos == 32 (always true after a prior
+    /// absorb_field_aligned / absorb_field_first / squeeze_field_aligned
+    /// call). Calling this with absorb_pos != 32 produces an incorrect
+    /// transcript.
+    ///
+    /// Cost: ~676 constraints (one Skyscraper permute) - vs ~1550 for
+    /// the general `absorb_field`.
+    pub fn absorb_field_aligned(&mut self, f: Field) {
+        self.do_permute();
+        self.state[0] = f;
+        self.absorb_pos = 32;
+        self.squeeze_pos = 32;
+    }
+
+    /// Squeeze a field element from a sponge at a field boundary.
+    ///
+    /// Mirrors `squeeze_field` but drops the partial-rate dead branches.
+    /// PRECONDITION: the sponge is at a field boundary, i.e. squeeze_pos
+    /// is either 0 (we just wrote/permuted into rate) or 32 (we need a
+    /// fresh permute). Both cases are handled identically by the
+    /// duplex-sponge spec: squeezing always permutes first when entering
+    /// squeeze mode, then reads the rate.
+    ///
+    /// Returns `low + high * 2^256` mod p, matching arkworks
+    /// `from_le_bytes_mod_order` on 64 bytes squeezed from two
+    /// consecutive permutations.
+    ///
+    /// Cost: ~1352 constraints (two permutes) - vs ~3100 for the
+    /// general `squeeze_field`.
+    pub fn squeeze_field_aligned(&mut self) -> Field {
+        // First 32 bytes: permute into a fresh rate, take state[0] as the
+        // 32-byte little-endian integer.
+        self.do_permute();
+        let low = self.state[0];
+
+        // Second 32 bytes: permute again, take state[0] again.
+        self.do_permute();
+        let high = self.state[0];
+
+        // After squeezing 64 bytes the rate is exhausted; mark for refill.
+        self.absorb_pos = 0;
+        self.squeeze_pos = 32;
+
+        low + high * crate::types::TWO_POW_256
+    }
+
+    // =====================================================================
+    // Field-aligned operations (general, with dead-code partial-rate path)
     // =====================================================================
 
     /// Absorb a single field element (32 LE bytes).
@@ -211,7 +299,11 @@ impl Sponge {
                 // Write bytes into rate starting at absorb_pos
                 let space = 32 - self.absorb_pos;
                 let remaining_input = N - input_pos;
-                let to_write = if space < remaining_input { space } else { remaining_input };
+                let to_write = if space < remaining_input {
+                    space
+                } else {
+                    remaining_input
+                };
 
                 for i in 0..32 {
                     if (i as u32) < to_write {

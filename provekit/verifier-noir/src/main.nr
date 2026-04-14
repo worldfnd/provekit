@@ -24,31 +24,24 @@ mod matrix_eval;
 mod public_input;
 mod whir;
 
-use types::{
-    LOG_NUM_CONSTRAINTS, LOG_NUM_VARIABLES, NUM_WHIR_ROUNDS,
-    FOLDING_FACTOR, MAX_QUERIES_PER_ROUND, TREE_HEIGHT, FOLD_SIZE,
-    OOD_SAMPLES, FINAL_SUMCHECK_ROUNDS, MAX_PUBLIC_INPUTS,
-    ROUND_ARRAY_SIZE, BLINDING_ROUND_ARRAY_SIZE,
-    FINAL_SC_ARRAY_SIZE, BLINDING_FINAL_SC_ARRAY_SIZE,
-    BLINDING_OOD_SAMPLES, BLINDING_WHIR_ROUNDS, BLINDING_TREE_HEIGHT,
-    NUM_WITNESS_VARIABLES, NUM_BLINDING_VECTORS,
-    BLINDING_MAX_QUERIES, BLINDING_FOLD_SIZE,
-    BLINDING_MERKLE_LEAF_SIZE,
-    NUM_W_FOLDED_EVALS, FINAL_POLY_SIZE,
-    BLINDING_FINAL_POLY_SIZE, BLINDING_FINAL_POLY_ARRAY_SIZE,
-    BLINDING_FINAL_SUMCHECK_ROUNDS,
-    MAX_MATRIX_CELLS, MatrixCell,
-    MAX_GAMMAS, INNER_WHIR_CONSTRAINT_COUNT, BLINDING_WHIR_CONSTRAINT_COUNT,
-    STIR_BYTES_PER_INDEX, BLINDING_STIR_BYTES_PER_INDEX,
-};
-use transcript::Sponge;
-use sumcheck::{run_sumcheck_verifier, SumcheckResult};
+use matrix_eval::{calculate_eq, eq_over_hypercube, evaluate_r1cs_matrices};
 use merkle::verify_merkle_proof_dynamic;
-use matrix_eval::{eq_over_hypercube, calculate_eq, evaluate_r1cs_matrices};
-use public_input::{verify_public_input_hash, verify_public_eval};
+use public_input::{verify_public_eval, verify_public_input_hash};
+use sumcheck::{run_sumcheck_verifier, SumcheckResult};
+use transcript::Sponge;
+use types::{
+    BLINDING_FINAL_POLY_ARRAY_SIZE, BLINDING_FINAL_POLY_SIZE, BLINDING_FINAL_SC_ARRAY_SIZE,
+    BLINDING_FINAL_SUMCHECK_ROUNDS, BLINDING_FOLD_SIZE, BLINDING_MAX_QUERIES,
+    BLINDING_MERKLE_LEAF_SIZE, BLINDING_OOD_SAMPLES, BLINDING_ROUND_ARRAY_SIZE,
+    BLINDING_STIR_BYTES_PER_INDEX, BLINDING_TREE_HEIGHT, BLINDING_WHIR_CONSTRAINT_COUNT,
+    BLINDING_WHIR_ROUNDS, FINAL_POLY_SIZE, FINAL_SC_ARRAY_SIZE, FINAL_SUMCHECK_ROUNDS, FOLD_SIZE,
+    FOLDING_FACTOR, INNER_WHIR_CONSTRAINT_COUNT, LOG_NUM_CONSTRAINTS, LOG_NUM_VARIABLES, MatrixCell,
+    MAX_GAMMAS, MAX_MATRIX_CELLS, MAX_PUBLIC_INPUTS, MAX_QUERIES_PER_ROUND, NUM_BLINDING_VECTORS,
+    NUM_W_FOLDED_EVALS, NUM_WHIR_ROUNDS, NUM_WITNESS_VARIABLES, OOD_SAMPLES, ROUND_ARRAY_SIZE,
+    STIR_BYTES_PER_INDEX, TREE_HEIGHT,
+};
 use whir::{
-    run_whir_sumcheck,
-    compute_fold, check_pow, generate_combination_randomness,
+    check_pow, compute_fold, generate_combination_randomness, run_whir_sumcheck,
     squeeze_stir_challenges,
 };
 
@@ -61,7 +54,11 @@ global PROTOCOL_ID_SIZE: u32 = 64;
 global INSTANCE_SIZE: u32 = 32;
 
 // Public inputs: when MAX_PUBLIC_INPUTS=0, keep a sized array at 1.
-global PUBLIC_INPUTS_ARRAY_SIZE: u32 = if MAX_PUBLIC_INPUTS == 0 { 1 } else { MAX_PUBLIC_INPUTS };
+global PUBLIC_INPUTS_ARRAY_SIZE: u32 = if MAX_PUBLIC_INPUTS == 0 {
+    1
+} else {
+    MAX_PUBLIC_INPUTS
+};
 
 // --- Entry point ---
 
@@ -69,72 +66,57 @@ fn main(
     // --- Transcript initialization ---
     protocol_id: [u8; PROTOCOL_ID_SIZE],
     instance: [u8; INSTANCE_SIZE],
-
     // --- Phase 1: Commitment data ---
     initial_root_hash: Field,
     initial_ood_answers: [Field; OOD_SAMPLES],
-
     blinding_root_hash: Field,
     blinding_ood_answers: [Field; BLINDING_OOD_SAMPLES],
-
     // --- Phase 2: Spartan sumcheck prover messages ---
     sum_g: Field,
     sumcheck_coeffs: [[Field; 4]; LOG_NUM_CONSTRAINTS],
     blinding_eval: Field,
-
     // --- Phase 3: Public inputs ---
     public_inputs: pub [Field; PUBLIC_INPUTS_ARRAY_SIZE],
     num_public_inputs: pub u32,
     public_inputs_hash_from_prover: Field,
-
     // --- Phase 3b: Evaluation claims ---
     evals_az: Field,
     evals_bz: Field,
     evals_cz: Field,
     public_eval: Field,
-
     // --- Phase 4: zkWHIR verification data ---
     w_folded_evals: [Field; NUM_W_FOLDED_EVALS],
-
     // --- Phase 4a: Inner WHIR verify (blinded_commitment) ---
     // WHIR sumcheck coefficients: [c0, c2] per round (c1 derived as sum - 2*c0 - c2)
     initial_whir_sumcheck_coeffs: [[Field; 2]; FOLDING_FACTOR],
-
     // Per-round WHIR data (uses ROUND_ARRAY_SIZE = max(NUM_WHIR_ROUNDS, 1))
     round_root_hashes: [Field; ROUND_ARRAY_SIZE],
     round_ood_answers: [[Field; OOD_SAMPLES]; ROUND_ARRAY_SIZE],
     round_whir_sumcheck_coeffs: [[[Field; 2]; FOLDING_FACTOR]; ROUND_ARRAY_SIZE],
-
     round_merkle_leaves: [[[Field; FOLD_SIZE]; MAX_QUERIES_PER_ROUND]; ROUND_ARRAY_SIZE],
     round_merkle_siblings: [[[Field; TREE_HEIGHT]; MAX_QUERIES_PER_ROUND]; ROUND_ARRAY_SIZE],
     round_merkle_indices: [[u32; MAX_QUERIES_PER_ROUND]; ROUND_ARRAY_SIZE],
     round_merkle_leaf_sizes: [u32; ROUND_ARRAY_SIZE],
     round_merkle_tree_heights: [u32; ROUND_ARRAY_SIZE],
     round_num_queries: [u32; ROUND_ARRAY_SIZE],
-
     round_pow_nonces: [u64; ROUND_ARRAY_SIZE],
-
     // Final WHIR round data (blinded commitment)
     final_coefficients: [Field; FINAL_POLY_SIZE],
     final_pow_nonce: u64,
-
     final_merkle_leaves: [[Field; FOLD_SIZE]; MAX_QUERIES_PER_ROUND],
     final_merkle_siblings: [[Field; TREE_HEIGHT]; MAX_QUERIES_PER_ROUND],
     final_merkle_indices: [u32; MAX_QUERIES_PER_ROUND],
     final_merkle_leaf_size: u32,
     final_merkle_tree_height: u32,
     final_num_queries: u32,
-
     // Final sumcheck (FINAL_SUMCHECK_ROUNDS rounds)
     final_whir_sumcheck_coeffs: [[Field; 2]; FINAL_SC_ARRAY_SIZE],
-
     // --- Phase 4b: Per-gamma claims ---
     num_gammas: u32,
     gamma_m_evals: [Field; MAX_GAMMAS],
     gamma_g_hat_evals: [[Field; NUM_WITNESS_VARIABLES]; MAX_GAMMAS],
     combined_claims: Field,
     batched_h_claims: Field,
-
     // --- Phase 4c: Blinding WHIR verification ---
     blinding_whir_initial_coeffs: [[Field; 2]; FOLDING_FACTOR],
     blinding_round_root_hashes: [Field; BLINDING_ROUND_ARRAY_SIZE],
@@ -156,7 +138,6 @@ fn main(
     blinding_final_merkle_leaf_size: u32,
     blinding_final_merkle_tree_height: u32,
     blinding_final_num_queries: u32,
-
     // --- Phase 5: R1CS matrices (sparse, flattened) ---
     matrix_a_rows: [u32; MAX_MATRIX_CELLS],
     matrix_a_cols: [u32; MAX_MATRIX_CELLS],
@@ -186,35 +167,31 @@ fn main(
     // irs_commit::receive_commitment -> absorb Merkle root + squeeze/absorb OOD
 
     // Phase 1a: f_hat commitment (blinded_commitment)
-    sho.absorb_field(initial_root_hash);
+    sho.absorb_field_aligned(initial_root_hash);
 
     for _i in 0..OOD_SAMPLES {
-        let _ood_query = sho.squeeze_field();
+        let _ood_query = sho.squeeze_field_aligned();
     }
     for i in 0..OOD_SAMPLES {
-        sho.absorb_field(initial_ood_answers[i]);
+        sho.absorb_field_aligned(initial_ood_answers[i]);
     }
 
     // Phase 1b: Blinding commitment
-    sho.absorb_field(blinding_root_hash);
+    sho.absorb_field_aligned(blinding_root_hash);
 
     for _i in 0..BLINDING_OOD_SAMPLES {
-        let _blinding_ood_query = sho.squeeze_field();
+        let _blinding_ood_query = sho.squeeze_field_aligned();
     }
     for i in 0..BLINDING_OOD_SAMPLES {
-        sho.absorb_field(blinding_ood_answers[i]);
+        sho.absorb_field_aligned(blinding_ood_answers[i]);
     }
 
     // ===================================================================
     // Phase 2: Run Spartan sumcheck
     // ===================================================================
 
-    let sc_result: SumcheckResult<LOG_NUM_CONSTRAINTS> = run_sumcheck_verifier(
-        &mut sho,
-        sumcheck_coeffs,
-        sum_g,
-        blinding_eval,
-    );
+    let sc_result: SumcheckResult<LOG_NUM_CONSTRAINTS> =
+        run_sumcheck_verifier(&mut sho, sumcheck_coeffs, sum_g, blinding_eval);
 
     // ===================================================================
     // Phase 3: Public input binding + evaluation claims
@@ -311,11 +288,8 @@ fn main(
     let mut total_folding_rand: [Field; LOG_NUM_VARIABLES] = [0; LOG_NUM_VARIABLES];
 
     // 4a.3: Initial WHIR sumcheck (FOLDING_FACTOR rounds, quadratic)
-    let (initial_fold_rand, mut last_eval) = run_whir_sumcheck(
-        &mut sho,
-        0,
-        initial_whir_sumcheck_coeffs,
-    );
+    let (initial_fold_rand, mut last_eval) =
+        run_whir_sumcheck(&mut sho, 0, initial_whir_sumcheck_coeffs);
 
     // Store initial folding randomness
     for i in 0..FOLDING_FACTOR {
@@ -356,21 +330,14 @@ fn main(
         }
 
         // Compute fold from leaf values
-        let _fold = compute_fold(
-            round_merkle_leaves[r],
-            initial_fold_rand,
-            n_queries,
-        );
+        let _fold = compute_fold(round_merkle_leaves[r], initial_fold_rand, n_queries);
 
         // Constraint RLC for this round (geometric_challenge)
         let _round_constraint_rlc: Field = sho.squeeze_field();
 
         // Round sumcheck (quadratic, with potential per-round PoW inside)
-        let (round_fold_rand, new_last_eval) = run_whir_sumcheck(
-            &mut sho,
-            last_eval,
-            round_whir_sumcheck_coeffs[r],
-        );
+        let (round_fold_rand, new_last_eval) =
+            run_whir_sumcheck(&mut sho, last_eval, round_whir_sumcheck_coeffs[r]);
         last_eval = new_last_eval;
 
         // Accumulate round folding randomness
@@ -413,11 +380,8 @@ fn main(
     }
 
     // 4a.8: Final sumcheck (FINAL_SUMCHECK_ROUNDS rounds)
-    let (final_fold_rand, _final_last_eval) = run_whir_sumcheck(
-        &mut sho,
-        last_eval,
-        final_whir_sumcheck_coeffs,
-    );
+    let (final_fold_rand, _final_last_eval) =
+        run_whir_sumcheck(&mut sho, last_eval, final_whir_sumcheck_coeffs);
 
     // Accumulate final folding randomness
     let final_offset = FOLDING_FACTOR + NUM_WHIR_ROUNDS * FOLDING_FACTOR;
@@ -440,11 +404,8 @@ fn main(
         generate_combination_randomness(&mut sho, BLINDING_WHIR_CONSTRAINT_COUNT);
 
     // Blinding initial sumcheck
-    let (blinding_initial_fold_rand, mut blinding_last_eval) = run_whir_sumcheck(
-        &mut sho,
-        0,
-        blinding_whir_initial_coeffs,
-    );
+    let (blinding_initial_fold_rand, mut blinding_last_eval) =
+        run_whir_sumcheck(&mut sho, 0, blinding_whir_initial_coeffs);
 
     // Per-round blinding WHIR verification
     for r in 0..BLINDING_WHIR_ROUNDS {
@@ -460,7 +421,11 @@ fn main(
         check_pow(&mut sho, blinding_round_pow_nonces[r]);
 
         // STIR opening of previous blinding commitment
-        squeeze_stir_challenges(&mut sho, blinding_round_num_queries[r], BLINDING_STIR_BYTES_PER_INDEX);
+        squeeze_stir_challenges(
+            &mut sho,
+            blinding_round_num_queries[r],
+            BLINDING_STIR_BYTES_PER_INDEX,
+        );
 
         let n_queries = blinding_round_num_queries[r];
         for q in 0..BLINDING_MAX_QUERIES {
@@ -492,15 +457,12 @@ fn main(
                 }
             }
         }
-        let _blinding_fold = compute_fold(
-            blinding_fold_leaves,
-            blinding_initial_fold_rand,
-            n_queries,
-        );
+        let _blinding_fold =
+            compute_fold(blinding_fold_leaves, blinding_initial_fold_rand, n_queries);
 
         let _blinding_round_rlc: Field = sho.squeeze_field();
 
-        let (new_fold_rand, new_last_eval) = run_whir_sumcheck(
+        let (_new_fold_rand, new_last_eval) = run_whir_sumcheck(
             &mut sho,
             blinding_last_eval,
             blinding_round_sumcheck_coeffs[r],
@@ -517,7 +479,11 @@ fn main(
     check_pow(&mut sho, blinding_final_pow_nonce);
 
     // STIR opening for blinding final round
-    squeeze_stir_challenges(&mut sho, blinding_final_num_queries, BLINDING_STIR_BYTES_PER_INDEX);
+    squeeze_stir_challenges(
+        &mut sho,
+        blinding_final_num_queries,
+        BLINDING_STIR_BYTES_PER_INDEX,
+    );
 
     // Verify blinding final Merkle proofs against last round root (or initial if 0 rounds)
     let blinding_final_root = if BLINDING_WHIR_ROUNDS == 0 {
@@ -541,11 +507,8 @@ fn main(
     // Blinding final sumcheck: BLINDING_FINAL_SUMCHECK_ROUNDS=0 means no rounds.
     // The array is sized BLINDING_FINAL_SC_ARRAY_SIZE=1 for Noir, but we skip execution.
     if BLINDING_FINAL_SUMCHECK_ROUNDS > 0 {
-        let (_blinding_final_fold, _blinding_final_eval) = run_whir_sumcheck(
-            &mut sho,
-            blinding_last_eval,
-            blinding_final_sumcheck_coeffs,
-        );
+        let (_blinding_final_fold, _blinding_final_eval) =
+            run_whir_sumcheck(&mut sho, blinding_last_eval, blinding_final_sumcheck_coeffs);
     }
 
     // ===================================================================
@@ -555,20 +518,30 @@ fn main(
     let eq_row: [Field; EQ_ROW_SIZE] = eq_over_hypercube(sc_result.alpha);
     let eq_col: [Field; EQ_COL_SIZE] = eq_over_hypercube(total_folding_rand);
 
-    let mut matrix_a: [MatrixCell; MAX_MATRIX_CELLS] = [MatrixCell { row: 0, col: 0, val: 0 }; MAX_MATRIX_CELLS];
-    let mut matrix_b: [MatrixCell; MAX_MATRIX_CELLS] = [MatrixCell { row: 0, col: 0, val: 0 }; MAX_MATRIX_CELLS];
-    let mut matrix_c: [MatrixCell; MAX_MATRIX_CELLS] = [MatrixCell { row: 0, col: 0, val: 0 }; MAX_MATRIX_CELLS];
+    let mut matrix_a: [MatrixCell; MAX_MATRIX_CELLS] =
+        [MatrixCell { row: 0, col: 0, val: 0 }; MAX_MATRIX_CELLS];
+    let mut matrix_b: [MatrixCell; MAX_MATRIX_CELLS] =
+        [MatrixCell { row: 0, col: 0, val: 0 }; MAX_MATRIX_CELLS];
+    let mut matrix_c: [MatrixCell; MAX_MATRIX_CELLS] =
+        [MatrixCell { row: 0, col: 0, val: 0 }; MAX_MATRIX_CELLS];
     for i in 0..MAX_MATRIX_CELLS {
-        matrix_a[i] = MatrixCell { row: matrix_a_rows[i], col: matrix_a_cols[i], val: matrix_a_vals[i] };
-        matrix_b[i] = MatrixCell { row: matrix_b_rows[i], col: matrix_b_cols[i], val: matrix_b_vals[i] };
-        matrix_c[i] = MatrixCell { row: matrix_c_rows[i], col: matrix_c_cols[i], val: matrix_c_vals[i] };
+        matrix_a[i] =
+            MatrixCell { row: matrix_a_rows[i], col: matrix_a_cols[i], val: matrix_a_vals[i] };
+        matrix_b[i] =
+            MatrixCell { row: matrix_b_rows[i], col: matrix_b_cols[i], val: matrix_b_vals[i] };
+        matrix_c[i] =
+            MatrixCell { row: matrix_c_rows[i], col: matrix_c_cols[i], val: matrix_c_vals[i] };
     }
 
     let matrix_evals: [Field; 3] = evaluate_r1cs_matrices(
-        matrix_a, a_len,
-        matrix_b, b_len,
-        matrix_c, c_len,
-        eq_row, eq_col,
+        matrix_a,
+        a_len,
+        matrix_b,
+        b_len,
+        matrix_c,
+        c_len,
+        eq_row,
+        eq_col,
     );
 
     assert(matrix_evals[0] == evals_az, "Matrix A evaluation mismatch");
@@ -581,8 +554,5 @@ fn main(
 
     let eq_val = calculate_eq(sc_result.r, sc_result.alpha);
     let expected = (evals_az * evals_bz - evals_cz) * eq_val;
-    assert(
-        sc_result.f_at_alpha == expected,
-        "Final Spartan relation check failed",
-    );
+    assert(sc_result.f_at_alpha == expected, "Final Spartan relation check failed");
 }
