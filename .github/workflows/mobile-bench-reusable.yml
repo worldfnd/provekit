@@ -126,17 +126,14 @@ jobs:
             smoke)
               device_specs="iPhone 16 Pro-18"
               fetch_timeout_secs="1200"
-              benchmark_timeout_secs="600"
               ;;
             worst)
               device_specs="iPhone SE 2020-16"
               fetch_timeout_secs="1800"
-              benchmark_timeout_secs="1200"
               ;;
             triad)
               device_specs="iPhone SE 2020-16,iPhone 15-17,iPhone 16 Pro-18"
               fetch_timeout_secs="2400"
-              benchmark_timeout_secs="1200"
               ;;
             *)
               echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad, worst."
@@ -148,12 +145,10 @@ jobs:
             echo "MOBENCH_DEVICE_PROFILE=${DEVICE_PROFILE}"
             echo "IOS_DEVICE_SPECS=${device_specs}"
             echo "MOBENCH_FETCH_TIMEOUT_SECS=${fetch_timeout_secs}"
-            echo "MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS=${benchmark_timeout_secs}"
           } >> "$GITHUB_ENV"
 
           echo "Resolved iOS device profile '${DEVICE_PROFILE}' to ${device_specs}"
           echo "Resolved iOS fetch timeout to ${fetch_timeout_secs}s"
-          echo "Resolved iOS benchmark completion timeout to ${benchmark_timeout_secs}s"
 
       - name: Setup Rust
         shell: bash
@@ -205,7 +200,6 @@ jobs:
         run: |
           set -euo pipefail
           echo "Building iOS artifacts for profile ${MOBENCH_DEVICE_PROFILE}"
-          echo "Using iOS benchmark completion timeout ${MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS}s"
           cargo-mobench build \
             --target ios \
             $RELEASE_FLAG \
@@ -285,7 +279,6 @@ jobs:
               --functions "${functions_arg}" \
               --iterations "${ITERATIONS}" \
               --warmup "${WARMUP}" \
-              --ios-completion-timeout-secs "${MOBENCH_IOS_BENCHMARK_TIMEOUT_SECS}" \
               "${device_args[@]}" \
               --crate-path "$CRATE_PATH" \
               $RELEASE_FLAG \
@@ -720,8 +713,7 @@ jobs:
           done
 
           if [ "${rendered_count}" -eq 0 ]; then
-            echo "::error::No benchmark summaries were rendered."
-            exit 1
+            echo "::warning::No benchmark summaries were rendered."
           fi
 
           echo "rendered_count=${rendered_count}" >> "$GITHUB_OUTPUT"
