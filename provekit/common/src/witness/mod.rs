@@ -249,12 +249,12 @@ mod tests {
 
     #[test]
     fn hash_depends_on_order_for_all_configs() {
-        let ab = pi(&[1, 2]);
-        let ba = pi(&[2, 1]);
+        let input = pi(&[1, 2]);
+        let reversed = pi(&[2, 1]);
         for config in ALL_CONFIGS {
             assert_ne!(
-                ab.hash(config),
-                ba.hash(config),
+                input.hash(config),
+                reversed.hash(config),
                 "{config:?}: hash must be order-sensitive"
             );
         }
