@@ -59,6 +59,15 @@ impl ConstantOrR1CSWitness {
     }
 }
 
+/// Serialize a field element to its canonical 32-byte little-endian form.
+fn fe_to_bytes_le(fe: &FieldElement) -> [u8; 32] {
+    let bytes = fe.into_bigint().to_bytes_le();
+    let mut result = [0u8; 32];
+    let len = bytes.len().min(32);
+    result[..len].copy_from_slice(&bytes[..len]);
+    result
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublicInputs(#[serde(with = "serde_ark_vec")] pub Vec<FieldElement>);
 
@@ -83,17 +92,49 @@ impl PublicInputs {
         self.0.is_empty()
     }
 
+    /// Compute the public-inputs commitment as a field element using the
+    /// specified hash algorithm.
+    ///
+    /// Used as a prover transcript message (bound to the Fiat-Shamir instance)
+    /// and checked by the verifier. Both prover and verifier must call this
+    /// with the same `hash_config` to produce matching transcripts.
     #[must_use]
-    pub fn hash(&self) -> FieldElement {
-        fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
-            let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);
-            FieldElement::new(BigInt(out))
-        }
-
-        match self.0.len() {
-            0 => FieldElement::from(0u64),
-            1 => compress(self.0[0], FieldElement::from(0u64)),
-            _ => self.0.iter().copied().reduce(compress).unwrap(),
+    pub fn hash(&self, hash_config: crate::HashConfig) -> FieldElement {
+        match hash_config {
+            crate::HashConfig::Skyscraper => {
+                fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
+                    let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);
+                    FieldElement::new(BigInt(out))
+                }
+                match self.0.len() {
+                    0 => FieldElement::from(0u64),
+                    1 => compress(self.0[0], FieldElement::from(0u64)),
+                    _ => self.0.iter().copied().reduce(compress).unwrap(),
+                }
+            }
+            crate::HashConfig::Sha256 => {
+                use sha2::{Digest, Sha256};
+                let mut hasher = Sha256::new();
+                for fe in &self.0 {
+                    hasher.update(fe_to_bytes_le(fe));
+                }
+                FieldElement::from_le_bytes_mod_order(&hasher.finalize())
+            }
+            crate::HashConfig::Keccak => {
+                use sha3::{Digest, Keccak256};
+                let mut hasher = Keccak256::new();
+                for fe in &self.0 {
+                    hasher.update(fe_to_bytes_le(fe));
+                }
+                FieldElement::from_le_bytes_mod_order(&hasher.finalize())
+            }
+            crate::HashConfig::Blake3 => {
+                let mut hasher = blake3::Hasher::new();
+                for fe in &self.0 {
+                    hasher.update(&fe_to_bytes_le(fe));
+                }
+                FieldElement::from_le_bytes_mod_order(hasher.finalize().as_bytes())
+            }
         }
     }
 
@@ -101,8 +142,8 @@ impl PublicInputs {
     ///
     /// Used to bind public inputs to the Fiat-Shamir transcript instance.
     #[must_use]
-    pub fn hash_bytes(&self) -> [u8; 32] {
-        let hash = self.hash();
+    pub fn hash_bytes(&self, hash_config: crate::HashConfig) -> [u8; 32] {
+        let hash = self.hash(hash_config);
         let bytes = hash.into_bigint().to_bytes_le();
         let mut result = [0u8; 32];
         let len = bytes.len().min(32);
