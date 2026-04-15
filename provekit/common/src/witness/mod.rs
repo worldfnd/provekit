@@ -60,11 +60,18 @@ impl ConstantOrR1CSWitness {
 }
 
 /// Serialize a field element to its canonical 32-byte little-endian form.
+///
+/// Panics if the serialized representation exceeds 32 bytes, which would
+/// indicate a field larger than BN254
 fn fe_to_bytes_le(fe: &FieldElement) -> [u8; 32] {
     let bytes = fe.into_bigint().to_bytes_le();
+    assert!(
+        bytes.len() <= 32,
+        "field element serialized to {} bytes; expected ≤ 32 (BN254 is 254-bit)",
+        bytes.len()
+    );
     let mut result = [0u8; 32];
-    let len = bytes.len().min(32);
-    result[..len].copy_from_slice(&bytes[..len]);
+    result[..bytes.len()].copy_from_slice(&bytes);
     result
 }
 
@@ -143,17 +150,142 @@ impl PublicInputs {
     /// Used to bind public inputs to the Fiat-Shamir transcript instance.
     #[must_use]
     pub fn hash_bytes(&self, hash_config: crate::HashConfig) -> [u8; 32] {
-        let hash = self.hash(hash_config);
-        let bytes = hash.into_bigint().to_bytes_le();
-        let mut result = [0u8; 32];
-        let len = bytes.len().min(32);
-        result[..len].copy_from_slice(&bytes[..len]);
-        result
+        fe_to_bytes_le(&self.hash(hash_config))
     }
 }
 
 impl Default for PublicInputs {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {super::*, crate::HashConfig};
+
+    const ALL_CONFIGS: [HashConfig; 4] = [
+        HashConfig::Skyscraper,
+        HashConfig::Sha256,
+        HashConfig::Keccak,
+        HashConfig::Blake3,
+    ];
+
+    fn fe(n: u64) -> FieldElement {
+        FieldElement::from(n)
+    }
+
+    fn pi(vals: &[u64]) -> PublicInputs {
+        PublicInputs::from_vec(vals.iter().copied().map(fe).collect())
+    }
+
+    // --- determinism ---
+
+    #[test]
+    fn hash_is_deterministic_for_all_configs() {
+        let inputs = pi(&[1, 2, 3]);
+        for config in ALL_CONFIGS {
+            assert_eq!(
+                inputs.hash(config),
+                inputs.hash(config),
+                "{config:?}: hash must be deterministic"
+            );
+        }
+    }
+
+    #[test]
+    fn hash_bytes_is_deterministic_for_all_configs() {
+        let inputs = pi(&[42]);
+        for config in ALL_CONFIGS {
+            assert_eq!(
+                inputs.hash_bytes(config),
+                inputs.hash_bytes(config),
+                "{config:?}: hash_bytes must be deterministic"
+            );
+        }
+    }
+
+    // --- empty input edge case ---
+
+    #[test]
+    fn skyscraper_empty_returns_zero() {
+        assert_eq!(
+            PublicInputs::new().hash(HashConfig::Skyscraper),
+            FieldElement::from(0u64),
+        );
+    }
+
+    #[test]
+    fn empty_input_is_deterministic_for_all_configs() {
+        let empty = PublicInputs::new();
+        for config in ALL_CONFIGS {
+            assert_eq!(
+                empty.hash(config),
+                empty.hash(config),
+                "{config:?}: empty hash must be deterministic"
+            );
+        }
+    }
+
+    // --- cross-variant isolation ---
+
+    #[test]
+    fn different_configs_produce_different_hashes() {
+        // Use a non-trivial input so Skyscraper empty=0 doesn't collide by accident.
+        let inputs = pi(&[1, 2]);
+        let hashes: Vec<_> = ALL_CONFIGS.iter().map(|&c| inputs.hash(c)).collect();
+        for i in 0..hashes.len() {
+            for j in (i + 1)..hashes.len() {
+                assert_ne!(
+                    hashes[i], hashes[j],
+                    "{:?} and {:?} must produce different hashes for the same input",
+                    ALL_CONFIGS[i], ALL_CONFIGS[j],
+                );
+            }
+        }
+    }
+
+    // --- input sensitivity ---
+
+    #[test]
+    fn hash_depends_on_order_for_all_configs() {
+        let ab = pi(&[1, 2]);
+        let ba = pi(&[2, 1]);
+        for config in ALL_CONFIGS {
+            assert_ne!(
+                ab.hash(config),
+                ba.hash(config),
+                "{config:?}: hash must be order-sensitive"
+            );
+        }
+    }
+
+    #[test]
+    fn hash_depends_on_values_for_all_configs() {
+        let a = pi(&[1, 2, 3]);
+        let b = pi(&[1, 2, 4]);
+        for config in ALL_CONFIGS {
+            assert_ne!(
+                a.hash(config),
+                b.hash(config),
+                "{config:?}: hash must differ when values differ"
+            );
+        }
+    }
+
+    // --- hash_bytes consistency ---
+
+    #[test]
+    fn hash_bytes_is_le_serialization_of_hash() {
+        let inputs = pi(&[7, 13]);
+        for config in ALL_CONFIGS {
+            let h = inputs.hash(config);
+            let expected = fe_to_bytes_le(&h);
+            assert_eq!(
+                inputs.hash_bytes(config),
+                expected,
+                "{config:?}: hash_bytes must equal LE serialization of hash()"
+            );
+        }
     }
 }
