@@ -1,0 +1,83 @@
+name: Noir Execution Success Tests
+
+# Provide a noir_ref to test against any Noir release.
+on:
+  workflow_dispatch:
+    inputs:
+      noir_ref:
+        description: "noir-lang/noir git ref (tag / branch / SHA)"
+        required: false
+        default: "v1.0.0-beta.19"
+
+env:
+  CARGO_TERM_COLOR: always
+  NOIR_REF: ${{ inputs.noir_ref || 'v1.0.0-beta.19' }}
+
+# Cancel any in-progress run on the same branch when a new one is triggered.
+concurrency:
+  group: noir-exec-success-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  noir-execution-success:
+    name: Noir execution_success suite (${{ inputs.noir_ref || 'v1.0.0-beta.19' }})
+    runs-on: [self-hosted, Linux, ARM64, provekit-build]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+
+      - name: Build provekit-cli
+        run: cargo build --release --bin provekit-cli
+
+      - name: Setup Noir toolchain
+        uses: noir-lang/noirup@v0.1.2
+        with:
+          toolchain: ${{ env.NOIR_REF }}
+
+      # Sparse checkout — only fetch test_programs/, not the full noir repo.
+      - name: Fetch noir test programs (sparse checkout)
+        run: |
+          tmpdir=$(mktemp -d)
+          echo "NOIR_REPO_DIR=${tmpdir}/noir" >> "$GITHUB_ENV"
+          git clone \
+            --depth 1 \
+            --filter=blob:none \
+            --sparse \
+            --branch "$NOIR_REF" \
+            https://github.com/noir-lang/noir.git "${tmpdir}/noir"
+          git -C "${tmpdir}/noir" sparse-checkout set \
+            test_programs/execution_success \
+            test_programs/test_libraries
+          echo "Cloned noir @ $(git -C ${tmpdir}/noir rev-parse HEAD)"
+
+      - name: Run execution_success suite
+        env:
+          PROVEKIT_BIN: ${{ github.workspace }}/target/release/provekit-cli
+          LOG_DIR: ${{ github.workspace }}/noir-execution-logs
+          # NOIR_REPO_DIR is set by the previous step via $GITHUB_ENV
+        run: |
+          bash scripts/run_noir_execution_success.sh
+
+      # Upload logs on every run (pass or fail) for 7 days.
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: noir-execution-logs-${{ github.run_id }}
+          path: noir-execution-logs/
+          retention-days: 7
+
+      # Always clean up the temp clone, even if the test step failed.
+      - name: Cleanup noir clone
+        if: always()
+        run: |
+          if [[ -n "${NOIR_REPO_DIR:-}" && -d "${NOIR_REPO_DIR}" ]]; then
+            rm -rf "${NOIR_REPO_DIR}"
+            echo "Cleaned up ${NOIR_REPO_DIR}"
+          fi
