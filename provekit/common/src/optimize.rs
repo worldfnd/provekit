@@ -5,8 +5,8 @@
 //!   2. For each linear constraint, pick a pivot variable (fewest occurrences,
 //!      not forbidden) and express it as a linear combination of remaining
 //!      variables
-//!  2b. Resolve backward chains (later pivots referenced by earlier
-//!      substitutions)
+//!   2b. Resolve backward chains (later pivots referenced by earlier
+//!       substitutions)
 //!   3. Apply substitutions to all remaining (non-eliminated) constraints
 //!   4. Remove eliminated constraint rows
 //!   5. Remove dead witness columns and prune unreachable witness builders
@@ -369,11 +369,13 @@ struct ColumnRemovalStats {
 ///
 /// 1. Identifies dead columns (zero occurrences in all three matrices)
 /// 2. Builds a dependency graph of witness builders
-/// 3. Finds which builders are transitively reachable from "live" columns
-///    (columns still referenced by constraints)
-/// 4. Prunes unreachable builders (Phase B+C cascading)
-/// 5. Remaps matrix column indices to close gaps
-/// 6. Remaps remaining builder witness indices
+/// 3. DFS from live builders to find all transitively reachable builders
+/// 4. Protects contiguous-range multi-output builders from partial removal
+/// 5. Partitions removable columns into fully dead vs virtual (needed by
+///    live builders for intermediate computation)
+/// 6. Builds a remap table and removes dead/virtual columns from A, B, C
+/// 6b. Remaps ACIR witness map column indices
+/// 7. Prunes dead builders and remaps surviving builder witness indices
 fn remove_dead_columns(
     r1cs: &mut R1CS,
     witness_builders: &mut Vec<WitnessBuilder>,
