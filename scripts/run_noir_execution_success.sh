@@ -115,6 +115,12 @@ if [[ "${nargo_version}" != *"${REQUIRED_NARGO_VERSION}"* ]]; then
   exit 1
 fi
 
+if ! python3 -c "import tomllib" 2>/dev/null; then
+  echo "ERROR: python3.11+ is required (tomllib not found)."
+  echo "Current: $(python3 --version 2>&1)"
+  exit 1
+fi
+
 mkdir -p "${LOG_DIR}/per_test"
 GROUPED_REPORT_FILE="${LOG_DIR}/grouped_error_report.txt"
 
@@ -271,6 +277,15 @@ passed=0
 failed=0
 skipped=0
 
+# Clean up the active test sandbox if the script exits unexpectedly (SIGINT, error).
+_current_sandbox=""
+_cleanup_sandbox() {
+  if [[ -n "${_current_sandbox:-}" && -d "${_current_sandbox}" ]]; then
+    rm -rf "${_current_sandbox}"
+  fi
+}
+trap _cleanup_sandbox EXIT INT TERM
+
 if [[ ! -d "${TEST_LIB_ROOT}" ]]; then
   echo "WARNING: missing ${TEST_LIB_ROOT}; path-based dependency tests may fail."
   echo "Run scripts/vendor_noir_execution_success.sh to vendor test_libraries as well."
@@ -328,6 +343,7 @@ for test_name in "${test_dirs[@]}"; do
   fi
 
   sandbox_root="$(mktemp -d)"
+  _current_sandbox="${sandbox_root}"
   sandbox_noir_root="${sandbox_root}/test-programs/noir"
   sandbox_exec_root="${sandbox_noir_root}/execution_success"
   fixture_name="${test_name%%/*}"

@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       noir_ref:
-        description: "noir-lang/noir git ref (tag / branch / SHA)"
+        description: "noir-lang/noir release tag (e.g. v1.0.0-beta.19)"
         required: false
         default: "v1.0.0-beta.19"
 
@@ -44,6 +44,8 @@ jobs:
       - name: Fetch noir test programs (sparse checkout)
         run: |
           tmpdir=$(mktemp -d)
+          # Export the parent so the cleanup step can remove it entirely.
+          echo "NOIR_TMPDIR=${tmpdir}" >> "$GITHUB_ENV"
           echo "NOIR_REPO_DIR=${tmpdir}/noir" >> "$GITHUB_ENV"
           git clone \
             --depth 1 \
@@ -54,7 +56,7 @@ jobs:
           git -C "${tmpdir}/noir" sparse-checkout set \
             test_programs/execution_success \
             test_programs/test_libraries
-          echo "Cloned noir @ $(git -C ${tmpdir}/noir rev-parse HEAD)"
+          echo "Cloned noir @ $(git -C "${tmpdir}/noir" rev-parse HEAD)"
 
       - name: Run execution_success suite
         env:
@@ -77,7 +79,7 @@ jobs:
       - name: Cleanup noir clone
         if: always()
         run: |
-          if [[ -n "${NOIR_REPO_DIR:-}" && -d "${NOIR_REPO_DIR}" ]]; then
-            rm -rf "${NOIR_REPO_DIR}"
-            echo "Cleaned up ${NOIR_REPO_DIR}"
+          if [[ -n "${NOIR_TMPDIR:-}" && -d "${NOIR_TMPDIR}" ]]; then
+            rm -rf "${NOIR_TMPDIR}"
+            echo "Cleaned up ${NOIR_TMPDIR}"
           fi
