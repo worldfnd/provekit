@@ -517,6 +517,12 @@ impl SparseMatrix {
         self.iter_row(row).collect()
     }
 
+    /// Borrow the raw column/value slices for a row.
+    pub fn row_slices(&self, row: usize) -> (&[u32], &[InternedFieldElement]) {
+        let range = self.row_range(row);
+        (&self.col_indices[range.clone()], &self.values[range])
+    }
+
     /// Replace a row's entries entirely. The new entries must be sorted by
     /// column.
     pub fn replace_row(&mut self, row: usize, entries: &[(usize, InternedFieldElement)]) {
@@ -528,14 +534,21 @@ impl SparseMatrix {
         let old_len = range.len();
         let new_len = entries.len();
 
-        let new_cols: Vec<u32> = entries.iter().map(|(c, _)| *c as u32).collect();
-        let new_vals: Vec<InternedFieldElement> = entries.iter().map(|(_, v)| *v).collect();
+        if new_len == old_len {
+            let row_cols = &mut self.col_indices[range.clone()];
+            let row_vals = &mut self.values[range];
+            for (idx, (col, val)) in entries.iter().enumerate() {
+                row_cols[idx] = *col as u32;
+                row_vals[idx] = *val;
+            }
+        } else {
+            let new_cols: Vec<u32> = entries.iter().map(|(c, _)| *c as u32).collect();
+            let new_vals: Vec<InternedFieldElement> = entries.iter().map(|(_, v)| *v).collect();
 
-        self.col_indices.splice(range.clone(), new_cols);
-        self.values.splice(range.clone(), new_vals);
+            self.col_indices.splice(range.clone(), new_cols);
+            self.values.splice(range.clone(), new_vals);
 
-        let diff = new_len as i64 - old_len as i64;
-        if diff != 0 {
+            let diff = new_len as i64 - old_len as i64;
             for index in &mut self.new_row_indices[row + 1..] {
                 *index = (*index as i64 + diff) as u32;
             }

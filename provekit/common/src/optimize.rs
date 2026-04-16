@@ -770,44 +770,66 @@ fn apply_substitutions_to_row(
     sub_map: &HashMap<usize, usize>,
     interner: &mut crate::Interner,
 ) -> Result<()> {
-    let entries = matrix.get_row_entries(row);
+    let (row_cols, row_vals) = matrix.row_slices(row);
 
-    // Check if any entry references a pivot column
-    let has_pivot = entries.iter().any(|(col, _)| sub_map.contains_key(col));
+    let mut expanded_len = 0usize;
+    let mut has_pivot = false;
+    for col in row_cols {
+        if let Some(&sub_idx) = sub_map.get(&(*col as usize)) {
+            has_pivot = true;
+            expanded_len += substitutions[sub_idx].terms.len();
+        } else {
+            expanded_len += 1;
+        }
+    }
+
     if !has_pivot {
         return Ok(());
     }
 
-    // Accumulate new row as HashMap<col, FieldElement>
-    let mut new_entries: HashMap<usize, FieldElement> = HashMap::new();
+    // Expand the row into raw contributions, then sort+merge. This avoids the
+    // hashing overhead of per-row HashMap accumulation in the hottest path.
+    let mut expanded_entries: Vec<(usize, FieldElement)> = Vec::with_capacity(expanded_len);
 
-    for (col, interned_val) in &entries {
+    for (&col, &interned_val) in row_cols.iter().zip(row_vals.iter()) {
+        let col = col as usize;
         let val = interner
-            .get(*interned_val)
+            .get(interned_val)
             .context("interned value missing during constraint substitution")?;
 
-        if let Some(&sub_idx) = sub_map.get(col) {
+        if let Some(&sub_idx) = sub_map.get(&col) {
             // This column is a pivot — replace with substitution terms
             let sub = &substitutions[sub_idx];
             for (sub_coeff, sub_col) in &sub.terms {
-                let contribution = val * sub_coeff;
-                *new_entries
-                    .entry(*sub_col)
-                    .or_insert_with(FieldElement::zero) += contribution;
+                expanded_entries.push((*sub_col, val * sub_coeff));
             }
         } else {
             // Normal column — keep as-is
-            *new_entries.entry(*col).or_insert_with(FieldElement::zero) += val;
+            expanded_entries.push((col, val));
         }
     }
 
-    // Remove zero entries and sort by column
-    let mut sorted_entries: Vec<(usize, InternedFieldElement)> = new_entries
-        .into_iter()
-        .filter(|(_, v)| !v.is_zero())
-        .map(|(col, val)| (col, interner.intern(val)))
-        .collect();
-    sorted_entries.sort_by_key(|(col, _)| *col);
+    expanded_entries.sort_unstable_by_key(|(col, _)| *col);
+
+    let mut sorted_entries: Vec<(usize, InternedFieldElement)> =
+        Vec::with_capacity(expanded_entries.len());
+    let mut iter = expanded_entries.into_iter();
+    if let Some((mut current_col, mut current_val)) = iter.next() {
+        for (col, val) in iter {
+            if col == current_col {
+                current_val += val;
+            } else {
+                if !current_val.is_zero() {
+                    sorted_entries.push((current_col, interner.intern(current_val)));
+                }
+                current_col = col;
+                current_val = val;
+            }
+        }
+        if !current_val.is_zero() {
+            sorted_entries.push((current_col, interner.intern(current_val)));
+        }
+    }
 
     matrix.replace_row(row, &sorted_entries);
     Ok(())
