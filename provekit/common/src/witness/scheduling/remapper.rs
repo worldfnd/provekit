@@ -111,11 +111,7 @@ impl WitnessIndexRemapper {
     /// the remapper was built with a complete mapping (see [`Self::new`] and
     /// [`Self::from_map`] which validate coverage).
     pub fn remap(&self, old_idx: usize) -> usize {
-        assert!(
-            self.old_to_new.contains_key(&old_idx),
-            "Witness index {old_idx} not in remapping table"
-        );
-        self.old_to_new.get(&old_idx).copied().unwrap_or(old_idx)
+        self.old_to_new[&old_idx]
     }
 
     /// Helper to remap ConstantOrR1CSWitness variants
@@ -639,7 +635,14 @@ impl WitnessIndexRemapper {
     /// Helper to remap a single sparse matrix.
     /// Updates `num_cols` to `num_real` (w1_real + w2_real) so the matrix
     /// dimensions exclude virtual witnesses.
+    ///
+    /// Must not be called on a `from_map` remapper (where `num_real == 0`),
+    /// as that would silently zero out the matrix dimensions.
     fn remap_sparse_matrix(&self, mut matrix: SparseMatrix) -> SparseMatrix {
+        assert!(
+            self.num_real > 0,
+            "Cannot remap sparse matrix with a builder-only remapper (from_map). num_real is 0."
+        );
         matrix.remap_columns(|old_col| self.remap(old_col));
         matrix.num_cols = self.num_real;
         matrix
@@ -649,19 +652,25 @@ impl WitnessIndexRemapper {
     ///
     /// The map goes from ACIR witness index -> R1CS witness index.
     /// We need to update the R1CS indices to their new remapped values.
+    ///
+    /// # Panics
+    /// Panics if any ACIR witness index remaps to 0 (the constant-one
+    /// column), which is never a valid ACIR witness target.
     pub fn remap_acir_witness_map(&self, map: Vec<Option<NonZeroU32>>) -> Vec<Option<NonZeroU32>> {
         map.into_iter()
             .map(|opt_idx| {
                 opt_idx.map(|idx| {
                     let old_r1cs_idx = idx.get() as usize;
                     let new_r1cs_idx = self.remap(old_r1cs_idx);
-                    assert!(
-                        new_r1cs_idx > 0,
-                        "ACIR witness {old_r1cs_idx} remapped to 0 (constant-one column)"
-                    );
-                    // Remapped index must be non-zero (column 0 is the
-                    // constant-one wire and is never an ACIR witness target).
-                    NonZeroU32::new(new_r1cs_idx as u32).unwrap_or(NonZeroU32::MIN)
+                    // Column 0 is the constant-one wire and is never an ACIR
+                    // witness target. NonZeroU32::new returns None only when
+                    // the value is 0, so this panics loudly rather than
+                    // silently falling back to a wrong column.
+                    NonZeroU32::new(new_r1cs_idx as u32).unwrap_or_else(|| {
+                        panic!(
+                            "ACIR witness {old_r1cs_idx} remapped to 0 (constant-one column)"
+                        )
+                    })
                 })
             })
             .collect()
