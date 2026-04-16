@@ -103,6 +103,8 @@ pub fn verify_rsa_pubkey_in_tbs<let DSC_KEY_SIZE: u32, let TBS_CERT_SIZE: u32>(
     //   122125 (0x01DD0D) -> [0x01, 0xDD, 0x0D]
     //   130689 (0x01FE81) -> [0x01, 0xFE, 0x81]
     //
+    assert(tbs_certificate[exponent_offset - 2] == 0x02); // INTEGER tag
+    assert(tbs_certificate[exponent_offset - 1] == exponent_byte_count as u8); // INTEGER length byte
     // For the 3-byte case, u32 >> 16 naturally gives 0x00 for exponents needing a sign byte,
     // and the expected 3-byte sequence matches the DER value encoding directly.
     if exponent < 0x100 {
