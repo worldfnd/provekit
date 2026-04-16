@@ -1,5 +1,6 @@
 use {
     crate::{FieldElement, InternedFieldElement, Interner},
+    anyhow::{bail, Result},
     ark_std::Zero,
     rayon::{
         iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
@@ -573,7 +574,7 @@ impl SparseMatrix {
     /// Returns a new SparseMatrix with columns remapped according to the
     /// given table. `remap[old_col] = Some(new_col)` keeps the column;
     /// `None` removes it (entries are dropped).
-    pub fn remove_columns(&self, remap: &[Option<usize>]) -> SparseMatrix {
+    pub fn remove_columns(&self, remap: &[Option<usize>]) -> Result<SparseMatrix> {
         let new_num_cols = remap.iter().filter(|r| r.is_some()).count();
         let mut new_row_indices = Vec::with_capacity(self.num_rows);
         let mut new_col_indices = Vec::new();
@@ -591,7 +592,7 @@ impl SparseMatrix {
                     // Dead columns should have no entries (zero occurrence).
                     // If we reach here, a non-zero entry is being dropped —
                     // this indicates a bug in dead-column classification.
-                    unreachable!(
+                    bail!(
                         "remove_columns: dropping non-zero entry at row {row}, col {old_col} — \
                          column was classified as dead but has entries"
                     );
@@ -599,13 +600,13 @@ impl SparseMatrix {
             }
         }
 
-        SparseMatrix {
+        Ok(SparseMatrix {
             num_rows: self.num_rows,
             num_cols: new_num_cols,
             new_row_indices,
             col_indices: new_col_indices,
             values: new_values,
-        }
+        })
     }
 
     /// Count how many rows reference each column. Returns a Vec of length

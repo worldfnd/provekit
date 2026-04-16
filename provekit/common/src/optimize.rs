@@ -75,6 +75,7 @@ pub fn optimize_r1cs(
     r1cs: &mut R1CS,
     witness_builders: &mut Vec<WitnessBuilder>,
     witness_map: &mut [Option<std::num::NonZeroU32>],
+    acir_public_inputs_indices_set: &HashSet<u32>,
 ) -> Result<OptimizationStats> {
     let constraints_before = r1cs.num_constraints();
     let witnesses_before = r1cs.num_witnesses();
@@ -307,7 +308,12 @@ pub fn optimize_r1cs(
 
     // Phase 5: Remove dead witness columns and prune unreachable builders
     debug!("Phase 5: starting dead column removal + virtual witness assignment");
-    let col_stats = remove_dead_columns(r1cs, witness_builders, witness_map)?;
+    let col_stats = remove_dead_columns(
+        r1cs,
+        witness_builders,
+        witness_map,
+        acir_public_inputs_indices_set,
+    )?;
     r1cs.num_virtual = col_stats.num_virtual;
 
     let stats = OptimizationStats {
@@ -380,6 +386,7 @@ fn remove_dead_columns(
     r1cs: &mut R1CS,
     witness_builders: &mut Vec<WitnessBuilder>,
     witness_map: &mut [Option<std::num::NonZeroU32>],
+    acir_public_inputs_indices_set: &HashSet<u32>,
 ) -> Result<ColumnRemovalStats> {
     let num_cols = r1cs.num_witnesses();
     if num_cols == 0 || witness_builders.is_empty() {
@@ -390,26 +397,28 @@ fn remove_dead_columns(
         });
     }
 
-    // Step 1: Find dead columns (zero occurrence across A, B, C)
-    // Also collect columns referenced by the ACIR witness map — these are
-    // entry points for witness data and must stay alive.
+    // Step 1: Find dead columns (zero occurrence across A, B, C).
+    // ACIR-mapped columns are not automatic liveness roots: if a column has
+    // no remaining constraint occurrences and no live builder depends on it,
+    // it can be removed and its witness-map entry becomes `None`.
     let occurrence_counts = build_occurrence_counts(r1cs);
-    let mut acir_referenced = vec![false; num_cols];
-    for entry in witness_map.iter() {
-        if let Some(nz) = entry {
-            acir_referenced[nz.get() as usize] = true;
-        }
-    }
+    let public_input_cols: HashSet<usize> = witness_builders
+        .iter()
+        .filter_map(|builder| match builder {
+            WitnessBuilder::Acir(col, acir_idx)
+                if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) =>
+            {
+                Some(*col)
+            }
+            _ => None,
+        })
+        .collect();
 
     let mut dead_cols = vec![false; num_cols];
     let mut num_dead = 0usize;
     for col in 0..num_cols {
         // Never remove column 0 (constant one) or public input columns
-        if col == 0 || col <= r1cs.num_public_inputs {
-            continue;
-        }
-        // Never remove columns referenced by the ACIR witness map
-        if acir_referenced[col] {
+        if col == 0 || col <= r1cs.num_public_inputs || public_input_cols.contains(&col) {
             continue;
         }
         if occurrence_counts[col] == 0 {
@@ -426,18 +435,16 @@ fn remove_dead_columns(
         });
     }
 
-    // Diagnostic: count how many zero-occurrence cols are blocked by each mechanism
-    let zero_occ_total = (0..num_cols)
-        .filter(|&c| c > r1cs.num_public_inputs && occurrence_counts[c] == 0)
-        .count();
-    let blocked_by_acir = (0..num_cols)
-        .filter(|&c| c > r1cs.num_public_inputs && occurrence_counts[c] == 0 && acir_referenced[c])
-        .count();
-    debug!(
-        "Column removal: {} zero-occurrence cols (excl public), {} blocked by ACIR witness map, \
-         {} truly dead",
-        zero_occ_total, blocked_by_acir, num_dead
-    );
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        let zero_occ_total = (0..num_cols)
+            .filter(|&c| c > r1cs.num_public_inputs && occurrence_counts[c] == 0)
+            .count();
+
+        debug!(
+            "Column removal: {} zero-occurrence cols (excl public), {} truly dead",
+            zero_occ_total, num_dead
+        );
+    }
 
     debug!(
         "Column removal: {} dead columns found out of {} total",
@@ -671,21 +678,25 @@ fn remove_dead_columns(
             )
         },
     );
-    r1cs.a = new_a;
-    r1cs.b = new_b;
-    r1cs.c = new_c;
+    r1cs.a = new_a?;
+    r1cs.b = new_b?;
+    r1cs.c = new_c?;
 
     // Step 6b: Remap ACIR witness map (ACIR index -> R1CS column)
     for entry in witness_map.iter_mut() {
         if let Some(nz) = entry {
             let old_col = nz.get() as usize;
-            let Some(new_col) = remap[old_col] else {
-                bail!("ACIR witness map references removed column {old_col} (should be live)");
-            };
-            let Some(new_nz) = std::num::NonZeroU32::new(new_col as u32) else {
-                bail!("ACIR witness col {old_col} remapped to 0 (constant-one column)");
-            };
-            *nz = new_nz;
+            match remap[old_col] {
+                Some(new_col) => {
+                    let Some(new_nz) = std::num::NonZeroU32::new(new_col as u32) else {
+                        bail!("ACIR witness col {old_col} remapped to 0 (constant-one column)");
+                    };
+                    *entry = Some(new_nz);
+                }
+                None => {
+                    *entry = None;
+                }
+            }
         }
     }
 
@@ -701,8 +712,7 @@ fn remove_dead_columns(
                 // Virtual columns must have a producer in col_to_builder.
                 // Columns without producers (col 0, public inputs) are
                 // excluded from dead_cols/removable_cols at Step 1.
-                debug_assert!(
-                    false,
+                bail!(
                     "Virtual column {col} has no producer in col_to_builder — this should be \
                      unreachable because col 0 and public inputs are never classified as dead"
                 );
@@ -842,7 +852,7 @@ mod tests {
 
         let stats = {
             let mut wmap = vec![];
-            optimize_r1cs(&mut r1cs, &mut witness_builders, &mut wmap).unwrap()
+            optimize_r1cs(&mut r1cs, &mut witness_builders, &mut wmap, &HashSet::new()).unwrap()
         };
 
         // Constraint 0 should be eliminated (it's linear)
@@ -898,7 +908,7 @@ mod tests {
         assert_eq!(r1cs.num_constraints(), 3);
         let stats = {
             let mut wmap = vec![];
-            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap).unwrap()
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap, &HashSet::new()).unwrap()
         };
 
         // Both linear constraints eliminated, Q remains
@@ -990,7 +1000,7 @@ mod tests {
         assert_eq!(r1cs.num_constraints(), 5);
         let stats = {
             let mut wmap = vec![];
-            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap).unwrap()
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap, &HashSet::new()).unwrap()
         };
 
         // Both linear constraints eliminated, Q1, Q2, Q3 remain
@@ -1052,6 +1062,40 @@ mod tests {
         }
     }
 
+    fn solve_basic_builders(
+        builders: &[WitnessBuilder],
+        acir_values: &[FieldElement],
+        num_total: usize,
+    ) -> Vec<FieldElement> {
+        let mut witness = vec![FieldElement::zero(); num_total];
+        for builder in builders {
+            match builder {
+                WitnessBuilder::Constant(crate::witness::ConstantTerm(idx, val)) => {
+                    witness[*idx] = *val;
+                }
+                WitnessBuilder::Acir(idx, acir_idx) => {
+                    witness[*idx] = acir_values[*acir_idx];
+                }
+                WitnessBuilder::Sum(idx, terms) => {
+                    let mut acc = FieldElement::zero();
+                    for term in terms {
+                        let coeff = term.0.unwrap_or(FieldElement::one());
+                        acc += coeff * witness[term.1];
+                    }
+                    witness[*idx] = acc;
+                }
+                WitnessBuilder::Product(idx, a, b) => {
+                    witness[*idx] = witness[*a] * witness[*b];
+                }
+                other => panic!(
+                    "Unexpected builder type in test: {other:?}. If a new variant was added, \
+                     extend this helper or use the real solver from provekit-prover."
+                ),
+            }
+        }
+        witness
+    }
+
     #[test]
     fn test_arithmetic_correctness() {
         // Verify optimized R1CS is semantically equivalent to original.
@@ -1090,7 +1134,7 @@ mod tests {
 
         let stats = {
             let mut wmap = vec![];
-            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap).unwrap()
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap, &HashSet::new()).unwrap()
         };
 
         assert_eq!(stats.eliminated, 2, "Should eliminate 2 linear constraints");
@@ -1112,34 +1156,12 @@ mod tests {
 
         // Solve all builders to produce the optimized witness, then verify
         // the optimized R1CS is actually satisfied.
-        let num_total = r1cs.num_witnesses() + r1cs.num_virtual;
-        let mut opt_witness = vec![FieldElement::zero(); num_total];
         let acir_values: Vec<FieldElement> = witness_vals[1..=2].to_vec();
-        for b in &builders {
-            match b {
-                WitnessBuilder::Constant(crate::witness::ConstantTerm(idx, val)) => {
-                    opt_witness[*idx] = *val;
-                }
-                WitnessBuilder::Acir(idx, acir_idx) => {
-                    opt_witness[*idx] = acir_values[*acir_idx];
-                }
-                WitnessBuilder::Sum(idx, terms) => {
-                    let mut acc = FieldElement::zero();
-                    for term in terms {
-                        let coeff = term.0.unwrap_or(FieldElement::one());
-                        acc += coeff * opt_witness[term.1];
-                    }
-                    opt_witness[*idx] = acc;
-                }
-                WitnessBuilder::Product(idx, a, b) => {
-                    opt_witness[*idx] = opt_witness[*a] * opt_witness[*b];
-                }
-                other => panic!(
-                    "Unexpected builder type in test: {other:?}. If a new variant was added, \
-                     extend this match or use the real solver from provekit-prover."
-                ),
-            }
-        }
+        let opt_witness = solve_basic_builders(
+            &builders,
+            &acir_values,
+            r1cs.num_witnesses() + r1cs.num_virtual,
+        );
 
         assert_r1cs_satisfied(&r1cs, &opt_witness);
     }
@@ -1175,11 +1197,78 @@ mod tests {
         assert_eq!(r1cs.num_constraints(), 5);
         let stats = {
             let mut wmap = vec![];
-            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap).unwrap()
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap, &HashSet::new()).unwrap()
         };
 
         assert_eq!(stats.eliminated, 4);
         assert_eq!(stats.constraints_after, 1);
+
+        let acir_values: Vec<FieldElement> = [5u64, 7u64]
+            .iter()
+            .map(|&v| FieldElement::from(v))
+            .collect();
+        let opt_witness = solve_basic_builders(
+            &builders,
+            &acir_values,
+            r1cs.num_witnesses() + r1cs.num_virtual,
+        );
+        assert_r1cs_satisfied(&r1cs, &opt_witness);
+    }
+
+    #[test]
+    fn test_dead_acir_witnesses_are_removed() {
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let neg = -one;
+
+        // 5 columns: w0(const), w1(public/acir live), w2(dead acir),
+        // w3(derived), w4(output)
+        r1cs.add_witnesses(5);
+        r1cs.num_public_inputs = 1;
+
+        // L0: 1*1 = w1 - w3
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (neg, 3)]);
+        // Q: w3 * w1 = w4
+        r1cs.add_constraint(&[(one, 3)], &[(one, 1)], &[(one, 4)]);
+
+        let mut builders = vec![
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Acir(1, 0),
+            WitnessBuilder::Acir(2, 1),
+            WitnessBuilder::Sum(3, vec![SumTerm(Some(neg), 0), SumTerm(None, 1)]),
+            WitnessBuilder::Product(4, 3, 1),
+        ];
+        let mut witness_map = vec![std::num::NonZeroU32::new(1), std::num::NonZeroU32::new(2)];
+
+        let stats = optimize_r1cs(
+            &mut r1cs,
+            &mut builders,
+            &mut witness_map,
+            &HashSet::from([0u32]),
+        )
+        .unwrap();
+
+        assert_eq!(stats.witnesses_after, 3);
+        assert_eq!(stats.num_virtual, 1);
+        assert_eq!(witness_map[0].map(|v| v.get()), Some(1));
+        assert_eq!(witness_map[1], None);
+        assert!(
+            !builders
+                .iter()
+                .any(|builder| matches!(builder, WitnessBuilder::Acir(_, 1))),
+            "Dead ACIR builder should be pruned"
+        );
+
+        let acir_values: Vec<FieldElement> = [5u64, 9u64]
+            .iter()
+            .map(|&v| FieldElement::from(v))
+            .collect();
+        let opt_witness = solve_basic_builders(
+            &builders,
+            &acir_values,
+            r1cs.num_witnesses() + r1cs.num_virtual,
+        );
+        assert_r1cs_satisfied(&r1cs, &opt_witness);
     }
 
     #[test]
@@ -1230,7 +1319,7 @@ mod tests {
 
         let stats = {
             let mut wmap = vec![];
-            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap).unwrap()
+            optimize_r1cs(&mut r1cs, &mut builders, &mut wmap, &HashSet::new()).unwrap()
         };
 
         // 5 eliminated: L_a(w3), L_b(w5), L_sr0(w6), L_sr1(w7),
