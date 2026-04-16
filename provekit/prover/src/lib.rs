@@ -103,7 +103,7 @@ impl Prove for NoirProver {
         self,
         acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
     ) -> Result<NoirProof> {
-        provekit_common::register_ntt();
+        provekit_common::register_whir_backends();
 
         let mut public_input_indices = self.program.functions[0].public_inputs().indices();
         public_input_indices.sort_unstable();
@@ -253,7 +253,7 @@ impl Prove for NoirProver {
 impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
     fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
-        provekit_common::register_ntt();
+        provekit_common::register_whir_backends();
 
         let params = crate::input_utils::ordered_params_from_btreemap(&self.abi, &input_map)?;
         let phase1 = mavros_interpreter::run_phase1(

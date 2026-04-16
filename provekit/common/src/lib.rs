@@ -41,34 +41,34 @@ pub use {
 ///
 /// Must be called once before any prove/verify operations.
 /// Idempotent — safe to call multiple times.
-pub fn register_ntt() {
+pub fn register_whir_backends() {
     use std::sync::{Arc, Once};
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        // Register NTT for polynomial operations
         #[cfg(not(feature = "provekit_ntt"))]
-        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield());
+        let irs_committer: Arc<
+            dyn whir::protocols::irs_commit::IrsCommitter<FieldElement>,
+        > = Arc::new(whir::protocols::irs_commit::CpuIrsCommitter::new(Arc::new(
+            crate::ntt::RSFr,
+        )));
 
         #[cfg(feature = "provekit_ntt")]
-        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            match crate::ntt::MetalBn254Ntt::new() {
-                Ok(ntt) => Arc::new(ntt),
-                Err(err) => {
-                    tracing::info!(
-                        error = %err,
-                        "Metal BN254 NTT unavailable, using ProveKit CPU NTT fallback"
-                    );
-                    Arc::new(crate::ntt::RSFr)
-                }
-            };
+        let irs_committer: Arc<
+            dyn whir::protocols::irs_commit::IrsCommitter<FieldElement>,
+        > = match crate::ntt::MetalBn254Ntt::new() {
+            Ok(ntt) => Arc::new(ntt),
+            Err(err) => {
+                tracing::info!(
+                    error = %err,
+                    "Metal BN254 IRS backend unavailable, using ProveKit CPU fallback"
+                );
+                Arc::new(whir::protocols::irs_commit::CpuIrsCommitter::new(Arc::new(
+                    crate::ntt::RSFr,
+                )))
+            }
+        };
 
-        whir::algebra::ntt::NTT.insert(ntt);
-
-        #[cfg(all(feature = "provekit_ntt", target_os = "macos"))]
-        if let Ok(accelerator) = crate::ntt::backends::MetalBn254Ntt::new() {
-            whir::protocols::irs_commit::ACCELERATED_COMMITTERS.insert(Arc::new(accelerator));
-        }
+        whir::protocols::irs_commit::IRS_COMMITTERS.insert(irs_committer);
 
         // Register Skyscraper (ProveKit-specific); WHIR's built-in engines
         // (SHA2, Keccak, Blake3, etc.) are pre-registered via whir::hash::ENGINES.

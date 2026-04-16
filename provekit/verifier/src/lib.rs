@@ -14,7 +14,7 @@ pub trait Verify {
 impl Verify for Verifier {
     #[instrument(skip_all)]
     fn verify(&mut self, proof: &NoirProof) -> Result<()> {
-        provekit_common::register_ntt();
+        provekit_common::register_whir_backends();
 
         self.whir_for_witness
             .take()

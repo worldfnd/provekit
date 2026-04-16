@@ -14,39 +14,55 @@ use {
     whir::{
         hash::Hash,
         protocols::{
-            irs_commit::{AcceleratedCommit, AcceleratedCommitter, MatrixRows},
+            irs_commit::{CpuIrsCommitter, IrsCommitArtifact, IrsCommitter, MatrixRows},
             matrix_commit::{Config as MatrixCommitConfig, Encodable},
-            merkle_tree::AcceleratedWitness,
+            merkle_tree::WitnessTrait,
         },
     },
 };
 
-impl AcceleratedCommitter<Fr> for MetalBn254Ntt {
-    fn try_commit(
+impl IrsCommitter<Fr> for MetalBn254Ntt {
+    fn commit(
         &self,
         messages: &[&[Fr]],
         masks: &[Fr],
         codeword_length: usize,
         matrix_commit: &MatrixCommitConfig<Fr>,
-    ) -> Result<Option<AcceleratedCommit<Fr>>, String> {
+    ) -> IrsCommitArtifact<Fr> {
+        let cpu_commit = || {
+            CpuIrsCommitter::new(Arc::new(crate::ntt::RSFr)).commit(
+                messages,
+                masks,
+                codeword_length,
+                matrix_commit,
+            )
+        };
+
         if !Self::supports_gpu_shape(codeword_length, messages)
             || !Self::supports_gpu_commit(matrix_commit)
         {
-            return Ok(None);
+            return cpu_commit();
         }
 
-        let matrix = self.encode_matrix(messages, masks, codeword_length)?;
-        let leaf_hashes = self.hash_rows_to_buffer(&matrix)?;
-        let merkle_witness = self.build_merkle_witness(matrix_commit, &leaf_hashes)?;
+        let Ok(matrix) = self.encode_matrix(messages, masks, codeword_length) else {
+            return cpu_commit();
+        };
+        let Ok(leaf_hashes) = self.hash_rows_to_buffer(&matrix) else {
+            return cpu_commit();
+        };
+        let Ok(merkle_witness) = self.build_merkle_witness(matrix_commit, &leaf_hashes) else {
+            return cpu_commit();
+        };
 
-        Ok(Some(AcceleratedCommit {
-            matrix: Arc::new(DeviceRows {
+        IrsCommitArtifact {
+            root:           merkle_witness.root(),
+            rows:           Arc::new(DeviceRows {
                 rows:   matrix.rows,
                 cols:   matrix.cols,
                 buffer: matrix.buffer,
             }),
-            merkle_witness,
-        }))
+            matrix_witness: merkle_witness,
+        }
     }
 }
 
@@ -130,7 +146,7 @@ impl MetalBn254Ntt {
         &self,
         matrix_commit: &MatrixCommitConfig<Fr>,
         leaf_hashes: &PooledBuffer,
-    ) -> Result<Arc<dyn AcceleratedWitness>, String> {
+    ) -> Result<Arc<dyn WitnessTrait>, String> {
         let runtime = self.runtime()?;
         let num_leaves = matrix_commit.num_rows();
         let leaf_capacity = 1usize << matrix_commit.merkle_tree.layers.len();
@@ -227,13 +243,9 @@ impl MetalBn254Ntt {
     }
 }
 
-impl AcceleratedWitness for DeviceMerkleWitness {
+impl WitnessTrait for DeviceMerkleWitness {
     fn num_nodes(&self) -> usize {
         self.num_nodes
-    }
-
-    fn root(&self) -> Hash {
-        self.root
     }
 
     fn read_nodes(&self, indices: &[usize]) -> Vec<Hash> {
@@ -262,8 +274,12 @@ impl std::fmt::Debug for DeviceRows {
 }
 
 impl MatrixRows<Fr> for DeviceRows {
-    fn len(&self) -> usize {
-        self.rows * self.cols
+    fn num_rows(&self) -> usize {
+        self.rows
+    }
+
+    fn num_cols(&self) -> usize {
+        self.cols
     }
 
     fn read_rows(&self, indices: &[usize]) -> Vec<Fr> {
@@ -271,7 +287,7 @@ impl MatrixRows<Fr> for DeviceRows {
         let fields = unsafe {
             std::slice::from_raw_parts(
                 self.buffer.as_ref().contents().cast::<GpuField>(),
-                self.len(),
+                self.rows * self.cols,
             )
         };
         for &row in indices {
