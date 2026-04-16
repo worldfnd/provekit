@@ -4,7 +4,7 @@ mod noir_proof_scheme;
 pub mod prefix_covector;
 mod prover;
 mod r1cs;
-pub mod skyscraper;
+// pub mod skyscraper;
 pub mod sparse_matrix;
 pub mod utils;
 mod verifier;
@@ -19,7 +19,10 @@ pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
     noir_proof_scheme::{NoirProof, NoirProofScheme},
-    noirc_abi::{input_parser::InputValue, InputMap},
+    noirc_abi::{
+        input_parser::{Format, InputValue},
+        InputMap,
+    },
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
     prover::Prover,
     r1cs::R1CS,
@@ -46,8 +49,8 @@ pub fn register_ntt() {
             Arc::new(whir::algebra::ntt::ArkNtt::<FieldElement>::default());
         whir::algebra::ntt::NTT.insert(ntt);
 
-        let skyscraper: Arc<dyn whir::hash::HashEngine> =
-            Arc::new(skyscraper::SkyscraperHashEngine);
-        whir::hash::ENGINES.register(skyscraper);
+        // let skyscraper: Arc<dyn whir::hash::HashEngine> =
+        //     Arc::new(skyscraper::SkyscraperHashEngine);
+        // whir::hash::ENGINES.register(skyscraper);
     });
 }

@@ -10,10 +10,9 @@ use {
     bn254_blackbox_solver::Bn254BlackBoxSolver,
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::{input_parser::Format, InputMap},
     provekit_common::{
-        utils::noir_to_native, FieldElement, NoirElement, NoirProof, Prover, PublicInputs,
-        TranscriptSponge,
+        utils::noir_to_native, FieldElement, Format, InputMap, NoirElement, NoirProof, Prover,
+        PublicInputs, TranscriptSponge,
     },
     std::{mem::size_of, path::Path},
     tracing::{debug, info_span, instrument},
@@ -31,7 +30,7 @@ pub trait Prove {
 
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 
-    fn prove_with_json(self, inputs_json: &str) -> Result<NoirProof>;
+    fn prove_with_inputs(self, inputs: &str, format: Format) -> Result<NoirProof>;
 
     fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof>;
 }
@@ -79,12 +78,10 @@ impl Prove for Prover {
     }
 
     #[instrument(skip_all)]
-    fn prove_with_json(self, inputs_json: &str) -> Result<NoirProof> {
-        let json_format = Format::from_ext("json")
-            .context("JSON format not supported by noirc_abi")?;
-        let input_map = json_format
-            .parse(inputs_json, self.witness_generator.abi())
-            .context("While parsing JSON inputs")?;
+    fn prove_with_inputs(self, inputs: &str, format: Format) -> Result<NoirProof> {
+        let input_map = format
+            .parse(inputs, self.witness_generator.abi())
+            .with_context(|| format!("While parsing {} inputs", format.ext()))?;
         self.prove(input_map)
     }
 

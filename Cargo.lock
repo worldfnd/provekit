@@ -1503,26 +1503,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_filter"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e90c2accc4b07a8456ea0debdc2e7587bdd890680d71173a15d4ae604f6eef"
-dependencies = [
- "log",
- "regex",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.11.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0621c04f2196ac3f488dd583365b9c09be011a4ab8b9f37248ffcc8f6198b56a"
-dependencies = [
- "env_filter",
- "log",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1883,7 +1863,6 @@ dependencies = [
  "cfg-if",
  "libc",
  "r-efi 6.0.0",
- "rand_core 0.10.0",
  "wasip2",
  "wasip3",
 ]
@@ -2303,15 +2282,6 @@ name = "impl-codec"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba6a270039626615617f3f36d15fc827041df3b78c439da2cadfa47455a77f2f"
-dependencies = [
- "parity-scale-codec",
-]
-
-[[package]]
-name = "impl-codec"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d40b9d5e17727407e55028eafc22b2dc68781786e6d7eb8a21103f5058e3a14"
 dependencies = [
  "parity-scale-codec",
 ]
@@ -3485,19 +3455,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b34d9fd68ae0b74a41b21c03c2f62847aa0ffea044eee893b4c140b37e244e2"
 dependencies = [
  "fixed-hash",
- "impl-codec 0.6.0",
- "uint 0.9.5",
-]
-
-[[package]]
-name = "primitive-types"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d15600a7d856470b7d278b3fe0e311fe28c2526348549f8ef2ff7db3299c87f5"
-dependencies = [
- "fixed-hash",
- "impl-codec 0.7.1",
- "uint 0.10.0",
+ "impl-codec",
+ "uint",
 ]
 
 [[package]]
@@ -3532,8 +3491,6 @@ dependencies = [
  "rand_chacha 0.9.0",
  "rand_xorshift 0.4.0",
  "regex-syntax",
- "rusty-fork",
- "tempfile",
  "unarray",
 ]
 
@@ -3673,52 +3630,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "provekit-bn254-multiplier"
-version = "0.1.0"
-dependencies = [
- "ark-bn254",
- "ark-ff 0.5.0",
- "divan",
- "primitive-types 0.13.1",
- "proptest",
- "provekit-bn254-multiplier-codegen 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "provekit-fp-rounding 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "provekit-hla 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rand 0.9.2",
- "seq-macro",
-]
-
-[[package]]
-name = "provekit-bn254-multiplier"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24683687b5b74f714081f1423e3200932c084c85958ced91275f9de37c5e68ba"
-dependencies = [
- "provekit-bn254-multiplier-codegen 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "provekit-fp-rounding 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "provekit-hla 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "seq-macro",
-]
-
-[[package]]
-name = "provekit-bn254-multiplier-codegen"
-version = "0.1.0"
-dependencies = [
- "provekit-hla 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "provekit-bn254-multiplier-codegen"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8885dd6904209100c32b1ec765a613e055d3e44194c2e23acf1d148858c521fd"
-dependencies = [
- "provekit-hla 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
 name = "provekit-cli"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "argh",
@@ -3743,7 +3656,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-common"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -3752,10 +3665,10 @@ dependencies = [
  "ark-std 0.5.0",
  "base64",
  "bytes",
+ "ciborium",
  "hex",
  "itertools 0.14.0",
  "postcard",
- "provekit-skyscraper 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "provekit-spongefish",
  "provekit-spongefish-pow",
  "provekit-whir",
@@ -3765,6 +3678,7 @@ dependencies = [
  "ruint",
  "serde",
  "serde_json",
+ "sha2",
  "sha3",
  "tracing",
  "xz2",
@@ -3788,22 +3702,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "provekit-fp-rounding"
-version = "0.1.0"
-dependencies = [
- "divan",
- "provekit-bn254-multiplier 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
-]
-
-[[package]]
-name = "provekit-fp-rounding"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "293685f085f34bfe2a2c8397f39b5cb473ec43c61fe7c4c55f5d919f1c20b8d3"
-
-[[package]]
 name = "provekit-gnark"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "ark-poly",
  "provekit-common",
@@ -3814,48 +3714,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "provekit-hla"
-version = "0.1.0"
-dependencies = [
- "paste",
- "quickcheck",
- "quickcheck_macros",
-]
-
-[[package]]
-name = "provekit-hla"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed104fa5c5fee00468fe2bf058308fb059c8272b73e83dbcf35f34a12f943c08"
-dependencies = [
- "paste",
-]
-
-[[package]]
-name = "provekit-ntt"
-version = "0.1.0"
-dependencies = [
- "ark-bn254",
- "ark-ff 0.5.0",
- "divan",
- "proptest",
- "rayon",
-]
-
-[[package]]
-name = "provekit-ntt"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a584bba68fe72e0eaaf04dc289bf9e5ab44d6c8f8e24e1ca2c0e8831c689d08e"
-dependencies = [
- "ark-bn254",
- "ark-ff 0.5.0",
- "rayon",
-]
-
-[[package]]
 name = "provekit-prover"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "ark-ff 0.5.0",
@@ -3874,7 +3734,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-r1cs-compiler"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -3882,7 +3742,6 @@ dependencies = [
  "ark-std 0.5.0",
  "postcard",
  "provekit-common",
- "provekit-ntt 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "provekit-whir",
  "provekit_acir",
  "provekit_noirc_abi",
@@ -3890,37 +3749,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tracing",
-]
-
-[[package]]
-name = "provekit-skyscraper"
-version = "0.1.0"
-dependencies = [
- "ark-bn254",
- "ark-ff 0.5.0",
- "divan",
- "proptest",
- "provekit-bn254-multiplier 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "provekit-fp-rounding 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rand 0.9.2",
- "rayon",
- "seq-macro",
- "zerocopy",
-]
-
-[[package]]
-name = "provekit-skyscraper"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39ddc2e446e2286c847b0dc9adaa8184cf5a6caf711e32fae15b4dc2d303f2c3"
-dependencies = [
- "ark-bn254",
- "ark-ff 0.5.0",
- "provekit-bn254-multiplier 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "provekit-fp-rounding 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "rayon",
- "seq-macro",
- "zerocopy",
 ]
 
 [[package]]
@@ -3957,7 +3785,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-verifier"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "ark-std 0.5.0",
@@ -4544,34 +4372,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quick-error"
-version = "1.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
-
-[[package]]
-name = "quickcheck"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "95c589f335db0f6aaa168a7cd27b1fc6920f5e1470c804f814d9cd6e62a0f70b"
-dependencies = [
- "env_logger",
- "log",
- "rand 0.10.0",
-]
-
-[[package]]
-name = "quickcheck_macros"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9a28b8493dd664c8b171dd944da82d933f7d456b829bfb236738e1fe06c5ba4"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4631,16 +4431,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rand"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bc266eb313df6c5c09c1c7b1fbe2510961e5bcd3add930c1e31f7ed9da0feff8"
-dependencies = [
- "getrandom 0.4.2",
- "rand_core 0.10.0",
-]
-
-[[package]]
 name = "rand_chacha"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4678,12 +4468,6 @@ checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 dependencies = [
  "getrandom 0.3.4",
 ]
-
-[[package]]
-name = "rand_core"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c8d0fd677905edcbeedbf2edb6494d676f0e98d54d5cf9bda0b061cb8fb8aba"
 
 [[package]]
 name = "rand_xorshift"
@@ -4947,7 +4731,7 @@ dependencies = [
  "num-integer",
  "num-traits",
  "parity-scale-codec",
- "primitive-types 0.12.2",
+ "primitive-types",
  "proptest",
  "rand 0.8.5",
  "rand 0.9.2",
@@ -5139,18 +4923,6 @@ name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
-
-[[package]]
-name = "rusty-fork"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc6bf79ff24e648f6da1f8d1f011e9cac26491b619e6b9280f2b47f1774e6ee2"
-dependencies = [
- "fnv",
- "quick-error",
- "tempfile",
- "wait-timeout",
-]
 
 [[package]]
 name = "rustyline"
@@ -5353,12 +5125,6 @@ checksum = "9900206b54a3527fdc7b8a938bffd94a568bac4f4aa8113b209df75a09c0dec2"
 dependencies = [
  "pest",
 ]
-
-[[package]]
-name = "seq-macro"
-version = "0.3.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1bc711410fbe7399f390ca1c3b60ad0f53f80e95c5eb935e52268a0e2cd49acc"
 
 [[package]]
 name = "serde"
@@ -5638,9 +5404,9 @@ checksum = "b7c388c1b5e93756d0c740965c41e8822f866621d41acbdf6336a6a168f8840c"
 
 [[package]]
 name = "smol_str"
-version = "0.3.6"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4aaa7368fcf4852a4c2dd92df0cace6a71f2091ca0a23391ce7f3a31833f1523"
+checksum = "0f7a918bd2a9951d18ee6e48f076843e8e73a9a5d22cf05bcd4b7a81bdd04e17"
 dependencies = [
  "borsh",
  "serde_core",
@@ -6408,18 +6174,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "uint"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "909988d098b2f738727b161a106cfc7cab00c539c2687a8836f8e565976fb53e"
-dependencies = [
- "byteorder",
- "crunchy",
- "hex",
- "static_assertions",
-]
-
-[[package]]
 name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6551,15 +6305,6 @@ name = "virtue"
 version = "0.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
-
-[[package]]
-name = "wait-timeout"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
-dependencies = [
- "libc",
-]
 
 [[package]]
 name = "waitpid-any"

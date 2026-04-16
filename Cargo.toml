@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-  "skyscraper/fp-rounding",
-  "skyscraper/hla",
-  "skyscraper/bn254-multiplier",
-  "skyscraper/bn254-multiplier-codegen",
-  "skyscraper/core",
+  # "skyscraper/fp-rounding",
+  # "skyscraper/hla",
+  # "skyscraper/bn254-multiplier",
+  # "skyscraper/bn254-multiplier-codegen",
+  # "skyscraper/core",
   "provekit/common",
   "provekit/r1cs-compiler",
   "provekit/prover",
@@ -15,7 +15,7 @@ members = [
   "tooling/provekit-ffi",
   "tooling/provekit-gnark",
   "tooling/verifier-server",
-  "ntt",
+  # "ntt",
 ]
 exclude = ["playground/passport-input-gen"]
 
@@ -97,13 +97,13 @@ ntt = { package = "provekit-ntt", version = "0.1.0" }
 
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
-provekit-cli = { path = "tooling/cli" }
-provekit-common = { path = "provekit/common", version = "0.1.2" }
+provekit-cli = { path = "tooling/cli", version = "0.1.2" }
+provekit-common = { path = "provekit/common", version = "0.1.3" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
-provekit-gnark = { path = "tooling/provekit-gnark" }
-provekit-prover = { path = "provekit/prover", version = "0.1.2" }
-provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "0.1.2" }
-provekit-verifier = { path = "provekit/verifier", version = "0.1.2" }
+provekit-gnark = { path = "tooling/provekit-gnark", version = "0.1.2" }
+provekit-prover = { path = "provekit/prover", version = "0.1.3" }
+provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "0.1.3" }
+provekit-verifier = { path = "provekit/verifier", version = "0.1.3" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
 
 # 3rd party
@@ -112,6 +112,7 @@ argh = "0.1.12"
 axum = "0.8.4"
 base64 = "0.22.1"
 bytes = "1.10.1"
+ciborium = "0.2.2"
 chrono = "0.4.41"
 # On CI divan get replaced by divan = { package = "codspeed-divan-compat", version = "3.0.1" } for benchmark tracking.
 # This is a workaround because different package selection based on target does not mix well with workspace dependencies.
