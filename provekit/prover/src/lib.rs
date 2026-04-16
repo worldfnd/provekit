@@ -130,7 +130,6 @@ impl Prove for NoirProver {
         let compressed_r1cs =
             CompressedR1CS::compress(self.r1cs).context("While compressing R1CS")?;
         let num_witnesses = compressed_r1cs.num_witnesses();
-        let num_virtual = compressed_r1cs.num_virtual();
         let num_constraints = compressed_r1cs.num_constraints();
 
         // Set up transcript with public inputs bound to the instance.
@@ -143,7 +142,8 @@ impl Prove for NoirProver {
 
         // Allocate space for real + virtual witnesses. Virtual witnesses are
         // computation-only (zero entries in A/B/C) but needed by builders.
-        let mut witness: Vec<Option<FieldElement>> = vec![None; num_witnesses + num_virtual];
+        let mut witness: Vec<Option<FieldElement>> =
+            vec![None; compressed_r1cs.num_witnesses_for_solving()];
 
         // Solve w1 (or all witnesses if no challenges).
         {
@@ -209,6 +209,12 @@ impl Prove for NoirProver {
             let w2 = {
                 let _s = info_span!("allocate_w2").entered();
                 // Only real w2 witnesses (exclude virtual at the end).
+                debug_assert!(
+                    self.whir_for_witness.w1_size <= num_witnesses,
+                    "w1_size ({}) exceeds num_witnesses ({})",
+                    self.whir_for_witness.w1_size,
+                    num_witnesses
+                );
                 witness[self.whir_for_witness.w1_size..num_witnesses]
                     .iter()
                     .map(|w| w.ok_or_else(|| anyhow::anyhow!("Some witnesses in w2 are missing")))

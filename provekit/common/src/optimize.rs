@@ -3,11 +3,13 @@
 //! Inspired by Circom's `-O2` substitution-based sparse elimination:
 //!   1. Identify linear constraints (where A or B is constant)
 //!   2. For each linear constraint, pick a pivot variable (fewest occurrences,
-//!      not forbidden)
-//!   3. Express pivot as linear combination of remaining variables
-//!   4. Substitute into all other constraints
-//!   5. Remove eliminated constraints
-//!   6. Remove dead witness columns and prune unreachable witness builders
+//!      not forbidden) and express it as a linear combination of remaining
+//!      variables
+//!  2b. Resolve backward chains (later pivots referenced by earlier
+//!      substitutions)
+//!   3. Apply substitutions to all remaining (non-eliminated) constraints
+//!   4. Remove eliminated constraint rows
+//!   5. Remove dead witness columns and prune unreachable witness builders
 
 use {
     crate::{
@@ -495,7 +497,8 @@ fn remove_dead_columns(
         }
     }
 
-    // BFS: if a live builder reads from another builder, that builder is also live
+    // DFS (LIFO via Vec::pop): if a live builder reads from another builder,
+    // that builder is also live. DFS and BFS find the same reachable set.
     while let Some(builder_idx) = queue.pop() {
         for &dep_idx in &builder_reads_from[builder_idx] {
             if !live_builders[dep_idx] {
@@ -513,28 +516,26 @@ fn remove_dead_columns(
         witness_builders.len() - num_live_builders
     );
 
-    let blocked_by_bfs = (0..num_cols)
-        .filter(|&col| {
-            dead_cols[col]
-                && col_to_builder
-                    .get(&col)
-                    .map_or(false, |&b| live_builders[b])
-        })
-        .count();
+    // Diagnostic: count dead cols blocked by live builder reachability.
+    // Only computed when debug tracing is active to avoid O(num_cols)
+    // HashMap lookups on large circuits in release builds.
+    if tracing::enabled!(tracing::Level::DEBUG) {
+        let blocked_by_bfs = (0..num_cols)
+            .filter(|&col| {
+                dead_cols[col]
+                    && col_to_builder
+                        .get(&col)
+                        .map_or(false, |&b| live_builders[b])
+            })
+            .count();
 
-    // Detailed diagnostic breakdowns (reader types, producer types,
-    // hypothetical analyses) are disabled for performance — they are
-    // O(dead_cols × graph_size) and blow up on large circuits. Enable
-    // selectively when debugging a specific circuit.
-    //
-    // See git history for the full diagnostic block.
-
-    debug!(
-        "Column removal: of {} dead cols, {} blocked by live builder BFS, {} removable",
-        num_dead,
-        blocked_by_bfs,
-        num_dead - blocked_by_bfs
-    );
+        debug!(
+            "Column removal: of {} dead cols, {} blocked by live builder DFS, {} removable",
+            num_dead,
+            blocked_by_bfs,
+            num_dead - blocked_by_bfs
+        );
+    }
 
     // Step 4: Dead columns are removable from R1CS matrices — BUT we must
     // protect multi-output builders whose output ranges must stay contiguous.
@@ -694,6 +695,16 @@ fn remove_dead_columns(
         if virtual_cols[col] {
             if let Some(&producer_idx) = col_to_builder.get(&col) {
                 keep_builders[producer_idx] = true;
+            } else {
+                // Virtual columns must have a producer in col_to_builder.
+                // Columns without producers (col 0, public inputs) are
+                // excluded from dead_cols/removable_cols at Step 1.
+                debug_assert!(
+                    false,
+                    "Virtual column {col} has no producer in col_to_builder — \
+                     this should be unreachable because col 0 and public inputs \
+                     are never classified as dead"
+                );
             }
         }
     }
@@ -1122,7 +1133,11 @@ mod tests {
                 WitnessBuilder::Product(idx, a, b) => {
                     opt_witness[*idx] = opt_witness[*a] * opt_witness[*b];
                 }
-                _ => panic!("Unexpected builder type in test"),
+                other => panic!(
+                    "Unexpected builder type in test: {other:?}. \
+                     If a new variant was added, extend this match or \
+                     use the real solver from provekit-prover."
+                ),
             }
         }
 

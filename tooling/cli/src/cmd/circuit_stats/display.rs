@@ -468,16 +468,28 @@ pub(super) fn print_ge_optimization(
     println!("└{}", SUBSECTION);
 
     println!("\n┌─ After Optimization");
-    println!(
-        "│  Constraints:  {:>8}  (2^{:.2})",
-        optimized_r1cs.num_constraints(),
-        (optimized_r1cs.num_constraints() as f64).log2()
-    );
-    println!(
-        "│  Witnesses:    {:>8}  (2^{:.2})  committed to WHIR",
-        stats.witnesses_after,
-        (stats.witnesses_after as f64).log2()
-    );
+    let opt_constraints = optimized_r1cs.num_constraints();
+    if opt_constraints > 0 {
+        println!(
+            "│  Constraints:  {:>8}  (2^{:.2})",
+            opt_constraints,
+            (opt_constraints as f64).log2()
+        );
+    } else {
+        println!("│  Constraints:  {:>8}", opt_constraints);
+    }
+    if stats.witnesses_after > 0 {
+        println!(
+            "│  Witnesses:    {:>8}  (2^{:.2})  committed to WHIR",
+            stats.witnesses_after,
+            (stats.witnesses_after as f64).log2()
+        );
+    } else {
+        println!(
+            "│  Witnesses:    {:>8}           committed to WHIR",
+            stats.witnesses_after
+        );
+    }
     println!(
         "│  Virtual:      {:>8}           solving only, not committed",
         stats.num_virtual

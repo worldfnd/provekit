@@ -71,8 +71,10 @@ impl CompressedR1CS {
         self.num_witnesses
     }
 
-    pub const fn num_virtual(&self) -> usize {
-        self.num_virtual
+    /// Total witnesses needed for solving: real witnesses (matrix columns)
+    /// plus virtual witnesses (computation-only).
+    pub const fn num_witnesses_for_solving(&self) -> usize {
+        self.num_witnesses + self.num_virtual
     }
 
     pub fn blob_len(&self) -> usize {

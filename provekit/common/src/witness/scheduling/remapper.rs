@@ -80,10 +80,8 @@ impl WitnessIndexRemapper {
         }
 
         // Second pass: assign virtual outputs after all real ones
-        let mut next_virtual = next_real_w2;
-        for old_idx in virtual_w1.into_iter().chain(virtual_w2) {
-            old_to_new.insert(old_idx, next_virtual);
-            next_virtual += 1;
+        for (new_idx, old_idx) in (next_real_w2..).zip(virtual_w1.into_iter().chain(virtual_w2)) {
+            old_to_new.insert(old_idx, new_idx);
         }
 
         Self {
