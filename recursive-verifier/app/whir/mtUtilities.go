@@ -128,6 +128,33 @@ func ExponentVar(api frontend.API, base frontend.Variable, exp frontend.Variable
 	return output
 }
 
+// BitReversedExponentVar computes base^(bit_reverse(exp, numBits)).
+// The provekit NTT (RSFr) uses bit-reversed evaluation order, so domain
+// evaluation points are generator^(bit_reverse(index)) rather than
+// generator^index. This function applies the reversal in-circuit.
+func BitReversedExponentVar(api frontend.API, base frontend.Variable, exp frontend.Variable, numBits int) frontend.Variable {
+	expBits := api.ToBinary(exp, numBits)
+	// Reverse the bit order: expBits is LSB-first, so reversing gives
+	// the bit-reversed index in LSB-first order.
+	reversed := make([]frontend.Variable, numBits)
+	for i := range numBits {
+		reversed[i] = expBits[numBits-1-i]
+	}
+	reversedExp := api.FromBinary(reversed...)
+	return ExponentVar(api, base, reversedExp, numBits)
+}
+
+// BitReverseInt reverses the lowest numBits bits of v.
+func BitReverseInt(v int, numBits int) int {
+	result := 0
+	for b := range numBits {
+		if v&(1<<b) != 0 {
+			result |= 1 << (numBits - 1 - b)
+		}
+	}
+	return result
+}
+
 // RunPoW executes a proof-of-work challenge if the difficulty is greater than zero.
 func RunPoW(api frontend.API, sc *skyscraper.Skyscraper, nimue gnarkNimue.Nimue, difficulty int) error {
 	if difficulty > 0 {

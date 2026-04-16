@@ -146,8 +146,10 @@ func ZKWhirVerify(
 
 	gammas := make([]frontend.Variable, hGammasCount)
 	for qi := range numInitialQueries {
-		// coset_offset = omega_full^(initialStirIndexes[qi])
-		cosetOffset := whir.ExponentVar(api, blindedParams.OmegaFull, initialStirIndexes[qi], numBitsIdx)
+		// The provekit NTT (RSFr) uses bit-reversed evaluation order.
+		// evaluation_points returns generator^(bit_reverse(index, numBitsIdx)),
+		// so all_gammas computes coset_offset = omega_full^(bit_reverse(index)).
+		cosetOffset := whir.BitReversedExponentVar(api, blindedParams.OmegaFull, initialStirIndexes[qi], numBitsIdx)
 		for k := range interleavingDepth {
 			gammas[qi*interleavingDepth+k] = api.Mul(cosetOffset, zetaPowers[k])
 		}

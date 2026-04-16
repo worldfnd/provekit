@@ -821,9 +821,16 @@ func NativeWhirVerify(
 		tensorWeights := nativeTensorProduct(currentPolyRLC, nativeEqWeights(lastFoldRand))
 
 		// Compute in-domain evaluation points and values from Merkle-verified leaves.
+		// The provekit NTT uses bit-reversed evaluation order, so we must
+		// bit-reverse the index before exponentiation.
+		foldedDomainSizeR := domainSize / foldingFactorPower
+		numBitsR := 0
+		for v := foldedDomainSizeR; v > 1; v >>= 1 {
+			numBitsR++
+		}
 		for qi, idx := range inDomainIndices {
-			// Compute the domain evaluation point: expDomainGen^idx
-			domainPoint := new(big.Int).Exp(expDomainGen, big.NewInt(int64(idx)), bn254Modulus)
+			reversedIdx := whir.BitReverseInt(idx, numBitsR)
+			domainPoint := new(big.Int).Exp(expDomainGen, big.NewInt(int64(reversedIdx)), bn254Modulus)
 			constraintEvalInfos = append(constraintEvalInfos, evaluatorInfo{
 				point: domainPoint,
 				size:  roundSize,

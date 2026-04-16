@@ -152,11 +152,14 @@ func VerifyWhir(
 
 		prevRootHash = rootHash[0]
 
-		// Compute domain evaluation points from indices
-		numBits := bits.Len(uint(domainSize - 1))
+		// Compute domain evaluation points from indices.
+		// The provekit NTT uses bit-reversed evaluation order (RSFr), so
+		// evaluation_points(idx) = generator^(bit_reverse(idx, log2(foldedDomainSize))).
+		foldedDomainSize := domainSize / foldingFactorPower
+		numBitsForReversal := bits.Len(uint(foldedDomainSize)) - 1
 		mainRoundData.StirChallengesPoints[r] = make([]frontend.Variable, len(stirIndexes))
 		for index, idx := range stirIndexes {
-			mainRoundData.StirChallengesPoints[r][index] = ExponentVar(api, expDomainGenerator, idx, numBits)
+			mainRoundData.StirChallengesPoints[r][index] = BitReversedExponentVar(api, expDomainGenerator, idx, numBitsForReversal)
 		}
 
 		// Constraint values = OOD values + in-domain values from Merkle-verified leaves.
@@ -234,10 +237,11 @@ func VerifyWhir(
 		return nil, fmt.Errorf("final stir: %w", err)
 	}
 
-	numBits := bits.Len(uint(domainSize - 1))
+	finalFoldedDomainSize := domainSize / (1 << lastFoldingFactor)
+	finalNumBitsForReversal := bits.Len(uint(finalFoldedDomainSize)) - 1
 	finalRandomnessPoints := make([]frontend.Variable, len(finalIndexes))
 	for i, idx := range finalIndexes {
-		finalRandomnessPoints[i] = ExponentVar(api, expDomainGenerator, idx, numBits)
+		finalRandomnessPoints[i] = BitReversedExponentVar(api, expDomainGenerator, idx, finalNumBitsForReversal)
 	}
 
 	// Final round
