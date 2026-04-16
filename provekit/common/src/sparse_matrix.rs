@@ -591,10 +591,9 @@ impl SparseMatrix {
                     // Dead columns should have no entries (zero occurrence).
                     // If we reach here, a non-zero entry is being dropped —
                     // this indicates a bug in dead-column classification.
-                    assert!(
-                        false,
-                        "remove_columns: dropping non-zero entry at row {row}, col {old_col} \
-                         — column was classified as dead but has entries"
+                    unreachable!(
+                        "remove_columns: dropping non-zero entry at row {row}, col {old_col} — \
+                         column was classified as dead but has entries"
                     );
                 }
             }

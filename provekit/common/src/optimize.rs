@@ -427,22 +427,17 @@ fn remove_dead_columns(
         .filter(|&c| c > r1cs.num_public_inputs && occurrence_counts[c] == 0)
         .count();
     let blocked_by_acir = (0..num_cols)
-        .filter(|&c| {
-            c > r1cs.num_public_inputs && occurrence_counts[c] == 0 && acir_referenced[c]
-        })
+        .filter(|&c| c > r1cs.num_public_inputs && occurrence_counts[c] == 0 && acir_referenced[c])
         .count();
     debug!(
         "Column removal: {} zero-occurrence cols (excl public), {} blocked by ACIR witness map, \
          {} truly dead",
-        zero_occ_total,
-        blocked_by_acir,
-        num_dead
+        zero_occ_total, blocked_by_acir, num_dead
     );
 
     debug!(
         "Column removal: {} dead columns found out of {} total",
-        num_dead,
-        num_cols
+        num_dead, num_cols
     );
 
     // Step 2: Build witness builder dependency graph and find reachable builders.
@@ -625,9 +620,7 @@ fn remove_dead_columns(
     debug!(
         "Column removal: {} dead cols total, {} fully dead (producer dead), {} virtual (producer \
          live, computation-only)",
-        num_removable,
-        num_fully_dead,
-        num_virtual
+        num_removable, num_fully_dead, num_virtual
     );
 
     // Step 5: Build remap table with two regions:
@@ -684,14 +677,10 @@ fn remove_dead_columns(
         if let Some(nz) = entry {
             let old_col = nz.get() as usize;
             let Some(new_col) = remap[old_col] else {
-                bail!(
-                    "ACIR witness map references removed column {old_col} (should be live)"
-                );
+                bail!("ACIR witness map references removed column {old_col} (should be live)");
             };
             let Some(new_nz) = std::num::NonZeroU32::new(new_col as u32) else {
-                bail!(
-                    "ACIR witness col {old_col} remapped to 0 (constant-one column)"
-                );
+                bail!("ACIR witness col {old_col} remapped to 0 (constant-one column)");
             };
             *nz = new_nz;
         }
@@ -1219,14 +1208,8 @@ mod tests {
             WitnessBuilder::Sum(5, vec![SumTerm(Some(three), 4), SumTerm(Some(three), 2)]),
             WitnessBuilder::Constant(crate::witness::ConstantTerm(6, two)),
             WitnessBuilder::Constant(crate::witness::ConstantTerm(7, three)),
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(
-                8,
-                FieldElement::from(11u64),
-            )),
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(
-                9,
-                FieldElement::from(10u64),
-            )),
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(8, FieldElement::from(11u64))),
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(9, FieldElement::from(10u64))),
             WitnessBuilder::Product(10, 4, 7),
         ];
 

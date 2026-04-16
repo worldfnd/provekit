@@ -612,8 +612,8 @@ impl WitnessIndexRemapper {
     pub fn remap_r1cs(&self, r1cs: R1CS) -> R1CS {
         assert!(
             self.num_real > 0,
-            "Cannot remap R1CS with a builder-only remapper (from_map). \
-             num_real is 0 — this would set all matrix dimensions to 0."
+            "Cannot remap R1CS with a builder-only remapper (from_map). num_real is 0 — this \
+             would set all matrix dimensions to 0."
         );
         let mut new_r1cs = R1CS::new();
         new_r1cs.num_public_inputs = r1cs.num_public_inputs;
