@@ -25,13 +25,12 @@ impl DigitalDecompositionWitnessesBuilder for DigitalDecompositionWitnesses {
         witnesses_to_decompose: Vec<usize>,
     ) -> Self {
         let num_witnesses_to_decompose = witnesses_to_decompose.len();
-        let digital_decomp_length = log_bases.len();
+        let num_outputs = log_bases.len() * num_witnesses_to_decompose;
         Self {
             log_bases,
             num_witnesses_to_decompose,
             witnesses_to_decompose,
-            first_witness_idx: next_witness_idx,
-            num_witnesses: digital_decomp_length * num_witnesses_to_decompose,
+            output_indices: (next_witness_idx..next_witness_idx + num_outputs).collect(),
         }
     }
 
@@ -42,7 +41,7 @@ impl DigitalDecompositionWitnessesBuilder for DigitalDecompositionWitnesses {
     fn get_digit_witness_index(&self, digit_place: usize, value_offset: usize) -> usize {
         debug_assert!(digit_place < self.log_bases.len());
         debug_assert!(value_offset < self.num_witnesses_to_decompose);
-        self.first_witness_idx + digit_place * self.num_witnesses_to_decompose + value_offset
+        self.output_indices[digit_place * self.num_witnesses_to_decompose + value_offset]
     }
 }
 
