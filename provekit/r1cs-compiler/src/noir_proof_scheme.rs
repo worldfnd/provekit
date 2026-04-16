@@ -60,11 +60,15 @@ impl NoirCompiler {
             r1cs.c.num_entries()
         );
 
+        let acir_public_inputs_indices_set: HashSet<u32> =
+            main.public_inputs().indices().iter().cloned().collect();
+
         // Gaussian elimination optimization pass
         let opt_stats = provekit_common::optimize::optimize_r1cs(
             &mut r1cs,
             &mut witness_builders,
             &mut witness_map,
+            &acir_public_inputs_indices_set,
         )?;
         info!(
             "After GE optimization: {} constraints, {} witnesses ({} eliminated, {:.1}% \
@@ -74,9 +78,6 @@ impl NoirCompiler {
             opt_stats.eliminated,
             opt_stats.constraint_reduction_percent()
         );
-
-        let acir_public_inputs_indices_set: HashSet<u32> =
-            main.public_inputs().indices().iter().cloned().collect();
 
         let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
         let (split_witness_builders, remapped_r1cs, remapped_witness_map, challenge_offsets) =
@@ -202,7 +203,7 @@ mod tests {
         crate::NoirCompiler,
         ark_std::One,
         provekit_common::{
-            witness::{ConstantTerm, SumTerm, WitnessBuilder},
+            witness::{ConstantTerm, DigitalDecompositionWitnesses, SumTerm, WitnessBuilder},
             FieldElement, NoirProofScheme,
         },
         serde::{Deserialize, Serialize},
@@ -247,5 +248,27 @@ mod tests {
         test_serde(&constant_term);
         let witness_builder = WitnessBuilder::Constant(constant_term);
         test_serde(&witness_builder);
+
+        let digital_decomposition = DigitalDecompositionWitnesses {
+            log_bases:                  vec![1, 2],
+            num_witnesses_to_decompose: 2,
+            witnesses_to_decompose:     vec![3, 4],
+            output_indices:             vec![5, 6, 7, 8],
+        };
+        test_serde(&digital_decomposition);
+        test_serde(&WitnessBuilder::DigitalDecomposition(
+            digital_decomposition.clone(),
+        ));
+        test_serde(&WitnessBuilder::ChunkDecompose {
+            output_indices: vec![9, 10],
+            packed:         11,
+            chunk_bits:     vec![8, 8],
+        });
+        test_serde(&WitnessBuilder::SpreadBitExtract {
+            output_indices: vec![12, 13],
+            chunk_bits:     vec![4, 4],
+            sum_terms:      vec![sum_term],
+            extract_even:   true,
+        });
     }
 }
