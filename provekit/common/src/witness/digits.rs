@@ -19,10 +19,10 @@ pub struct DigitalDecompositionWitnesses {
     pub num_witnesses_to_decompose: usize,
     /// Witness indices of the values to be decomposed
     pub witnesses_to_decompose:     Vec<usize>,
-    /// The index of the first witness written to
-    pub first_witness_idx:          usize,
-    /// The number of witnesses written to
-    pub num_witnesses:              usize,
+    /// Output witness indices. Length = log_bases.len() *
+    /// num_witnesses_to_decompose. Layout: output_indices[digit_place *
+    /// num_witnesses_to_decompose + i]
+    pub output_indices:             Vec<usize>,
 }
 
 /// Compute a mixed-base decomposition of a field element into its digits, using

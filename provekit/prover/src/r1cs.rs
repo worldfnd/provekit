@@ -19,6 +19,7 @@ use {
 pub struct CompressedR1CS {
     num_constraints: usize,
     num_witnesses:   usize,
+    num_virtual:     usize,
     blob:            Vec<u8>,
 }
 
@@ -47,11 +48,13 @@ impl CompressedR1CS {
     pub fn compress(r1cs: R1CS) -> Result<Self> {
         let num_constraints = r1cs.num_constraints();
         let num_witnesses = r1cs.num_witnesses();
+        let num_virtual = r1cs.num_virtual;
         let blob = postcard::to_allocvec(&r1cs).context("R1CS serialization failed")?;
         drop(r1cs);
         Ok(Self {
             num_constraints,
             num_witnesses,
+            num_virtual,
             blob,
         })
     }
@@ -66,6 +69,12 @@ impl CompressedR1CS {
 
     pub const fn num_witnesses(&self) -> usize {
         self.num_witnesses
+    }
+
+    /// Total witnesses needed for solving: real witnesses (matrix columns)
+    /// plus virtual witnesses (computation-only).
+    pub const fn num_witnesses_for_solving(&self) -> usize {
+        self.num_witnesses + self.num_virtual
     }
 
     pub fn blob_len(&self) -> usize {

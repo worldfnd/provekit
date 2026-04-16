@@ -50,7 +50,7 @@ impl NoirCompiler {
             main.opcodes.len()
         );
 
-        let (mut r1cs, witness_map, witness_builders) = noir_to_r1cs(main)?;
+        let (mut r1cs, mut witness_map, mut witness_builders) = noir_to_r1cs(main)?;
         info!(
             "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
             r1cs.num_constraints(),
@@ -60,17 +60,24 @@ impl NoirCompiler {
             r1cs.c.num_entries()
         );
 
+        let acir_public_inputs_indices_set: HashSet<u32> =
+            main.public_inputs().indices().iter().cloned().collect();
+
         // Gaussian elimination optimization pass
-        let opt_stats = provekit_common::optimize::optimize_r1cs(&mut r1cs);
+        let opt_stats = provekit_common::optimize::optimize_r1cs(
+            &mut r1cs,
+            &mut witness_builders,
+            &mut witness_map,
+            &acir_public_inputs_indices_set,
+        )?;
         info!(
-            "After GE optimization: {} constraints ({} eliminated, {:.1}% constraint reduction)",
+            "After GE optimization: {} constraints, {} witnesses ({} eliminated, {:.1}% \
+             constraint reduction)",
             opt_stats.constraints_after,
+            opt_stats.witnesses_after,
             opt_stats.eliminated,
             opt_stats.constraint_reduction_percent()
         );
-
-        let acir_public_inputs_indices_set: HashSet<u32> =
-            main.public_inputs().indices().iter().cloned().collect();
 
         let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
         let (split_witness_builders, remapped_r1cs, remapped_witness_map, challenge_offsets) =
@@ -81,17 +88,17 @@ impl NoirCompiler {
                 acir_public_inputs_indices_set,
             )?;
         let num_challenges = challenge_offsets.len();
+        let num_real = remapped_r1cs.num_witnesses();
+        let num_virtual = remapped_r1cs.num_virtual;
         info!(
-            "Witness split: w1 size = {}, w2 size = {}",
+            "Witness split: w1 = {}, w2 = {} (real, committed) + {} virtual (solving only)",
             split_witness_builders.w1_size,
-            remapped_r1cs.num_witnesses() - split_witness_builders.w1_size
+            num_real - split_witness_builders.w1_size,
+            num_virtual
         );
 
-        let witness_generator = NoirWitnessGenerator::new(
-            &program,
-            remapped_witness_map,
-            remapped_r1cs.num_witnesses(),
-        );
+        let witness_generator =
+            NoirWitnessGenerator::new(&program, remapped_witness_map, num_real + num_virtual);
 
         let whir_for_witness = WhirR1CSScheme::new_for_r1cs(
             &remapped_r1cs,
@@ -196,7 +203,7 @@ mod tests {
         crate::NoirCompiler,
         ark_std::One,
         provekit_common::{
-            witness::{ConstantTerm, SumTerm, WitnessBuilder},
+            witness::{ConstantTerm, DigitalDecompositionWitnesses, SumTerm, WitnessBuilder},
             FieldElement, NoirProofScheme,
         },
         serde::{Deserialize, Serialize},
@@ -241,5 +248,27 @@ mod tests {
         test_serde(&constant_term);
         let witness_builder = WitnessBuilder::Constant(constant_term);
         test_serde(&witness_builder);
+
+        let digital_decomposition = DigitalDecompositionWitnesses {
+            log_bases:                  vec![1, 2],
+            num_witnesses_to_decompose: 2,
+            witnesses_to_decompose:     vec![3, 4],
+            output_indices:             vec![5, 6, 7, 8],
+        };
+        test_serde(&digital_decomposition);
+        test_serde(&WitnessBuilder::DigitalDecomposition(
+            digital_decomposition.clone(),
+        ));
+        test_serde(&WitnessBuilder::ChunkDecompose {
+            output_indices: vec![9, 10],
+            packed:         11,
+            chunk_bits:     vec![8, 8],
+        });
+        test_serde(&WitnessBuilder::SpreadBitExtract {
+            output_indices: vec![12, 13],
+            chunk_bits:     vec![4, 4],
+            sum_terms:      vec![sum_term],
+            extract_even:   true,
+        });
     }
 }

@@ -23,6 +23,7 @@ use {
     provekit_r1cs_compiler::noir_to_r1cs_with_breakdown,
     stats_collector::CircuitStats,
     std::{
+        collections::HashSet,
         fs,
         path::{Path, PathBuf},
     },
@@ -91,14 +92,21 @@ fn analyze_circuit(program: Program<FieldElement>, path: &Path) -> Result<()> {
 
     display::print_acir_stats(&stats);
 
-    let (r1cs, _witness_map, _witness_builders, breakdown) =
+    let (r1cs, mut witness_map, mut witness_builders, breakdown) =
         noir_to_r1cs_with_breakdown(&circuit).context("Failed to compile circuit to R1CS")?;
+    let acir_public_inputs_indices_set: HashSet<u32> =
+        circuit.public_inputs().indices().iter().cloned().collect();
 
     display::print_r1cs_breakdown(&stats, &circuit, &r1cs, &breakdown);
 
     // Run Gaussian elimination optimization and display results
     let mut optimized_r1cs = r1cs.clone();
-    let opt_stats = optimize_r1cs(&mut optimized_r1cs);
+    let opt_stats = optimize_r1cs(
+        &mut optimized_r1cs,
+        &mut witness_builders,
+        &mut witness_map,
+        &acir_public_inputs_indices_set,
+    )?;
 
     display::print_ge_optimization(&r1cs, &optimized_r1cs, &opt_stats);
 
