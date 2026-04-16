@@ -371,8 +371,8 @@ struct ColumnRemovalStats {
 /// 2. Builds a dependency graph of witness builders
 /// 3. DFS from live builders to find all transitively reachable builders
 /// 4. Protects contiguous-range multi-output builders from partial removal
-/// 5. Partitions removable columns into fully dead vs virtual (needed by
-///    live builders for intermediate computation)
+/// 5. Partitions removable columns into fully dead vs virtual (needed by live
+///    builders for intermediate computation)
 /// 6. Builds a remap table and removes dead/virtual columns from A, B, C
 /// 6b. Remaps ACIR witness map column indices
 /// 7. Prunes dead builders and remaps surviving builder witness indices
@@ -703,9 +703,8 @@ fn remove_dead_columns(
                 // excluded from dead_cols/removable_cols at Step 1.
                 debug_assert!(
                     false,
-                    "Virtual column {col} has no producer in col_to_builder — \
-                     this should be unreachable because col 0 and public inputs \
-                     are never classified as dead"
+                    "Virtual column {col} has no producer in col_to_builder — this should be \
+                     unreachable because col 0 and public inputs are never classified as dead"
                 );
             }
         }
@@ -1136,9 +1135,8 @@ mod tests {
                     opt_witness[*idx] = opt_witness[*a] * opt_witness[*b];
                 }
                 other => panic!(
-                    "Unexpected builder type in test: {other:?}. \
-                     If a new variant was added, extend this match or \
-                     use the real solver from provekit-prover."
+                    "Unexpected builder type in test: {other:?}. If a new variant was added, \
+                     extend this match or use the real solver from provekit-prover."
                 ),
             }
         }

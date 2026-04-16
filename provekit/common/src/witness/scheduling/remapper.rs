@@ -667,9 +667,7 @@ impl WitnessIndexRemapper {
                     // the value is 0, so this panics loudly rather than
                     // silently falling back to a wrong column.
                     NonZeroU32::new(new_r1cs_idx as u32).unwrap_or_else(|| {
-                        panic!(
-                            "ACIR witness {old_r1cs_idx} remapped to 0 (constant-one column)"
-                        )
+                        panic!("ACIR witness {old_r1cs_idx} remapped to 0 (constant-one column)")
                     })
                 })
             })
