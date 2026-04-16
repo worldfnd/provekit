@@ -5,6 +5,8 @@ use {
         NoirElement, PublicInputs, R1CS,
     },
     acir::circuit::Program,
+    anyhow::{Context, Result},
+    base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _},
     serde::{Deserialize, Serialize},
 };
 
@@ -28,5 +30,22 @@ impl NoirProofScheme {
     #[must_use]
     pub const fn size(&self) -> (usize, usize) {
         (self.r1cs.num_constraints(), self.r1cs.num_witnesses())
+    }
+}
+
+impl NoirProof {
+    /// Encode to a portable text form: CBOR, wrapped in base64url (no padding).
+    pub fn encode(&self) -> Result<String> {
+        let mut cbor = Vec::new();
+        ciborium::into_writer(self, &mut cbor).context("CBOR encode NoirProof")?;
+        Ok(URL_SAFE_NO_PAD.encode(cbor))
+    }
+
+    /// Inverse of [`encode`](Self::encode).
+    pub fn decode(s: &str) -> Result<Self> {
+        let cbor = URL_SAFE_NO_PAD
+            .decode(s.as_bytes())
+            .context("base64url decode NoirProof")?;
+        ciborium::from_reader(cbor.as_slice()).context("CBOR decode NoirProof")
     }
 }

@@ -16,7 +16,7 @@
 //! 1. Call `pk_init()` once before using any other functions
 //! 2. Call `pk_prepare(path, ...)` to compile a circuit, or `pk_load_prover()`
 //!    / `pk_load_verifier()` to load from files
-//! 3. Call `pk_prove_toml()` or `pk_prove_json()` to generate proofs
+//! 3. Call `pk_prove_toml()` or `pk_prove_inputs()` to generate proofs
 //! 4. Call `pk_verify()` to verify proofs
 //! 5. On error, call `pk_get_last_error()` for a diagnostic message
 //! 6. Free handles with `pk_free_prover()` / `pk_free_verifier()`

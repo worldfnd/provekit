@@ -44,6 +44,15 @@ extern "C"
         PK_COMPILATION_ERROR = 8,
     } PKStatus;
 
+    /// Format of an in-memory input string passed to pk_prove_inputs.
+    typedef enum
+    {
+        /// JSON-encoded inputs (e.g. {"x": "5", "y": "10"}).
+        PK_INPUT_FORMAT_JSON = 0,
+        /// TOML-encoded inputs (e.g. x = "5"\ny = "10").
+        PK_INPUT_FORMAT_TOML = 1,
+    } PKInputFormat;
+
     /// Opaque handle to a compiled prover scheme.
     typedef struct PKProver PKProver;
 
@@ -189,15 +198,19 @@ extern "C"
     int pk_prove_toml(const PKProver *_Nonnull prover, const char *_Nonnull toml_path,
                       PKBuf *_Nonnull out_proof);
 
-    /// Prove using a prover handle and a JSON string of inputs.
+    /// Prove using a prover handle and an in-memory input string.
+    /// The caller declares the input format explicitly via the `format`
+    /// parameter.
     /// Example JSON: {"x": "5", "y": "10"}
+    /// Example TOML: x = "5"\ny = "10"
     ///
     /// @param prover Valid prover handle
-    /// @param inputs_json JSON string matching the circuit ABI
+    /// @param inputs JSON or TOML string matching the circuit ABI
+    /// @param format PK_INPUT_FORMAT_JSON or PK_INPUT_FORMAT_TOML
     /// @param out_proof Output proof bytes in .np format (must be freed with pk_free_buf)
     /// @return PK_SUCCESS or error code
-    int pk_prove_json(const PKProver *_Nonnull prover, const char *_Nonnull inputs_json,
-                      PKBuf *_Nonnull out_proof);
+    int pk_prove_inputs(const PKProver *_Nonnull prover, const char *_Nonnull inputs,
+                        PKInputFormat format, PKBuf *_Nonnull out_proof);
 
     // -----------------------------------------------------------------------
     // Verify
