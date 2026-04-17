@@ -3,10 +3,7 @@ use compare_age_lib::compare_age;
 use data_check_expiry::check_expiry;
 use poseidon::poseidon2::Poseidon2;
 use scoped_nullifier::compute_nullifier_and_type;
-use utils::{
-    pack_be_bytes_into_fields,
-    types::DG1Data,
-};
+use utils::{pack_be_bytes_into_fields, types::DG1Data};
 
 // Merkle tree depth: 2^24 = 16,777,216 leaves
 global TREE_DEPTH: u32 = 24;
@@ -76,12 +73,7 @@ fn main(
     assert(computed_root == root, "Merkle path verification failed");
     check_expiry(dg1, current_date);
 
-    compare_age(
-        dg1,
-        min_age_required,
-        max_age_required,
-        current_date,
-    );
+    compare_age(dg1, min_age_required, max_age_required, current_date);
     let private_nullifier = Poseidon2::hash(packed_dg1.concat([sod_hash]), 5);
 
     let (scoped_nullifier, nullifier_type) = compute_nullifier_and_type(
@@ -92,11 +84,8 @@ fn main(
         nullifier_secret,
     );
 
-    let param_commitment = calculate_param_commitment(
-        current_date,
-        min_age_required,
-        max_age_required,
-    );
+    let param_commitment =
+        calculate_param_commitment(current_date, min_age_required, max_age_required);
 
     (param_commitment, nullifier_type, scoped_nullifier)
 }

@@ -17,18 +17,12 @@ fn main(
     tbs_certificate_len: u32,
 ) -> pub Field {
     // Validate tbs_certificate_len bounds
-    assert(
-        tbs_certificate_len <= 1850,
-        "tbs_certificate_len must not exceed 1850",
-    );
+    assert(tbs_certificate_len <= 1850, "tbs_certificate_len must not exceed 1850");
 
     // Validate prover-supplied tbs_certificate_len against ASN.1 DER header
     assert(tbs_certificate[0] == 0x30, "TBS must start with SEQUENCE tag");
     let computed_len = get_asn1_element_length(tbs_certificate);
-    assert(
-        tbs_certificate_len == computed_len,
-        "tbs_certificate_len does not match ASN.1 header",
-    );
+    assert(tbs_certificate_len == computed_len, "tbs_certificate_len does not match ASN.1 header");
 
     // Ensure all bytes beyond the signed length are zero so that trailing
     // bytes cannot carry attacker-controlled data into the commitment.
@@ -51,10 +45,6 @@ fn main(
         ),
         "RSA signature verification failed",
     );
-    let comm_out = hash_salt_country_tbs(
-        salt,
-        country,
-        tbs_certificate,
-    );
+    let comm_out = hash_salt_country_tbs(salt, country, tbs_certificate);
     comm_out
 }

@@ -20,7 +20,10 @@ fn exponent_to_be_bytes(exponent: u32) -> [u8; 4] {
     ]
 }
 
-pub fn compute_key_ne_hash<let SIG_BYTES: u32>(pubkey_bytes: [u8; SIG_BYTES], exponent: u32) -> Field {
+pub fn compute_key_ne_hash<let SIG_BYTES: u32>(
+    pubkey_bytes: [u8; SIG_BYTES],
+    exponent: u32,
+) -> Field {
     assert_allowed_rsa_exponent(exponent);
     let exponent_bytes = exponent_to_be_bytes(exponent);
     let packed_pubkey: [Field; (SIG_BYTES + 30) / 31] =
@@ -55,7 +58,7 @@ pub fn verify_signature<let SIG_BYTES: u32, let IS_PSS: u32, let DATA_TO_SIGN_MA
             | (SIG_BYTES == 128),
         "Only modulus of bit size 1024, 2048, 3072, 4096 and 6144 are supported",
     );
-    // TODO: Add support for more exponent values if needed for other countries. 
+    // TODO: Add support for more exponent values if needed for other countries.
     assert_allowed_rsa_exponent(exponent);
 
     let pubkey =
