@@ -19,7 +19,7 @@ use {
         native_types::{Expression, Witness as NoirWitness},
     },
     anyhow::{bail, ensure, Result},
-    ark_ff::PrimeField,
+    ark_ff::{BigInteger, PrimeField},
     ark_std::One,
     provekit_common::{
         utils::noir_to_native,
@@ -112,6 +112,19 @@ pub struct NoirToR1CSCompiler {
 
     /// The ACIR witness indices of the initial values of the memory blocks
     pub initial_memories: BTreeMap<usize, Vec<usize>>,
+}
+
+pub(crate) fn ensure_field_element_fits_num_bits(
+    fe: &FieldElement,
+    num_bits: u32,
+    context: &str,
+) -> Result<()> {
+    let actual = fe.into_bigint().num_bits();
+    ensure!(
+        actual <= num_bits,
+        "{context} exceeds {num_bits} bits: {fe} (needs {actual})"
+    );
+    Ok(())
 }
 
 /// Compile a Noir circuit to an R1CS relation.
@@ -334,7 +347,7 @@ impl NoirToR1CSCompiler {
         output: NoirWitness,
         num_bits: u32,
         target_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
-    ) {
+    ) -> Result<()> {
         debug_assert_eq!(
             BINOP_ATOMIC_BITS, 8,
             "process_binop_opcode assumes 8-bit digits"
@@ -356,6 +369,8 @@ impl NoirToR1CSCompiler {
             (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Constant(rhs_c)) => {
                 let lhs_fe = noir_to_native(lhs_c);
                 let rhs_fe = noir_to_native(rhs_c);
+                ensure_field_element_fits_num_bits(&lhs_fe, num_bits, "AND/XOR lhs constant")?;
+                ensure_field_element_fits_num_bits(&rhs_fe, num_bits, "AND/XOR rhs constant")?;
 
                 let dd = add_digital_decomposition(self, log_bases, vec![out_idx]);
                 for byte_idx in 0..num_digits {
@@ -372,6 +387,7 @@ impl NoirToR1CSCompiler {
             // lhs constant, rhs witness
             (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Witness(rhs_w)) => {
                 let lhs_fe = noir_to_native(lhs_c);
+                ensure_field_element_fits_num_bits(&lhs_fe, num_bits, "AND/XOR lhs constant")?;
                 let rhs_witness = self.fetch_r1cs_witness_index(rhs_w);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![rhs_witness, out_idx]);
@@ -388,6 +404,7 @@ impl NoirToR1CSCompiler {
             // lhs witness, rhs constant
             (ConstantOrACIRWitness::Witness(lhs_w), ConstantOrACIRWitness::Constant(rhs_c)) => {
                 let rhs_fe = noir_to_native(rhs_c);
+                ensure_field_element_fits_num_bits(&rhs_fe, num_bits, "AND/XOR rhs constant")?;
                 let lhs_witness = self.fetch_r1cs_witness_index(lhs_w);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![lhs_witness, out_idx]);
@@ -421,6 +438,8 @@ impl NoirToR1CSCompiler {
                 }
             }
         }
+
+        Ok(())
     }
 
     fn add_circuit(&mut self, circuit: &Circuit<NoirElement>) -> Result<()> {
@@ -581,7 +600,7 @@ impl NoirToR1CSCompiler {
                             *output,
                             lhs.num_bits(),
                             &mut and_ops,
-                        );
+                        )?;
                     }
                     BlackBoxFuncCall::XOR { lhs, rhs, output } => {
                         ensure!(
@@ -600,7 +619,7 @@ impl NoirToR1CSCompiler {
                             *output,
                             lhs.num_bits(),
                             &mut xor_ops,
-                        );
+                        )?;
                     }
                     BlackBoxFuncCall::Poseidon2Permutation {
                         inputs,
@@ -729,7 +748,7 @@ impl NoirToR1CSCompiler {
             None
         };
         let sha256_range_checks = if let Some(w) = spread_w {
-            add_sha256_compression(self, sha256_compression_ops, w)
+            add_sha256_compression(self, sha256_compression_ops, w)?
         } else {
             BTreeMap::new()
         };
@@ -804,10 +823,44 @@ impl NoirToR1CSCompiler {
 mod tests {
     use {
         super::*,
-        acir::circuit::PublicInputs as AcirPublicInputs,
+        acir::circuit::{
+            opcodes::{BlackBoxFuncCall, FunctionInput},
+            PublicInputs as AcirPublicInputs,
+        },
         provekit_common::witness::WitnessBuilder,
+        serde_json::Value,
         std::collections::{BTreeSet, HashSet},
     };
+
+    fn replace_witness_input_with_constant(
+        value: &mut Value,
+        witness: NoirWitness,
+        constant: FieldElement,
+        num_bits: u32,
+    ) -> bool {
+        match value {
+            Value::Object(map) => {
+                let matches_target = map.get("num_bits").and_then(Value::as_u64)
+                    == Some(num_bits as u64)
+                    && map.get("input")
+                        == Some(&serde_json::json!({ "Witness": witness.witness_index() }));
+                if matches_target {
+                    *map.get_mut("input").expect("input present after match") = serde_json::json!({
+                        "Constant": constant.to_string()
+                    });
+                    return true;
+                }
+
+                map.values_mut().any(|nested| {
+                    replace_witness_input_with_constant(nested, witness, constant, num_bits)
+                })
+            }
+            Value::Array(values) => values.iter_mut().any(|nested| {
+                replace_witness_input_with_constant(nested, witness, constant, num_bits)
+            }),
+            _ => false,
+        }
+    }
 
     /// Regression: public inputs absent from all opcodes must still get
     /// builders (case for unconstrained public inputs), otherwise
@@ -831,5 +884,71 @@ mod tests {
             acir_public_inputs,
         )
         .expect("split_and_prepare_layers should not fail with NoBuilderForPublicInput");
+    }
+
+    #[test]
+    fn malformed_and_constant_is_rejected_with_operand_context() {
+        let circuit: Circuit<NoirElement> = Circuit {
+            current_witness_index: 3,
+            opcodes: vec![Opcode::BlackBoxFuncCall(BlackBoxFuncCall::AND {
+                lhs:    FunctionInput::witness(NoirWitness(1), 32),
+                rhs:    FunctionInput::witness(NoirWitness(2), 32),
+                output: NoirWitness(3),
+            })],
+            private_parameters: BTreeSet::from([NoirWitness(1)]),
+            ..Default::default()
+        };
+
+        let mut value = serde_json::to_value(&circuit).expect("serialize circuit");
+        assert!(replace_witness_input_with_constant(
+            &mut value,
+            NoirWitness(2),
+            FieldElement::from(1u64 << 40),
+            32,
+        ));
+        let malformed_circuit: Circuit<NoirElement> =
+            serde_json::from_value(value).expect("deserialize malformed circuit");
+
+        let err = noir_to_r1cs(&malformed_circuit).expect_err("oversized AND constant should fail");
+        let msg = err.to_string();
+        assert!(msg.contains("AND/XOR rhs constant exceeds 32 bits"));
+    }
+
+    #[test]
+    fn malformed_sha256_hash_constant_is_rejected() {
+        let inputs = Box::new(std::array::from_fn(|i| {
+            FunctionInput::witness(NoirWitness((i as u32) + 1), 32)
+        }));
+        let hash_values = Box::new(std::array::from_fn(|i| {
+            FunctionInput::witness(NoirWitness((i as u32) + 17), 32)
+        }));
+        let outputs = Box::new(std::array::from_fn(|i| NoirWitness((i as u32) + 25)));
+        let circuit: Circuit<NoirElement> = Circuit {
+            current_witness_index: 32,
+            opcodes: vec![Opcode::BlackBoxFuncCall(
+                BlackBoxFuncCall::Sha256Compression {
+                    inputs,
+                    hash_values,
+                    outputs,
+                },
+            )],
+            private_parameters: BTreeSet::from_iter((1..=24).map(NoirWitness)),
+            ..Default::default()
+        };
+
+        let mut value = serde_json::to_value(&circuit).expect("serialize circuit");
+        assert!(replace_witness_input_with_constant(
+            &mut value,
+            NoirWitness(17),
+            FieldElement::from(1u64 << 40),
+            32,
+        ));
+        let malformed_circuit: Circuit<NoirElement> =
+            serde_json::from_value(value).expect("deserialize malformed circuit");
+
+        let err = noir_to_r1cs(&malformed_circuit)
+            .expect_err("oversized SHA256 hash constant should fail");
+        let msg = err.to_string();
+        assert!(msg.contains("SHA256 hash constant exceeds 32 bits"));
     }
 }
