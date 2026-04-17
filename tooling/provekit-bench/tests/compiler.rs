@@ -150,6 +150,10 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
     "Prover.toml"
 )]
 #[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/bin-opcode-u64-large-const",
+    "Prover.toml"
+)]
+#[test_case(
     "../../noir-examples/noir-r1cs-test-programs/bin-opcode-i8",
     "Prover.toml"
 )]
