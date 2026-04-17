@@ -108,9 +108,7 @@ pub fn calculate_private_nullifier<let DG1: u32, let ECONTENT: u32, let SIG: u32
     )
 }
 
-pub fn calculate_sod_hash<let ECONTENT_SIZE: u32>(
-    e_content: [u8; ECONTENT_SIZE],
-) -> Field {
+pub fn calculate_sod_hash<let ECONTENT_SIZE: u32>(e_content: [u8; ECONTENT_SIZE]) -> Field {
     let packed: [Field; (ECONTENT_SIZE + 30) / 31] =
         pack_be_bytes_into_fields::<ECONTENT_SIZE, _, 31>(e_content);
     Poseidon2::hash(packed, (ECONTENT_SIZE + 30) / 31)
@@ -244,4 +242,3 @@ fn test_compute_merkle_root2() {
     let root = compute_merkle_root(leaf, index, hash_path);
     assert(root == 0x0f4f16b234c1d5054b15d408282cb45ba6c10a629fe068e7f3cc253ceae4f08d);
 }
-
