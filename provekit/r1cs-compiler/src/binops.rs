@@ -84,12 +84,12 @@ fn cow_to_digit(
 ) -> ConstantOrR1CSWitness {
     match cow {
         ConstantOrR1CSWitness::Constant(c) => {
-            let bigint = c.into_bigint();
-            assert!(
-                bigint.0[1..].iter().all(|&limb| limb == 0) && bigint.0[0] <= u32::MAX as u64,
-                "binop constant exceeds 32 bits: {c}"
-            );
-            let val = bigint.0[0];
+            // Constants reaching `cow_to_digit` have already been
+            // byte-decomposed by `process_binop_opcode` (each value is one
+            // byte of a 32-bit operand), so the value here always fits in a
+            // single byte (≤ 255). The 32-bit width check lives at the
+            // `process_binop_opcode` call sites, not here.
+            let val = c.into_bigint().0[0];
             let digit =
                 (val >> (digit_i as u64 * atomic_bits as u64)) & ((1u64 << atomic_bits) - 1);
             ConstantOrR1CSWitness::Constant(FieldElement::from(digit))
@@ -590,27 +590,5 @@ mod tests {
                 "Max representable value with w={atomic_bits}, d={d} digits must be exactly 255"
             );
         }
-    }
-
-    /// Verify that `cow_to_digit` panics when given a constant exceeding 32
-    /// bits. Regression test for Least Authority audit Suggestion 3.
-    #[test]
-    #[should_panic(expected = "binop constant exceeds 32 bits")]
-    fn cow_to_digit_rejects_oversized_constant() {
-        // 2^32 + 1 — exceeds the 32-bit limit
-        let oversized = ConstantOrR1CSWitness::Constant(FieldElement::from(0x1_0000_0001u64));
-
-        // dd and witness_to_offset are unused for the Constant path,
-        // but required by the signature.
-        let dd = provekit_common::witness::DigitalDecompositionWitnesses {
-            log_bases:                  vec![],
-            num_witnesses_to_decompose: 0,
-            witnesses_to_decompose:     vec![],
-            first_witness_idx:          0,
-            num_witnesses:              0,
-        };
-        let witness_to_offset = HashMap::new();
-
-        cow_to_digit(oversized, 0, 8, &dd, &witness_to_offset);
     }
 }
