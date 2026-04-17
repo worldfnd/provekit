@@ -50,10 +50,7 @@ pub fn compute_nullifier_and_type(
             4,
         )
     } else {
-        Poseidon2::hash(
-            [private_nullifier, service_scope, service_subscope],
-            3,
-        )
+        Poseidon2::hash([private_nullifier, service_scope, service_subscope], 3)
     };
 
     // Determine nullifier_type based on secret and country

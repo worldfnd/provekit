@@ -19,7 +19,7 @@ pub fn verify_rsa_signature<let SIG_BYTES: u32>(
             | (SIG_BYTES == 128),
         "Only modulus of bit size 1024, 2048, 3072, 4096 and 6144 are supported",
     );
-    // TODO: Add support for more exponent values if needed for other countries. 
+    // TODO: Add support for more exponent values if needed for other countries.
     assert_allowed_rsa_exponent(exponent);
 
     let pubkey =
