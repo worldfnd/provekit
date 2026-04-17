@@ -1,6 +1,6 @@
 use {
     crate::{
-        noir_to_r1cs::NoirToR1CSCompiler,
+        noir_to_r1cs::{ensure_field_element_fits_num_bits, NoirToR1CSCompiler},
         spread::{
             add_spread_table_constraints, add_u32_addition_spread,
             decompose_constant_to_spread_word, decompose_to_spread_word, pack_chunks,
@@ -8,6 +8,7 @@ use {
             SIGMA1_CHUNKS, SMALL_SIGMA0_CHUNKS, SMALL_SIGMA1_CHUNKS,
         },
     },
+    anyhow::Result,
     ark_ff::{Field, PrimeField},
     provekit_common::{
         witness::{ConstantOrR1CSWitness, SumTerm},
@@ -207,14 +208,14 @@ pub(crate) fn add_sha256_compression(
         Vec<usize>,
     )>,
     spread_table_bits: u32,
-) -> BTreeMap<u32, Vec<usize>> {
+) -> Result<BTreeMap<u32, Vec<usize>>> {
     assert!(
         FieldElement::MODULUS_BIT_SIZE > 64,
         "Spread trick requires p >> 2^64; unsound for small fields like M31"
     );
 
     if inputs_and_outputs.is_empty() {
-        return BTreeMap::new();
+        return Ok(BTreeMap::new());
     }
 
     // Single shared accumulator across ALL SHA256 compressions
@@ -253,23 +254,17 @@ pub(crate) fn add_sha256_compression(
 
         // Track which hash values are constants for optimized
         // decomposition (no spread-table lookups needed).
-        let hash_constant_u32: [Option<u32>; 8] = hash_values
-            .iter()
-            .map(|hv| match hv {
+        let mut hash_constant_u32 = Vec::with_capacity(8);
+        for hv in hash_values.iter() {
+            match hv {
                 ConstantOrR1CSWitness::Constant(val) => {
-                    let bigint = val.into_bigint();
-                    assert!(
-                        bigint.0[1..].iter().all(|&limb| limb == 0)
-                            && bigint.0[0] <= u32::MAX as u64,
-                        "SHA256 hash constant exceeds 32 bits: {val}"
-                    );
-                    Some(bigint.0[0] as u32)
+                    ensure_field_element_fits_num_bits(val, 32, "SHA256 hash constant")?;
+                    hash_constant_u32.push(Some(val.into_bigint().0[0] as u32));
                 }
-                ConstantOrR1CSWitness::Witness(_) => None,
-            })
-            .collect::<Vec<_>>()
-            .try_into()
-            .unwrap();
+                ConstantOrR1CSWitness::Witness(_) => hash_constant_u32.push(None),
+            }
+        }
+        let hash_constant_u32: [Option<u32>; 8] = hash_constant_u32.try_into().unwrap();
 
         let hash_packed: [usize; 8] = hash_values
             .iter()
@@ -452,7 +447,7 @@ pub(crate) fn add_sha256_compression(
     }
 
     // Build spread table LogUp constraints once for ALL compressions
-    add_spread_table_constraints(r1cs_compiler, accum)
+    Ok(add_spread_table_constraints(r1cs_compiler, accum))
 }
 
 /// Route hash-value decomposition through the constant-optimized path
