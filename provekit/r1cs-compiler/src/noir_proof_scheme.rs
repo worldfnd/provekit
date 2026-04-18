@@ -62,6 +62,7 @@ impl NoirCompiler {
 
         let acir_public_inputs_indices_set: HashSet<u32> =
             main.public_inputs().indices().iter().cloned().collect();
+        r1cs.num_public_inputs = acir_public_inputs_indices_set.len();
 
         // Gaussian elimination optimization pass
         let opt_stats = provekit_common::optimize::optimize_r1cs(
