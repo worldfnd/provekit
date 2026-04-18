@@ -1334,7 +1334,10 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(stats.eliminated, 0, "public input row must not be pivoted away");
+        assert_eq!(
+            stats.eliminated, 0,
+            "public input row must not be pivoted away"
+        );
         assert_eq!(
             r1cs.num_constraints(),
             1,
