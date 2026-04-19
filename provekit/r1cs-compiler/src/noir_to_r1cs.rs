@@ -890,39 +890,8 @@ mod tests {
             PublicInputs as AcirPublicInputs,
         },
         provekit_common::witness::WitnessBuilder,
-        serde_json::Value,
         std::collections::{BTreeSet, HashSet},
     };
-
-    fn replace_witness_input_with_constant(
-        value: &mut Value,
-        witness: NoirWitness,
-        constant: FieldElement,
-        num_bits: u32,
-    ) -> bool {
-        match value {
-            Value::Object(map) => {
-                let matches_target = map.get("num_bits").and_then(Value::as_u64)
-                    == Some(num_bits as u64)
-                    && map.get("input")
-                        == Some(&serde_json::json!({ "Witness": witness.witness_index() }));
-                if matches_target {
-                    *map.get_mut("input").expect("input present after match") = serde_json::json!({
-                        "Constant": constant.to_string()
-                    });
-                    return true;
-                }
-
-                map.values_mut().any(|nested| {
-                    replace_witness_input_with_constant(nested, witness, constant, num_bits)
-                })
-            }
-            Value::Array(values) => values.iter_mut().any(|nested| {
-                replace_witness_input_with_constant(nested, witness, constant, num_bits)
-            }),
-            _ => false,
-        }
-    }
 
     /// Regression: public inputs absent from all opcodes must still get
     /// builders (case for unconstrained public inputs), otherwise
@@ -950,11 +919,12 @@ mod tests {
 
     #[test]
     fn malformed_and_constant_is_rejected_with_operand_context() {
+        let oversized = NoirElement::from_repr(FieldElement::from(1u64 << 40));
         let circuit: Circuit<NoirElement> = Circuit {
             current_witness_index: 3,
             opcodes: vec![Opcode::BlackBoxFuncCall(BlackBoxFuncCall::AND {
                 lhs:      FunctionInput::Witness(NoirWitness(1)),
-                rhs:      FunctionInput::Witness(NoirWitness(2)),
+                rhs:      FunctionInput::Constant(oversized),
                 output:   NoirWitness(3),
                 num_bits: 32,
             })],
@@ -962,28 +932,24 @@ mod tests {
             ..Default::default()
         };
 
-        let mut value = serde_json::to_value(&circuit).expect("serialize circuit");
-        assert!(replace_witness_input_with_constant(
-            &mut value,
-            NoirWitness(2),
-            FieldElement::from(1u64 << 40),
-            32,
-        ));
-        let malformed_circuit: Circuit<NoirElement> =
-            serde_json::from_value(value).expect("deserialize malformed circuit");
-
-        let err = noir_to_r1cs(&malformed_circuit).expect_err("oversized AND constant should fail");
-        let msg = err.to_string();
-        assert!(msg.contains("AND/XOR rhs constant exceeds 32 bits"));
+        let err = noir_to_r1cs(&circuit).expect_err("oversized AND constant should fail");
+        assert!(err
+            .to_string()
+            .contains("AND/XOR rhs constant exceeds 32 bits"));
     }
 
     #[test]
     fn malformed_sha256_hash_constant_is_rejected() {
+        let oversized = NoirElement::from_repr(FieldElement::from(1u64 << 40));
         let inputs = Box::new(std::array::from_fn(|i| {
             FunctionInput::Witness(NoirWitness((i as u32) + 1))
         }));
-        let hash_values = Box::new(std::array::from_fn(|i| {
-            FunctionInput::Witness(NoirWitness((i as u32) + 17))
+        let hash_values = Box::new(std::array::from_fn::<_, 8, _>(|i| {
+            if i == 0 {
+                FunctionInput::Constant(oversized)
+            } else {
+                FunctionInput::Witness(NoirWitness((i as u32) + 17))
+            }
         }));
         let outputs = Box::new(std::array::from_fn(|i| NoirWitness((i as u32) + 25)));
         let circuit: Circuit<NoirElement> = Circuit {
@@ -999,19 +965,9 @@ mod tests {
             ..Default::default()
         };
 
-        let mut value = serde_json::to_value(&circuit).expect("serialize circuit");
-        assert!(replace_witness_input_with_constant(
-            &mut value,
-            NoirWitness(17),
-            FieldElement::from(1u64 << 40),
-            32,
-        ));
-        let malformed_circuit: Circuit<NoirElement> =
-            serde_json::from_value(value).expect("deserialize malformed circuit");
-
-        let err = noir_to_r1cs(&malformed_circuit)
-            .expect_err("oversized SHA256 hash constant should fail");
-        let msg = err.to_string();
-        assert!(msg.contains("SHA256 hash constant exceeds 32 bits"));
+        let err = noir_to_r1cs(&circuit).expect_err("oversized SHA256 hash constant should fail");
+        assert!(err
+            .to_string()
+            .contains("SHA256 hash constant exceeds 32 bits"));
     }
 }
