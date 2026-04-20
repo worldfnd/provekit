@@ -42,36 +42,49 @@ pub use {
 /// Must be called once before any prove/verify operations.
 /// Idempotent — safe to call multiple times.
 pub fn register_whir_backends() {
-    use std::sync::{Arc, Once};
+    use std::sync::Once;
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        #[cfg(not(feature = "provekit_ntt"))]
-        let irs_committer: Arc<
-            dyn whir::protocols::irs_commit::IrsCommitter<FieldElement>,
-        > = Arc::new(whir::protocols::irs_commit::CpuIrsCommitter::new(Arc::new(
-            crate::ntt::RSFr,
-        )));
+        let irs_committer = build_irs_committer();
+        whir::protocols::irs_commit::IRS_COMMITTERS.insert(irs_committer);
 
-        #[cfg(feature = "provekit_ntt")]
-        let irs_committer: Arc<
-            dyn whir::protocols::irs_commit::IrsCommitter<FieldElement>,
-        > = match crate::ntt::MetalBn254Ntt::new() {
-            Ok(ntt) => Arc::new(ntt),
+        // Register Skyscraper (ProveKit-specific); WHIR's built-in engines
+        // (SHA2, Keccak, Blake3, etc.) are pre-registered via whir::hash::ENGINES.
+        whir::hash::ENGINES
+            .register(std::sync::Arc::new(skyscraper::SkyscraperHashEngine));
+    });
+}
+
+/// Build the IRS committer for BN254.
+///
+/// With `provekit_ntt`: uses ProveKit's optimized NTT backends (Metal on
+/// macOS with CPU fallback, CPU-only on other targets).
+/// Without `provekit_ntt`: uses whir's built-in `NttEngine`.
+fn build_irs_committer()
+-> std::sync::Arc<dyn whir::protocols::irs_commit::IrsCommitter<FieldElement>> {
+    use std::sync::Arc;
+    use whir::protocols::irs_commit::CpuIrsCommitter;
+
+    #[cfg(feature = "provekit_ntt")]
+    {
+        #[cfg(target_os = "macos")]
+        match crate::ntt::MetalBn254Ntt::new() {
+            Ok(ntt) => return Arc::new(ntt),
             Err(err) => {
                 tracing::info!(
                     error = %err,
                     "Metal BN254 IRS backend unavailable, using ProveKit CPU fallback"
                 );
-                Arc::new(whir::protocols::irs_commit::CpuIrsCommitter::new(Arc::new(
-                    crate::ntt::RSFr,
-                )))
             }
-        };
+        }
 
-        whir::protocols::irs_commit::IRS_COMMITTERS.insert(irs_committer);
+        Arc::new(CpuIrsCommitter::new(Arc::new(crate::ntt::RSFr)))
+    }
 
-        // Register Skyscraper (ProveKit-specific); WHIR's built-in engines
-        // (SHA2, Keccak, Blake3, etc.) are pre-registered via whir::hash::ENGINES.
-        whir::hash::ENGINES.register(Arc::new(skyscraper::SkyscraperHashEngine));
-    });
+    #[cfg(not(feature = "provekit_ntt"))]
+    {
+        Arc::new(CpuIrsCommitter::new(Arc::new(
+            whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield(),
+        )))
+    }
 }
