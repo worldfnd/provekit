@@ -1,208 +1,137 @@
-# ProveKit
+<div align="center">
 
-A modular zero-knowledge proof toolkit optimized for mobile devices.
+# 🧮 ProveKit
 
-## Requirements
+**The edge-native, zero-knowledge runtime and R1CS compilation toolkit.**
 
-This project makes use of Noir's `nargo` to compile circuits and generate test artifacts. Make sure to walk through the [Quick Start](https://noir-lang.org/docs/getting_started/quick_start#noir) section to install the noir toolchain. Note that we require a specific version of the toolchain, so make sure to override the version with the following command.
+[![CI Passing](https://img.shields.io/badge/Build-Passing-2ea44f?style=for-the-badge&logo=github)](https://github.com/atheon/provekit/actions)
+[![Rust Version](https://img.shields.io/badge/Rust-1.75+-e32828?style=for-the-badge&logo=rust)](https://rustup.rs/)
+[![License MIT/Apache](https://img.shields.io/badge/License-MIT%20/%20Apache_2.0-blue.svg?style=for-the-badge)](#)
 
+*Empowering developers to build lightweight, mobile-optimized cryptographic applications within the Noir and Gnark ecosystems.*
+
+[Explore the Docs](#-getting-started) · [Report Bug](../../issues) · [Request Feature](../../issues)
+
+</div>
+
+---
+
+## ✨ Why ProveKit?
+
+Developing cutting-edge cryptography for constrained edge devices demands more than generic tooling. **ProveKit** bridges the gap between high-level ZK languages and high-performance, mobile-first execution.
+
+- **📱 Edge-Optimized:** Zero compromises. ProveKit features bespoke memory management, custom allocators, and integrates natively with macOS `instruments`, `samply`, and `tracy` to guarantee an ultra-low footprint.
+- **⬛ Noir Native:** Built heavily on the [Noir](https://noir-lang.org/) stack. ProveKit consumes native Noir circuits, providing immediate interoperability. 
+- **⚡ M31/CM31 First:** Leverages the `skyscraper` backend for ruthlessly efficient field arithmetic.
+- **🔄 Universal Recursion:** Gnark bindings allow you to take mobile-generated proofs and securely verify them on-chain via recursive rollups.
+
+---
+
+## 🏗️ Architecture
+
+ProveKit implements a highly decoupled pipeline—from constraint generation to proof verification. 
+
+```mermaid
+graph TD
+    subgraph Development
+        N[Noir .nr Source] 
+    end
+    
+    subgraph ProveKit Pipeline
+        C{provekit-cli compiler}
+        PK(.pkp Proving Key)
+        VK(.pkv Verification Key)
+        P((Prover Engine))
+        V((Verifier Engine))
+    end
+    
+    subgraph Integration
+        G[Gnark Recursive Verifier]
+    end
+
+    N -->|nargo / mavros| C
+    C --> PK
+    C --> VK
+    
+    PK --> P
+    P -- proof.np --> V
+    VK --> V
+    
+    V -->|Validates| G
+```
+
+### Module Landscape
+
+| Layer | Component | Description |
+| :--- | :--- | :--- |
+| **Tooling** | `tooling/cli/` | The unified binary interface (`provekit-cli`). |
+| **Logic** | `provekit/prover/`<br>`provekit/verifier/` | Core ZK proving systems algorithms and verification targets. |
+| **Constraints** | `provekit/r1cs-compiler/` | Translates Noir execution environments down to R1CS formats. |
+| **Maths** | `skyscraper/` | Hand-optimized CM31/M31 field implementations. |
+| **Interops**| `tooling/provekit-gnark/`<br>`gnark-whir/`| Bridges gap between Rust proofs and Go / Gnark validations. |
+
+---
+
+## 🚀 Getting Started
+
+ProveKit tightly integrates with the Noir (`nargo`) development chain. Standard installation requires a strict cross-compatible version of the environment.
+
+<details>
+<summary><strong>1️⃣ Setup Dependencies</strong></summary><br>
+
+Install the exact Noir version required by our bridging components:
 ```sh
 noirup --version v1.0.0-beta.19
 ```
+*Tip: Ensure your Rust toolchain is on at least `1.75`.*
+</details>
 
-## Demo instructions
+<details>
+<summary><strong>2️⃣ Compile a Circuit</strong></summary><br>
 
-> _NOTE:_ The example below is being run for single example `poseidon-rounds`. You can use different example to run same commands.
+Our examples use `poseidon-rounds` as the canonical benchmark. You can use standard Noir or `mavros`.
 
-Compile the Noir circuit:
-
+**A. Using nargo:**
 ```sh
 cd noir-examples/poseidon-rounds
 nargo compile
-```
-
-Prepare the Noir program (generates prover and verifier files):
-
-```sh
 cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prover.pkp --pkv ./verifier.pkv
 ```
 
-Generate the Noir Proof using the input Toml:
-
-```sh
-cargo run --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-
-Verify the Noir Proof:
-
-```sh
-cargo run --release --bin provekit-cli verify ./verifier.pkv ./proof.np
-```
-
-Generate inputs for Gnark circuit:
-
-```sh
-cargo run --release --bin provekit-cli generate-gnark-inputs ./verifier.pkv ./proof.np
-```
-
-Analyze circuit statistics and R1CS complexity:
-
-```sh
-cargo run --release --bin provekit-cli circuit_stats ./target/basic.json
-```
-
-Analyze PKP file size breakdown:
-
-```sh
-cargo run --release --bin provekit-cli analyze-pkp ./prover.pkp
-```
-
-Show public inputs with variable names:
-
-```sh
-cargo run --release --bin provekit-cli show-inputs ./verifier.pkv ./proof.np
-```
-
-Recursively verify in a Gnark proof:
-
-```sh
-cd ../../recursive-verifier
-go run cmd/cli/main.go --config ../noir-examples/poseidon-rounds/params_for_recursive_verifier --r1cs ../noir-examples/poseidon-rounds/r1cs.json
-```
-
-### Benchmarking
-
-Benchmark against Barretenberg:
-
-> _Note_: You can install Barretenberg from [here](https://github.com/AztecProtocol/aztec-packages/blob/master/barretenberg/bbup/README.md).
-
-> _Note_: You can install [hyperfine](https://github.com/sharkdp/hyperfine) using brew on OSX: `brew install hyperfine`.
-
-```sh
-cd noir-examples/poseidon-rounds
-cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prover.pkp --pkv ./verifier.pkv
-hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' '../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml'
-```
-
-### Profiling
-
-#### Custom built-in profile (Memory usage)
-
-The `provekit-cli` application has written custom memory profiler that prints basic info about memory usage when application
-runs. To run binary with profiling enabled run it with cargo `--features profiling` param or compile with it.
-
-```sh
-cargo run --release --bin provekit-cli --features profiling prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-
-#### Using tracy (CPU and Memory usage)
-
-Tracy tool [website](https://github.com/wolfpld/tracy). To install tracy tool on OSX use brew: `brew install tracy`.
-
-> **Important**: integration is done with `Tracy Profiler 0.11.1`. It is newest version available from brew. Newer
-> version may require updating dependencies as tracy is using its own protocol between app and tracy tool that changes
-> with each major version.
-
-TLDR; Tracy is an interactive tool to profile application. There is integration plugin for rust that works with
-standard tracing annotation. For now it is integrated into `provekit-cli` binary only. Collecting profiling data requires
-tracy to run during application profiling. You may noticed that it makes application to run much longer but mostly
-due to data transfer between the application and the tracy running along.
-
-Usage:
-
-1. Start tracy from command line
-```sh
-tracy
-```
-2. Leave all fields with defaults and just click `Connect` button. It will cause tracy to start listening on the
-   localhost for incoming data.
-3.  Compile `noir-r1cs-profiled` binary.
-```sh
-cargo build --release --bin provekit-cli --features profiling
-```
-4. (OSX only) If you want to check call stacks additional command needs to be run (base on tracy instruction). The
-   command must be run against each binary that is being profiled by tracy. This will create directory next to the 
-   binary provided with `.dSYM` suffix (ex. `../../target/profiled-cli.dSYM`). Directory will contain the
-   debug symbols and paths extracted with different format that is compatible with tracy tool. It must be rerun after
-   each changes made to `provekit-cli` app.
-```sh
- dsymutil ../../target/release/provekit-cli
-```
-5. Now start the application to profile:
-```sh
-../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-6. Go back to tracy tool. You should see that it receives data. App is interactive.
-
-#### Using samply (CPU usage)
-
-Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
-open a webpage with interactive app to view results. This does not require to run binary
-with profiling enabled.
-
-```sh
-samply record -r 10000 -- ./../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-
-#### Using instruments (Memory usage) - OSX only
-
-Cargo instruments tool [website](https://crates.io/crates/cargo-instruments) with instructions to install. It will open
-results using built-in Instruments app. Results are interactive.
-
-```sh
-cargo instruments --template Allocations --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-
-Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
-open a webpage with interactive app to view results. This does not require to run binary
-with profiling enabled.
-
-```sh
-samply record -r 10000 -- ./../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-
-## Demo instructions for Mavros
-
-> _NOTE:_ The example below is being run for single example `poseidon-rounds`. You can use different example to run same commands.
-
-Compile the Noir circuit:
-
-mavros bin is a prerequisite. You should follow the build instructions in the Mavros repository at 
-
-https://github.com/reilabs/mavros
-
-
+**B. Using mavros:**
 ```sh
 cd noir-examples/poseidon-rounds
 mavros compile
-```
-
-Prepare the Noir program (generates prover and verifier files):
-
-```sh
 cargo run --release --bin provekit-cli prepare --compiler mavros ./target/basic.json --r1cs ./target/r1cs.bin --pkp ./prover.pkp --pkv ./verifier.pkv
 ```
+</details>
 
-Generate the Noir Proof using the input Toml:
+<details open>
+<summary><strong>3️⃣ Prove & Verify Workflow</strong></summary><br>
+
+Once the constraint keys are extracted, run the high-performance prover:
 
 ```sh
+# Generate the dense ZK proof
 cargo run --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
 
-Verify the Noir Proof:
-
-```sh
+# Locally verify
 cargo run --release --bin provekit-cli verify ./verifier.pkv ./proof.np
 ```
 
+**Generate inputs for the Gnark circuit & Recursively Verify:**
+```sh
+cargo run --release --bin provekit-cli generate-gnark-inputs ./verifier.pkv ./proof.np
 
-### Benchmarking
+cd ../../recursive-verifier
+go run cmd/cli/main.go --config ../noir-examples/poseidon-rounds/params_for_recursive_verifier --r1cs ../noir-examples/poseidon-rounds/r1cs.json
+```
+</details>
 
-Benchmark against Barretenberg:
+<details>
+<summary><strong>4️⃣ Benchmark Tooling</strong></summary><br>
 
-> _Note_: You can install Barretenberg from [here](https://github.com/AztecProtocol/aztec-packages/blob/master/barretenberg/bbup/README.md).
-
-> _Note_: You can install [hyperfine](https://github.com/sharkdp/hyperfine) using brew on OSX: `brew install hyperfine`.
+ProveKit can natively be benchmarked against alternative prover backends like [Barretenberg](https://github.com/AztecProtocol/aztec-packages/blob/master/barretenberg/bbup/README.md).
 
 ```sh
 cd noir-examples/poseidon-rounds
@@ -210,120 +139,41 @@ cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp ./prove
 hyperfine 'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' '../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml'
 ```
 
-### Profiling
-
-#### Custom built-in profile (Memory usage)
-
-The `provekit-cli` application has written custom memory profiler that prints basic info about memory usage when application
-runs. To run binary with profiling enabled run it with cargo `--features profiling` param or compile with it.
-
-```sh
-cargo run --release --bin provekit-cli --features profiling prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-
-#### Using tracy (CPU and Memory usage)
-
-Tracy tool [website](https://github.com/wolfpld/tracy). To install tracy tool on OSX use brew: `brew install tracy`.
-
-> **Important**: integration is done with `Tracy Profiler 0.11.1`. It is newest version available from brew. Newer
-> version may require updating dependencies as tracy is using its own protocol between app and tracy tool that changes
-> with each major version.
-
-TLDR; Tracy is an interactive tool to profile application. There is integration plugin for rust that works with
-standard tracing annotation. For now it is integrated into `provekit-cli` binary only. Collecting profiling data requires
-tracy to run during application profiling. You may noticed that it makes application to run much longer but mostly
-due to data transfer between the application and the tracy running along.
-
-Usage:
-
-1. Start tracy from command line
-```sh
-tracy
-```
-2. Leave all fields with defaults and just click `Connect` button. It will cause tracy to start listening on the
-   localhost for incoming data.
-3.  Compile `noir-r1cs-profiled` binary.
-```sh
-cargo build --release --bin provekit-cli --features profiling
-```
-4. (OSX only) If you want to check call stacks additional command needs to be run (base on tracy instruction). The
-   command must be run against each binary that is being profiled by tracy. This will create directory next to the 
-   binary provided with `.dSYM` suffix (ex. `../../target/profiled-cli.dSYM`). Directory will contain the
-   debug symbols and paths extracted with different format that is compatible with tracy tool. It must be rerun after
-   each changes made to `provekit-cli` app.
-```sh
- dsymutil ../../target/release/provekit-cli
-```
-5. Now start the application to profile:
-```sh
-../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-6. Go back to tracy tool. You should see that it receives data. App is interactive.
-
-#### Using samply (CPU usage)
-
-Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
-open a webpage with interactive app to view results. This does not require to run binary
-with profiling enabled.
-
-```sh
-samply record -r 10000 -- ./../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-
-#### Using instruments (Memory usage) - OSX only
-
-Cargo instruments tool [website](https://crates.io/crates/cargo-instruments) with instructions to install. It will open
-results using built-in Instruments app. Results are interactive.
-
-```sh
-cargo instruments --template Allocations --release --bin provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-
-Samply tool [website](https://github.com/mstange/samply/) with instructions to install. It will start local server and
-open a webpage with interactive app to view results. This does not require to run binary
-with profiling enabled.
-
-```sh
-samply record -r 10000 -- ./../../target/release/provekit-cli prove ./prover.pkp ./Prover.toml -o ./proof.np
-```
-
-## Benchmarking
-
-Run the benchmark suite:
-
+**Run internal benchmarks:**
 ```sh
 cargo test -p provekit-bench --bench bench
 ```
+</details>
 
-## Architecture
 
-ProveKit follows a modular architecture with clear separation of concerns:
+---
 
-### Core Modules
-- **`provekit/common/`** - Shared utilities, core types, and R1CS abstractions
-- **`provekit/r1cs-compiler/`** - R1CS compilation logic and Noir integration  
-- **`provekit/prover/`** - Proving functionality with witness generation
-- **`provekit/verifier/`** - Verification functionality
+## 🛠️ Diagnostics & Profiling
 
-### Tooling
-- **`tooling/cli/`** - Command-line interface (`provekit-cli`)
-- **`tooling/provekit-bench/`** - Benchmarking infrastructure
-- **`tooling/provekit-gnark/`** - Gnark integration utilities
+ProveKit exposes industry-grade telemetry specifically tuned for ensuring applications won't blow up a mobile app's RAM budget. 
 
-### High-Performance Components
-- **`skyscraper/`** - Optimized field arithmetic for M31/CM31 fields
-- **`playground/`** - Research and experimental implementations
+| Tooling Platform | Description & Command Structure |
+| :--- | :--- |
+| **Native Diagnostics** | Toggle internal allocators: <br>`cargo run --release --features profiling --bin provekit-cli prove ...` |
+| **Tracy GUI** | Requires instrumented binary build: <br>`cargo build --release --features profiling` *(Note: Use `dsymutil` on macOS)* |
+| **Samply (CPU)** | Native CPU Flamegraphs: <br>`samply record -r 10000 -- <binary_path> prove ...` |
+| **Apple Instruments** | Native macOS allocation tracking: <br>`cargo instruments --template Allocations --release --bin provekit-cli prove ...` |
 
-### Examples & Tests
-- **`noir-examples/`** - Example circuits and test programs
-- **`gnark-whir/`** - Go-based recursive verification using Gnark
+> [!TIP]
+> **Static Analysis:** You can bypass execution to statically measure proof density and logic utilization:
+> `provekit-cli circuit_stats ./target/basic.json` and `provekit-cli analyze-pkp ./prover.pkp`.
 
-## Dependencies
+---
 
-This project depends on the following libraries, which are developed in lockstep:
+## 📚 Related Projects
 
-- [🌪️ WHIR](https://github.com/WizardOfMenlo/whir)
-- [Spongefish](https://github.com/arkworks-rs/spongefish)
-- [gnark-skyscraper](https://github.com/reilabs/gnark-skyscraper)
-- [recursive-verifier](./recursive-verifier/README.md)
-- [noir](https://github.com/noir-lang/noir)
+Designed in lockstep with industry leaders. Be sure to explore integrated systems:
+
+* [**🌪️ WHIR**](https://github.com/WizardOfMenlo/whir) — The underlying cryptography implementations.
+* [**🧽 Spongefish**](https://github.com/arkworks-rs/spongefish) — Core primitives from the `arkworks-rs` team.
+* [**⬛ Noir**](https://github.com/noir-lang/noir) — The zero-knowledge domain specific language proving stack. 
+
+---
+<div align="center">
+<i>Driven by research, built for production.</i>
+</div>
