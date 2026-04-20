@@ -1,10 +1,5 @@
-//
-//
-//
-
-// This is an
-global COLS = 18;
-global ROWS = 14;
+global COLS: u32 = 18;
+global ROWS: u32 = 14;
 
 fn sq(x: Field) -> Field {
     x * x
@@ -16,8 +11,6 @@ fn cu(x: Field) -> Field {
 
 // hashes two inputs
 fn hash(val: Field, salt: Field) -> Field {
-    // let mut slt = salt as u64;
-    // let val = val as u64;
     let salts = [
         0xf8bf3bd6c22ba3b1bf3ab2e3fb40818cd4217ffbaf294ca42331d4e3043a0a6,
         0x388c9fcf30fc2841d648f46bad01dd10bee9dc184d25eabc9f617021109cec3,
@@ -47,9 +40,9 @@ fn hash(val: Field, salt: Field) -> Field {
 }
 
 fn expand_position(position: Field) -> (u8, u8) {
-    let pos_bytes = position.to_be_bytes(2);
-    let mut px = pos_bytes[0];
-    let mut py = pos_bytes[1];
+    let pos: u16 = position as u16;
+    let mut px = (pos >> 8) as u8;
+    let mut py = (pos & 0xff) as u8;
     (px, py)
 }
 
@@ -75,18 +68,9 @@ fn make_move(prev_pos: Field, move: u8) -> (u8, u8) {
 }
 
 // Get map bit at x, y
-fn map_bit(map0: U128, map1: U128, x: u8, mut y: u8) -> u8 {
+fn map_bit(map0: u128, map1: u128, x: u32, y: u32) -> u8 {
     let mut map = map0;
     let mut bit = y * COLS + x;
-    // print(x);
-    // print(" ");
-    // print(y);
-    // print(" ");
-    // print(bit);
-    // print(" ");
-
-    // print("bit[ ");
-    // print(bit);
 
     // We have a map in two U128, m0 and m1
     // determine which one to use base on the row (y)
@@ -94,31 +78,8 @@ fn map_bit(map0: U128, map1: U128, x: u8, mut y: u8) -> u8 {
         bit = bit - 126;
         map = map1;
     }
-    // Now use map.lo or map.hi if bit value to fetch is greater than 63
-    let mut map_part = map.lo as u64;
-    let mut total_bits: u8 = 63;
-    // print(" ~ ");
-    // print(bit);
-    // print(" ");
-    if bit > 63 {
-        map_part = map.hi as u64;
-        bit -= 64;
-        total_bits = 61;
-    }
-
-    // bits to drop, everything after the reqd bit
-    let mut drop_bits = bit;
-    // print(" ] ");
-    let divide_drop_bits: u64 = 1 as u64 << (drop_bits as u8);
-    // divide by power of two to drop lower bits
-    let remainder_map = map_part / divide_drop_bits as u64;
-    // drop higher bits
-    let bit = remainder_map % 2;
-
-    // print("map: ");
-    // print(map_part);
-    // print(" bit: ");
-    // print(bit);
+    // Shift to the requested bit and mask the lowest bit.
+    let bit = (map >> (bit as u128)) & (1 as u128);
 
     bit as u8
 }
@@ -132,12 +93,12 @@ fn map_bit(map0: U128, map1: U128, x: u8, mut y: u8) -> u8 {
 // salt: for hashing
 // returns: public new position hash output for Cairo contract to store in state for next iteration
 fn main(
-    map0: pub U128,
-    map1: pub U128,
+    map0: pub u128,
+    map1: pub u128,
     prev_pos_hash: pub Field,
     prev_pos: Field,
     move: u8,
-    salt: Field //
+    salt: Field, //
 ) -> pub Field {
     // public for Cairo contract assert equivalence
     // To make sure bushes are same in Cairo and the circuit
@@ -149,7 +110,7 @@ fn main(
     let (x, y) = make_move(prev_pos, move);
 
     // Step 3: Assert move is in the bush
-    let bush = map_bit(map0, map1, x, y);
+    let bush = map_bit(map0, map1, x as u32, y as u32);
     assert(1 == bush);
 
     // Step 4: Output new public hash
@@ -159,7 +120,7 @@ fn main(
 }
 
 mod test {
-    use crate::{main, map_bit, hash};
+    use crate::{hash, main, map_bit};
     /*
      000110011100110000
      001110011100111000
@@ -169,7 +130,7 @@ mod test {
      111001110011100000
      110001100001100000
     */
-    global MAP1 = U128::from_integer(8572555389858747807877673192308021344);
+    global MAP1: u128 = 8572555389858747807877673192308021344;
 
     /*
      000001100001100011
@@ -180,7 +141,7 @@ mod test {
      000111001110011100
      000011001110011000
     */
-    global MAP0 = U128::from_integer(2025978491129711385918832679433810840);
+    global MAP0: u128 = 2025978491129711385918832679433810840;
 
     #[test]
     fn test_bush() {
@@ -198,7 +159,7 @@ mod test {
             [1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0],
             [0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0],
             [0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0],
-            [0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0]
+            [0, 0, 0, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0],
         ];
 
         for y in 0..14 {

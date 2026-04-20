@@ -10,8 +10,8 @@
     "clean": "rm -rf artifacts pkg pkg-web"
   },
   "dependencies": {
-    "@noir-lang/acvm_js": "1.0.0-beta.11",
-    "@noir-lang/noir_js": "1.0.0-beta.11",
-    "@noir-lang/noirc_abi": "1.0.0-beta.11"
+    "@noir-lang/acvm_js": "1.0.0-beta.19",
+    "@noir-lang/noir_js": "1.0.0-beta.19",
+    "@noir-lang/noirc_abi": "1.0.0-beta.19"
   }
 }
