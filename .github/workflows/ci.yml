@@ -34,6 +34,8 @@ jobs:
         run: cargo test --no-fail-fast --all-features --verbose --lib --tests --bins
       - name: Run doc tests
         run: cargo test --doc --all-features --verbose
+      - name: FFI Integration Tests
+        run: cargo test -p provekit-ffi --test ffi_integration --release
 
   cargo_clippy:
     name: Clippy (all features)

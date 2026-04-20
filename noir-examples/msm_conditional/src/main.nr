@@ -9,11 +9,11 @@ global GEN: EmbeddedCurvePoint = EmbeddedCurvePoint {
 
 /// Exercises MultiScalarMul with a Witness predicate.
 ///
-/// When `condition = true`, the MSM runs and the result must be non-infinite.
+/// When `condition = true`, the MSM runs and `result` must equal the expected point.
 /// When `condition = false`, the MSM is in an inactive branch (predicate=0 in
 /// ACIR), and ACVM outputs the identity point (0, 0, true). This exercises
 /// provekit's conditional MSM support.
-fn main(condition: bool, scalar_lo: Field, scalar_hi: Field, expected_infinite: bool) {
+fn main(condition: bool, scalar_lo: Field, scalar_hi: Field, expected_x: Field, expected_y: Field) {
     let scalar = EmbeddedCurveScalar { lo: scalar_lo, hi: scalar_hi };
 
     // The if/else forces ACIR to emit MultiScalarMul with a Witness predicate.
@@ -24,5 +24,13 @@ fn main(condition: bool, scalar_lo: Field, scalar_hi: Field, expected_infinite: 
         EmbeddedCurvePoint { x: 0, y: 0, is_infinite: true }
     };
 
-    assert_eq(result.is_infinite, expected_infinite);
+    if condition {
+        assert(!result.is_infinite);
+        assert_eq(result.x, expected_x);
+        assert_eq(result.y, expected_y);
+    } else {
+        assert(result.x == 0);
+        assert(result.y == 0);
+        assert(result.is_infinite);
+    }
 }
