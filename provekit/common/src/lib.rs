@@ -37,26 +37,6 @@ pub use {
     witness::PublicInputs,
 };
 
-static FIELD_HASHER_FN: std::sync::OnceLock<fn(&[FieldElement]) -> FieldElement> =
-    std::sync::OnceLock::new();
-
-/// Returns the registered public-inputs hasher. Panics if
-/// [`register_hash_config`] was not called.
-pub(crate) fn field_hasher() -> fn(&[FieldElement]) -> FieldElement {
-    *FIELD_HASHER_FN
-        .get()
-        .expect("register_hash_config must be called before hashing public inputs")
-}
-
-/// Register the global public-inputs field hasher. Call once at startup
-/// alongside [`register_ntt`].
-///
-/// Idempotent — subsequent calls with a different config are silently ignored;
-/// the first caller wins. This matches the `register_ntt` contract.
-pub fn register_hash_config(config: HashConfig) {
-    FIELD_HASHER_FN.get_or_init(|| witness::field_hasher_for(config));
-}
-
 /// Register provekit's custom implementations in whir's global registries.
 ///
 /// Must be called once before any prove/verify operations.
@@ -80,4 +60,26 @@ pub fn register_ntt() {
         // (SHA2, Keccak, Blake3, etc.) are pre-registered via whir::hash::ENGINES.
         whir::hash::ENGINES.register(Arc::new(skyscraper::SkyscraperHashEngine));
     });
+}
+
+static HASH_CONFIG: std::sync::OnceLock<HashConfig> = std::sync::OnceLock::new();
+
+/// Returns the globally registered [`HashConfig`]. Panics if
+/// [`register_hash_config`] was not called.
+pub fn hash_config() -> HashConfig {
+    *HASH_CONFIG
+        .get()
+        .expect("register_hash_config must be called before proof operations")
+}
+
+pub(crate) fn field_hasher() -> fn(&[FieldElement]) -> FieldElement {
+    witness::field_hasher_for(hash_config())
+}
+
+/// Register the global hash configuration. Call once at startup alongside
+/// [`register_ntt`].
+///
+/// Idempotent — safe to call multiple times.
+pub fn register_hash_config(config: HashConfig) {
+    HASH_CONFIG.get_or_init(|| config);
 }

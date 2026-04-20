@@ -2,6 +2,7 @@ use {
     anyhow::{ensure, Context, Result},
     ark_std::{One, Zero},
     provekit_common::{
+        hash_config,
         prefix_covector::{
             build_prefix_covectors, expand_powers, make_challenge_weight, make_public_weight,
             OffsetCovector,
@@ -9,8 +10,7 @@ use {
         utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
         },
-        FieldElement, HashConfig, PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme,
-        R1CS,
+        FieldElement, PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     tracing::instrument,
     whir::{
@@ -32,7 +32,6 @@ pub trait WhirR1CSVerifier {
         proof: &WhirR1CSProof,
         public_inputs: &PublicInputs,
         r1cs: &R1CS,
-        hash_config: HashConfig,
     ) -> Result<()>;
 }
 
@@ -43,7 +42,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         proof: &WhirR1CSProof,
         public_inputs: &PublicInputs,
         r1cs: &R1CS,
-        hash_config: HashConfig,
     ) -> Result<()> {
         let actual_r1cs_hash = r1cs.hash();
         anyhow::ensure!(
@@ -61,8 +59,11 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             #[cfg(debug_assertions)]
             pattern: proof.pattern.clone(),
         };
-        let mut arthur =
-            VerifierState::new(&ds, &whir_proof, TranscriptSponge::from_config(hash_config));
+        let mut arthur = VerifierState::new(
+            &ds,
+            &whir_proof,
+            TranscriptSponge::from_config(hash_config()),
+        );
 
         let commitment_1 = self
             .whir_witness
