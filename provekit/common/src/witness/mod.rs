@@ -75,6 +75,54 @@ fn fe_to_bytes_le(fe: &FieldElement) -> [u8; 32] {
     result
 }
 
+fn hash_with_skyscraper(elements: &[FieldElement]) -> FieldElement {
+    fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
+        let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);
+        FieldElement::new(BigInt(out))
+    }
+    match elements.len() {
+        0 => FieldElement::from(0u64),
+        1 => compress(elements[0], FieldElement::from(0u64)),
+        _ => elements.iter().copied().reduce(compress).unwrap(),
+    }
+}
+
+fn hash_with_sha256(elements: &[FieldElement]) -> FieldElement {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    for fe in elements {
+        hasher.update(fe_to_bytes_le(fe));
+    }
+    FieldElement::from_le_bytes_mod_order(&hasher.finalize())
+}
+
+fn hash_with_keccak(elements: &[FieldElement]) -> FieldElement {
+    use sha3::{Digest, Keccak256};
+    let mut hasher = Keccak256::new();
+    for fe in elements {
+        hasher.update(fe_to_bytes_le(fe));
+    }
+    FieldElement::from_le_bytes_mod_order(&hasher.finalize())
+}
+
+fn hash_with_blake3(elements: &[FieldElement]) -> FieldElement {
+    let mut hasher = blake3::Hasher::new();
+    for fe in elements {
+        hasher.update(&fe_to_bytes_le(fe));
+    }
+    FieldElement::from_le_bytes_mod_order(hasher.finalize().as_bytes())
+}
+
+/// Returns the field hasher function for the given hash configuration.
+pub(crate) fn field_hasher_for(config: crate::HashConfig) -> fn(&[FieldElement]) -> FieldElement {
+    match config {
+        crate::HashConfig::Skyscraper => hash_with_skyscraper,
+        crate::HashConfig::Sha256 => hash_with_sha256,
+        crate::HashConfig::Keccak => hash_with_keccak,
+        crate::HashConfig::Blake3 => hash_with_blake3,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PublicInputs(#[serde(with = "serde_ark_vec")] pub Vec<FieldElement>);
 
@@ -99,58 +147,22 @@ impl PublicInputs {
         self.0.is_empty()
     }
 
-    /// Compute the public-inputs commitment as a field element using the
-    /// specified hash algorithm.
+    /// Compute the public-inputs commitment as a field element.
     ///
+    /// Uses the hash algorithm registered via [`crate::register_hash_config`].
     /// Used as a prover transcript message (bound to the Fiat-Shamir instance)
-    /// and checked by the verifier. Both prover and verifier must call this
-    /// with the same `hash_config` to produce matching transcripts.
+    /// and checked by the verifier.
     #[must_use]
-    pub fn hash(&self, hash_config: crate::HashConfig) -> FieldElement {
-        match hash_config {
-            crate::HashConfig::Skyscraper => {
-                fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
-                    let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);
-                    FieldElement::new(BigInt(out))
-                }
-                match self.0.len() {
-                    0 => FieldElement::from(0u64),
-                    1 => compress(self.0[0], FieldElement::from(0u64)),
-                    _ => self.0.iter().copied().reduce(compress).unwrap(),
-                }
-            }
-            crate::HashConfig::Sha256 => {
-                use sha2::{Digest, Sha256};
-                let mut hasher = Sha256::new();
-                for fe in &self.0 {
-                    hasher.update(fe_to_bytes_le(fe));
-                }
-                FieldElement::from_le_bytes_mod_order(&hasher.finalize())
-            }
-            crate::HashConfig::Keccak => {
-                use sha3::{Digest, Keccak256};
-                let mut hasher = Keccak256::new();
-                for fe in &self.0 {
-                    hasher.update(fe_to_bytes_le(fe));
-                }
-                FieldElement::from_le_bytes_mod_order(&hasher.finalize())
-            }
-            crate::HashConfig::Blake3 => {
-                let mut hasher = blake3::Hasher::new();
-                for fe in &self.0 {
-                    hasher.update(&fe_to_bytes_le(fe));
-                }
-                FieldElement::from_le_bytes_mod_order(hasher.finalize().as_bytes())
-            }
-        }
+    pub fn hash(&self) -> FieldElement {
+        crate::field_hasher()(&self.0)
     }
 
     /// Compute the public-inputs hash as a 32-byte array (little-endian).
     ///
     /// Used to bind public inputs to the Fiat-Shamir transcript instance.
     #[must_use]
-    pub fn hash_bytes(&self, hash_config: crate::HashConfig) -> [u8; 32] {
-        fe_to_bytes_le(&self.hash(hash_config))
+    pub fn hash_bytes(&self) -> [u8; 32] {
+        fe_to_bytes_le(&self.hash())
     }
 }
 
@@ -179,6 +191,14 @@ mod tests {
         PublicInputs::from_vec(vals.iter().copied().map(fe).collect())
     }
 
+    fn hash(config: HashConfig, inputs: &PublicInputs) -> FieldElement {
+        field_hasher_for(config)(&inputs.0)
+    }
+
+    fn hash_bytes(config: HashConfig, inputs: &PublicInputs) -> [u8; 32] {
+        fe_to_bytes_le(&hash(config, inputs))
+    }
+
     // --- determinism ---
 
     #[test]
@@ -186,8 +206,8 @@ mod tests {
         let inputs = pi(&[1, 2, 3]);
         for config in ALL_CONFIGS {
             assert_eq!(
-                inputs.hash(config),
-                inputs.hash(config),
+                hash(config, &inputs),
+                hash(config, &inputs),
                 "{config:?}: hash must be deterministic"
             );
         }
@@ -198,8 +218,8 @@ mod tests {
         let inputs = pi(&[42]);
         for config in ALL_CONFIGS {
             assert_eq!(
-                inputs.hash_bytes(config),
-                inputs.hash_bytes(config),
+                hash_bytes(config, &inputs),
+                hash_bytes(config, &inputs),
                 "{config:?}: hash_bytes must be deterministic"
             );
         }
@@ -210,7 +230,7 @@ mod tests {
     #[test]
     fn skyscraper_empty_returns_zero() {
         assert_eq!(
-            PublicInputs::new().hash(HashConfig::Skyscraper),
+            hash(HashConfig::Skyscraper, &PublicInputs::new()),
             FieldElement::from(0u64),
         );
     }
@@ -220,8 +240,8 @@ mod tests {
         let empty = PublicInputs::new();
         for config in ALL_CONFIGS {
             assert_eq!(
-                empty.hash(config),
-                empty.hash(config),
+                hash(config, &empty),
+                hash(config, &empty),
                 "{config:?}: empty hash must be deterministic"
             );
         }
@@ -233,7 +253,7 @@ mod tests {
     fn different_configs_produce_different_hashes() {
         // Use a non-trivial input so Skyscraper empty=0 doesn't collide by accident.
         let inputs = pi(&[1, 2]);
-        let hashes: Vec<_> = ALL_CONFIGS.iter().map(|&c| inputs.hash(c)).collect();
+        let hashes: Vec<_> = ALL_CONFIGS.iter().map(|&c| hash(c, &inputs)).collect();
         for i in 0..hashes.len() {
             for j in (i + 1)..hashes.len() {
                 assert_ne!(
@@ -253,8 +273,8 @@ mod tests {
         let reversed = pi(&[2, 1]);
         for config in ALL_CONFIGS {
             assert_ne!(
-                input.hash(config),
-                reversed.hash(config),
+                hash(config, &input),
+                hash(config, &reversed),
                 "{config:?}: hash must be order-sensitive"
             );
         }
@@ -266,8 +286,8 @@ mod tests {
         let b = pi(&[1, 2, 4]);
         for config in ALL_CONFIGS {
             assert_ne!(
-                a.hash(config),
-                b.hash(config),
+                hash(config, &a),
+                hash(config, &b),
                 "{config:?}: hash must differ when values differ"
             );
         }
@@ -279,10 +299,10 @@ mod tests {
     fn hash_bytes_is_le_serialization_of_hash() {
         let inputs = pi(&[7, 13]);
         for config in ALL_CONFIGS {
-            let h = inputs.hash(config);
+            let h = hash(config, &inputs);
             let expected = fe_to_bytes_le(&h);
             assert_eq!(
-                inputs.hash_bytes(config),
+                hash_bytes(config, &inputs),
                 expected,
                 "{config:?}: hash_bytes must equal LE serialization of hash()"
             );

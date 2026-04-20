@@ -17,7 +17,7 @@ use {
             },
             HALF,
         },
-        FieldElement, HashConfig, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
+        FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
         WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
@@ -62,7 +62,6 @@ pub trait WhirR1CSProver {
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
-        hash_config: HashConfig,
     ) -> Result<WhirR1CSProof>;
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -75,7 +74,6 @@ pub trait WhirR1CSProver {
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
-        hash_config: HashConfig,
     ) -> Result<WhirR1CSProof>;
 }
 
@@ -149,7 +147,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
-        hash_config: HashConfig,
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -186,7 +183,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_weights,
             commitments,
             public_inputs,
-            hash_config,
         )
     }
 
@@ -201,7 +197,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
-        hash_config: HashConfig,
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -244,7 +239,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_weights,
             commitments,
             public_inputs,
-            hash_config,
         )
     }
 }
@@ -259,10 +253,9 @@ fn prove_from_alphas(
     blinding_weights: Vec<FieldElement>,
     commitments: Vec<WhirR1CSCommitment>,
     public_inputs: &PublicInputs,
-    hash_config: HashConfig,
 ) -> Result<WhirR1CSProof> {
     let is_single = commitments.len() == 1;
-    let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, scheme.m, hash_config);
+    let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, scheme.m);
 
     let domain_size = 1usize << scheme.m;
 
@@ -673,9 +666,8 @@ fn get_public_weights(
     public_inputs: &PublicInputs,
     merlin: &mut ProverState<TranscriptSponge>,
     m: usize,
-    hash_config: HashConfig,
 ) -> (FieldElement, PrefixCovector) {
-    let public_inputs_hash = public_inputs.hash(hash_config);
+    let public_inputs_hash = public_inputs.hash();
     merlin.prover_message(&public_inputs_hash);
 
     let x: FieldElement = merlin.verifier_message();
