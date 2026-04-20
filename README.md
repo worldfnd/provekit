@@ -160,8 +160,10 @@ ProveKit exposes industry-grade telemetry specifically tuned for ensuring applic
 | **Apple Instruments** | Native macOS allocation tracking: <br>`cargo instruments --template Allocations --release --bin provekit-cli prove ...` |
 
 > [!TIP]
-> **Static Analysis:** You can bypass execution to statically measure proof density and logic utilization:
-> `provekit-cli circuit_stats ./target/basic.json` and `provekit-cli analyze-pkp ./prover.pkp`.
+> **Static Analysis & Inspection:** You can bypass execution to statically measure proof density and investigate logic utilization using our CLI tools:
+> - `provekit-cli circuit_stats ./target/basic.json`
+> - `provekit-cli analyze-pkp ./prover.pkp`
+> - `provekit-cli show-inputs ./verifier.pkv ./proof.np`
 
 ---
 
