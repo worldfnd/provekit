@@ -3,7 +3,7 @@
  * Simple HTTP server for the web demo with Cross-Origin Isolation.
  *
  * Serves static files with proper MIME types and required headers for:
- * - SharedArrayBuffer (needed for wasm-bindgen-rayon thread pool)
+ * - SharedArrayBuffer (needed for the threaded browser proof runtime)
  * - Cross-Origin Isolation (COOP + COEP headers)
  */
 
@@ -39,7 +39,7 @@ async function serveFile(res, filePath) {
       "Content-Type": contentType,
       "Access-Control-Allow-Origin": "*",
       // Cross-Origin Isolation headers required for SharedArrayBuffer
-      // These enable wasm-bindgen-rayon's Web Worker-based parallelism
+      // These enable threaded WASM runtimes that rely on SharedArrayBuffer
       "Cross-Origin-Opener-Policy": "same-origin",
       "Cross-Origin-Embedder-Policy": "require-corp",
     });
@@ -73,22 +73,9 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Check if it's a directory
   try {
     const stats = await stat(filePath);
     if (stats.isDirectory()) {
-      // For the pkg/ directory, serve the WASM JS entry point.
-      // wasm-bindgen-rayon workers do `import('../../..')` which resolves to
-      // the pkg/ directory. Browsers can't import directories, so we serve
-      // the main JS module directly.
-      const pkgEntry = join(filePath, "provekit_wasm.js");
-      try {
-        await stat(pkgEntry);
-        await serveFile(res, pkgEntry);
-        return;
-      } catch (_) {
-        // No provekit_wasm.js — fall back to index.html
-      }
       await serveFile(res, join(filePath, "index.html"));
     } else {
       await serveFile(res, filePath);
@@ -113,7 +100,7 @@ async function startServer(port, maxAttempts = 10) {
         const server = createServer(handleRequest);
         server.once("error", reject);
         server.listen(currentPort, () => {
-          console.log(`\n🌐 ProveKit WASM Web Demo (with parallelism)`);
+          console.log(`\n🌐 ProveKit WASM Web Demo`);
           console.log(`   Server running at http://localhost:${currentPort}`);
           console.log(`\n   Cross-Origin Isolation: ENABLED`);
           console.log(`   SharedArrayBuffer: AVAILABLE`);

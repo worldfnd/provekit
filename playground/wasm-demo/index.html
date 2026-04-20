@@ -9,12 +9,16 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
-  <!-- Import map for @noir-lang packages -->
+  <!-- Import map for browser packages -->
   <script type="importmap">
   {
     "imports": {
-      "@noir-lang/acvm_js": "./vendor/acvm_js/acvm_js.js",
-      "@noir-lang/noirc_abi": "./vendor/noirc_abi/noirc_abi_wasm.js"
+      "@atheonxyz/verity": "./node_modules/@atheonxyz/verity/dist/browser/index.js",
+      "@noir-lang/noir_js": "./node_modules/@noir-lang/noir_js/lib/index.mjs",
+      "@noir-lang/acvm_js": "./node_modules/@noir-lang/acvm_js/web/acvm_js.js",
+      "@noir-lang/noirc_abi": "./node_modules/@noir-lang/noirc_abi/web/noirc_abi_wasm.js",
+      "@noir-lang/types": "./node_modules/@noir-lang/types/lib/esm/types.js",
+      "pako": "./node_modules/pako/dist/pako.esm.mjs"
     }
   }
   </script>
@@ -772,7 +776,7 @@
           <div class="step-item" id="step1-container">
             <div class="step-icon" id="step1-icon">1</div>
             <div class="step-content">
-              <div class="step-name">Load WASM Modules</div>
+              <div class="step-name">Load Proof Runtime</div>
               <div class="step-status" id="step1-status">Status: Waiting...</div>
             </div>
           </div>
@@ -788,7 +792,7 @@
           <div class="step-item" id="step3-container">
             <div class="step-icon" id="step3-icon">3</div>
             <div class="step-content">
-              <div class="step-name">Generate Witness (noir_js)</div>
+              <div class="step-name">Prepare Proof Inputs</div>
               <div class="step-status" id="step3-status">Status: Waiting...</div>
             </div>
           </div>
@@ -796,7 +800,7 @@
           <div class="step-item" id="step4-container">
             <div class="step-icon" id="step4-icon">4</div>
             <div class="step-content">
-              <div class="step-name">Generate Proof (ProveKit WASM)</div>
+              <div class="step-name">Generate Proof</div>
               <div class="step-status" id="step4-status">Status: Waiting...</div>
             </div>
           </div>
@@ -804,7 +808,7 @@
           <div class="step-item" id="step5-container">
             <div class="step-icon" id="step5-icon">5</div>
             <div class="step-content">
-              <div class="step-name">Verify Proof (ProveKit WASM)</div>
+              <div class="step-name">Verify Proof</div>
               <div class="step-status" id="step5-status">Status: Waiting...</div>
             </div>
           </div>
@@ -1206,16 +1210,6 @@
       });
     }
 
-  </script>
-
-  <script type="module">
-    // Import noir_js from local files
-    import { initNoir, Noir, decompressWitness } from './noir-web/noir-init.mjs';
-
-    // Make available globally
-    window.initNoir = initNoir;
-    window.Noir = Noir;
-    window.decompressWitness = decompressWitness;
   </script>
 
   <script type="module" src="src/demo-web.mjs"></script>
