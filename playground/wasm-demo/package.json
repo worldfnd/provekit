@@ -5,9 +5,13 @@
   "type": "module",
   "scripts": {
     "setup": "node scripts/setup.mjs",
-    "demo:web": "node scripts/serve.mjs",
-    "serve": "node scripts/serve.mjs",
-    "clean": "rm -rf artifacts vendor pkg pkg-web"
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint src tests vitest.config.ts",
+    "test": "vitest run",
+    "demo:web": "npm run build && node scripts/serve.mjs",
+    "serve": "npm run build && node scripts/serve.mjs",
+    "clean": "rm -rf dist artifacts vendor pkg pkg-web"
   },
   "dependencies": {
     "@atheonxyz/verity": "0.3.2-alpha",
@@ -16,5 +20,15 @@
     "@noir-lang/noirc_abi": "1.0.0-beta.11",
     "@noir-lang/types": "1.0.0-beta.11",
     "pako": "^2.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^25.6.0",
+    "eslint": "^9.39.4",
+    "jsdom": "^27.0.1",
+    "playwright": "^1.59.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.58.2",
+    "vitest": "^3.2.4"
   }
 }

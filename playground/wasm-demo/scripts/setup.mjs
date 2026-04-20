@@ -21,6 +21,7 @@ import {
 } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { parseSimpleToml } from "../shared/toml-parser.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, "../../..");
@@ -95,239 +96,12 @@ function getCircuitName(circuitDir) {
   return match[1];
 }
 
-/**
- * Parse a TOML value (handles strings, arrays, inline tables)
- */
-function parseTomlValue(valueStr) {
-  valueStr = valueStr.trim();
-
-  // String
-  if (valueStr.startsWith('"') && valueStr.endsWith('"')) {
-    return valueStr.slice(1, -1);
-  }
-
-  // Single-quoted literal string (TOML literal strings)
-  if (valueStr.startsWith("'") && valueStr.endsWith("'")) {
-    return valueStr.slice(1, -1);
-  }
-
-  // Inline table { key = "value", ... }
-  if (valueStr.startsWith("{") && valueStr.endsWith("}")) {
-    const inner = valueStr.slice(1, -1).trim();
-    const obj = {};
-    // Parse key = value pairs, handling nested structures
-    let depth = 0;
-    let currentKey = "";
-    let currentValue = "";
-    let inKey = true;
-    let inString = false;
-
-    for (let i = 0; i < inner.length; i++) {
-      const char = inner[i];
-
-      if (char === '"' && inner[i - 1] !== "\\") {
-        inString = !inString;
-      }
-
-      if (!inString) {
-        if (char === "{" || char === "[") depth++;
-        if (char === "}" || char === "]") depth--;
-
-        if (char === "=" && depth === 0 && inKey) {
-          inKey = false;
-          continue;
-        }
-
-        if (char === "," && depth === 0) {
-          if (currentKey.trim() && currentValue.trim()) {
-            obj[currentKey.trim()] = parseTomlValue(currentValue.trim());
-          }
-          currentKey = "";
-          currentValue = "";
-          inKey = true;
-          continue;
-        }
-      }
-
-      if (inKey) {
-        currentKey += char;
-      } else {
-        currentValue += char;
-      }
-    }
-
-    // Handle last key-value pair
-    if (currentKey.trim() && currentValue.trim()) {
-      obj[currentKey.trim()] = parseTomlValue(currentValue.trim());
-    }
-
-    return obj;
-  }
-
-  // Array [ ... ]
-  if (valueStr.startsWith("[") && valueStr.endsWith("]")) {
-    const inner = valueStr.slice(1, -1).trim();
-    if (!inner) return [];
-
-    const items = [];
-    let depth = 0;
-    let current = "";
-    let inString = false;
-
-    for (let i = 0; i < inner.length; i++) {
-      const char = inner[i];
-
-      if (char === '"' && inner[i - 1] !== "\\") {
-        inString = !inString;
-      }
-
-      if (!inString) {
-        if (char === "{" || char === "[") depth++;
-        if (char === "}" || char === "]") depth--;
-
-        if (char === "," && depth === 0) {
-          if (current.trim()) {
-            items.push(parseTomlValue(current.trim()));
-          }
-          current = "";
-          continue;
-        }
-      }
-
-      current += char;
-    }
-
-    if (current.trim()) {
-      items.push(parseTomlValue(current.trim()));
-    }
-
-    return items;
-  }
-
-  // Number or bare string
-  return valueStr;
-}
-
-/**
- * Check if brackets are balanced in a string
- */
-function areBracketsBalanced(str) {
-  let depth = 0;
-  let inString = false;
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i];
-    if (char === '"' && str[i - 1] !== "\\") {
-      inString = !inString;
-    }
-    if (!inString) {
-      if (char === "[" || char === "{") depth++;
-      if (char === "]" || char === "}") depth--;
-    }
-  }
-  return depth === 0;
-}
-
-/**
- * Parse Prover.toml to JSON for browser demo
- */
-function parseProverToml(content) {
-  const result = {};
-  const lines = content.split("\n");
-  let currentSection = null;
-  let pendingLine = "";
-
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i].trim();
-
-    // Skip comments and empty lines (unless we're accumulating a multi-line value)
-    if (!pendingLine && (!line || line.startsWith("#"))) continue;
-
-    // If we have a pending line, append this line to it
-    if (pendingLine) {
-      // Skip comment lines within multi-line values
-      if (line.startsWith("#")) continue;
-      pendingLine += " " + line;
-      line = pendingLine;
-
-      // Check if brackets are balanced now
-      if (!areBracketsBalanced(line)) {
-        continue; // Keep accumulating
-      }
-      pendingLine = "";
-    }
-
-    // Section header [section]
-    const sectionMatch = line.match(/^\[([^\]]+)\]$/);
-    if (sectionMatch) {
-      currentSection = sectionMatch[1];
-      continue;
-    }
-
-    // Key = value (find first = that's not inside a string or nested structure)
-    const eqIndex = findTopLevelEquals(line);
-    if (eqIndex !== -1) {
-      const key = line.slice(0, eqIndex).trim();
-      const valueStr = line.slice(eqIndex + 1).trim();
-
-      // Check if this is an incomplete multi-line value
-      if (!areBracketsBalanced(valueStr)) {
-        pendingLine = line;
-        continue;
-      }
-
-      const value = parseTomlValue(valueStr);
-
-      const fullKey = currentSection ? `${currentSection}.${key}` : key;
-      setNestedValue(result, fullKey, value);
-    }
-  }
-
-  return result;
-}
-
-/**
- * Find the first = that's not inside quotes or nested structures
- */
-function findTopLevelEquals(line) {
-  let inString = false;
-  let depth = 0;
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-
-    if (char === '"' && line[i - 1] !== "\\") {
-      inString = !inString;
-    }
-
-    if (!inString) {
-      if (char === "{" || char === "[") depth++;
-      if (char === "}" || char === "]") depth--;
-      if (char === "=" && depth === 0) {
-        return i;
-      }
-    }
-  }
-
-  return -1;
-}
-
-function setNestedValue(obj, path, value) {
-  const parts = path.split(".");
-  let current = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    if (!(parts[i] in current)) {
-      current[parts[i]] = {};
-    }
-    current = current[parts[i]];
-  }
-  current[parts[parts.length - 1]] = value;
-}
-
 async function buildShared() {
+
   log("\n🔧 ProveKit Browser Demo Setup\n", colors.bright);
 
   // Check prerequisites
-  logStep("1/5", "Checking prerequisites...");
+  logStep("1/4", "Checking prerequisites...");
 
   if (!checkCommand("nargo", "Noir (nargo)")) {
     log(
@@ -424,7 +198,7 @@ async function prepareCircuit({ name, path: circuitDir }) {
 
   // Convert Prover.toml to inputs.json for browser demo
   const tomlContent = readFileSync(proverTomlSrc, "utf-8");
-  const inputs = parseProverToml(tomlContent);
+  const inputs = parseSimpleToml(tomlContent);
   const inputsJsonPath = join(artifactsDir, "inputs.json");
   writeFileSync(inputsJsonPath, JSON.stringify(inputs, null, 2));
   logSuccess("inputs.json created");
@@ -455,7 +229,7 @@ async function main() {
 
   log("\n\u2705 Setup complete!\n", colors.green + colors.bright);
   log("Run the demo with:", colors.bright);
-  log("  node scripts/serve.mjs    # Start browser demo server");
+  log("  npm run serve            # Build and start the browser demo server");
   log("  # Open http://localhost:8080\n");
 }
 
