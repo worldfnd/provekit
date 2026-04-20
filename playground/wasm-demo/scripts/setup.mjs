@@ -13,6 +13,7 @@ import { execSync, spawnSync } from "child_process";
 import {
   existsSync,
   mkdirSync,
+  rmSync,
   copyFileSync,
   readFileSync,
   writeFileSync,
@@ -334,7 +335,7 @@ async function buildShared() {
     log(
       "\nInstall Noir:\n  curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash"
     );
-    log("  noirup --version v1.0.0-beta.11");
+    log("  noirup --version v1.0.0-beta.19");
     process.exit(1);
   }
   logSuccess("nargo found");
@@ -362,9 +363,19 @@ async function buildShared() {
     { pkg: "@noir-lang/noirc_abi", dest: "noirc_abi" },
   ];
   for (const { pkg, dest } of vendorMappings) {
-    const srcDir = join(DEMO_DIR, "node_modules", pkg);
+    const pkgDir = join(DEMO_DIR, "node_modules", pkg);
+    const webDir = join(pkgDir, "web");
+    // Newer noir packages place browser bundles under `web/`.
+    const srcDir = existsSync(webDir) ? webDir : pkgDir;
     const destDir = join(vendorDir, dest);
-    if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+    if (!existsSync(destDir)) {
+      mkdirSync(destDir, { recursive: true });
+    } else {
+      // Clear stale files so version upgrades don't keep old browser bundles.
+      for (const entry of readdirSync(destDir)) {
+        rmSync(join(destDir, entry), { recursive: true, force: true });
+      }
+    }
     for (const entry of readdirSync(srcDir)) {
       if (entry.endsWith(".js") || entry.endsWith(".wasm") || entry.endsWith(".d.ts")) {
         copyFileSync(join(srcDir, entry), join(destDir, entry));

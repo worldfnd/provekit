@@ -43,7 +43,7 @@ fn main(
     comm_in: pub Field,
     salt_in: Field,
     dg1: DG1Data,
-    dg1_padded_length: u64,
+    dg1_padded_length: u32,
     dg1_hash_offset: u32,
     signed_attributes: SignedAttrsData,
     signed_attributes_size: u32,

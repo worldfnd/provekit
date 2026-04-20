@@ -11,7 +11,7 @@ fn test_sha256_var() {
     // --- Let's test two versions of `sha256_var` against each other ---
     for idx in 0..10 {
         let thing_to_absorb: [u8; MAX_MSG_LEN] = RANDOM_BYTES_MANY_ROUNDS[idx];
-        let blackbox_result = sha256::sha256_var(thing_to_absorb, MAX_MSG_LEN as u64);
+        let blackbox_result = sha256::sha256_var(thing_to_absorb, MAX_MSG_LEN as u32);
         let ryan_result = ryan_sha256_noir::sha256_var(thing_to_absorb, MAX_MSG_LEN as u64);
 
         println(blackbox_result);
