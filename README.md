@@ -1,3 +1,4 @@
+![Banner](./provekit-wordmark.png)
 # ProveKit
 
 A modular zero-knowledge proof toolkit optimized for mobile devices.
