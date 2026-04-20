@@ -430,6 +430,7 @@ fn remove_dead_columns(
             _ => None,
         })
         .collect();
+
     let mut dead_cols = vec![false; num_cols];
     let mut num_dead = 0usize;
     for col in 0..num_cols {
