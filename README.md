@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧮 ProveKit
+<img src="./assets/banner.png" alt="ProveKit" width="100%" />
 
 **The edge-native, zero-knowledge runtime and R1CS compilation toolkit.**
 
