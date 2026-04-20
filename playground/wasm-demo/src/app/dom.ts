@@ -19,7 +19,6 @@ export interface DemoDom {
   readonly logContainer: HTMLElement;
   readonly runButton: HTMLButtonElement;
   readonly verifyButton: HTMLButtonElement;
-  readonly threadCount: HTMLElement | null;
   readonly totalTime: HTMLElement;
   readonly proofSize: HTMLElement;
   readonly constraints: HTMLElement;
@@ -80,7 +79,6 @@ export function collectDom(document: Document): DemoDom {
     logContainer: requireElement(document, "logContainer"),
     runButton: requireElement(document, "runBtn"),
     verifyButton: requireElement(document, "verifyBtn"),
-    threadCount: document.getElementById("threadCount"),
     totalTime: requireElement(document, "totalTimeUi"),
     proofSize: requireElement(document, "proofSizeUi"),
     constraints: requireElement(document, "constraintsUi"),

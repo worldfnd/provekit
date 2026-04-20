@@ -24,9 +24,12 @@ export class StepPresenter {
     this.stepMap = new Map(steps.map((step) => [step.stepNumber, step]));
   }
 
-  reset(): void {
+  /** Reset steps with number >= `startAt` to their idle state. */
+  reset(startAt = 1): void {
     for (const stepNumber of this.stepMap.keys()) {
-      this.setStatus(stepNumber, stepStatus.idle());
+      if (stepNumber >= startAt) {
+        this.setStatus(stepNumber, stepStatus.idle());
+      }
     }
   }
 

@@ -70,12 +70,15 @@ export class RunController {
       this.deps.proofOutput.renderProof(proof);
       this.deps.proofOutput.updateMetrics(metadata, proof.size, proofTime);
 
+      // Transfer ownership of the verifier to state before any further work so
+      // an exception in the UI updates below cannot cause a double-dispose.
       this.deps.state.lastProof = proof;
       this.deps.state.activeVerifier = verifier;
+      verifier = null;
+
       this.deps.steps.setStatus(4, stepStatus.success(`Done (${(proofTime / 1000).toFixed(2)}s)`));
       this.deps.steps.setStatus(5, stepStatus.success("Ready — click Verify Proof"));
       this.deps.dom.verifyButton.disabled = false;
-      verifier = null;
     } catch (error) {
       this.deps.logs.log(`Error: ${error instanceof Error ? error.message : String(error)}`, "error");
       this.deps.steps.setStatus(failingStep, stepStatus.error("Failed"));
@@ -92,7 +95,9 @@ export class RunController {
     dom.runButton.disabled = true;
     dom.verifyButton.disabled = true;
     logs.clear();
-    steps.reset();
+    // Reset steps 2–5 only; step 1 ("Load Proof Runtime") has already
+    // completed and is tied to the long-lived Verity runtime, not per-run.
+    steps.reset(2);
     proofOutput.reset();
     state.lastProof = null;
     this.deps.disposeActiveVerifier();

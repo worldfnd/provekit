@@ -6,7 +6,7 @@ import { StepPresenter } from "./steps.js";
 import { classifyUpload, isCustomReady } from "./upload-rules.js";
 
 const CIRCUIT_DESCRIPTIONS: Record<CircuitName, string> = {
-  sha256: "SHA-256 over a 1024-byte input.",
+  sha256: "17 chained SHA-256 rounds over a 32-byte state.",
   poseidon: "Poseidon2 permutation × 1,000 rounds over 4 field elements.",
   custom: "Upload your own Noir circuit artifacts to benchmark proof generation and verification.",
 };
@@ -99,7 +99,9 @@ export class CircuitController {
     dom.stepsTitle.textContent = `PROOF GENERATION STEPS [${circuit.toUpperCase()}]`;
     dom.customConfigPanel.style.display = circuit === "custom" ? "grid" : "none";
 
-    steps.reset();
+    // Step 1 reflects the long-lived runtime load, so only reset steps 2-5
+    // when switching circuits.
+    steps.reset(2);
     proofOutput.reset();
     state.lastProof = null;
     dom.verifyButton.disabled = true;
