@@ -168,7 +168,8 @@ describe("VerifyController", () => {
 
     await controller.verify();
 
-    expect(dom.verifyButton.disabled).toBe(false);
+    // Button stays disabled — re-verifying the same proof is a no-op.
+    expect(dom.verifyButton.disabled).toBe(true);
     expect(dom.steps[4].status.textContent).toContain("Invalid");
     expect(dom.steps[4].status.className).toContain("error-text");
     expect(dom.steps[4].container.className).toContain("error");

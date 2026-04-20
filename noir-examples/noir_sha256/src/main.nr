@@ -1,6 +1,6 @@
 use sha256::sha256_var;
 
-// Hash 1024 bytes of data
+// Chain 17 SHA-256 rounds over a 32-byte state.
 global NUM_SHA_CALLS: u32 = 17;
 
 fn main(input: [u8; 32], expected: pub [u8; 32]) {

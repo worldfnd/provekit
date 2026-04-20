@@ -35,6 +35,8 @@ export class VerifyController {
       if (!isValid) {
         logs.log("Proof is invalid.", "error");
         steps.setStatus(5, stepStatus.error(`Invalid (${verifyTime.toFixed(0)}ms)`));
+        // Leave the button disabled: re-running verify on the same proof would
+        // yield the same invalid result. Generate a new proof to retry.
         return;
       }
 
@@ -44,7 +46,7 @@ export class VerifyController {
       logs.log(`Verification error: ${error instanceof Error ? error.message : String(error)}`, "error");
       steps.setStatus(5, stepStatus.error("Failed"));
       console.error(error);
-    } finally {
+      // Re-enable so the user can retry after a transient failure.
       dom.verifyButton.disabled = false;
     }
   }

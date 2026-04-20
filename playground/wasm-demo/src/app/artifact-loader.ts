@@ -50,8 +50,16 @@ export class ArtifactLoader {
       verifierBytes: bundle.verifierBytes,
     });
 
-    const stats = await this.readCircuitStats(bundle.proverBytes);
-    this.logs.log(`Circuit: ${stats.constraints.toLocaleString()} constraints, ${stats.witnesses.toLocaleString()} witnesses`);
+    // Stats extraction is informational — never block proving if the inspector
+    // fails to load or the PKP can't be introspected.
+    let stats: { constraints?: number; witnesses?: number } = {};
+    try {
+      stats = await this.readCircuitStats(bundle.proverBytes);
+      this.logs.log(`Circuit: ${stats.constraints?.toLocaleString() ?? "?"} constraints, ${stats.witnesses?.toLocaleString() ?? "?"} witnesses`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logs.log(`Circuit stats unavailable: ${message}`, "warn");
+    }
 
     return {
       ...bundle,

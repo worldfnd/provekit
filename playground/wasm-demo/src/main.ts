@@ -90,7 +90,7 @@ class DemoApp {
     try {
       this.steps.setStatus(1, stepStatus.running("Loading..."));
       this.logs.log("Initializing proof runtime...");
-      this.state.runtime = await initializeRuntime(this.logs, this.dom.threadCount);
+      this.state.runtime = await initializeRuntime(this.logs);
       this.state.wasmReady = true;
       this.steps.setStatus(1, stepStatus.success("Loaded"));
       this.circuits.refreshRunButton();
@@ -141,12 +141,28 @@ class DemoApp {
 
     this.logs.log("Loading prover and verifier...");
     const loadStart = performance.now();
-    const [prover, verifier] = await Promise.all([
+
+    // Use allSettled so we can dispose the resolved scheme if the other load
+    // rejects — a bare Promise.all would leak the fulfilled side's WASM handle.
+    const [proverResult, verifierResult] = await Promise.allSettled([
       this.state.runtime.loadProver(proverBytes),
       this.state.runtime.loadVerifier(verifierBytes),
     ]);
+
+    if (proverResult.status === "rejected" || verifierResult.status === "rejected") {
+      if (proverResult.status === "fulfilled") {
+        proverResult.value.dispose();
+      }
+      if (verifierResult.status === "fulfilled") {
+        verifierResult.value.dispose();
+      }
+      throw proverResult.status === "rejected"
+        ? proverResult.reason
+        : (verifierResult as PromiseRejectedResult).reason;
+    }
+
     this.logs.log(`Scheme load time: ${(performance.now() - loadStart).toFixed(0)}ms`);
-    return { prover, verifier };
+    return { prover: proverResult.value, verifier: verifierResult.value };
   }
 
   private async copyLogs(): Promise<void> {
