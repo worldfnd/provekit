@@ -80,14 +80,31 @@ pub fn optimize_r1cs(
     let constraints_before = r1cs.num_constraints();
     let witnesses_before = r1cs.num_witnesses();
 
+    // In raw Noir lowering, public-input builders may not yet be packed into
+    // columns 1..=num_public_inputs. Track the actual public-input columns so
+    // GE cannot pivot them away before the later canonical remap.
+    let public_input_cols: HashSet<usize> = witness_builders
+        .iter()
+        .filter_map(|builder| match builder {
+            WitnessBuilder::Acir(col, acir_idx)
+                if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) =>
+            {
+                Some(*col)
+            }
+            _ => None,
+        })
+        .collect();
+
     // Columns that must not be eliminated:
     // - Column 0: constant one
-    // - Columns 1..=num_public_inputs: public inputs
+    // - Columns 1..=num_public_inputs: canonical public inputs
+    // - Any actual public-input builder columns before canonical remap
     let mut forbidden: HashSet<usize> = HashSet::new();
     forbidden.insert(0);
     for i in 1..=r1cs.num_public_inputs {
         forbidden.insert(i);
     }
+    forbidden.extend(public_input_cols.iter().copied());
 
     // Phase 1: Identify all linear constraints
     let mut linear_rows: Vec<usize> = Vec::new();
@@ -1291,6 +1308,43 @@ mod tests {
             r1cs.num_witnesses() + r1cs.num_virtual,
         );
         assert_r1cs_satisfied(&r1cs, &opt_witness);
+    }
+
+    #[test]
+    fn test_public_input_linear_constraint_is_not_eliminated_when_count_is_unset() {
+        let mut r1cs = R1CS::new();
+        let one = FieldElement::one();
+        let six = FieldElement::from(6u64);
+
+        // w0 = 1, w1 = public ACIR input
+        r1cs.add_witnesses(2);
+        // Public equality: w1 - 6 = 0
+        r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (-six, 0)]);
+
+        let mut builders = vec![
+            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Acir(1, 1),
+        ];
+        let mut witness_map = vec![None, std::num::NonZeroU32::new(1)];
+
+        let stats = optimize_r1cs(
+            &mut r1cs,
+            &mut builders,
+            &mut witness_map,
+            &HashSet::from([1u32]),
+        )
+        .unwrap();
+
+        assert_eq!(
+            stats.eliminated, 0,
+            "public input row must not be pivoted away"
+        );
+        assert_eq!(
+            r1cs.num_constraints(),
+            1,
+            "public-input equality must remain verifier-visible"
+        );
+        assert_eq!(r1cs.num_witnesses(), 2, "public input column must remain");
     }
 
     #[test]

@@ -14,6 +14,7 @@ import { execSync, spawnSync } from "child_process";
 import {
   existsSync,
   mkdirSync,
+  rmSync,
   copyFileSync,
   readFileSync,
   writeFileSync,
@@ -107,7 +108,7 @@ async function buildShared() {
     log(
       "\nInstall Noir:\n  curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash"
     );
-    log("  noirup --version v1.0.0-beta.11");
+    log("  noirup --version v1.0.0-beta.19");
     process.exit(1);
   }
   logSuccess("nargo found");
@@ -123,6 +124,8 @@ async function buildShared() {
     process.exit(1);
   }
 
+  // Verity loads @noir-lang/* from node_modules directly; the old demo-local
+  // vendor/pkg staging directories are no longer needed.
   for (const dir of ["vendor", "pkg", "pkg-web"]) {
     const fullPath = join(DEMO_DIR, dir);
     if (existsSync(fullPath)) {

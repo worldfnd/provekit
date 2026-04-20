@@ -178,6 +178,21 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
     "../../noir-examples/noir-r1cs-test-programs/brillig-unconstrained",
     "Prover.toml"
 )]
+#[test_case("../../noir-examples/basic", "Prover.toml")]
+#[test_case("../../noir-examples/basic-2", "Prover.toml")]
+#[test_case("../../noir-examples/basic-3", "Prover.toml")]
+#[test_case("../../noir-examples/basic-4", "Prover.toml")]
+#[test_case("../../noir-examples/many_poseidons", "Prover.toml")]
+#[test_case("../../noir-examples/native_msm", "Prover.toml")]
+#[test_case("../../noir-examples/noir_sha256", "Prover.toml")]
+#[test_case("../../noir-examples/oprf", "Prover.toml")]
+#[test_case("../../noir-examples/p256_bigcurve", "Prover.toml")]
+#[test_case("../../noir-examples/poseidon-rounds", "Prover.toml")]
+#[test_case("../../noir-examples/poseidon2", "Prover.toml")]
+#[test_case("../../noir-examples/power", "Prover.toml")]
+#[test_case("../../noir-examples/rangechecks", "Prover.toml")]
+#[test_case("../../noir-examples/sha256", "Prover.toml")]
+#[test_case("../../noir-examples/zkchase", "Prover.toml")]
 #[test_case("../../noir-examples/noir-passport-monolithic/complete_age_check", "Prover.toml"; "complete_age_check")]
 #[test_case("../../noir-examples/embedded_curve_msm", "Prover.toml"; "embedded_curve_msm")]
 #[test_case("../../noir-examples/embedded_curve_msm", "Prover_zero_scalars.toml"; "msm_zero_scalars")]
@@ -185,6 +200,19 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
 #[test_case("../../noir-examples/embedded_curve_msm", "Prover_near_order.toml"; "msm_near_order")]
 #[test_case("../../noir-examples/embedded_curve_msm", "Prover_near_identity.toml"; "msm_near_identity")]
 fn case_noir(path: &str, witness_file: &str) {
+    test_noir_compiler(path, witness_file);
+}
+
+/// MSM inside a conditional branch — exercises the predicate field added in
+/// ACIR beta.19. Active branch (predicate=1), inactive branch (predicate=0),
+/// and nested conditionals (compound predicate) are all covered.
+#[test_case("../../noir-examples/msm_conditional", "Prover.toml"; "msm_conditional_active")]
+#[test_case("../../noir-examples/msm_conditional", "Prover_inactive.toml"; "msm_conditional_inactive")]
+#[test_case("../../noir-examples/msm_conditional", "Prover_scalar2.toml"; "msm_conditional_active_scalar2")]
+#[test_case("../../noir-examples/msm_conditional_nested", "Prover.toml"; "msm_nested_both_true")]
+#[test_case("../../noir-examples/msm_conditional_nested", "Prover_outer_false.toml"; "msm_nested_outer_false")]
+#[test_case("../../noir-examples/msm_conditional_nested", "Prover_inner_false.toml"; "msm_nested_inner_false")]
+fn case_noir_msm_conditional(path: &str, witness_file: &str) {
     test_noir_compiler(path, witness_file);
 }
 
