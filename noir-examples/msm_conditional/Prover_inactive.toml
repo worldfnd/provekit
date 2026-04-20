@@ -1,4 +1,5 @@
 condition = false
 scalar_lo = "99"
 scalar_hi = "0"
-expected_infinite = true
+expected_x = "0"
+expected_y = "0"

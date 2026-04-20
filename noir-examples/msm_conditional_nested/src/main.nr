@@ -11,17 +11,30 @@ global GEN: EmbeddedCurvePoint = EmbeddedCurvePoint {
 ///
 /// When both `outer` and `inner` are true, the MSM runs and the result
 /// must be non-infinite. When either is false, the MSM is in an inactive
-/// branch and the circuit is still satisfiable (no assertion fires).
+/// branch and the output is the identity point (0, 0, true).
 ///
 /// This exercises provekit's conditional MSM support with a Witness
 /// predicate that is the product of two boolean witnesses.
-fn main(outer: bool, inner: bool, scalar_lo: Field, scalar_hi: Field) {
-    if outer {
+fn main(outer: bool, inner: bool, scalar_lo: Field, scalar_hi: Field, expected_x: Field, expected_y: Field) {
+    let s = EmbeddedCurveScalar { lo: scalar_lo, hi: scalar_hi };
+    let r: EmbeddedCurvePoint = if outer {
         if inner {
             // predicate = outer * inner -- tests compound/nested predicate
-            let s = EmbeddedCurveScalar { lo: scalar_lo, hi: scalar_hi };
-            let r = multi_scalar_mul([GEN], [s]);
-            assert(!r.is_infinite);
+            multi_scalar_mul([GEN], [s])
+        } else {
+            EmbeddedCurvePoint { x: 0, y: 0, is_infinite: true }
         }
+    } else {
+        EmbeddedCurvePoint { x: 0, y: 0, is_infinite: true }
+    };
+
+    if outer & inner {
+        assert(!r.is_infinite);
+        assert_eq(r.x, expected_x);
+        assert_eq(r.y, expected_y);
+    } else {
+        assert(r.x == 0);
+        assert(r.y == 0);
+        assert(r.is_infinite);
     }
 }

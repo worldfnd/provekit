@@ -4,7 +4,13 @@ use bigcurve::{
 };
 use bignum::BigNum;
 
-fn main(hashed_message: [u8; 32], pub_key_x: [u8; 32], pub_key_y: [u8; 32], signature: [u8; 64]) {
+fn main(
+    hashed_message: [u8; 32],
+    pub_key_x: [u8; 32],
+    pub_key_y: [u8; 32],
+    signature: [u8; 64],
+    r_point_y: [u8; 32],
+) {
     let gen = Secp256r1::one();
     let public = Secp256r1 {
         x: Secp256r1_Fq::from_be_bytes(pub_key_x),
@@ -35,5 +41,7 @@ fn main(hashed_message: [u8; 32], pub_key_x: [u8; 32], pub_key_y: [u8; 32], sign
     let s_p = Secp256r1Scalar::from_bignum(r / s);
     let r_point = Secp256r1::evaluate_linear_expression([gen, public], [s_g, s_p], []);
 
+    assert(!r_point.is_infinity);
     assert(r_point.x == r_x);
+    assert(r_point.y == Secp256r1_Fq::from_be_bytes(r_point_y));
 }
