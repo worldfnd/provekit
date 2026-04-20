@@ -8,8 +8,8 @@ use {
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
-        utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, Prover,
-        PublicInputs, TranscriptSponge,
+        hash_config, utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver,
+        Prover, PublicInputs, TranscriptSponge,
     },
     std::mem::size_of,
     tracing::{debug, info_span, instrument},
@@ -139,7 +139,7 @@ impl Prove for NoirProver {
             .whir_for_witness
             .create_domain_separator()
             .instance(&instance);
-        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(hash_config()));
 
         // Allocate space for real + virtual witnesses. Virtual witnesses are
         // computation-only (zero entries in A/B/C) but needed by builders.
@@ -296,7 +296,7 @@ impl Prove for MavrosProver {
             .whir_for_witness
             .create_domain_separator()
             .instance(&instance);
-        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(hash_config()));
 
         let commitment_1 = self
             .whir_for_witness
