@@ -8,9 +8,18 @@ pub struct GpuField {
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default)]
+pub struct BitReverseParams {
+    pub row_len:        u32,
+    pub log_n:          u32,
+    pub total_elements: u32,
+    pub _pad0:          u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct NttStageParams {
     pub row_len:        u32,
-    pub stride:         u32,
+    pub half_m:         u32,
     pub twiddle_offset: u32,
     pub _pad0:          u32,
 }
@@ -34,13 +43,6 @@ pub struct EncodeFieldBytesParams {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct HashManyParams {
     pub size:  u32,
-    pub count: u32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-#[allow(dead_code)]
-pub struct FieldMulParams {
     pub count: u32,
 }
 

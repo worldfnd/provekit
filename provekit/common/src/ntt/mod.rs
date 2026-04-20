@@ -47,17 +47,6 @@ mod tests {
     }
 
     #[test]
-    fn metal_field_mul_matches_cpu() {
-        let gpu = MetalBn254Ntt::new().unwrap();
-        let mut rng = ark_std::test_rng();
-        let lhs: Vec<_> = (0..4096).map(|_| Fr::rand(&mut rng)).collect();
-        let rhs: Vec<_> = (0..4096).map(|_| Fr::rand(&mut rng)).collect();
-        let expected: Vec<_> = lhs.iter().zip(&rhs).map(|(&a, &b)| a * b).collect();
-        let actual = gpu.gpu_mul_pairs(&lhs, &rhs).unwrap();
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
     fn metal_matches_cpu_for_multi_poly_case() {
         let gpu = MetalBn254Ntt::new().unwrap();
         let mut rng = ark_std::test_rng();

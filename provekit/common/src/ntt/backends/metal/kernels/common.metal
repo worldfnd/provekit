@@ -10,8 +10,15 @@ typedef Bn254Element Fe;
 
 struct StageConfig {
     uint row_len;
-    uint stride;
+    uint half_m;
     uint twiddle_offset;
+    uint _pad0;
+};
+
+struct BitReverseParams {
+    uint row_len;
+    uint log_n;
+    uint total_elements;
     uint _pad0;
 };
 
@@ -28,10 +35,6 @@ struct FieldBytesParams {
 
 struct HashManyParams {
     uint size;
-    uint count;
-};
-
-struct FieldMulParams {
     uint count;
 };
 
