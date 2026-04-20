@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Setup script for ProveKit WASM browser demo.
+ * Setup script for the ProveKit browser demo.
  *
  * Usage:
  *   node scripts/setup.mjs
  *
- * Builds WASM + CLI once, then prepares both SHA256 and Poseidon circuits
+ * Installs browser dependencies, builds the native CLI once, then prepares
+ * both SHA256 and Poseidon circuits
  * into artifacts/sha256/ and artifacts/poseidon/ respectively.
  */
 
@@ -16,7 +17,7 @@ import {
   copyFileSync,
   readFileSync,
   writeFileSync,
-  readdirSync,
+  rmSync,
 } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -24,8 +25,6 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, "../../..");
 const DEMO_DIR = resolve(__dirname, "..");
-const WASM_PKG_DIR = join(ROOT_DIR, "tooling/provekit-wasm/pkg");
-
 const CIRCUITS = [
   { name: "sha256",   path: join(ROOT_DIR, "noir-examples/noir_sha256") },
   { name: "poseidon", path: join(ROOT_DIR, "noir-examples/poseidon-rounds") },
@@ -325,7 +324,7 @@ function setNestedValue(obj, path, value) {
 }
 
 async function buildShared() {
-  log("\n🔧 ProveKit WASM Demo Setup\n", colors.bright);
+  log("\n🔧 ProveKit Browser Demo Setup\n", colors.bright);
 
   // Check prerequisites
   logStep("1/5", "Checking prerequisites...");
@@ -339,124 +338,27 @@ async function buildShared() {
   }
   logSuccess("nargo found");
 
-  if (!checkCommand("wasm-bindgen", "wasm-bindgen-cli")) {
-    log("\nInstall wasm-bindgen-cli:\n  cargo install wasm-bindgen-cli");
-    process.exit(1);
-  }
-  logSuccess("wasm-bindgen found");
-
   if (!checkCommand("cargo", "Rust (cargo)")) {
     log("\nInstall Rust: https://rustup.rs");
     process.exit(1);
   }
   logSuccess("cargo found");
 
-  // Install npm deps and copy vendor files for browser import map
-  logStep("2/5", "Installing noir-lang npm packages...");
+  logStep("2/4", "Installing browser dependencies...");
   if (!run("npm install --legacy-peer-deps", { cwd: DEMO_DIR })) {
     process.exit(1);
   }
-  const vendorDir = join(DEMO_DIR, "vendor");
-  const vendorMappings = [
-    { pkg: "@noir-lang/acvm_js", dest: "acvm_js" },
-    { pkg: "@noir-lang/noirc_abi", dest: "noirc_abi" },
-  ];
-  for (const { pkg, dest } of vendorMappings) {
-    const srcDir = join(DEMO_DIR, "node_modules", pkg);
-    const destDir = join(vendorDir, dest);
-    if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
-    for (const entry of readdirSync(srcDir)) {
-      if (entry.endsWith(".js") || entry.endsWith(".wasm") || entry.endsWith(".d.ts")) {
-        copyFileSync(join(srcDir, entry), join(destDir, entry));
-      }
+
+  for (const dir of ["vendor", "pkg", "pkg-web"]) {
+    const fullPath = join(DEMO_DIR, dir);
+    if (existsSync(fullPath)) {
+      rmSync(fullPath, { recursive: true, force: true });
     }
   }
-  logSuccess("Vendor files copied from node_modules");
-
-  // Build WASM package with thread support (requires -Z build-std for atomics)
-  logStep("3/5", "Building WASM package with thread support...");
-
-  // cargo build with -Z build-std to rebuild std with atomics support
-  // RUSTFLAGS for atomics/shared-memory are in .cargo/config.toml
-  if (!run(
-    `cargo build --release --target wasm32-unknown-unknown -p provekit-wasm -Z build-std=panic_abort,std`,
-    { cwd: ROOT_DIR }
-  )) {
-    process.exit(1);
-  }
-
-  // Generate JS bindings from the built .wasm
-  if (!run(
-    `wasm-bindgen --target web --out-dir tooling/provekit-wasm/pkg target/wasm32-unknown-unknown/release/provekit_wasm.wasm`,
-    { cwd: ROOT_DIR }
-  )) {
-    process.exit(1);
-  }
-  logSuccess("WASM package built");
-
-  // Copy WASM package to demo/pkg
-  const wasmDestDir = join(DEMO_DIR, "pkg");
-  if (!existsSync(wasmDestDir)) {
-    mkdirSync(wasmDestDir, { recursive: true });
-  }
-
-  for (const file of [
-    "provekit_wasm_bg.wasm",
-    "provekit_wasm.js",
-    "provekit_wasm.d.ts",
-    "package.json",
-  ]) {
-    const src = join(WASM_PKG_DIR, file);
-    const dest = join(wasmDestDir, file);
-    if (existsSync(src)) {
-      copyFileSync(src, dest);
-    }
-  }
-
-  // Copy snippets directory (for wasm-bindgen-rayon worker helpers)
-  const snippetsDir = join(WASM_PKG_DIR, "snippets");
-  if (existsSync(snippetsDir)) {
-    const snippetsDestDir = join(wasmDestDir, "snippets");
-    if (!existsSync(snippetsDestDir)) {
-      mkdirSync(snippetsDestDir, { recursive: true });
-    }
-    function copyDirRecursive(src, dest) {
-      if (!existsSync(dest)) mkdirSync(dest, { recursive: true });
-      for (const entry of readdirSync(src, { withFileTypes: true })) {
-        const srcPath = join(src, entry.name);
-        const destPath = join(dest, entry.name);
-        if (entry.isDirectory()) {
-          copyDirRecursive(srcPath, destPath);
-        } else {
-          copyFileSync(srcPath, destPath);
-        }
-      }
-    }
-    copyDirRecursive(snippetsDir, snippetsDestDir);
-    logSuccess("WASM snippets copied (for thread pool)");
-
-    function patchWorkerHelpers(dir) {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const fullPath = join(dir, entry.name);
-        if (entry.isDirectory()) {
-          patchWorkerHelpers(fullPath);
-        } else if (entry.name === "workerHelpers.js") {
-          let content = readFileSync(fullPath, "utf-8");
-          content = content.replace(
-            "import('../../..')",
-            "import('../../../provekit_wasm.js')"
-          );
-          writeFileSync(fullPath, content);
-        }
-      }
-    }
-    patchWorkerHelpers(snippetsDestDir);
-    logSuccess("Worker helpers patched for browser imports");
-  }
-  logSuccess("WASM package copied to demo/pkg");
+  logSuccess("Removed stale demo-local runtime asset directories");
 
   // Build native CLI
-  logStep("4/5", "Building native CLI...");
+  logStep("3/4", "Building native CLI...");
   if (!run("cargo build --profile release-fast --bin provekit-cli", { cwd: ROOT_DIR })) {
     process.exit(1);
   }
@@ -531,7 +433,14 @@ async function prepareCircuit({ name, path: circuitDir }) {
   const metadataPath = join(artifactsDir, "metadata.json");
   writeFileSync(
     metadataPath,
-    JSON.stringify({ name: circuitName, path: circuitDir }, null, 2)
+    JSON.stringify(
+      {
+        name: circuitName,
+        path: circuitDir,
+      },
+      null,
+      2
+    )
   );
   logSuccess("metadata.json created");
 }
@@ -539,7 +448,7 @@ async function prepareCircuit({ name, path: circuitDir }) {
 async function main() {
   await buildShared();
 
-  logStep("5/5", `Preparing ${CIRCUITS.length} circuits...`);
+  logStep("4/4", `Preparing ${CIRCUITS.length} circuits...`);
   for (const circuit of CIRCUITS) {
     await prepareCircuit(circuit);
   }

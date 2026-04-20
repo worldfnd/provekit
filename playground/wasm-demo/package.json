@@ -7,11 +7,14 @@
     "setup": "node scripts/setup.mjs",
     "demo:web": "node scripts/serve.mjs",
     "serve": "node scripts/serve.mjs",
-    "clean": "rm -rf artifacts pkg pkg-web"
+    "clean": "rm -rf artifacts vendor pkg pkg-web"
   },
   "dependencies": {
+    "@atheonxyz/verity": "0.3.2-alpha",
     "@noir-lang/acvm_js": "1.0.0-beta.11",
     "@noir-lang/noir_js": "1.0.0-beta.11",
-    "@noir-lang/noirc_abi": "1.0.0-beta.11"
+    "@noir-lang/noirc_abi": "1.0.0-beta.11",
+    "@noir-lang/types": "1.0.0-beta.11",
+    "pako": "^2.1.0"
   }
 }
