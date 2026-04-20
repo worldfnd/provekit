@@ -38,6 +38,10 @@ async function serveFile(res, filePath) {
     res.writeHead(200, {
       "Content-Type": contentType,
       "Access-Control-Allow-Origin": "*",
+      // Disable browser caching so dependency/circuit updates are picked up immediately.
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      Pragma: "no-cache",
+      Expires: "0",
       // Cross-Origin Isolation headers required for SharedArrayBuffer
       // These enable threaded WASM runtimes that rely on SharedArrayBuffer
       "Cross-Origin-Opener-Policy": "same-origin",
