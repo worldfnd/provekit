@@ -1396,6 +1396,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cudarc"
+version = "0.19.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f071cd6a7b5d51607df76aa2d426aaabc7a74bc6bdb885b8afa63a880572ad9b"
+dependencies = [
+ "libloading",
+]
+
+[[package]]
 name = "dap"
 version = "0.4.1-alpha1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2965,6 +2974,16 @@ name = "libc"
 version = "0.2.182"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
+
+[[package]]
+name = "libloading"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
+dependencies = [
+ "cfg-if",
+ "windows-link",
+]
 
 [[package]]
 name = "libm"
@@ -4632,6 +4651,7 @@ dependencies = [
  "ark-std 0.5.0",
  "base64",
  "bytes",
+ "cudarc",
  "divan",
  "hex",
  "itertools 0.14.0",

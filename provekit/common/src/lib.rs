@@ -78,6 +78,17 @@ fn build_irs_committer()
             }
         }
 
+        #[cfg(target_os = "linux")]
+        match crate::ntt::CudaBn254Ntt::new() {
+            Ok(ntt) => return Arc::new(ntt),
+            Err(err) => {
+                tracing::info!(
+                    error = %err,
+                    "CUDA BN254 IRS backend unavailable, using ProveKit CPU fallback"
+                );
+            }
+        }
+
         Arc::new(CpuIrsCommitter::new(Arc::new(crate::ntt::RSFr)))
     }
 
