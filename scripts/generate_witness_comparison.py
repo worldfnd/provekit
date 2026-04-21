@@ -14,6 +14,8 @@ import sys
 import urllib.request
 from pathlib import Path
 
+from noir_execution_helpers import load_skip_tests
+
 # Mavros Cols — extracted from reilabs/mavros STATUS.md (column "Cols"),
 # noir/test_programs/execution_success/* rows only. Keys are bare circuit names.
 MAVROS_COLS: dict[str, int] = {
@@ -217,36 +219,10 @@ _MAVROS_STATUS_URL = (
 )
 _EXEC_SUCCESS_PREFIX = "noir/test_programs/execution_success/"
 
-# Keep in sync with SKIP_TESTS in scripts/run_noir_execution_success.sh.
-# These are intentionally excluded from both sides of the witness comparison.
-SKIP_TESTS: set[str] = {
-    # BLAKE3
-    "a_6",
-    "array_dynamic_blackbox_input",
-    "array_dynamic_nested_blackbox_input",
-    "blake3",
-    "conditional_1",
-    "conditional_regression_short_circuit",
-    "regression_4449",
-    # ECDSA_SECP256K1
-    "bench_ecdsa_secp256k1",
-    "ecdsa_secp256k1",
-    "ecdsa_secp256k1_invalid_inputs",
-    "ecdsa_secp256k1_invalid_pub_key_in_inactive_branch",
-    # ECDSA_SECP256R1
-    "ecdsa_secp256r1",
-    "ecdsa_secp256r1_3x",
-    "ecdsa_secp256r1_invalid_pub_key_in_inactive_branch",
-    "ecdsa_secp256r1_msg_equals_order",
-    # EMBEDDED_CURVE_ADD
-    "embedded_curve_ops",
-    "regression_5045",
-    "regression_7744",
-    # AES128_ENCRYPT
-    "aes128_encrypt",
-    # BLAKE2S
-    "a_7",
-}
+# Skip list is shared with scripts/run_noir_execution_success.sh via
+# scripts/noir_skip_tests.txt; these circuits are excluded from both sides
+# of the witness comparison.
+SKIP_TESTS: set[str] = load_skip_tests()
 
 
 def _fetch_live_mavros_cols() -> dict[str, int]:

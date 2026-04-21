@@ -20,6 +20,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+HELPER="${SCRIPT_DIR}/noir_execution_helpers.py"
+SKIP_LIST_FILE="${SCRIPT_DIR}/noir_skip_tests.txt"
 
 # ---------------------------------------------------------------------------
 # Resolve test corpus root (CI clone vs. local vendored copy)
@@ -47,43 +49,24 @@ fi
 
 # ---------------------------------------------------------------------------
 # Unimplemented-blackbox skip list
-# These tests use blackbox functions not yet supported by provekit.
-# They are counted as SKIP (not FAIL) and will be added back once supported.
+# Single source of truth: scripts/noir_skip_tests.txt (shared with
+# scripts/generate_witness_comparison.py). Counted as SKIP (not FAIL).
 # ---------------------------------------------------------------------------
-SKIP_TESTS=(
-  # BLAKE3
-  a_6
-  array_dynamic_blackbox_input
-  array_dynamic_nested_blackbox_input
-  blake3
-  conditional_1
-  conditional_regression_short_circuit
-  regression_4449
-  # ECDSA_SECP256K1
-  bench_ecdsa_secp256k1
-  ecdsa_secp256k1
-  ecdsa_secp256k1_invalid_inputs
-  ecdsa_secp256k1_invalid_pub_key_in_inactive_branch
-  # ECDSA_SECP256R1
-  ecdsa_secp256r1
-  ecdsa_secp256r1_3x
-  ecdsa_secp256r1_invalid_pub_key_in_inactive_branch
-  ecdsa_secp256r1_msg_equals_order
-  # EMBEDDED_CURVE_ADD
-  embedded_curve_ops
-  regression_5045
-  regression_7744
-  # AES128_ENCRYPT
-  aes128_encrypt
-  # BLAKE2S
-  a_7
-)
-
-# Build a fast associative-array lookup
+SKIP_TESTS=()
 declare -A SKIP_SET
-for _t in "${SKIP_TESTS[@]}"; do
-  SKIP_SET["${_t}"]=1
-done
+if [[ -f "${SKIP_LIST_FILE}" ]]; then
+  while IFS= read -r _raw || [[ -n "${_raw}" ]]; do
+    _name="${_raw%%#*}"
+    _name="${_name#"${_name%%[![:space:]]*}"}"
+    _name="${_name%"${_name##*[![:space:]]}"}"
+    if [[ -n "${_name}" ]]; then
+      SKIP_TESTS+=("${_name}")
+      SKIP_SET["${_name}"]=1
+    fi
+  done < "${SKIP_LIST_FILE}"
+else
+  echo "WARNING: skip list ${SKIP_LIST_FILE} not found; no tests will be skipped." >&2
+fi
 
 if [[ ! -d "${TEST_ROOT}" ]]; then
   echo "ERROR: Missing test corpus at ${TEST_ROOT}"
@@ -128,134 +111,22 @@ echo "test_name,provekit_witnesses" > "${WITNESS_CSV}"
 
 shopt -s nullglob globstar
 
+# Python helpers live in scripts/noir_execution_helpers.py; these are thin
+# shell wrappers so the main loop reads naturally.
 discover_test_dirs() {
-  TEST_ROOT="${TEST_ROOT}" python3 - <<'PY'
-from pathlib import Path
-import tomllib
-import os
-
-root = Path(os.environ["TEST_ROOT"])
-nargo_data = {}
-
-for nargo in root.rglob("Nargo.toml"):
-    rel = nargo.parent.relative_to(root).as_posix()
-    try:
-        data = tomllib.loads(nargo.read_text())
-    except Exception:
-        data = {}
-    nargo_data[rel] = data
-
-workspace_default_roots = set()
-for rel, data in nargo_data.items():
-    ws = data.get("workspace")
-    if isinstance(ws, dict) and "default-member" in ws:
-        workspace_default_roots.add(rel)
-
-suppressed = set()
-for ws_rel in workspace_default_roots:
-    ws_path = Path(ws_rel) if ws_rel != "." else Path()
-    for rel in nargo_data:
-        rel_path = Path(rel) if rel != "." else Path()
-        if rel_path != ws_path and ws_path in rel_path.parents:
-            suppressed.add(rel)
-
-candidates = set(workspace_default_roots)
-for rel, data in nargo_data.items():
-    if rel in suppressed:
-        continue
-
-    pkg = data.get("package")
-    if isinstance(pkg, dict) and "name" in pkg:
-        if (root / rel / "Prover.toml").is_file():
-            candidates.add(rel)
-
-for rel in sorted(candidates):
-    print(rel)
-PY
+  python3 "${HELPER}" discover "${TEST_ROOT}"
 }
 
 resolve_prover_toml() {
-  local project_dir="$1"
-  local package_name="$2"
-
-  PROJECT_DIR="${project_dir}" PACKAGE_NAME="${package_name}" python3 - <<'PY'
-from pathlib import Path
-import tomllib
-import os
-
-project_dir = Path(os.environ["PROJECT_DIR"])
-package_name = os.environ["PACKAGE_NAME"]
-
-candidates = []
-for nargo in sorted(project_dir.rglob("Nargo.toml")):
-    try:
-        data = tomllib.loads(nargo.read_text())
-    except Exception:
-        continue
-
-    pkg = data.get("package")
-    if not isinstance(pkg, dict):
-        continue
-
-    if pkg.get("name") != package_name:
-        continue
-
-    prover = nargo.parent / "Prover.toml"
-    if prover.is_file():
-        candidates.append(prover.relative_to(project_dir).as_posix())
-
-if candidates:
-    candidates.sort(key=lambda p: (p.count("/"), p))
-    print(candidates[0])
-    raise SystemExit(0)
-
-root_prover = project_dir / "Prover.toml"
-if root_prover.is_file():
-    print("Prover.toml")
-    raise SystemExit(0)
-
-all_provers = sorted(project_dir.rglob("Prover.toml"))
-if len(all_provers) == 1:
-    print(all_provers[0].relative_to(project_dir).as_posix())
-    raise SystemExit(0)
-
-print("")
-PY
+  python3 "${HELPER}" resolve-prover-toml "$1" "$2"
 }
 
 read_workdir_package_name() {
-  local project_dir="$1"
-  PROJECT_DIR="${project_dir}" python3 - <<'PY'
-from pathlib import Path
-import tomllib
-import os
-
-nargo = Path(os.environ["PROJECT_DIR"]) / "Nargo.toml"
-if not nargo.is_file():
-    print("")
-    raise SystemExit(0)
-
-try:
-    data = tomllib.loads(nargo.read_text())
-except Exception:
-    print("")
-    raise SystemExit(0)
-
-pkg = data.get("package")
-if isinstance(pkg, dict):
-    print(pkg.get("name", ""))
-else:
-    print("")
-PY
+  python3 "${HELPER}" package-name "$1"
 }
 
 relative_path() {
-  local from_dir="$1"
-  local to_path="$2"
-  FROM_DIR="${from_dir}" TO_PATH="${to_path}" python3 - <<'PY'
-import os
-print(os.path.relpath(os.environ["TO_PATH"], os.environ["FROM_DIR"]))
-PY
+  python3 -c 'import os, sys; print(os.path.relpath(sys.argv[2], sys.argv[1]))' "$1" "$2"
 }
 
 
@@ -503,93 +374,7 @@ echo "Failed           : ${failed}"
 echo "Skipped          : ${skipped}  (${#SKIP_TESTS[@]} unimplemented-blackbox tests)"
 echo "Log directory    : ${LOG_DIR}"
 
-LOG_DIR="${LOG_DIR}" PASSED_COUNT="${passed}" python3 - <<'PY'
-from pathlib import Path
-import re
-from collections import defaultdict
-import os
-
-log_dir = Path(os.environ["LOG_DIR"])
-per_test_dir = log_dir / "per_test"
-report_file = log_dir / "grouped_error_report.txt"
-
-logs = sorted(per_test_dir.glob("*.log"))
-# PASS logs are deleted after each successful test run; read the count from the shell instead.
-status_counts = {"PASS": int(os.environ.get("PASSED_COUNT", "0")), "FAIL": 0, "SKIP": 0}
-grouped = defaultdict(list)
-stage_groups = defaultdict(list)
-
-for fp in logs:
-    text = fp.read_text(errors="replace")
-    name = fp.stem
-
-    if "SKIP:" in text:
-        status_counts["SKIP"] += 1
-        skip_reason = re.search(r"SKIP: ([^\n]+)", text)
-        reason = skip_reason.group(1).strip() if skip_reason else "unknown"
-        grouped[f"SKIP: {reason}"].append(name)
-        continue
-
-    status_counts["FAIL"] += 1
-    fail_stage_match = re.findall(r"FAIL: ([^\n]+)", text)
-    stage = fail_stage_match[-1].strip() if fail_stage_match else "unknown stage"
-    stage_groups[stage].append(name)
-
-    blackbox = re.search(r"not implemented: Other black box function: BLACKBOX::([A-Z0-9_]+)", text)
-    if blackbox:
-        grouped[f"Not implemented blackbox: {blackbox.group(1)} ({stage})"].append(name)
-        continue
-
-    if "Program must have one entry point." in text:
-        grouped[f"Program must have one entry point ({stage})"].append(name)
-        continue
-
-    panic = re.search(r"panicked at [^\n]*:\n([^\n]+)", text)
-    if panic:
-        grouped[f"Panic: {panic.group(1).strip()} ({stage})"].append(name)
-        continue
-
-    solve = re.search(r"Failed to solve program: '([^']+)'", text)
-    if solve:
-        grouped[f"Failed to solve program: {solve.group(1)} ({stage})"].append(name)
-        continue
-
-    assertion = re.search(r"Failed assertion", text)
-    if assertion:
-        grouped[f"Failed assertion ({stage})"].append(name)
-        continue
-
-    compile_error = re.search(r"^error:\s*([^\n]+)", text, flags=re.M)
-    if compile_error:
-        grouped[f"Compile error: {compile_error.group(1).strip()} ({stage})"].append(name)
-        continue
-
-    compile_bug = re.search(r"^bug:\s*([^\n]+)", text, flags=re.M)
-    if compile_bug:
-        grouped[f"Compile bug: {compile_bug.group(1).strip()} ({stage})"].append(name)
-        continue
-
-    generic_error = re.search(r"^Error:\s*([^\n]+)", text, flags=re.M)
-    if generic_error:
-        grouped[f"Error: {generic_error.group(1).strip()} ({stage})"].append(name)
-        continue
-
-    grouped[f"Unknown failure ({stage})"].append(name)
-
-with report_file.open("w") as f:
-    f.write(f"logs={len(logs)}\n")
-    f.write(f"PASS={status_counts['PASS']}\n")
-    f.write(f"FAIL={status_counts['FAIL']}\n")
-    f.write(f"SKIP={status_counts['SKIP']}\n")
-    f.write("\n[stages]\n")
-    for stage, tests in sorted(stage_groups.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        f.write(f"{stage}\t{len(tests)}\t{', '.join(tests)}")
-        f.write("\n")
-    f.write("\n[grouped]\n")
-    for key, tests in sorted(grouped.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        f.write(f"{len(tests)}\t{key}\t{', '.join(tests)}")
-        f.write("\n")
-PY
+python3 "${HELPER}" build-report "${LOG_DIR}" "${passed}"
 
 # Emit GitHub Step Summary when running inside Actions
 # (must be after the Python report generator so grouped_error_report.txt exists)
