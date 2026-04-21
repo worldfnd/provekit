@@ -41,8 +41,11 @@ serde_json.workspace = true
 sha2.workspace = true
 sha3.workspace = true
 tracing.workspace = true
-xz2.workspace = true
 zerocopy.workspace = true
+
+# Target-specific dependencies: only on non-WASM targets
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+xz2.workspace = true
 zstd.workspace = true
 
 [lints]
