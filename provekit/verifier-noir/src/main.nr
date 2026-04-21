@@ -31,14 +31,14 @@ use sumcheck::{run_sumcheck_verifier, SumcheckResult};
 use transcript::Sponge;
 use types::{
     BLINDING_FINAL_POLY_ARRAY_SIZE, BLINDING_FINAL_POLY_SIZE, BLINDING_FINAL_SC_ARRAY_SIZE,
-    BLINDING_FINAL_SUMCHECK_ROUNDS, BLINDING_FOLD_SIZE, BLINDING_MAX_QUERIES,
-    BLINDING_MERKLE_LEAF_SIZE, BLINDING_OOD_SAMPLES, BLINDING_ROUND_ARRAY_SIZE,
+    BLINDING_FINAL_SUMCHECK_ROUNDS, BLINDING_FOLD_SIZE, BLINDING_INITIAL_OOD_COUNT,
+    BLINDING_MAX_QUERIES, BLINDING_MERKLE_LEAF_SIZE, BLINDING_OOD_SAMPLES, BLINDING_ROUND_ARRAY_SIZE,
     BLINDING_STIR_BYTES_PER_INDEX, BLINDING_TREE_HEIGHT, BLINDING_WHIR_CONSTRAINT_COUNT,
     BLINDING_WHIR_ROUNDS, FINAL_POLY_SIZE, FINAL_SC_ARRAY_SIZE, FINAL_SUMCHECK_ROUNDS, FOLD_SIZE,
-    FOLDING_FACTOR, INNER_WHIR_CONSTRAINT_COUNT, LOG_NUM_CONSTRAINTS, LOG_NUM_VARIABLES, MatrixCell,
-    MAX_GAMMAS, MAX_MATRIX_CELLS, MAX_PUBLIC_INPUTS, MAX_QUERIES_PER_ROUND, NUM_BLINDING_VECTORS,
-    NUM_W_FOLDED_EVALS, NUM_WHIR_ROUNDS, NUM_WITNESS_VARIABLES, OOD_SAMPLES, ROUND_ARRAY_SIZE,
-    STIR_BYTES_PER_INDEX, TREE_HEIGHT,
+    FOLDING_FACTOR, INITIAL_OOD_COUNT, INNER_WHIR_CONSTRAINT_COUNT, LOG_NUM_CONSTRAINTS,
+    LOG_NUM_VARIABLES, MatrixCell, MAX_GAMMAS, MAX_MATRIX_CELLS, MAX_PUBLIC_INPUTS,
+    MAX_QUERIES_PER_ROUND, NUM_BLINDING_VECTORS, NUM_W_FOLDED_EVALS, NUM_WHIR_ROUNDS,
+    NUM_WITNESS_VARIABLES, OOD_SAMPLES, ROUND_ARRAY_SIZE, STIR_BYTES_PER_INDEX, TREE_HEIGHT,
 };
 use whir::{
     check_pow, compute_fold, generate_combination_randomness, run_whir_sumcheck,
@@ -68,9 +68,9 @@ fn main(
     instance: [u8; INSTANCE_SIZE],
     // --- Phase 1: Commitment data ---
     initial_root_hash: Field,
-    initial_ood_answers: [Field; OOD_SAMPLES],
+    initial_ood_answers: [Field; INITIAL_OOD_COUNT],
     blinding_root_hash: Field,
-    blinding_ood_answers: [Field; BLINDING_OOD_SAMPLES],
+    blinding_ood_answers: [Field; BLINDING_INITIAL_OOD_COUNT],
     // --- Phase 2: Spartan sumcheck prover messages ---
     sum_g: Field,
     sumcheck_coeffs: [[Field; 4]; LOG_NUM_CONSTRAINTS],
@@ -167,22 +167,26 @@ fn main(
     // irs_commit::receive_commitment -> absorb Merkle root + squeeze/absorb OOD
 
     // Phase 1a: f_hat commitment (blinded_commitment)
+    // OOD points: one per OOD sample (verifier_message_vec(out_domain_samples))
+    // OOD answers: out_domain_samples * num_vectors prover messages -- matches
+    // whir::protocols::irs_commit::receive_commitment.
     sho.absorb_field_aligned(initial_root_hash);
 
     for _i in 0..OOD_SAMPLES {
         let _ood_query = sho.squeeze_field_aligned();
     }
-    for i in 0..OOD_SAMPLES {
+    for i in 0..INITIAL_OOD_COUNT {
         sho.absorb_field_aligned(initial_ood_answers[i]);
     }
 
-    // Phase 1b: Blinding commitment
+    // Phase 1b: Blinding commitment (num_vectors = NUM_BLINDING_VECTORS, so
+    // there are BLINDING_OOD_SAMPLES * NUM_BLINDING_VECTORS OOD answers).
     sho.absorb_field_aligned(blinding_root_hash);
 
     for _i in 0..BLINDING_OOD_SAMPLES {
         let _blinding_ood_query = sho.squeeze_field_aligned();
     }
-    for i in 0..BLINDING_OOD_SAMPLES {
+    for i in 0..BLINDING_INITIAL_OOD_COUNT {
         sho.absorb_field_aligned(blinding_ood_answers[i]);
     }
 

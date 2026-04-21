@@ -54,6 +54,14 @@ pub global BLINDING_FOLD_SIZE: u32 = 8;
 // Full blinding Merkle leaf row width = NUM_BLINDING_VECTORS * BLINDING_FOLD_SIZE
 pub global BLINDING_MERKLE_LEAF_SIZE: u32 = NUM_BLINDING_VECTORS * BLINDING_FOLD_SIZE;
 
+// OOD answer counts for the initial commitments. For each of the `*_OOD_SAMPLES`
+// out-of-domain points, the prover sends one evaluation per polynomial vector
+// (`BATCH_SIZE` for the blinded commit, `NUM_BLINDING_VECTORS` for the blinding
+// commit). See `whir::protocols::irs_commit::receive_commitment`:
+//     oods_matrix = prover_messages_vec(out_domain_samples * num_vectors)
+pub global INITIAL_OOD_COUNT: u32 = OOD_SAMPLES * BATCH_SIZE;
+pub global BLINDING_INITIAL_OOD_COUNT: u32 = BLINDING_OOD_SAMPLES * NUM_BLINDING_VECTORS;
+
 // --- WHIR inner verification parameters ---
 // Number of linear forms = 3 (evals_az/bz/cz) + 1 (blinding) = 4
 pub global NUM_LINEAR_FORMS: u32 = 4;
