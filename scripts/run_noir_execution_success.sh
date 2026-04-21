@@ -123,6 +123,8 @@ fi
 
 mkdir -p "${LOG_DIR}/per_test"
 GROUPED_REPORT_FILE="${LOG_DIR}/grouped_error_report.txt"
+WITNESS_CSV="${LOG_DIR}/provekit_witness_counts.csv"
+echo "test_name,provekit_witnesses" > "${WITNESS_CSV}"
 
 shopt -s nullglob globstar
 
@@ -442,6 +444,13 @@ for test_name in "${test_dirs[@]}"; do
   fi
   append_stage_marker "${test_log}" "provekit-cli prepare" "PASS"
 
+  # Extract ProveKit post-GE witness count before the log is deleted on success
+  _ge_line=$(grep -o 'After GE optimization: [0-9]* constraints, [0-9]* witnesses' "${test_log}" | tail -1)
+  _pk_witnesses=$(echo "${_ge_line}" | grep -o '[0-9]* witnesses' | grep -o '^[0-9]*')
+  if [[ -n "${_pk_witnesses}" ]]; then
+    echo "${test_name},${_pk_witnesses}" >> "${WITNESS_CSV}"
+  fi
+
   append_stage_marker "${test_log}" "provekit-cli prove" "START"
   if ! (cd "${workdir}" && "${PROVEKIT_BIN}" prove "./prover.pkp" "./${prover_toml_rel}" -o "./proof.np" >> "${test_log}" 2>&1); then
     append_stage_marker "${test_log}" "provekit-cli prove" "FAIL"
@@ -602,6 +611,20 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
 fi
 
 echo "Grouped report  : ${GROUPED_REPORT_FILE}"
+
+# Generate Mavros vs ProveKit witness comparison table
+if [[ -f "${WITNESS_CSV}" ]] && python3 "${SCRIPT_DIR}/generate_witness_comparison.py" "${WITNESS_CSV}" "${LOG_DIR}"; then
+  echo "Witness comparison: ${LOG_DIR}/witness_comparison.md"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    {
+      echo ""
+      echo "## Mavros vs ProveKit Witness Count"
+      head -4 "${LOG_DIR}/witness_comparison.md"
+      echo ""
+      echo "_Full table available in artifact: \`witness_comparison.md\`_"
+    } >> "${GITHUB_STEP_SUMMARY}"
+  fi
+fi
 
 if [[ "${failed}" -gt 0 ]]; then
   exit 1
