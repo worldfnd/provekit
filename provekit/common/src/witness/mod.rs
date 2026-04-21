@@ -84,14 +84,11 @@ impl PublicInputs {
         self.0.is_empty()
     }
 
-    /// Computes an instance-binding hash of these public inputs under `config`.
+    /// Instance-binding hash of these public inputs under `config`.
     ///
-    /// Absorbed into the Fiat-Shamir transcript as a prover message and
-    /// recomputed by the verifier; a mismatch fails verification.
-    ///
-    /// # Determinism
-    ///
-    /// Deterministic in `(self, config)`.
+    /// Absorbed into the Fiat-Shamir transcript by the prover and recomputed
+    /// by the verifier; a mismatch fails verification. Delegates to
+    /// [`HashConfig::hash_field_elements`].
     #[inline]
     #[must_use]
     pub fn hash(&self, config: HashConfig) -> FieldElement {
