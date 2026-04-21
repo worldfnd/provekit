@@ -1,6 +1,6 @@
 [package]
 name = "provekit-common"
-version = "0.1.3"
+version = "0.1.4"
 description = "Common types and utilities for the ProveKit proving system"
 edition.workspace = true
 rust-version.workspace = true
@@ -47,6 +47,14 @@ zerocopy.workspace = true
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 xz2.workspace = true
 zstd.workspace = true
+
+# WASM-only: force getrandom v0.2 `js` feature so transitive rand_core 0.6
+# (via k256 → provekit_acvm_blackbox_solver) builds on wasm32-unknown-unknown.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { workspace = true }
+
+[package.metadata.cargo-machete]
+ignored = ["getrandom"]
 
 [lints]
 workspace = true
