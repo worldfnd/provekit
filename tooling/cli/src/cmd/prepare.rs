@@ -62,7 +62,7 @@ pub struct Args {
     pkv_path: PathBuf,
 
     /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
-    /// blake3)
+    /// blake3, poseidon2)
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
     hash: String,
 }

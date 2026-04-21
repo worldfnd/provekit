@@ -32,6 +32,9 @@ pub enum HashConfig {
 
     #[serde(alias = "blake-3", alias = "b3")]
     Blake3,
+
+    #[serde(alias = "pos2", alias = "p2")]
+    Poseidon2,
 }
 
 /// Domain-separation tag for public-input instance binding.
@@ -60,6 +63,7 @@ impl HashConfig {
             Self::Sha256 => "sha256",
             Self::Keccak => "keccak",
             Self::Blake3 => "blake3",
+            Self::Poseidon2 => "poseidon2",
         }
     }
 
@@ -71,6 +75,7 @@ impl HashConfig {
             Self::Sha256 => whir::hash::SHA2,
             Self::Keccak => whir::hash::KECCAK,
             Self::Blake3 => whir::hash::BLAKE3,
+            Self::Poseidon2 => crate::poseidon2::POSEIDON2,
         }
     }
 
@@ -82,6 +87,7 @@ impl HashConfig {
             Self::Sha256 => 1,
             Self::Keccak => 2,
             Self::Blake3 => 3,
+            Self::Poseidon2 => 4,
         }
     }
 
@@ -93,6 +99,7 @@ impl HashConfig {
             1 => Some(Self::Sha256),
             2 => Some(Self::Keccak),
             3 => Some(Self::Blake3),
+            4 => Some(Self::Poseidon2),
             _ => None,
         }
     }
@@ -106,6 +113,7 @@ impl HashConfig {
             "sha256" | "sha" | "sha-256" => Some(Self::Sha256),
             "keccak" | "keccak-256" | "shake" => Some(Self::Keccak),
             "blake3" | "blake-3" | "b3" => Some(Self::Blake3),
+            "poseidon2" | "pos2" | "p2" => Some(Self::Poseidon2),
             _ => None,
         }
     }
@@ -133,6 +141,7 @@ impl HashConfig {
             Self::Sha256 => hash_digest::<sha2::Sha256>(PUBLIC_INPUTS_DST, elements),
             Self::Keccak => hash_digest::<sha3::Keccak256>(PUBLIC_INPUTS_DST, elements),
             Self::Blake3 => hash_blake3(PUBLIC_INPUTS_DST, elements),
+            Self::Poseidon2 => hash_poseidon2(elements),
         }
     }
 }
@@ -150,7 +159,7 @@ impl std::str::FromStr for HashConfig {
         Self::parse(s).ok_or_else(|| {
             format!(
                 "Invalid hash configuration: '{}'. Valid options: skyscraper, sha256, keccak, \
-                 blake3",
+                 blake3, poseidon2",
                 s
             )
         })
@@ -208,6 +217,17 @@ where
     FieldElement::from_le_bytes_mod_order(&hasher.finalize())
 }
 
+/// Poseidon2 one-shot hash over `elements`. Empty input returns 0 (matches
+/// Noir's `Poseidon2::hash([])` behaviour). Does NOT use
+/// [`PUBLIC_INPUTS_DST`] — Poseidon2 encodes length via the capacity-lane IV.
+#[inline]
+fn hash_poseidon2(elements: &[FieldElement]) -> FieldElement {
+    if elements.is_empty() {
+        return FieldElement::from(0u64);
+    }
+    poseidon2::poseidon2_hash(elements)
+}
+
 /// BLAKE3 analogue of [`hash_digest`]. BLAKE3 does not implement
 /// [`sha2::digest::Digest`] without the optional `traits-preview` feature, so
 /// it gets its own small helper.
@@ -233,6 +253,7 @@ mod tests {
         HashConfig::Sha256,
         HashConfig::Keccak,
         HashConfig::Blake3,
+        HashConfig::Poseidon2,
     ];
 
     #[test]

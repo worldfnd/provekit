@@ -6,7 +6,7 @@
 //! per proof for Fiat-Shamir challenges, not in a tight inner loop.
 
 use {
-    crate::{skyscraper::SkyscraperSponge, HashConfig},
+    crate::{poseidon2::Poseidon2Sponge, skyscraper::SkyscraperSponge, HashConfig},
     spongefish::{instantiations, DuplexSpongeInterface},
     std::fmt,
 };
@@ -21,6 +21,7 @@ pub enum TranscriptSponge {
     Blake3(instantiations::Blake3),
     Keccak(instantiations::Keccak),
     Skyscraper(SkyscraperSponge),
+    Poseidon2(Poseidon2Sponge),
 }
 
 impl fmt::Debug for TranscriptSponge {
@@ -30,6 +31,7 @@ impl fmt::Debug for TranscriptSponge {
             Self::Blake3(_) => f.debug_tuple("Blake3").finish(),
             Self::Keccak(_) => f.debug_tuple("Keccak").finish(),
             Self::Skyscraper(_) => f.debug_tuple("Skyscraper").finish(),
+            Self::Poseidon2(_) => f.debug_tuple("Poseidon2").finish(),
         }
     }
 }
@@ -42,6 +44,7 @@ impl TranscriptSponge {
             HashConfig::Blake3 => Self::Blake3(Default::default()),
             HashConfig::Keccak => Self::Keccak(Default::default()),
             HashConfig::Skyscraper => Self::Skyscraper(Default::default()),
+            HashConfig::Poseidon2 => Self::Poseidon2(Default::default()),
         }
     }
 }
@@ -69,6 +72,9 @@ impl DuplexSpongeInterface for TranscriptSponge {
             Self::Skyscraper(s) => {
                 s.absorb(input);
             }
+            Self::Poseidon2(s) => {
+                s.absorb(input);
+            }
         }
         self
     }
@@ -87,6 +93,9 @@ impl DuplexSpongeInterface for TranscriptSponge {
             Self::Skyscraper(s) => {
                 s.squeeze(output);
             }
+            Self::Poseidon2(s) => {
+                s.squeeze(output);
+            }
         }
         self
     }
@@ -103,6 +112,9 @@ impl DuplexSpongeInterface for TranscriptSponge {
                 s.ratchet();
             }
             Self::Skyscraper(s) => {
+                s.ratchet();
+            }
+            Self::Poseidon2(s) => {
                 s.ratchet();
             }
         }

@@ -116,11 +116,12 @@ impl Default for PublicInputs {
 mod tests {
     use {super::*, proptest::prelude::*};
 
-    const ALL_CONFIGS: [HashConfig; 4] = [
+    const ALL_CONFIGS: [HashConfig; 5] = [
         HashConfig::Skyscraper,
         HashConfig::Sha256,
         HashConfig::Keccak,
         HashConfig::Blake3,
+        HashConfig::Poseidon2,
     ];
 
     fn fe(n: u64) -> FieldElement {
