@@ -134,7 +134,6 @@ impl Prove for NoirProver {
 
         // Set up transcript with public inputs bound to the instance.
         let instance = public_inputs.hash_bytes(self.hash_config);
-        let public_inputs_hash = public_inputs.hash(self.hash_config);
         let ds = self
             .whir_for_witness
             .create_domain_separator()
@@ -263,8 +262,8 @@ impl Prove for NoirProver {
                 r1cs,
                 commitments,
                 full_witness,
-                public_inputs_hash,
-                public_inputs.len(),
+                &public_inputs,
+                self.hash_config,
             )
             .context("While proving R1CS instance")?;
 
@@ -298,7 +297,6 @@ impl Prove for MavrosProver {
 
         // Set up transcript with public inputs bound to the instance.
         let instance = public_inputs.hash_bytes(self.hash_config);
-        let public_inputs_hash = public_inputs.hash(self.hash_config);
         let ds = self
             .whir_for_witness
             .create_domain_separator()
@@ -356,8 +354,8 @@ impl Prove for MavrosProver {
                 merlin,
                 phase1,
                 commitments,
-                public_inputs_hash,
-                public_inputs.len(),
+                &public_inputs,
+                self.hash_config,
                 self.witness_layout,
                 self.constraints_layout,
                 &self.ad_binary,
