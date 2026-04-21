@@ -98,12 +98,12 @@ ntt = { package = "provekit-ntt", version = "0.1.0" }
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli", version = "0.1.2" }
-provekit-common = { path = "provekit/common", version = "0.1.3" }
+provekit-common = { path = "provekit/common", version = "0.1.4" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark", version = "0.1.2" }
-provekit-prover = { path = "provekit/prover", version = "0.1.3" }
-provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "0.1.3" }
-provekit-verifier = { path = "provekit/verifier", version = "0.1.3" }
+provekit-prover = { path = "provekit/prover", version = "0.1.4" }
+provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "0.1.4" }
+provekit-verifier = { path = "provekit/verifier", version = "0.1.4" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
 
 # 3rd party
@@ -152,6 +152,10 @@ xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
 zstd = "0.13"
+
+# WASM feature unification: direct dep on getrandom v0.2 activates `js`
+# backend for transitive rand_core 0.6 (via k256 -> provekit_acvm_blackbox_solver).
+getrandom = { version = "0.2", features = ["js"] }
 
 # Noir language dependencies
 acir = { package = "provekit_acir", version = "1.0.0-beta.11-alpha.1" }

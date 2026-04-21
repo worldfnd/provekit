@@ -1,6 +1,6 @@
 [package]
 name = "provekit-prover"
-version = "0.1.3"
+version = "0.1.4"
 description = "ProveKit prover for generating zero-knowledge proofs"
 edition.workspace = true
 rust-version.workspace = true
