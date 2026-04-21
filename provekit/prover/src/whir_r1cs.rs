@@ -182,8 +182,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_offset,
             blinding_weights,
             commitments,
-            public_inputs.hash(self.hash_config),
-            public_inputs.len(),
+            public_inputs,
         )
     }
 
@@ -239,8 +238,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_offset,
             blinding_weights,
             commitments,
-            public_inputs.hash(self.hash_config),
-            public_inputs.len(),
+            public_inputs,
         )
     }
 }
@@ -254,9 +252,11 @@ fn prove_from_alphas(
     blinding_offset: usize,
     blinding_weights: Vec<FieldElement>,
     commitments: Vec<WhirR1CSCommitment>,
-    public_inputs_hash: FieldElement,
-    public_inputs_len: usize,
+    public_inputs: &PublicInputs,
 ) -> Result<WhirR1CSProof> {
+    let public_inputs_hash = public_inputs.hash(scheme.hash_config);
+    let public_inputs_len = public_inputs.len();
+
     let is_single = commitments.len() == 1;
     let (x, public_weight) =
         get_public_weights(public_inputs_hash, public_inputs_len, &mut merlin, scheme.m);
