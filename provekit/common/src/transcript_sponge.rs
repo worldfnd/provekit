@@ -13,8 +13,7 @@ use {
 
 /// Fiat-Shamir transcript sponge, selected at runtime by [`HashConfig`].
 ///
-/// Wraps one of the four supported sponge implementations and delegates
-/// all [`DuplexSpongeInterface`] calls to the active variant.
+/// Delegates all [`DuplexSpongeInterface`] calls to the active variant.
 #[derive(Clone)]
 pub enum TranscriptSponge {
     Sha256(instantiations::SHA256),
