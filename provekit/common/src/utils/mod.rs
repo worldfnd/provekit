@@ -7,9 +7,26 @@ pub mod serde_jsonify;
 pub mod sumcheck;
 
 pub use self::print_abi::PrintAbi;
+
+/// Deserializes a BN254 field element from up to 32 little-endian bytes.
+#[inline]
+pub fn bytes_to_field(bytes: &[u8]) -> FieldElement {
+    FieldElement::from_le_bytes_mod_order(bytes)
+}
+
+/// Serializes a BN254 field element to its canonical 32-byte little-endian
+/// representation.
+#[inline]
+pub fn field_to_bytes_le(fe: FieldElement) -> [u8; 32] {
+    let raw = fe.into_bigint().to_bytes_le();
+    let mut out = [0u8; 32];
+    out[..raw.len()].copy_from_slice(&raw);
+    out
+}
+
 use {
     crate::{FieldElement, NoirElement},
-    ark_ff::{BigInt, Field, PrimeField},
+    ark_ff::{BigInt, BigInteger, Field, PrimeField},
     ruint::{aliases::U256, uint},
     std::{
         fmt::{Display, Formatter, Result as FmtResult},
