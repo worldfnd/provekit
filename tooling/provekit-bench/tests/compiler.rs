@@ -175,7 +175,10 @@ fn test_noir_proof_encode_decode_roundtrip() {
     // and we can't re-verify the decoded proof in debug builds because the
     // whir verifier asserts `!pattern.is_empty()`.)
     let reencoded = decoded.encode().expect("re-encode");
-    assert_eq!(encoded, reencoded, "encoded form must be stable under roundtrip");
+    assert_eq!(
+        encoded, reencoded,
+        "encoded form must be stable under roundtrip"
+    );
 }
 
 /// Verify that the verifier rejects a proof whose public inputs have been
