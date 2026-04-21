@@ -146,7 +146,7 @@ impl MetalBn254Ntt {
         &self,
         matrix_commit: &MatrixCommitConfig<Fr>,
         leaf_hashes: &PooledBuffer,
-    ) -> Result<Arc<dyn WitnessTrait>, String> {
+    ) -> Result<Arc<dyn WitnessTrait + Send + Sync>, String> {
         let runtime = self.runtime()?;
         let num_leaves = matrix_commit.num_rows();
         let leaf_capacity = 1usize << matrix_commit.merkle_tree.layers.len();

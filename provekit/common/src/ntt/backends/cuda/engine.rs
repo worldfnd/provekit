@@ -254,7 +254,7 @@ impl CudaRuntime {
             return Ok(());
         }
         debug_assert_eq!(size_of::<T>(), size_of::<GpuField>());
-        let bytes = host.len() * size_of::<T>();
+        let bytes = std::mem::size_of_val(host);
         debug_assert!(dst_offset_bytes + bytes <= dst.bucket_bytes());
         // SAFETY: caller guarantees layout equivalence.
         let host_bytes: &[u8] =
@@ -274,8 +274,10 @@ impl CudaRuntime {
     }
 
     /// Download `dst.len()` `T` elements from `src` (starting at
-    /// `src_offset_bytes`) into `dst`. Layout requirements identical to
-    /// [`upload_into`].
+    /// `src_offset_bytes`) into `dst`. Synchronously: blocks the host until
+    /// the copy is complete. For batched downloads, prefer pairing
+    /// [`download_into_async`] calls with a single trailing
+    /// [`synchronize`].
     ///
     /// # Safety
     ///
@@ -286,31 +288,60 @@ impl CudaRuntime {
         src_offset_bytes: usize,
         dst: &mut [T],
     ) -> Result<(), String> {
+        // SAFETY: forwarded.
+        unsafe { self.download_into_async::<T>(src, src_offset_bytes, dst) }?;
+        self.synchronize()
+    }
+
+    /// Asynchronous variant of [`download_into`]: queues the device-to-host
+    /// copy on the stream but does NOT synchronise. Caller MUST synchronise
+    /// (or otherwise wait on the stream) before reading from `dst`.
+    ///
+    /// # Safety
+    ///
+    /// Same as [`upload_into`], plus the caller must keep `dst` alive and
+    /// not move it until the stream synchronises.
+    pub unsafe fn download_into_async<T: Copy>(
+        &self,
+        src: &PooledBuffer,
+        src_offset_bytes: usize,
+        dst: &mut [T],
+    ) -> Result<(), String> {
         if dst.is_empty() {
             return Ok(());
         }
         debug_assert_eq!(size_of::<T>(), size_of::<GpuField>());
-        let bytes = dst.len() * size_of::<T>();
+        let bytes = std::mem::size_of_val(dst);
         debug_assert!(src_offset_bytes + bytes <= src.bucket_bytes());
         // SAFETY: caller guarantees layout equivalence.
         let dst_bytes: &mut [u8] =
             unsafe { std::slice::from_raw_parts_mut(dst.as_mut_ptr().cast::<u8>(), bytes) };
         let (ptr, _hold) = src.slice().device_ptr(&self.stream);
-        // SAFETY: device pointer + offset is in-bounds; we synchronise the
-        // stream below before returning.
+        // SAFETY: device pointer + offset is in-bounds; caller is
+        // responsible for synchronising before reading `dst`.
         unsafe {
             result::memcpy_dtoh_async(
                 dst_bytes,
                 ptr + src_offset_bytes as sys::CUdeviceptr,
                 self.stream.cu_stream(),
             )
-            .map_err(driver_err)?;
+            .map_err(driver_err)
         }
+    }
+
+    /// Download raw bytes (no type assumption). Synchronous.
+    pub fn download_bytes(
+        &self,
+        src: &PooledBuffer,
+        src_offset_bytes: usize,
+        dst: &mut [u8],
+    ) -> Result<(), String> {
+        self.download_bytes_async(src, src_offset_bytes, dst)?;
         self.synchronize()
     }
 
-    /// Download raw bytes (no type assumption).
-    pub fn download_bytes(
+    /// Asynchronous raw-byte download (no implicit synchronise).
+    pub fn download_bytes_async(
         &self,
         src: &PooledBuffer,
         src_offset_bytes: usize,
@@ -321,16 +352,15 @@ impl CudaRuntime {
         }
         debug_assert!(src_offset_bytes + dst.len() <= src.bucket_bytes());
         let (ptr, _hold) = src.slice().device_ptr(&self.stream);
-        // SAFETY: see `download_into`; we synchronise before returning.
+        // SAFETY: caller must synchronise before reading `dst`.
         unsafe {
             result::memcpy_dtoh_async(
                 dst,
                 ptr + src_offset_bytes as sys::CUdeviceptr,
                 self.stream.cu_stream(),
             )
-            .map_err(driver_err)?;
+            .map_err(driver_err)
         }
-        self.synchronize()
     }
 
     /// Device-to-device byte copy (`bytes` bytes from

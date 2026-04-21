@@ -289,12 +289,11 @@ impl CudaBn254Ntt {
         }
         let mask_length = masks.len() / row_count;
         let masked_message_length = message_length + mask_length;
-        let next_order = Self::default();
-        let mut coset_size = next_order
+        let mut coset_size = Self
             .next_order(masked_message_length)
             .ok_or_else(|| "no supported coset size for encode".to_string())?;
         while !codeword_length.is_multiple_of(coset_size) {
-            coset_size = next_order
+            coset_size = Self
                 .next_order(coset_size + 1)
                 .ok_or_else(|| "no supported coset size for encode".to_string())?;
         }

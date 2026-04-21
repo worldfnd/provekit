@@ -45,8 +45,7 @@ static RUNTIME: OnceLock<Result<Arc<CudaRuntime>, String>> = OnceLock::new();
 impl CudaBn254Ntt {
     /// Minimum problem size at which the GPU path is used. Below these the
     /// CPU NTT (parallelised, SIMD-heavy) wins after subtracting per-call
-    /// overhead. Tuned to match the Metal backend.
-    const MIN_GPU_TOTAL_ELEMENTS: usize = 1 << 20;
+    const MIN_GPU_TOTAL_ELEMENTS: usize = 1 << 18;
     const MIN_GPU_ROW_COUNT: usize = 64;
 
     #[cfg(target_os = "linux")]

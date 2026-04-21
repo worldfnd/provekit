@@ -141,7 +141,7 @@ impl CudaBn254Ntt {
         &self,
         matrix_commit: &MatrixCommitConfig<Fr>,
         leaf_hashes: &PooledBuffer,
-    ) -> Result<Arc<dyn WitnessTrait>, String> {
+    ) -> Result<Arc<dyn WitnessTrait + Send + Sync>, String> {
         let runtime = self.runtime()?;
         let num_leaves = matrix_commit.num_rows();
         let leaf_capacity = 1usize << matrix_commit.merkle_tree.layers.len();
@@ -243,19 +243,33 @@ impl WitnessTrait for DeviceMerkleWitness {
     }
 
     fn read_nodes(&self, indices: &[usize]) -> Vec<Hash> {
-        let runtime = match crate::ntt::CudaBn254Ntt::default().runtime() {
+        if indices.is_empty() {
+            return Vec::new();
+        }
+        let runtime = match crate::ntt::CudaBn254Ntt.runtime() {
             Ok(r) => Arc::clone(r),
             Err(err) => panic!("CUDA runtime unavailable: {err}"),
         };
-        let mut out = Vec::with_capacity(indices.len());
-        for &index in indices {
+        // Batch all per-node downloads on the stream and synchronise once at
+        // the end. Without this, each node request would block the host on
+        // its own stream-sync round-trip, which adds up to ~hundreds of ms
+        // for the WHIR open phase (Merkle paths × in-domain samples).
+        let hash_bytes = size_of::<Hash>();
+        let mut staging = vec![0u8; indices.len() * hash_bytes];
+        for (i, &index) in indices.iter().enumerate() {
             assert!(index < self.num_nodes, "Merkle node index out of bounds");
-            let mut bytes = [0u8; size_of::<Hash>()];
+            let dst = &mut staging[i * hash_bytes..(i + 1) * hash_bytes];
             runtime
-                .download_bytes(&self.buffer, index * size_of::<Hash>(), &mut bytes)
+                .download_bytes_async(&self.buffer, index * hash_bytes, dst)
                 .unwrap_or_else(|err| panic!("CUDA Merkle node download failed: {err}"));
+        }
+        runtime
+            .synchronize()
+            .unwrap_or_else(|err| panic!("CUDA Merkle node sync failed: {err}"));
+        let mut out = Vec::with_capacity(indices.len());
+        for chunk in staging.chunks_exact(hash_bytes) {
             let mut hash = Hash::default();
-            hash.0.copy_from_slice(&bytes);
+            hash.0.copy_from_slice(chunk);
             out.push(hash);
         }
         out
@@ -283,27 +297,42 @@ impl MatrixRows<Fr> for DeviceRows {
     /// Lazily download just the requested rows from the device buffer,
     /// applying the bit-reversal of the codeword index so that index `i`
     /// in `indices` corresponds to natural codeword position `i`.
+    ///
+    /// All per-row memcpys are queued on the stream first; we synchronise
+    /// the host once at the end. Previously this issued one
+    /// `cuMemcpyDtoH_v2` + sync per row, which dominated the WHIR open phase
+    /// for the largest commit (~160 ms for 127 sampled indices).
     fn read_rows(&self, indices: &[usize]) -> Vec<Fr> {
-        let runtime = match crate::ntt::CudaBn254Ntt::default().runtime() {
+        if indices.is_empty() {
+            return Vec::new();
+        }
+        let runtime = match crate::ntt::CudaBn254Ntt.runtime() {
             Ok(r) => Arc::clone(r),
             Err(err) => panic!("CUDA runtime unavailable: {err}"),
         };
         let cols = self.cols;
         let row_bytes = cols * size_of::<GpuField>();
-        let mut out: Vec<Fr> = Vec::with_capacity(indices.len() * cols);
-        let mut staging: Vec<GpuField> = vec![GpuField::default(); cols];
-        for &row in indices {
+        // Pre-allocate one contiguous staging buffer so each per-row memcpy
+        // writes into a disjoint slice. We never re-read from `staging`
+        // until after `synchronize` returns.
+        let mut staging: Vec<GpuField> = vec![GpuField::default(); indices.len() * cols];
+        for (i, &row) in indices.iter().enumerate() {
             assert!(row < self.rows, "row index out of bounds");
             let src_row = reverse_bit_index(row, self.rows);
-            // SAFETY: GpuField is plain repr(C) bytes; staging.len() == cols.
+            let dst = &mut staging[i * cols..(i + 1) * cols];
+            // SAFETY: GpuField is plain repr(C) bytes; dst.len() == cols;
+            // each call writes into a disjoint slice of `staging` and
+            // `staging` is not read until after synchronize() below.
             unsafe {
                 runtime
-                    .download_into::<GpuField>(&self.buffer, src_row * row_bytes, &mut staging)
+                    .download_into_async::<GpuField>(&self.buffer, src_row * row_bytes, dst)
                     .unwrap_or_else(|err| panic!("CUDA matrix row download failed: {err}"));
             }
-            out.extend(staging.iter().copied().map(gpu_to_fr));
         }
-        out
+        runtime
+            .synchronize()
+            .unwrap_or_else(|err| panic!("CUDA matrix row sync failed: {err}"));
+        staging.into_iter().map(gpu_to_fr).collect()
     }
 }
 
