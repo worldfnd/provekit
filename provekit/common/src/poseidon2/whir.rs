@@ -95,7 +95,7 @@ impl HashEngine for Poseidon2HashEngine {
 /// Hash a single message using a sponge-like construction over the Poseidon2
 /// permutation.
 ///
-/// Seeds the capacity lane (state[3]) with `IV = num_fes * 2^64` before
+/// Seeds the capacity lane (`state[3]`) with `IV = num_fes * 2^64` before
 /// absorbing to prevent zero-padding collisions. Absorbs field elements into
 /// the rate portion (lanes 0-2) of the 4-element state, applying the
 /// permutation after each full rate block. The output is `state[0]`.
