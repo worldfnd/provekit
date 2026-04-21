@@ -4,9 +4,9 @@ use {
     nargo_cli::cli::compile_cmd::compile_workspace_full,
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
     noirc_driver::CompileOptions,
-    provekit_common::{Prover, Verifier},
+    provekit_common::{HashConfig, Prover, Verifier},
     provekit_prover::Prove,
-    provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
+    provekit_r1cs_compiler::NoirCompiler,
     provekit_verifier::Verify,
     serde::Deserialize,
     std::path::{Path, PathBuf},
@@ -52,6 +52,13 @@ fn compile_workspace_once(workspace_path: &Path) {
 }
 
 fn test_noir_compiler(test_case_path: impl AsRef<Path>, witness_file: &str) {
+    test_noir_compiler_with_hash_config(test_case_path, witness_file, HashConfig::default());
+}
+
+fn load_noir_artifact_paths(
+    test_case_path: impl AsRef<Path>,
+    witness_file: &str,
+) -> (PathBuf, PathBuf) {
     let test_case_path = test_case_path.as_ref();
 
     compile_workspace_once(test_case_path);
@@ -66,8 +73,17 @@ fn test_noir_compiler(test_case_path: impl AsRef<Path>, witness_file: &str) {
     let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
     let witness_file_path = test_case_path.join(witness_file);
 
-    let schema = NoirCompiler::from_file(&circuit_path, provekit_common::HashConfig::default())
-        .expect("Reading proof scheme");
+    (circuit_path, witness_file_path)
+}
+
+fn test_noir_compiler_with_hash_config(
+    test_case_path: impl AsRef<Path>,
+    witness_file: &str,
+    hash_config: HashConfig,
+) {
+    let (circuit_path, witness_file_path) = load_noir_artifact_paths(test_case_path, witness_file);
+
+    let schema = NoirCompiler::from_file(&circuit_path, hash_config).expect("Reading proof scheme");
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
@@ -220,19 +236,11 @@ fn case_noir_msm_conditional(path: &str, witness_file: &str) {
 /// tampered with.
 #[test]
 fn test_public_input_binding_exploit() {
-    use provekit_common::{witness::PublicInputs, FieldElement, HashConfig};
+    use provekit_common::{witness::PublicInputs, FieldElement};
 
     let test_case_path = Path::new("../../noir-examples/basic-4");
 
-    compile_workspace_once(test_case_path);
-
-    let nargo_toml_path = test_case_path.join("Nargo.toml");
-    let nargo_toml = std::fs::read_to_string(&nargo_toml_path).expect("Reading Nargo.toml");
-    let nargo_toml: NargoToml = toml::from_str(&nargo_toml).expect("Deserializing Nargo.toml");
-    let package_name = nargo_toml.package.name;
-
-    let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
-    let witness_file_path = test_case_path.join("Prover.toml");
+    let (circuit_path, witness_file_path) = load_noir_artifact_paths(test_case_path, "Prover.toml");
 
     let schema = NoirCompiler::from_file(&circuit_path, HashConfig::default())
         .expect("Reading proof scheme");
@@ -260,5 +268,43 @@ fn test_public_input_binding_exploit() {
     assert!(
         result.is_err(),
         "Verification should fail when public inputs are tampered, but it succeeded",
+    );
+}
+
+#[test]
+fn test_hash_config_does_not_leak_between_operations() {
+    let test_case_path = Path::new("../../noir-examples/basic-4");
+
+    for config in [HashConfig::Sha256, HashConfig::Keccak, HashConfig::Sha256] {
+        test_noir_compiler_with_hash_config(test_case_path, "Prover.toml", config);
+    }
+}
+
+#[test]
+fn test_verifier_rejects_mismatched_hash_config() {
+    let test_case_path = Path::new("../../noir-examples/basic-4");
+    let (circuit_path, witness_file_path) = load_noir_artifact_paths(test_case_path, "Prover.toml");
+
+    let prover_schema =
+        NoirCompiler::from_file(&circuit_path, HashConfig::Sha256).expect("Reading prover schema");
+    let verifier_schema = NoirCompiler::from_file(&circuit_path, HashConfig::Keccak)
+        .expect("Reading verifier schema");
+
+    let prover = Prover::from_noir_proof_scheme(prover_schema.clone());
+    let mut matching_verifier = Verifier::from_noir_proof_scheme(prover_schema);
+    let mut mismatched_verifier = Verifier::from_noir_proof_scheme(verifier_schema);
+
+    let proof = prover
+        .prove_with_toml(&witness_file_path)
+        .expect("While proving Noir program statement");
+
+    matching_verifier
+        .verify(&proof)
+        .expect("Matching verifier should accept the proof");
+
+    let result = mismatched_verifier.verify(&proof);
+    assert!(
+        result.is_err(),
+        "Verification should fail when prover and verifier use different hash configs",
     );
 }
