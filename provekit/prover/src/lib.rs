@@ -7,16 +7,21 @@ use {
     },
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
+    provekit_common::{
+        utils::noir_to_native, FieldElement, NoirElement, NoirProof, Prover, PublicInputs,
+        TranscriptSponge,
+    },
+    std::mem::size_of,
+    tracing::{debug, info_span, instrument},
+    whir::transcript::ProverState,
+};
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+use {
     bn254_blackbox_solver::Bn254BlackBoxSolver,
     nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    provekit_common::{
-        utils::noir_to_native, FieldElement, Format, InputMap, NoirElement, NoirProof, Prover,
-        PublicInputs, TranscriptSponge,
-    },
-    std::{mem::size_of, path::Path},
-    tracing::{debug, info_span, instrument},
-    whir::transcript::ProverState,
+    provekit_common::{Format, InputMap},
+    std::path::Path,
 };
 
 mod r1cs;
@@ -24,18 +29,23 @@ mod whir_r1cs;
 mod witness;
 
 pub trait Prove {
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>>;
 
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof>;
 
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
 
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove_with_inputs(self, inputs: &str, format: Format) -> Result<NoirProof>;
 
     fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof>;
 }
 
 impl Prove for Prover {
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
     fn generate_witness(&mut self, input_map: InputMap) -> Result<WitnessMap<NoirElement>> {
         let solver = Bn254BlackBoxSolver::default();
@@ -64,12 +74,14 @@ impl Prove for Prover {
             .witness)
     }
 
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
     fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
         let witness = self.generate_witness(input_map)?;
         self.prove_with_witness(witness)
     }
 
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
         let (input_map, _expected_return) =
@@ -77,6 +89,7 @@ impl Prove for Prover {
         self.prove(input_map)
     }
 
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
     fn prove_with_inputs(self, inputs: &str, format: Format) -> Result<NoirProof> {
         let input_map = format

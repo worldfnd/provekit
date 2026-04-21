@@ -1,3 +1,4 @@
+#[cfg(not(target_arch = "wasm32"))]
 pub mod file;
 mod interner;
 mod noir_proof_scheme;
