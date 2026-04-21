@@ -12,6 +12,7 @@ repository.workspace = true
 default = ["witness-generation", "parallel"]
 witness-generation = ["nargo", "bn254_blackbox_solver", "noir_artifact_cli"]
 parallel = ["provekit-common/parallel"]
+force_b51_ntt = ["provekit-common/force_b51_ntt"]
 
 [dependencies]
 # Workspace crates

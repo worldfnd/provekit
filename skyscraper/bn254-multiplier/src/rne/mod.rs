@@ -28,3 +28,35 @@ pub mod mono;
 pub mod simd_utils;
 
 pub use {batched::*, constants::*, mono::*};
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod output_bound_tests {
+    use {
+        super::mono,
+        crate::constants::U64_P_MULTIPLES,
+        proptest::{prelude::*, test_runner::Config},
+    };
+
+    fn le256(a: [u64; 4], b: [u64; 4]) -> bool {
+        for i in (0..4).rev() {
+            if a[i] != b[i] {
+                return a[i] < b[i];
+            }
+        }
+        true
+    }
+
+    fn below_2_255() -> impl Strategy<Value = [u64; 4]> {
+        (0u64.., 0u64.., 0u64.., 0u64..(1u64 << 63)).prop_map(|(a, b, c, d)| [a, b, c, d])
+    }
+
+    proptest! {
+        #![proptest_config(Config { cases: 4096, .. Config::default() })]
+        #[test]
+        fn mono_mul_output_under_3p(a in below_2_255(), b in below_2_255()) {
+            let out = mono::mul(a, b);
+            prop_assert!(le256(out, U64_P_MULTIPLES[3]),
+                "mul({:?}, {:?}) = {:?} ≥ 3p", a, b, out);
+        }
+    }
+}

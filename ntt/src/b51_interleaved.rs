@@ -1,17 +1,22 @@
 use {
-    crate::{define_ntt, extend_roots_table},
-    ark_bn254::Fr,
     bn254_multiplier::{
-        constants::{self, U64_P_MULTIPLES},
-        rne,
-        utils::{self, addv, div_p_2b, subtraction_reduce},
+        constants::U64_P_MULTIPLES,
+        utils::{self, div_p_2b, subtraction_reduce},
     },
     rayon::iter::{IntoParallelRefMutIterator, ParallelIterator},
+};
+#[cfg(not(kani))]
+use {
+    crate::{define_ntt, extend_roots_table},
+    ark_bn254::Fr,
+    bn254_multiplier::{constants, rne, utils::addv},
     std::mem,
 };
 
+#[cfg(not(kani))]
 define_ntt!(interleaved_ntt_nr, [u64; 4], b51_kernel);
 
+#[cfg(not(kani))]
 pub fn ntt_nr_b51(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
     let new_root = extend_roots_table(codeword_size);
     // SAFETY: `Fr` is `#[repr(transparent)]` over `BigInt<4>`, which is
@@ -22,6 +27,7 @@ pub fn ntt_nr_b51(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
     canonicalize_b51(raw);
 }
 
+#[cfg(not(kani))]
 #[inline(always)]
 fn b51_kernel(even: &mut [u64; 4], odd: &mut [u64; 4], omega: &[u64; 4]) {
     // rne multiplier will takes any value times <p to a value less than 3p.
@@ -38,19 +44,22 @@ fn b51_kernel(even: &mut [u64; 4], odd: &mut [u64; 4], omega: &[u64; 4]) {
     (*even, *odd) = (l, r);
 }
 
+#[inline(always)]
+fn canonicalize_b51_element(elem: [u64; 4]) -> [u64; 4] {
+    let reduced = subtraction_reduce(div_p_2b, elem);
+    let tentative = utils::sub(reduced, U64_P_MULTIPLES[1]);
+    if tentative[3] >> 63 == 1 {
+        reduced
+    } else {
+        tentative
+    }
+}
+
 /// Fit values within [0,p). Necessary to be compatible with Ark
 fn canonicalize_b51(values: &mut [[u64; 4]]) {
-    // After the kernel the values are within [0,2.3p]. We use subtraction reduce to
-    // get the value within 2p such that we can use a conditional subtract.
-    values.par_iter_mut().for_each(|elem| {
-        let reduced = subtraction_reduce(div_p_2b, *elem);
-        let tentative = utils::sub(reduced, U64_P_MULTIPLES[1]);
-        *elem = if tentative[3] >> 63 == 1 {
-            reduced
-        } else {
-            tentative
-        };
-    });
+    values
+        .par_iter_mut()
+        .for_each(|elem| *elem = canonicalize_b51_element(*elem));
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -58,7 +67,8 @@ mod tests {
     use {
         crate::{ark_interleaved::ntt_nr_ark, b51_interleaved::ntt_nr_b51},
         ark_bn254::Fr,
-        ark_ff::BigInt,
+        ark_ff::{BigInt, PrimeField},
+        bn254_multiplier::constants::U64_P_MULTIPLES,
         proptest::{collection, prelude::*},
     };
 
@@ -83,5 +93,68 @@ mod tests {
 
             prop_assert_eq!(b51_out, ark_out);
         }
+
+        #[test]
+        fn b51_matches_ark_interleaved(
+            codeword_log2 in 3_usize..=12,
+            num_groups_log2 in 0_usize..=3,
+        ) {
+            let codeword_size = 1 << codeword_log2;
+            let num_groups = 1 << num_groups_log2;
+            let total = codeword_size * num_groups;
+            let mut rng = ark_std::test_rng();
+            let values: Vec<Fr> = (0..total).map(|_| <Fr as ark_ff::UniformRand>::rand(&mut rng)).collect();
+
+            let mut b51_out = values.clone();
+            ntt_nr_b51(&mut b51_out, codeword_size, num_groups);
+            let mut ark_out = values;
+            ntt_nr_ark(&mut ark_out, codeword_size, num_groups);
+
+            prop_assert_eq!(b51_out, ark_out);
+        }
+
+        // Samples raw [u64;4] directly so inputs can cover the full [0, 3p)
+        // range the kernel invariant allows (Fr::rand only covers [0, p)).
+        #[test]
+        fn canonicalize_b51_is_canonical(
+            raw in proptest::array::uniform4(0u64..),
+        ) {
+            use bn254_multiplier::utils;
+            let below_3p = utils::sub(raw, U64_P_MULTIPLES[3])[3] >> 63 == 1;
+            prop_assume!(below_3p);
+
+            let mut buf = vec![raw];
+            super::canonicalize_b51(&mut buf);
+
+            let bi = BigInt(buf[0]);
+            prop_assert!(Fr::from_bigint(bi).is_some(),
+                "canonicalize_b51 left value ≥ p: {:?}", buf[0]);
+        }
+    }
+}
+
+#[cfg(kani)]
+mod kani_proofs {
+    use {
+        super::canonicalize_b51_element,
+        bn254_multiplier::{constants::U64_P_MULTIPLES, utils::sub},
+    };
+
+    fn le256(a: [u64; 4], b: [u64; 4]) -> bool {
+        for i in (0..4).rev() {
+            if a[i] != b[i] {
+                return a[i] < b[i];
+            }
+        }
+        true
+    }
+
+    #[kani::proof]
+    fn canonicalize_b51_produces_canonical() {
+        let elem: [u64; 4] = [kani::any(), kani::any(), kani::any(), kani::any()];
+        kani::assume(le256(elem, U64_P_MULTIPLES[3]));
+        let result = canonicalize_b51_element(elem);
+        let diff = sub(result, U64_P_MULTIPLES[1]);
+        assert!(diff[3] >> 63 == 1, "result must be < p");
     }
 }

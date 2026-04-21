@@ -234,4 +234,28 @@ mod proofs {
         assert!(x >= r);
         assert!(le256([0, 0, 0, x - r], U64_2P));
     }
+
+    /// `div_p_2b` output bound is `< 3p` weaker than `div_p_6b`/`div_p_32b`'s`< 2p`. 
+    #[kani::proof]
+    fn div_p_2b_underapprox() {
+        use super::div_p_2b;
+        let x: u64 = kani::any();
+        let q = div_p_2b(x);
+        let r = U64_P_MULTIPLES[q as usize][3];
+        assert!(x >= r);
+        assert!(le256([0, 0, 0, x - r], U64_P_MULTIPLES[3]));
+    }
+
+    /// Input `≤ 3p` tightens `subtraction_reduce(div_p_2b, ·)` output to `< 2p`.
+    /// Used by `canonicalize_b51`'s conditional-subtract step.
+    #[kani::proof]
+    fn subtraction_reduce_div_p_2b_tight_under_2_3p() {
+        use super::{div_p_2b, subtraction_reduce};
+        use crate::constants::U64_P_MULTIPLES;
+
+        let elem: [u64; 4] = [kani::any(), kani::any(), kani::any(), kani::any()];
+        kani::assume(le256(elem, U64_P_MULTIPLES[3]));
+        let reduced = subtraction_reduce(div_p_2b, elem);
+        assert!(le256(reduced, U64_P_MULTIPLES[2]));
+    }
 }

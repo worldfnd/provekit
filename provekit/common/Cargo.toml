@@ -12,6 +12,7 @@ repository.workspace = true
 default = ["parallel"]
 parallel = []
 provekit_ntt = []
+force_b51_ntt = ["ntt/force_b51"]
 
 [dependencies]
 # Workspace crates

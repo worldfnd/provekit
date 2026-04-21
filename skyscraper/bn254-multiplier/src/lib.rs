@@ -1,29 +1,32 @@
-#![feature(portable_simd)]
+#![cfg_attr(not(kani), feature(portable_simd))]
 //#![no_std] This crate can technically be no_std. However this requires
 // replacing StdFloat.mul_add with intrinsics.
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", not(kani)))]
 mod aarch64;
 
 // These can be made to work on x86,
 // but for now it uses an ARM NEON intrinsic.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", not(kani)))]
 pub mod rtz;
 
 pub mod constants;
+#[cfg(not(kani))]
 pub mod rne;
+#[cfg(not(kani))]
 mod scalar;
 pub mod utils;
 
-#[cfg(not(target_arch = "wasm32"))] // Proptest not supported on WASI
+#[cfg(all(not(target_arch = "wasm32"), not(kani)))]
 mod test_utils;
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "aarch64", not(kani)))]
 pub use crate::aarch64::{
     montgomery_interleaved_3, montgomery_interleaved_4, montgomery_square_interleaved_3,
     montgomery_square_interleaved_4, montgomery_square_log_interleaved_3,
     montgomery_square_log_interleaved_4,
 };
+#[cfg(not(kani))]
 pub use crate::scalar::{scalar_mul, scalar_sqr};
 
 const fn pow_2(n: u32) -> f64 {
