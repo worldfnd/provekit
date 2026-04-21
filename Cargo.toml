@@ -192,4 +192,4 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "ark-ff", "sha2",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { path = "../whir/", features = ["tracing", "rs_in_order"] }
+whir = { git = "https://github.com/zkfriendly/whir.git", branch = "zkfr/add-metal-gpu-refactor", features = ["tracing", "rs_in_order"] }
