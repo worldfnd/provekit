@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-  "skyscraper/fp-rounding",
-  "skyscraper/hla",
-  "skyscraper/bn254-multiplier",
-  "skyscraper/bn254-multiplier-codegen",
-  "skyscraper/core",
+  # "skyscraper/fp-rounding",
+  # "skyscraper/hla",
+  # "skyscraper/bn254-multiplier",
+  # "skyscraper/bn254-multiplier-codegen",
+  # "skyscraper/core",
   "provekit/common",
   "provekit/r1cs-compiler",
   "provekit/prover",
@@ -15,7 +15,7 @@ members = [
   "tooling/provekit-ffi",
   "tooling/provekit-gnark",
   "tooling/verifier-server",
-  "ntt",
+  # "ntt",
 ]
 exclude = ["playground/passport-input-gen"]
 
@@ -25,6 +25,11 @@ rust-version = "1.85"
 authors = [
   "Remco Bloemen <remco@world.org>",
   "Philipp Sippl <philipp@world.org>",
+  "Aditya Bisht <aditya@atheon.xyz>",
+  "Ashish Kumar <ashish@atheon.xyz>",
+  "Rose Jethani <rose@atheon.xyz>",
+  "Yashwanth Reddy <yashwanth@atheon.xyz>",
+  "Arun Kumar <arun@atheon.xyz>",
   "Yuval Domb",
   "Xander van der Goot",
   "Koh Wei Jie",
@@ -34,7 +39,6 @@ authors = [
   "Yogesh Swami",
   "Ryan Cao",
   "Shreyas Londhe",
-  "Aditya Bisht",
   # TODO: More contributors
 ]
 license = "MIT"
@@ -84,22 +88,22 @@ opt-level = 3
 
 [workspace.dependencies]
 # Workspace members - Skyscraper
-bn254-multiplier = { path = "skyscraper/bn254-multiplier" }
-bn254-multiplier-codegen = { path = "skyscraper/bn254-multiplier-codegen" }
-fp-rounding = { path = "skyscraper/fp-rounding" }
-hla = { path = "skyscraper/hla" }
-skyscraper = { path = "skyscraper/core" }
-ntt = { path = "ntt" }
+bn254-multiplier = { package = "provekit-bn254-multiplier", version = "0.1.0" }
+bn254-multiplier-codegen = { package = "provekit-bn254-multiplier-codegen", version = "0.1.0" }
+fp-rounding = { package = "provekit-fp-rounding", version = "0.1.0" }
+hla = { package = "provekit-hla", version = "0.1.0" }
+skyscraper = { package = "provekit-skyscraper", version = "0.1.0" }
+ntt = { package = "provekit-ntt", version = "0.1.0" }
 
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
-provekit-cli = { path = "tooling/cli" }
-provekit-common = { path = "provekit/common" }
+provekit-cli = { path = "tooling/cli", version = "0.1.2" }
+provekit-common = { path = "provekit/common", version = "0.1.4" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
-provekit-gnark = { path = "tooling/provekit-gnark" }
-provekit-prover = { path = "provekit/prover" }
-provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
-provekit-verifier = { path = "provekit/verifier" }
+provekit-gnark = { path = "tooling/provekit-gnark", version = "0.1.2" }
+provekit-prover = { path = "provekit/prover", version = "0.1.4" }
+provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "0.1.4" }
+provekit-verifier = { path = "provekit/verifier", version = "0.1.4" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
 
 # 3rd party
@@ -108,6 +112,7 @@ argh = "0.1.12"
 axum = "0.8.4"
 base64 = "0.22.1"
 bytes = "1.10.1"
+ciborium = "0.2.2"
 chrono = "0.4.41"
 # On CI divan get replaced by divan = { package = "codspeed-divan-compat", version = "3.0.1" } for benchmark tracking.
 # This is a workaround because different package selection based on target does not mix well with workspace dependencies.
@@ -148,16 +153,20 @@ zerocopy = "0.8.25"
 zeroize = "1.8.1"
 zstd = "0.13"
 
+# WASM feature unification: direct dep on getrandom v0.2 activates `js`
+# backend for transitive rand_core 0.6 (via k256 -> provekit_acvm_blackbox_solver).
+getrandom = { version = "0.2", features = ["js"] }
+
 # Noir language dependencies
-acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
-bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
-nargo = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
-nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
-nargo_toml = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
-noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
-noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.11" }
+acir = { package = "provekit_acir", version = "1.0.0-beta.11-alpha.1" }
+bn254_blackbox_solver = { package = "provekit_bn254_blackbox_solver", version = "1.0.0-beta.11-alpha.1" }
+nargo = { package = "provekit_nargo", version = "1.0.0-beta.11-alpha.4" }
+nargo_cli = { package = "provekit_nargo_cli", version = "1.0.0-beta.11-alpha.6" }
+nargo_toml = { package = "provekit_nargo_toml", version = "1.0.0-beta.11-alpha.4" }
+noir_artifact_cli = { package = "provekit_noir_artifact_cli", version = "1.0.0-beta.11-alpha.4" }
+noirc_abi = { package = "provekit_noirc_abi", version = "1.0.0-beta.11-alpha.1" }
+noirc_artifacts = { package = "provekit_noirc_artifacts", version = "1.0.0-beta.11-alpha.4" }
+noirc_driver = { package = "provekit_noirc_driver", version = "1.0.0-beta.11-alpha.4" }
 
 # Cryptography and proof systems
 ark-bn254 = { version = "0.5.0", default-features = false, features = [
@@ -168,8 +177,9 @@ ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
-spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
-  "ark-ff", "sha2",
-], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "2cda33a3e39afe66acd1c1507de7af352291260e", features = ["tracing"] }
+spongefish = { package = "provekit-spongefish", version = "0.1.0", features = [
+  "ark-ff",
+  "sha2",
+] }
+spongefish-pow = { package = "provekit-spongefish-pow", version = "0.1.0" }
+whir = { package = "provekit-whir", version = "0.1.1", features = ["tracing"] }

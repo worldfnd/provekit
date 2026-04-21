@@ -7,11 +7,10 @@
 use {
     crate::{
         serialization,
-        types::{PKBuf, PKProver, PKStatus, PKVerifier},
+        types::{PKBuf, PKInputFormat, PKProver, PKStatus, PKVerifier},
         utils::c_str_to_str,
     },
-    noirc_abi::input_parser::Format,
-    provekit_common::{file, NoirProof, NoirProofScheme, Prover, Verifier},
+    provekit_common::{file, Format, NoirProof, NoirProofScheme, Prover, Verifier},
     provekit_prover::Prove,
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
     provekit_verifier::Verify,
@@ -540,10 +539,13 @@ pub unsafe extern "C" fn pk_prove_toml(
     })
 }
 
-/// Prove using a prover handle and a JSON string of inputs (fully in-memory).
+/// Prove using a prover handle and an in-memory input string.
 ///
-/// The JSON must match the circuit's ABI. Example:
-/// `{"x": "5", "y": "10"}` for `fn main(x: Field, y: Field)`.
+/// `format` selects how the input string is parsed — either
+/// `PKInputFormat::Json` (0) or `PKInputFormat::Toml` (1). The string must
+/// match the circuit's ABI. Examples:
+/// - JSON: `{"x": "5", "y": "10"}`
+/// - TOML: `x = "5"\ny = "10"`
 ///
 /// Returns proof bytes in `out_proof` using the standard `.np` binary format.
 /// The caller must free the buffer via `pk_free_buf`.
@@ -551,12 +553,14 @@ pub unsafe extern "C" fn pk_prove_toml(
 /// # Safety
 ///
 /// - `prover` must be a valid handle.
-/// - `inputs_json` must be a valid null-terminated UTF-8 C string.
+/// - `inputs` must be a valid null-terminated UTF-8 C string.
+/// - `format` must be a valid `PKInputFormat` discriminant.
 /// - `out_proof` must be a valid, non-null pointer.
 #[no_mangle]
-pub unsafe extern "C" fn pk_prove_json(
+pub unsafe extern "C" fn pk_prove_inputs(
     prover: *const PKProver,
-    inputs_json: *const c_char,
+    inputs: *const c_char,
+    format: PKInputFormat,
     out_proof: *mut PKBuf,
 ) -> c_int {
     if prover.is_null() || out_proof.is_null() {
@@ -569,27 +573,21 @@ pub unsafe extern "C" fn pk_prove_json(
         *out_proof = PKBuf::empty();
 
         let result = (|| -> Result<Vec<u8>, PKStatus> {
-            let json_str = c_str_to_str(inputs_json)?;
+            let inputs = c_str_to_str(inputs)?;
+            let input_format = match format {
+                PKInputFormat::Json => Format::Json,
+                PKInputFormat::Toml => Format::Toml,
+            };
 
+            // Clone is required: Prove::prove_with_inputs consumes self.
             // SAFETY: prover is guaranteed non-null and valid by caller contract.
-            let abi = (*prover).prover.witness_generator.abi();
-
-            // Parse JSON inputs into an InputMap via noirc_abi.
-            let json_format = Format::from_ext("json").ok_or_else(|| {
-                set_last_error("JSON format not supported by noirc_abi".into());
-                PKStatus::InvalidInput
-            })?;
-            let input_map = json_format.parse(&json_str, abi).map_err(|e| {
-                set_last_error(format!("{e:#}"));
-                PKStatus::WitnessReadError
-            })?;
-
-            // Clone is required: Prove::prove consumes self.
             let fresh_prover = (*prover).prover.clone();
-            let proof = fresh_prover.prove(input_map).map_err(|e| {
-                set_last_error(format!("{e:#}"));
-                PKStatus::ProofError
-            })?;
+            let proof = fresh_prover
+                .prove_with_inputs(&inputs, input_format)
+                .map_err(|e| {
+                    set_last_error(format!("{e:#}"));
+                    PKStatus::ProofError
+                })?;
 
             serialization::serialize(&proof).map_err(|e| {
                 set_last_error(format!("{e:#}"));
@@ -610,7 +608,7 @@ pub unsafe extern "C" fn pk_prove_json(
 /// Verify a proof using a verifier handle.
 ///
 /// Expects proof bytes in the standard `.np` binary format (as returned by
-/// `pk_prove_toml` / `pk_prove_json`).
+/// `pk_prove_toml` / `pk_prove_inputs`).
 ///
 /// Returns `PKStatus::Success` (0) if valid, `PKStatus::ProofError` (4) if
 /// invalid.
