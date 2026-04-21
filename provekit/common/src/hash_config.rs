@@ -1,22 +1,26 @@
-/// Runtime hash configuration selection for ProveKit.
-///
-/// This module provides runtime selection of hash algorithms. The selected
-/// hash is used for Merkle tree commitments (via WHIR's `EngineId`) and
-/// the Fiat-Shamir transcript sponge (via [`crate::TranscriptSponge`]).
+//! Runtime hash configuration selection for ProveKit.
+//!
+//! Runtime selection of hash algorithms used for:
+//! - Merkle tree commitments (via WHIR's `EngineId`)
+//! - the Fiat-Shamir transcript sponge (via [`crate::TranscriptSponge`])
+//! - public-input instance binding ([`HashConfig::hash_field_elements`])
+
 use {
+    crate::FieldElement,
+    ark_ff::{BigInt, BigInteger, PrimeField},
     serde::{Deserialize, Serialize},
     std::fmt,
 };
 
 /// Hash algorithm configuration that can be selected at runtime.
 ///
-/// Each variant uses the same hash algorithm for:
-/// - **Merkle tree commitments**: Binds polynomial data
-/// - **Fiat-Shamir transcript**: Interactive proof made non-interactive
-/// - **Proof of Work**: Optional computational puzzle
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Each variant selects the same algorithm for Merkle commitments,
+/// Fiat-Shamir sponge, and public-input binding. [`Self::Skyscraper`] is the
+/// default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HashConfig {
+    #[default]
     #[serde(alias = "sky")]
     Skyscraper,
 
@@ -30,8 +34,26 @@ pub enum HashConfig {
     Blake3,
 }
 
+/// Domain-separation tag for public-input instance binding.
+///
+/// **Protocol-visible constant.** This string is absorbed into the SHA-256,
+/// Keccak, and BLAKE3 hashes used for public-input commitments; changing it
+/// invalidates every proof generated under those configurations. The `V1`
+/// suffix reserves an unambiguous upgrade path (`_V2`, …) for any future
+/// construction change.
+///
+/// [`HashConfig::Skyscraper`] intentionally omits the tag — its
+/// empty-input-returns-0 output is part of the stable Skyscraper proof
+/// format, and introducing a tag would break every deployed Skyscraper
+/// proof.
+///
+/// Regression trip-wires: the KATs in `witness::tests` freeze the
+/// byte-exact output of each variant under this constant.
+const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V1";
+
 impl HashConfig {
     /// Returns the canonical name of this hash configuration.
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             Self::Skyscraper => "skyscraper",
@@ -42,6 +64,7 @@ impl HashConfig {
     }
 
     /// Returns the WHIR 2.0 engine ID for this hash configuration.
+    #[must_use]
     pub fn engine_id(&self) -> whir::engines::EngineId {
         match self {
             Self::Skyscraper => crate::skyscraper::SKYSCRAPER,
@@ -52,6 +75,7 @@ impl HashConfig {
     }
 
     /// Converts hash configuration to a single byte for binary file headers.
+    #[must_use]
     pub fn to_byte(&self) -> u8 {
         match self {
             Self::Skyscraper => 0,
@@ -62,6 +86,7 @@ impl HashConfig {
     }
 
     /// Converts a byte from binary file header to hash configuration.
+    #[must_use]
     pub fn from_byte(byte: u8) -> Option<Self> {
         match byte {
             0 => Some(Self::Skyscraper),
@@ -73,6 +98,7 @@ impl HashConfig {
     }
 
     /// Parses a hash configuration from a string.
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         let lower = s.to_lowercase();
         match lower.as_str() {
@@ -83,11 +109,35 @@ impl HashConfig {
             _ => None,
         }
     }
-}
 
-impl Default for HashConfig {
-    fn default() -> Self {
-        Self::Skyscraper
+    /// Hashes `elements` into a single field element under this configuration.
+    ///
+    /// Used to bind public inputs to the Fiat-Shamir transcript instance: the
+    /// prover absorbs this value and the verifier recomputes and compares.
+    /// Any change in `self`, the elements, or the domain-separation tag
+    /// produces a different output with overwhelming probability.
+    ///
+    /// # Determinism
+    ///
+    /// Deterministic in `(self, elements)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use provekit_common::{FieldElement, HashConfig};
+    /// let h = HashConfig::Sha256
+    ///     .hash_field_elements(&[FieldElement::from(1u64), FieldElement::from(2u64)]);
+    /// # let _ = h;
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn hash_field_elements(self, elements: &[FieldElement]) -> FieldElement {
+        match self {
+            Self::Skyscraper => hash_skyscraper(elements),
+            Self::Sha256 => hash_digest::<sha2::Sha256>(PUBLIC_INPUTS_DST, elements),
+            Self::Keccak => hash_digest::<sha3::Keccak256>(PUBLIC_INPUTS_DST, elements),
+            Self::Blake3 => hash_blake3(PUBLIC_INPUTS_DST, elements),
+        }
     }
 }
 
@@ -109,6 +159,74 @@ impl std::str::FromStr for HashConfig {
             )
         })
     }
+}
+
+/// Serializes a BN254 field element to its canonical 32-byte little-endian
+/// representation.
+#[inline]
+pub(crate) fn fe_to_bytes_le(fe: &FieldElement) -> [u8; 32] {
+    let bytes = fe.into_bigint().to_bytes_le();
+    debug_assert!(
+        bytes.len() <= 32,
+        "field element serialized to more than 32 bytes"
+    );
+    let mut result = [0u8; 32];
+    result[..bytes.len()].copy_from_slice(&bytes);
+    result
+}
+
+/// Hashes `elements` via pairwise Skyscraper compression, preserving the
+/// transcript-visible behaviour that an empty input hashes to 0.
+///
+/// No domain-separation tag: Skyscraper's output is part of the stable
+/// proof format; introducing a tag would break backward compatibility.
+#[inline]
+fn hash_skyscraper(elements: &[FieldElement]) -> FieldElement {
+    #[inline]
+    fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
+        let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);
+        FieldElement::new(BigInt(out))
+    }
+
+    let zero = FieldElement::from(0u64);
+    match elements {
+        [] => zero,
+        [x] => compress(*x, zero),
+        [first, rest @ ..] => rest.iter().copied().fold(*first, compress),
+    }
+}
+
+/// Hashes `elements` under a [`sha2::digest::Digest`]-compatible hash `D`
+/// (SHA-256, Keccak-256) with a fixed domain-separation tag.
+///
+/// The final [`FieldElement::from_le_bytes_mod_order`] reduction introduces
+/// a statistical bias of ~2⁻²⁵⁴ relative to uniform sampling over the BN254
+/// scalar field. This is negligible for Fiat-Shamir instance binding; do
+/// **not** reuse this construction as a uniform field sampler.
+#[inline]
+fn hash_digest<D>(dst: &[u8], elements: &[FieldElement]) -> FieldElement
+where
+    D: sha2::digest::Digest,
+{
+    let mut hasher = D::new();
+    hasher.update(dst);
+    for fe in elements {
+        hasher.update(fe_to_bytes_le(fe));
+    }
+    FieldElement::from_le_bytes_mod_order(&hasher.finalize())
+}
+
+/// BLAKE3 analogue of [`hash_digest`]. BLAKE3 does not implement
+/// [`sha2::digest::Digest`] without the optional `traits-preview` feature, so it
+/// gets its own small helper.
+#[inline]
+fn hash_blake3(dst: &[u8], elements: &[FieldElement]) -> FieldElement {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(dst);
+    for fe in elements {
+        hasher.update(&fe_to_bytes_le(fe));
+    }
+    FieldElement::from_le_bytes_mod_order(hasher.finalize().as_bytes())
 }
 
 #[cfg(test)]
@@ -137,7 +255,6 @@ mod tests {
 
     #[test]
     fn from_byte_returns_none_for_invalid() {
-        // One past the last valid byte, and a large value.
         let first_invalid = ALL_VARIANTS.len() as u8;
         assert!(
             HashConfig::from_byte(first_invalid).is_none(),
@@ -159,7 +276,6 @@ mod tests {
 
     #[test]
     fn from_byte_covers_all_variants() {
-        // Collect every Some value from from_byte over the full u8 range.
         let recovered: Vec<HashConfig> = (0..=u8::MAX).filter_map(HashConfig::from_byte).collect();
         for &variant in ALL_VARIANTS {
             assert!(
