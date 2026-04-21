@@ -444,9 +444,13 @@ for test_name in "${test_dirs[@]}"; do
   fi
   append_stage_marker "${test_log}" "provekit-cli prepare" "PASS"
 
-  # Extract ProveKit post-GE witness count before the log is deleted on success
-  _ge_line=$(grep -o 'After GE optimization: [0-9]* constraints, [0-9]* witnesses' "${test_log}" | tail -1)
-  _pk_witnesses=$(echo "${_ge_line}" | grep -o '[0-9]* witnesses' | grep -o '^[0-9]*')
+  # Extract ProveKit post-GE witness count before the log is deleted on success.
+  # Keep this non-fatal under `set -euo pipefail` if the log format changes/misses.
+  _ge_line="$(grep -o 'After GE optimization: [0-9]* constraints, [0-9]* witnesses' "${test_log}" | tail -1 || true)"
+  _pk_witnesses=""
+  if [[ "${_ge_line}" =~ ([0-9]+)\ witnesses$ ]]; then
+    _pk_witnesses="${BASH_REMATCH[1]}"
+  fi
   if [[ -n "${_pk_witnesses}" ]]; then
     echo "${test_name},${_pk_witnesses}" >> "${WITNESS_CSV}"
   fi

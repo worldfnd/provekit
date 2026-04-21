@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DEST_EXEC_DIR="${REPO_ROOT}/test-programs/noir/execution_success"
 DEST_LIB_DIR="${REPO_ROOT}/test-programs/noir/test_libraries"
-NOIR_REF="${NOIR_REF:-master}"
+NOIR_REF="${NOIR_REF:-v1.0.0-beta.19}"
 
 tmpdir="$(mktemp -d)"
 cleanup() {
