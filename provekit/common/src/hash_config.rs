@@ -217,14 +217,13 @@ where
     FieldElement::from_le_bytes_mod_order(&hasher.finalize())
 }
 
-/// Poseidon2 one-shot hash over `elements`. Empty input returns 0 (matches
-/// Noir's `Poseidon2::hash([])` behaviour). Does NOT use
-/// [`PUBLIC_INPUTS_DST`] — Poseidon2 encodes length via the capacity-lane IV.
+/// Poseidon2 one-shot hash over `elements` (including empty input).
+///
+/// Does NOT use [`PUBLIC_INPUTS_DST`] — length domain-separation is handled
+/// by the capacity-lane IV (`n * 2^64`), so `poseidon2_hash([])` already
+/// produces a distinct non-zero output for the empty case.
 #[inline]
 fn hash_poseidon2(elements: &[FieldElement]) -> FieldElement {
-    if elements.is_empty() {
-        return FieldElement::from(0u64);
-    }
     poseidon2::poseidon2_hash(elements)
 }
 

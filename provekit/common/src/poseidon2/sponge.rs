@@ -3,14 +3,19 @@
 //! # Design: byte-bridge pattern
 //!
 //! The spongefish [`DuplexSponge`] interface operates over a byte alphabet
-//! (`type U = u8`), matching the existing [`TranscriptSponge`] abstraction.
-//! The Poseidon2 permutation natively operates over `[Fr; 4]`.
+//! (`type U = u8`), matching the existing [`crate::TranscriptSponge`]
+//! abstraction. The Poseidon2 permutation natively operates over `[Fr; 4]`.
 //!
-//! [`Poseidon2Wrapper`] bridges the two: it interprets a 128-byte state as
-//! four BN254 field elements, applies the permutation, and converts back.
-//! In a Noir recursive circuit the byte↔field conversion is free (bit
-//! reinterpretation), so this adds no constraint overhead vs a native
-//! field-element sponge.
+//! [`Poseidon2Wrapper`] bridges the two: it reads each 32-byte chunk of the
+//! state as a little-endian integer, reduces mod the BN254 prime, applies
+//! the permutation, and serializes back via canonical LE bytes. In practice
+//! the reduction is a no-op because the state always contains canonical
+//! field-element serializations (outputs of `field_to_bytes_le`) between
+//! permutations.
+//!
+//! In a Noir recursive circuit verifying this sponge, the 32-byte chunks are
+//! already constrained to be canonical field elements, so the byte↔field
+//! bridging adds no in-circuit constraints vs a native field-element sponge.
 //!
 //! # Important: two distinct Poseidon2 modes
 //!
