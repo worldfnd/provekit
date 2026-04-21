@@ -217,6 +217,37 @@ _MAVROS_STATUS_URL = (
 )
 _EXEC_SUCCESS_PREFIX = "noir/test_programs/execution_success/"
 
+# Keep in sync with SKIP_TESTS in scripts/run_noir_execution_success.sh.
+# These are intentionally excluded from both sides of the witness comparison.
+SKIP_TESTS: set[str] = {
+    # BLAKE3
+    "a_6",
+    "array_dynamic_blackbox_input",
+    "array_dynamic_nested_blackbox_input",
+    "blake3",
+    "conditional_1",
+    "conditional_regression_short_circuit",
+    "regression_4449",
+    # ECDSA_SECP256K1
+    "bench_ecdsa_secp256k1",
+    "ecdsa_secp256k1",
+    "ecdsa_secp256k1_invalid_inputs",
+    "ecdsa_secp256k1_invalid_pub_key_in_inactive_branch",
+    # ECDSA_SECP256R1
+    "ecdsa_secp256r1",
+    "ecdsa_secp256r1_3x",
+    "ecdsa_secp256r1_invalid_pub_key_in_inactive_branch",
+    "ecdsa_secp256r1_msg_equals_order",
+    # EMBEDDED_CURVE_ADD
+    "embedded_curve_ops",
+    "regression_5045",
+    "regression_7744",
+    # AES128_ENCRYPT
+    "aes128_encrypt",
+    # BLAKE2S
+    "a_7",
+}
+
 
 def _fetch_live_mavros_cols() -> dict[str, int]:
     """Parse Mavros Cols from the live reilabs/mavros STATUS.md.
@@ -262,22 +293,31 @@ def _fetch_live_mavros_cols() -> dict[str, int]:
 def main(csv_path: Path, out_dir: Path) -> None:
     # Live data takes precedence; hardcoded fills any gaps.
     live = _fetch_live_mavros_cols()
-    mavros_cols = {**MAVROS_COLS, **live}
+    mavros_cols = {
+        name: cols
+        for name, cols in {**MAVROS_COLS, **live}.items()
+        if name not in SKIP_TESTS
+    }
 
     provekit: dict[str, int] = {}
     with csv_path.open() as f:
         for row in csv.DictReader(f):
             leaf = row["test_name"].split("/")[-1]
+            if leaf in SKIP_TESTS:
+                continue
             try:
                 provekit[leaf] = int(row["provekit_witnesses"])
             except (ValueError, KeyError):
                 continue
 
+    all_names = sorted(set(mavros_cols) | set(provekit))
     comparable = [
-        (name, mavros, provekit[name])
-        for name, mavros in sorted(mavros_cols.items())
-        if name in provekit
+        (name, mavros_cols[name], provekit[name])
+        for name in all_names
+        if name in mavros_cols and name in provekit
     ]
+    missing_in_provekit = sum(1 for name in all_names if name in mavros_cols and name not in provekit)
+    missing_in_mavros = sum(1 for name in all_names if name in provekit and name not in mavros_cols)
 
     equal = sum(1 for _, m, p in comparable if m == p)
     mavros_better = sum(1 for _, m, p in comparable if m < p)
@@ -286,14 +326,27 @@ def main(csv_path: Path, out_dir: Path) -> None:
     lines = [
         "# Mavros vs Provekit Witnesses Count",
         "",
-        f"Comparable {len(comparable)} circuits: {equal} equal, "
-        f"{mavros_better} Mavros better, {provekit_better} Provekit better.",
+        f"Union {len(all_names)} circuits: {len(comparable)} comparable, "
+        f"{missing_in_provekit} missing in Provekit, {missing_in_mavros} missing in Mavros.",
+        f"Among comparable: {equal} equal, {mavros_better} Mavros better, "
+        f"{provekit_better} Provekit better.",
         "",
         "| Test | Mavros Cols | Provekit Post-GE | Delta | Better | Factor |",
         "|------|-------------|------------------|-------|--------|--------|",
     ]
 
-    for name, mavros, pk in comparable:
+    for name in all_names:
+        mavros = mavros_cols.get(name)
+        pk = provekit.get(name)
+
+        if mavros is None:
+            lines.append(f"| {name} | - | {pk} | - | missing_mavros | - |")
+            continue
+
+        if pk is None:
+            lines.append(f"| {name} | {mavros} | - | - | missing_provekit | - |")
+            continue
+
         delta = pk - mavros
         delta_str = f"+{delta}" if delta > 0 else str(delta)
         if mavros == pk:
@@ -301,15 +354,18 @@ def main(csv_path: Path, out_dir: Path) -> None:
             factor = "1.00x"
         elif pk < mavros:
             better = "provekit"
-            factor = f"{mavros / pk:.2f}x"
+            factor = "inf" if pk == 0 else f"{mavros / pk:.2f}x"
         else:
             better = "mavros"
-            factor = f"{pk / mavros:.2f}x"
+            factor = "inf" if mavros == 0 else f"{pk / mavros:.2f}x"
         lines.append(f"| {name} | {mavros} | {pk} | {delta_str} | {better} | {factor} |")
 
     out_path = out_dir / "witness_comparison.md"
     out_path.write_text("\n".join(lines) + "\n")
-    print(f"Wrote {out_path} ({len(comparable)} circuits compared)")
+    print(
+        f"Wrote {out_path} "
+        f"({len(all_names)} total circuits, {len(comparable)} comparable)"
+    )
 
 
 if __name__ == "__main__":
