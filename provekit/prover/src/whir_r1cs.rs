@@ -17,7 +17,8 @@ use {
             },
             HALF,
         },
-        FieldElement, PrefixCovector, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        FieldElement, HashConfig, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
+        WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
     tracing::instrument,
@@ -60,8 +61,8 @@ pub trait WhirR1CSProver {
         r1cs: R1CS,
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
-        public_inputs_hash: FieldElement,
-        public_inputs_len: usize,
+        public_inputs: &PublicInputs,
+        hash_config: HashConfig,
     ) -> Result<WhirR1CSProof>;
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -70,8 +71,8 @@ pub trait WhirR1CSProver {
         merlin: ProverState<TranscriptSponge>,
         phase1: Phase1Result,
         commitments: Vec<WhirR1CSCommitment>,
-        public_inputs_hash: FieldElement,
-        public_inputs_len: usize,
+        public_inputs: &PublicInputs,
+        hash_config: HashConfig,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
@@ -147,8 +148,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
         r1cs: R1CS,
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
-        public_inputs_hash: FieldElement,
-        public_inputs_len: usize,
+        public_inputs: &PublicInputs,
+        hash_config: HashConfig,
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -184,8 +185,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_offset,
             blinding_weights,
             commitments,
-            public_inputs_hash,
-            public_inputs_len,
+            public_inputs.hash(hash_config),
+            public_inputs.len(),
         )
     }
 
@@ -196,8 +197,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
         mut merlin: ProverState<TranscriptSponge>,
         phase1: Phase1Result,
         commitments: Vec<WhirR1CSCommitment>,
-        public_inputs_hash: FieldElement,
-        public_inputs_len: usize,
+        public_inputs: &PublicInputs,
+        hash_config: HashConfig,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
@@ -242,8 +243,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_offset,
             blinding_weights,
             commitments,
-            public_inputs_hash,
-            public_inputs_len,
+            public_inputs.hash(hash_config),
+            public_inputs.len(),
         )
     }
 }
