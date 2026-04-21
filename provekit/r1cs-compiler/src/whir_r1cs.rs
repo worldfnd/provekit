@@ -1,6 +1,8 @@
 use {
     mavros_artifacts::R1CS as MavrosR1CS,
-    provekit_common::{utils::next_power_of_two, R1csHash, WhirR1CSScheme, WhirZkConfig, R1CS},
+    provekit_common::{
+        utils::next_power_of_two, HashConfig, R1csHash, WhirR1CSScheme, WhirZkConfig, R1CS,
+    },
     whir::{engines::EngineId, parameters::ProtocolParameters},
 };
 
@@ -14,7 +16,7 @@ pub trait WhirR1CSSchemeBuilder {
         num_challenges: usize,
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
-        hash_id: EngineId,
+        hash_config: HashConfig,
     ) -> Self;
 
     fn new_from_mavros_r1cs(
@@ -23,7 +25,7 @@ pub trait WhirR1CSSchemeBuilder {
         num_challenges: usize,
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
-        hash_id: EngineId,
+        hash_config: HashConfig,
     ) -> Self;
 
     fn new_from_dimensions(
@@ -34,7 +36,7 @@ pub trait WhirR1CSSchemeBuilder {
         num_challenges: usize,
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
-        hash_id: EngineId,
+        hash_config: HashConfig,
     ) -> Self;
 
     fn new_whir_zk_config_for_size(
@@ -51,7 +53,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         num_challenges: usize,
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
-        hash_id: EngineId,
+        hash_config: HashConfig,
     ) -> Self {
         assert_eq!(
             num_challenges,
@@ -85,9 +87,10 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
             challenge_offsets,
-            whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, hash_id),
+            whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, hash_config.engine_id()),
             has_public_inputs,
             r1cs_hash: r1cs.hash(),
+            hash_config,
         }
     }
 
@@ -122,7 +125,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         num_challenges: usize,
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
-        hash_id: EngineId,
+        hash_config: HashConfig,
     ) -> Self {
         let num_witnesses = r1cs.witness_layout.size();
         let num_constraints = r1cs.constraints.len();
@@ -136,7 +139,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             num_challenges,
             challenge_offsets,
             has_public_inputs,
-            hash_id,
+            hash_config,
         )
     }
 
@@ -148,7 +151,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         num_challenges: usize,
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
-        hash_id: EngineId,
+        hash_config: HashConfig,
     ) -> Self {
         debug_assert_eq!(
             num_challenges,
@@ -171,12 +174,13 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
-            whir_witness: Self::new_whir_zk_config_for_size(m, 1, hash_id),
+            whir_witness: Self::new_whir_zk_config_for_size(m, 1, hash_config.engine_id()),
             w1_size,
             num_challenges,
             challenge_offsets,
             has_public_inputs,
             r1cs_hash: R1csHash::UNSET,
+            hash_config,
         }
     }
 }

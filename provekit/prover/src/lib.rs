@@ -257,14 +257,7 @@ impl Prove for NoirProver {
 
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove_noir(
-                merlin,
-                r1cs,
-                commitments,
-                full_witness,
-                &public_inputs,
-                self.hash_config,
-            )
+            .prove_noir(merlin, r1cs, commitments, full_witness, &public_inputs)
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof {
@@ -355,7 +348,6 @@ impl Prove for MavrosProver {
                 phase1,
                 commitments,
                 &public_inputs,
-                self.hash_config,
                 self.witness_layout,
                 self.constraints_layout,
                 &self.ad_binary,

@@ -17,7 +17,7 @@ use {
             },
             HALF,
         },
-        FieldElement, HashConfig, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
+        FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
         WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
@@ -62,7 +62,6 @@ pub trait WhirR1CSProver {
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
-        hash_config: HashConfig,
     ) -> Result<WhirR1CSProof>;
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -72,7 +71,6 @@ pub trait WhirR1CSProver {
         phase1: Phase1Result,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
-        hash_config: HashConfig,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
@@ -149,7 +147,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
-        hash_config: HashConfig,
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -185,7 +182,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_offset,
             blinding_weights,
             commitments,
-            public_inputs.hash(hash_config),
+            public_inputs.hash(self.hash_config),
             public_inputs.len(),
         )
     }
@@ -198,7 +195,6 @@ impl WhirR1CSProver for WhirR1CSScheme {
         phase1: Phase1Result,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
-        hash_config: HashConfig,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
@@ -243,7 +239,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_offset,
             blinding_weights,
             commitments,
-            public_inputs.hash(hash_config),
+            public_inputs.hash(self.hash_config),
             public_inputs.len(),
         )
     }
