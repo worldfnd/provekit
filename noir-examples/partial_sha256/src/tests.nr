@@ -44,7 +44,7 @@ fn test_partial_sha256_matches_std_short() {
     let msg: [u8; 50] = [0x61; 50];
 
     // Using standard sha256
-    let std_hash = sha256_var(msg, msg.len() as u64);
+    let std_hash = sha256_var(msg, msg.len());
 
     // Using partial sha256: no initial blocks, just finalize
     let state = SHA256_IV;
@@ -58,7 +58,7 @@ fn test_partial_sha256_matches_std_short() {
 fn test_partial_sha256_matches_std_one_block() {
     let msg: [u8; 64] = [0x61; 64];
 
-    let std_hash = sha256_var(msg, msg.len() as u64);
+    let std_hash = sha256_var(msg, msg.len());
 
     // Process as one block + empty finalize
     let state = sha256_start(msg);
@@ -74,7 +74,7 @@ fn test_partial_sha256_matches_std_multi_block() {
     // 150 bytes: 128 bytes (2 blocks) + 22 bytes final
     let msg: [u8; 150] = [0x61; 150];
 
-    let std_hash = sha256_var(msg, msg.len() as u64);
+    let std_hash = sha256_var(msg, msg.len());
 
     // Split processing
     let mut chunk1: [u8; 128] = [0; 128];
@@ -188,7 +188,7 @@ fn test_integration_640_640_split() {
     for i in 0..1250 {
         msg_actual[i] = tbs_certificate[i];
     }
-    let std_hash = sha256_var(msg_actual, msg_actual.len() as u64);
+    let std_hash = sha256_var(msg_actual, msg_actual.len());
 
     assert(partial_hash == std_hash);
 }

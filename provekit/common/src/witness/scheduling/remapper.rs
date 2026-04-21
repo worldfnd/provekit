@@ -19,52 +19,99 @@ use {
 /// This ensures w1 can be committed independently before challenge extraction.
 pub struct WitnessIndexRemapper {
     /// Maps old witness index to new witness index
-    pub old_to_new: HashMap<usize, usize>,
-    /// Number of witnesses in w1 (boundary between w1 and w2)
-    pub w1_size:    usize,
+    pub(crate) old_to_new: HashMap<usize, usize>,
+    /// Number of real w1 witnesses (boundary between w1 and w2 in committed
+    /// vector)
+    pub(crate) w1_size:    usize,
+    /// Total real witnesses (w1_real + w2_real) — used to set matrix
+    /// `num_cols` so matrices exclude virtual witnesses.
+    pub(crate) num_real:   usize,
 }
 
 impl WitnessIndexRemapper {
     /// Creates a remapping from w1 and w2 builder lists.
     ///
-    /// Assigns w1 builder outputs to [0, k) and w2 builder outputs to [k, n).
-    pub fn new(w1_builders: &[WitnessBuilder], w2_builders: &[WitnessBuilder]) -> Self {
+    /// `num_real_cols` is the R1CS column count before splitting — indices
+    /// below this are "real" (constrained), indices >= are "virtual"
+    /// (computation-only).
+    ///
+    /// Output layout:
+    ///   [0, w1_real)                    → real w1 witnesses (committed)
+    ///   [w1_real, w1_real+w2_real)      → real w2 witnesses (committed)
+    ///   [w1_real+w2_real, total)        → virtual witnesses (solving only)
+    ///
+    /// `w1_size` is set to `w1_real` so the WHIR commitment covers only
+    /// real witnesses.
+    pub fn new(
+        w1_builders: &[WitnessBuilder],
+        w2_builders: &[WitnessBuilder],
+        num_real_cols: usize,
+    ) -> Self {
         let mut old_to_new = HashMap::new();
-        let mut next_w1_idx = 0;
-        let mut next_w2_idx = 0;
+        let mut next_real_w1 = 0usize;
+        let mut virtual_w1: Vec<usize> = Vec::new();
 
-        // Map w1 builder outputs to [0, k)
+        // First pass w1: assign real outputs, collect virtual
         for builder in w1_builders {
-            let writes = DependencyInfo::extract_writes(builder);
-            for old_idx in writes {
-                old_to_new.insert(old_idx, next_w1_idx);
-                next_w1_idx += 1;
+            for old_idx in DependencyInfo::extract_writes(builder) {
+                if old_idx < num_real_cols {
+                    old_to_new.insert(old_idx, next_real_w1);
+                    next_real_w1 += 1;
+                } else {
+                    virtual_w1.push(old_idx);
+                }
+            }
+        }
+        let w1_real = next_real_w1;
+
+        let mut next_real_w2 = w1_real;
+        let mut virtual_w2: Vec<usize> = Vec::new();
+
+        // First pass w2: assign real outputs, collect virtual
+        for builder in w2_builders {
+            for old_idx in DependencyInfo::extract_writes(builder) {
+                if old_idx < num_real_cols {
+                    old_to_new.insert(old_idx, next_real_w2);
+                    next_real_w2 += 1;
+                } else {
+                    virtual_w2.push(old_idx);
+                }
             }
         }
 
-        let w1_size = next_w1_idx;
-
-        // Map w2 builder outputs to [k, n)
-        for builder in w2_builders {
-            let writes = DependencyInfo::extract_writes(builder);
-            for old_idx in writes {
-                old_to_new.insert(old_idx, w1_size + next_w2_idx);
-                next_w2_idx += 1;
-            }
+        // Second pass: assign virtual outputs after all real ones
+        for (new_idx, old_idx) in (next_real_w2..).zip(virtual_w1.into_iter().chain(virtual_w2)) {
+            old_to_new.insert(old_idx, new_idx);
         }
 
         Self {
             old_to_new,
-            w1_size,
+            w1_size: w1_real,
+            num_real: next_real_w2,
+        }
+    }
+
+    /// Creates a remapper from a pre-built mapping table, for use cases
+    /// that only need `remap_builder` (e.g., column removal optimization).
+    ///
+    /// `w1_size` and `num_real` are set to 0 — do not use this remapper for
+    /// matrix column updates or w1/w2 splitting.
+    pub fn from_map(old_to_new: HashMap<usize, usize>) -> Self {
+        Self {
+            old_to_new,
+            w1_size: 0,
+            num_real: 0,
         }
     }
 
     /// Remaps a single witness index.
+    ///
+    /// # Panics
+    /// Panics if `old_idx` is not in the remapping table. Callers must ensure
+    /// the remapper was built with a complete mapping (see [`Self::new`] and
+    /// [`Self::from_map`] which validate coverage).
     pub fn remap(&self, old_idx: usize) -> usize {
-        *self
-            .old_to_new
-            .get(&old_idx)
-            .unwrap_or_else(|| panic!("Witness index {} not in remapping", old_idx))
+        self.old_to_new[&old_idx]
     }
 
     /// Helper to remap ConstantOrR1CSWitness variants
@@ -162,22 +209,22 @@ impl WitnessIndexRemapper {
                     WitnessCoefficient(*coeff, self.remap(*value)),
                 )
             }
-            WitnessBuilder::DigitalDecomposition(dd) => {
-                let new_witnesses_to_decompose = dd
-                    .witnesses_to_decompose
-                    .iter()
-                    .map(|&w| self.remap(w))
-                    .collect();
-                WitnessBuilder::DigitalDecomposition(
-                    crate::witness::DigitalDecompositionWitnesses {
-                        log_bases:                  dd.log_bases.clone(),
-                        num_witnesses_to_decompose: dd.num_witnesses_to_decompose,
-                        witnesses_to_decompose:     new_witnesses_to_decompose,
-                        first_witness_idx:          self.remap(dd.first_witness_idx),
-                        num_witnesses:              dd.num_witnesses,
-                    },
-                )
-            }
+            WitnessBuilder::DigitalDecomposition(dd) => WitnessBuilder::DigitalDecomposition(
+                crate::witness::DigitalDecompositionWitnesses {
+                    log_bases:                  dd.log_bases.clone(),
+                    num_witnesses_to_decompose: dd.num_witnesses_to_decompose,
+                    witnesses_to_decompose:     dd
+                        .witnesses_to_decompose
+                        .iter()
+                        .map(|&w| self.remap(w))
+                        .collect(),
+                    output_indices:             dd
+                        .output_indices
+                        .iter()
+                        .map(|&i| self.remap(i))
+                        .collect(),
+                },
+            ),
             WitnessBuilder::SpiceMultisetFactor(
                 idx,
                 sz,
@@ -493,30 +540,30 @@ impl WitnessIndexRemapper {
                 num_bits:     *num_bits,
             },
             WitnessBuilder::ChunkDecompose {
-                output_start,
+                output_indices,
                 packed,
                 chunk_bits,
             } => WitnessBuilder::ChunkDecompose {
-                output_start: self.remap(*output_start),
-                packed:       self.remap(*packed),
-                chunk_bits:   chunk_bits.clone(),
+                output_indices: output_indices.iter().map(|&i| self.remap(i)).collect(),
+                packed:         self.remap(*packed),
+                chunk_bits:     chunk_bits.clone(),
             },
             WitnessBuilder::SpreadWitness(output, input) => {
                 WitnessBuilder::SpreadWitness(self.remap(*output), self.remap(*input))
             }
             WitnessBuilder::SpreadBitExtract {
-                output_start,
+                output_indices,
                 chunk_bits,
                 sum_terms,
                 extract_even,
             } => WitnessBuilder::SpreadBitExtract {
-                output_start: self.remap(*output_start),
-                chunk_bits:   chunk_bits.clone(),
-                sum_terms:    sum_terms
+                output_indices: output_indices.iter().map(|&i| self.remap(i)).collect(),
+                chunk_bits:     chunk_bits.clone(),
+                sum_terms:      sum_terms
                     .iter()
                     .map(|SumTerm(coeff, idx)| SumTerm(*coeff, self.remap(*idx)))
                     .collect(),
-                extract_even: *extract_even,
+                extract_even:   *extract_even,
             },
             WitnessBuilder::MultiplicitiesForSpread(start, num_bits, queries) => {
                 let new_queries = queries
@@ -557,8 +604,14 @@ impl WitnessIndexRemapper {
     /// Creates a new R1CS with remapped column indices (witness indices).
     /// Row indices (constraints) remain unchanged.
     pub fn remap_r1cs(&self, r1cs: R1CS) -> R1CS {
+        assert!(
+            self.num_real > 0,
+            "Cannot remap R1CS with a builder-only remapper (from_map). num_real is 0 — this \
+             would set all matrix dimensions to 0."
+        );
         let mut new_r1cs = R1CS::new();
         new_r1cs.num_public_inputs = r1cs.num_public_inputs;
+        new_r1cs.num_virtual = r1cs.num_virtual;
         new_r1cs.interner = r1cs.interner;
 
         // Remap A, B, C in parallel - they're independent
@@ -579,9 +632,19 @@ impl WitnessIndexRemapper {
         new_r1cs
     }
 
-    /// Helper to remap a single sparse matrix
+    /// Helper to remap a single sparse matrix.
+    /// Updates `num_cols` to `num_real` (w1_real + w2_real) so the matrix
+    /// dimensions exclude virtual witnesses.
+    ///
+    /// Must not be called on a `from_map` remapper (where `num_real == 0`),
+    /// as that would silently zero out the matrix dimensions.
     fn remap_sparse_matrix(&self, mut matrix: SparseMatrix) -> SparseMatrix {
+        assert!(
+            self.num_real > 0,
+            "Cannot remap sparse matrix with a builder-only remapper (from_map). num_real is 0."
+        );
         matrix.remap_columns(|old_col| self.remap(old_col));
+        matrix.num_cols = self.num_real;
         matrix
     }
 
@@ -589,13 +652,23 @@ impl WitnessIndexRemapper {
     ///
     /// The map goes from ACIR witness index -> R1CS witness index.
     /// We need to update the R1CS indices to their new remapped values.
+    ///
+    /// # Panics
+    /// Panics if any ACIR witness index remaps to 0 (the constant-one
+    /// column), which is never a valid ACIR witness target.
     pub fn remap_acir_witness_map(&self, map: Vec<Option<NonZeroU32>>) -> Vec<Option<NonZeroU32>> {
         map.into_iter()
             .map(|opt_idx| {
                 opt_idx.map(|idx| {
                     let old_r1cs_idx = idx.get() as usize;
                     let new_r1cs_idx = self.remap(old_r1cs_idx);
-                    NonZeroU32::new(new_r1cs_idx as u32).expect("Remapped index should be non-zero")
+                    // Column 0 is the constant-one wire and is never an ACIR
+                    // witness target. NonZeroU32::new returns None only when
+                    // the value is 0, so this panics loudly rather than
+                    // silently falling back to a wrong column.
+                    NonZeroU32::new(new_r1cs_idx as u32).unwrap_or_else(|| {
+                        panic!("ACIR witness {old_r1cs_idx} remapped to 0 (constant-one column)")
+                    })
                 })
             })
             .collect()

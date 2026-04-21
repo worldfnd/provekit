@@ -3,7 +3,7 @@ use std::fmt::Debug;
 #[cfg(debug_assertions)]
 use whir::transcript::Interaction;
 use {
-    crate::{utils::serde_hex, FieldElement},
+    crate::{utils::serde_hex, FieldElement, HashConfig},
     serde::{Deserialize, Serialize},
     whir::{
         algebra::embedding::Identity,
@@ -47,6 +47,10 @@ pub struct WhirR1CSScheme {
     pub has_public_inputs: bool,
     pub whir_witness:      WhirZkConfig,
     pub r1cs_hash:         R1csHash,
+    /// Hash configuration for Merkle commitments, Fiat-Shamir sponge, and
+    /// public-input instance binding. Source of truth; the WHIR engine ID
+    /// stored inside `whir_witness` is derived from this at construction.
+    pub hash_config:       HashConfig,
 }
 
 impl WhirR1CSScheme {

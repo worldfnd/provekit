@@ -9,12 +9,17 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
-  <!-- Import map for @noir-lang packages -->
+  <!-- Import map for browser packages -->
   <script type="importmap">
   {
     "imports": {
-      "@noir-lang/acvm_js": "./vendor/acvm_js/acvm_js.js",
-      "@noir-lang/noirc_abi": "./vendor/noirc_abi/noirc_abi_wasm.js"
+      "@atheonxyz/verity": "./node_modules/@atheonxyz/verity/dist/browser/index.js",
+      "@noir-lang/noir_js": "./node_modules/@noir-lang/noir_js/lib/index.mjs",
+      "@noir-lang/acvm_js": "./node_modules/@noir-lang/acvm_js/web/acvm_js.js",
+      "@noir-lang/noirc_abi": "./node_modules/@noir-lang/noirc_abi/web/noirc_abi_wasm.js",
+      "@noir-lang/types": "./node_modules/@noir-lang/types/lib/esm/types.js",
+      "pako": "./node_modules/pako/dist/pako.esm.mjs",
+      "provekit-inspector": "./node_modules/@atheonxyz/verity/dist/wasm/provekit_wasm.js"
     }
   }
   </script>
@@ -765,14 +770,14 @@
       
       <!-- Left: Steps -->
       <div class="card steps-card">
-        <h2 class="card-title">PROOF GENERATION STEPS</h2>
+        <h2 class="card-title" id="stepsTitle">PROOF GENERATION STEPS</h2>
         
         <div class="steps-list">
           
           <div class="step-item" id="step1-container">
             <div class="step-icon" id="step1-icon">1</div>
             <div class="step-content">
-              <div class="step-name">Load WASM Modules</div>
+              <div class="step-name">Load Proof Runtime</div>
               <div class="step-status" id="step1-status">Status: Waiting...</div>
             </div>
           </div>
@@ -788,7 +793,7 @@
           <div class="step-item" id="step3-container">
             <div class="step-icon" id="step3-icon">3</div>
             <div class="step-content">
-              <div class="step-name">Generate Witness (noir_js)</div>
+              <div class="step-name">Prepare Proof Inputs</div>
               <div class="step-status" id="step3-status">Status: Waiting...</div>
             </div>
           </div>
@@ -796,7 +801,7 @@
           <div class="step-item" id="step4-container">
             <div class="step-icon" id="step4-icon">4</div>
             <div class="step-content">
-              <div class="step-name">Generate Proof (ProveKit WASM)</div>
+              <div class="step-name">Generate Proof</div>
               <div class="step-status" id="step4-status">Status: Waiting...</div>
             </div>
           </div>
@@ -804,7 +809,7 @@
           <div class="step-item" id="step5-container">
             <div class="step-icon" id="step5-icon">5</div>
             <div class="step-content">
-              <div class="step-name">Verify Proof (ProveKit WASM)</div>
+              <div class="step-name">Verify Proof</div>
               <div class="step-status" id="step5-status">Status: Waiting...</div>
             </div>
           </div>
@@ -812,11 +817,11 @@
         </div>
 
         <div class="actions-area">
-          <button id="runBtn" class="btn-action" onclick="runDemo()" disabled>
+          <button id="runBtn" class="btn-action" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
             GENERATE PROOF
           </button>
-          <button id="verifyBtn" class="btn-action" onclick="verifyProof()" disabled>
+          <button id="verifyBtn" class="btn-action" disabled>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
             VERIFY PROOF
           </button>
@@ -836,7 +841,7 @@
         </div>
         <div class="terminal-body" id="logContainer">
           <!-- Logs will be piped here -->
-          <!-- Hidden proof output elements required by demo-web.mjs to avoid crashes -->
+          <!-- Hidden proof output elements preserved for proof preview rendering -->
           <div id="proofOutput" style="display:none;"></div>
           <div id="proofCard" style="display:none;"></div>
         </div>
@@ -866,358 +871,7 @@
 
 
 
-  <script>
-    // Custom SVGs for step status
-    const ICON_CHECK = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
-    const ICON_CROSS = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
+  <script type="module" src="./dist/src/main.js"></script>
 
-    // Format current time for logs
-    function getTimeStr() {
-      const d = new Date();
-      return `[${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}]`;
-    }
-
-    // Capture logs to custom format them
-    const logContainer = document.getElementById('logContainer');
-    const originalAppend = logContainer.appendChild.bind(logContainer);
-    
-    // We override the appendChild to parse and style the logs based on design
-    logContainer.appendChild = function(elem) {
-      if (elem.className && elem.className.includes('log-line')) {
-        const text = elem.innerText || "";
-        const timeStr = `<span class="log-time">${getTimeStr()}</span>`;
-        
-        if (elem.className.includes('log-error')) {
-           // Format explicitly as a red block
-           elem.className = "log-error-block";
-           elem.innerHTML = `<strong>Error:</strong> ${text}`;
-        } else if (elem.className.includes('log-success')) {
-           elem.innerHTML = timeStr + `<span class="log-check">✓</span>` + text;
-        } else {
-           elem.innerHTML = timeStr + `<span class="log-arrow">→</span>` + text;
-        }
-      }
-      const res = originalAppend(elem);
-      logContainer.scrollTop = logContainer.scrollHeight;
-      return res;
-    };
-
-    // Observer configuration for reacting to demo script changes
-    const config = { childList: true, subtree: true, characterData: true };
-    const observer = new MutationObserver((mutations) => {
-       // Watch for changes to the status texts and update the icons accordingly
-       for (let i=1; i<=5; i++) {
-         const statusElem = document.getElementById(`step${i}-status`);
-         if (!statusElem) continue;
-         
-         const text = statusElem.innerText;
-         const iconElem = document.getElementById(`step${i}-icon`);
-         const container = document.getElementById(`step${i}-container`);
-         
-         if (text.includes('Loading') || text.includes('Generating') || text.includes('Running') || text.includes('Verifying')) {
-            // Active state
-            iconElem.className = 'step-icon active';
-            iconElem.innerHTML = `<svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>`;
-            container.className = 'step-item active';
-         } else if (text.includes('Done') || text.includes('Success') || text.includes('Loaded') || text.includes('Verified') || text.includes('Ready')) {
-            iconElem.className = 'step-icon success';
-            iconElem.innerHTML = ICON_CHECK;
-            container.className = 'step-item success';
-            statusElem.className = 'step-status success-text';
-         } else if (text.includes('Fail') || text.includes('Error')) {
-            iconElem.className = 'step-icon error';
-            iconElem.innerHTML = ICON_CROSS;
-            container.className = 'step-item error';
-            statusElem.className = 'step-status error-text';
-         } else if (text.includes('Waiting')) {
-            iconElem.className = 'step-icon';
-            iconElem.innerHTML = i;
-            container.className = 'step-item';
-            statusElem.className = 'step-status';
-         }
-       }
-    });
-    
-    // Start observing step status divs
-    for (let i=1; i<=5; i++) {
-       const s = document.getElementById(`step${i}-status`);
-       if(s) observer.observe(s, config);
-    }
-
-    // Circuit Selection Logic
-    const circuitBtns = document.querySelectorAll('.circuit-btn');
-    const customConfigPanel = document.getElementById('customConfigPanel');
-    const stepsTitle = document.querySelector('.steps-card .card-title');
-    
-    // Store original step HTML blocks to restore when switching away from Custom
-    const origSteps = {
-      s1: { name: document.getElementById('step1-container').querySelector('.step-name').innerText, id: 'step1' },
-      s2: { name: document.getElementById('step2-container').querySelector('.step-name').innerText, id: 'step2' },
-      s3: { name: document.getElementById('step3-container').querySelector('.step-name').innerText, id: 'step3' },
-      s4: { name: document.getElementById('step4-container').querySelector('.step-name').innerText, id: 'step4' },
-      s5: { name: document.getElementById('step5-container').querySelector('.step-name').innerText, id: 'step5' }
-    };
-
-    let activeCircuit = 'sha256'; // SHA256 is the default
-    window.activeCircuit = activeCircuit;
-
-    function updateUIForCircuit(circuit) {
-      const desc = document.getElementById('circuitDescription');
-      const descriptions = {
-        sha256: 'SHA-256 over a 1024-byte input.',
-        poseidon: 'Poseidon2 permutation \u00d7 1,000 rounds over 4 field elements.',
-        custom: 'Upload your own Noir circuit artifacts to benchmark proof generation and verification.'
-      };
-      if (desc) desc.textContent = descriptions[circuit] || descriptions.custom;
-
-      if (circuit === 'custom') {
-        // Show config panel + reset checklist
-        customConfigPanel.style.display = 'grid';
-        if (typeof resetChecklist === 'function') resetChecklist();
-        stepsTitle.innerHTML = 'PROOF GENERATION STEPS [CUSTOM]';
-        
-        // Same 5 steps as standard circuits
-        document.querySelector('#step1-container .step-name').innerText = origSteps.s1.name;
-        document.querySelector('#step1-status').innerText = 'Status: Waiting...';
-        document.getElementById('step1-container').style.display = 'flex';
-
-        document.querySelector('#step2-container .step-name').innerText = origSteps.s2.name;
-        document.querySelector('#step2-status').innerText = 'Status: Waiting...';
-        document.getElementById('step2-container').style.display = 'flex';
-
-        document.querySelector('#step3-container .step-name').innerText = origSteps.s3.name;
-        document.querySelector('#step3-status').innerText = 'Status: Waiting...';
-        document.getElementById('step3-container').style.display = 'flex';
-
-        document.querySelector('#step4-container .step-name').innerText = origSteps.s4.name;
-        document.querySelector('#step4-status').innerText = 'Status: Waiting...';
-        document.getElementById('step4-container').style.display = 'flex';
-
-        document.querySelector('#step5-container .step-name').innerText = origSteps.s5.name;
-        document.querySelector('#step5-status').innerText = 'Status: Waiting...';
-        document.getElementById('step5-container').style.display = 'flex';
-
-        // Labels are statically defined now
-        
-        // Disable buttons until files uploaded
-        document.getElementById('runBtn').disabled = true;
-        document.getElementById('verifyBtn').disabled = true;
-
-      } else {
-        // Hide config panel
-        customConfigPanel.style.display = 'none';
-        stepsTitle.innerHTML = `PROOF GENERATION STEPS [${circuit.toUpperCase()}]`;
-        
-        // Restore steps
-        document.getElementById('step1-container').style.display = 'flex';
-        document.querySelector('#step1-container .step-name').innerText = origSteps.s1.name;
-        document.querySelector('#step1-status').innerText = 'Status: Waiting...';
-
-        document.getElementById('step2-container').style.display = 'flex';
-        document.querySelector('#step2-container .step-name').innerText = origSteps.s2.name;
-        document.querySelector('#step2-status').innerText = 'Status: Waiting...';
-
-        document.getElementById('step3-container').style.display = 'flex';
-        document.querySelector('#step3-container .step-name').innerText = origSteps.s3.name;
-        document.querySelector('#step3-status').innerText = 'Status: Waiting...';
-
-        document.getElementById('step4-container').style.display = 'flex';
-        document.querySelector('#step4-container .step-name').innerText = origSteps.s4.name;
-        document.querySelector('#step4-status').innerText = 'Status: Waiting...';
-
-        document.getElementById('step5-container').style.display = 'flex';
-        document.querySelector('#step5-container .step-name').innerText = origSteps.s5.name;
-        document.querySelector('#step5-status').innerText = 'Status: Waiting...';
-
-        // Labels are statically defined now
-        
-        // Only re-enable if WASM is loaded (window.wasmReady is set by demo-web.mjs)
-        if (window.wasmReady) {
-          document.getElementById('runBtn').disabled = false;
-        }
-      }
-    }
-
-    // Initialize SHA256 UI by default
-    updateUIForCircuit('sha256');
-
-    circuitBtns.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        // Remove active class from all
-        circuitBtns.forEach(b => b.classList.remove('active'));
-        // Add to clicked
-        const targetBtn = e.currentTarget;
-        targetBtn.classList.add('active');
-        activeCircuit = targetBtn.getAttribute('data-circuit');
-        window.activeCircuit = activeCircuit;
-        
-        // Log the selection visually
-        const logContent = document.createElement('div');
-        logContent.className = 'log-line';
-        const formattedLog = activeCircuit === 'custom' 
-          ? `<span class="log-time">${getTimeStr()}</span><span class="log-arrow">→</span><span style="color:var(--accent-cyan)">[Custom]</span> Awaiting circuit artifact uploads...`
-          : `<span class="log-time">${getTimeStr()}</span><span class="log-arrow">→</span><span style="color:var(--accent-cyan)">[${activeCircuit.toUpperCase()}]</span> Initializing environment...`;
-        
-        logContent.innerHTML = formattedLog;
-        logContainer.appendChild(logContent);
-        
-        // Auto-scroll log
-        logContainer.scrollTop = logContainer.scrollHeight;
-        
-        // Update DOM elements for the selected circuit
-        updateUIForCircuit(activeCircuit);
-
-        // Notify demo-web.mjs of circuit change
-        if (activeCircuit !== 'custom' && window.onCircuitChanged) {
-          window.onCircuitChanged(activeCircuit);
-        }
-      });
-    });
-
-    // === Custom Upload Handling ===
-    window.customFiles = {};
-
-    const ICON_CHECK_SM = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`;
-
-    function updateChecklist(fileKey, fileName, size) {
-      const el = document.getElementById(`check-${fileKey}`);
-      if (!el) return;
-      el.className = 'checklist-item verified';
-      el.querySelector('.item-icon').innerHTML = ICON_CHECK_SM;
-      el.querySelector('.item-name').textContent = fileName;
-      const sizeStr = size > 1024*1024 ? `${(size/1024/1024).toFixed(1)} MB` : `${(size/1024).toFixed(1)} KB`;
-      el.querySelector('.item-right').textContent = sizeStr;
-      el.querySelector('.item-right').style.fontStyle = 'normal';
-    }
-
-    function resetChecklist() {
-      ['prover', 'verifier', 'inputs'].forEach(key => {
-        const el = document.getElementById(`check-${key}`);
-        if (!el) return;
-        el.className = 'checklist-item pending';
-        el.querySelector('.item-icon').textContent = '-';
-        el.querySelector('.item-right').textContent = 'Waiting...';
-        el.querySelector('.item-right').style.fontStyle = 'italic';
-      });
-      // Restore default names
-      document.querySelector('#check-prover .item-name').textContent = 'prover.pkp';
-      document.querySelector('#check-verifier .item-name').textContent = 'verifier.pkv';
-      document.querySelector('#check-inputs .item-name').textContent = 'inputs.json / Prover.toml';
-      window.customFiles = {};
-    }
-
-    function checkCustomReady() {
-      const cf = window.customFiles;
-      if (cf.prover && cf.verifier && cf.inputs) {
-        if (window.wasmReady) {
-          document.getElementById('runBtn').disabled = false;
-        }
-        const logEl = document.createElement('div');
-        logEl.className = 'log-line log-success';
-        logEl.textContent = 'All required files uploaded — ready to generate proof';
-        logContainer.appendChild(logEl);
-      }
-    }
-
-    function handleUploadedFiles(files) {
-      for (const file of files) {
-        const name = file.name.toLowerCase();
-        const logEl = document.createElement('div');
-        logEl.className = 'log-line';
-        logEl.textContent = `File uploaded: ${file.name} (${(file.size/1024).toFixed(1)} KB)`;
-        logContainer.appendChild(logEl);
-
-        if (name.endsWith('.pkp')) {
-          window.customFiles.prover = file;
-          updateChecklist('prover', file.name, file.size);
-        } else if (name.endsWith('.pkv')) {
-          window.customFiles.verifier = file;
-          updateChecklist('verifier', file.name, file.size);
-        } else if (name === 'inputs.json' || name.endsWith('.toml')) {
-          window.customFiles.inputs = file;
-          updateChecklist('inputs', file.name, file.size);
-        } else {
-          const warnEl = document.createElement('div');
-          warnEl.className = 'log-line log-error';
-          warnEl.textContent = `Unrecognized file: ${file.name}`;
-          logContainer.appendChild(warnEl);
-        }
-      }
-      checkCustomReady();
-    }
-
-    // Wire dropzone
-    const dropzone = document.getElementById('dropzone');
-    const fileInput = document.getElementById('fileInput');
-    const btnSelectFiles = document.getElementById('btnSelectFiles');
-
-    if (dropzone && fileInput && btnSelectFiles) {
-      btnSelectFiles.addEventListener('click', (e) => {
-        e.stopPropagation();
-        fileInput.click();
-      });
-      fileInput.addEventListener('change', () => {
-        if (fileInput.files.length) handleUploadedFiles(fileInput.files);
-        fileInput.value = '';
-      });
-      dropzone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropzone.style.borderColor = 'var(--accent-cyan)';
-        dropzone.style.background = 'rgba(0, 229, 255, 0.05)';
-      });
-      dropzone.addEventListener('dragleave', () => {
-        dropzone.style.borderColor = '';
-        dropzone.style.background = '';
-      });
-      dropzone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropzone.style.borderColor = '';
-        dropzone.style.background = '';
-        if (e.dataTransfer.files.length) handleUploadedFiles(e.dataTransfer.files);
-      });
-    }
-
-    // Copy Logs to Clipboard
-    const copyLogBtn = document.getElementById('copyLogBtn');
-    if (copyLogBtn) {
-      copyLogBtn.addEventListener('click', async () => {
-        try {
-          // Extract text from log elements
-          const logsText = Array.from(document.querySelectorAll('#logContainer .log-line, #logContainer .log-error-block'))
-            .map(el => el.innerText)
-            .join('\n');
-          
-          await navigator.clipboard.writeText(logsText);
-          
-          // Visual feedback
-          const origHtml = copyLogBtn.innerHTML;
-          const origStroke = copyLogBtn.getAttribute('stroke');
-          
-          copyLogBtn.innerHTML = `<polyline points="20 6 9 17 4 12"></polyline>`;
-          copyLogBtn.setAttribute('stroke', 'var(--accent-cyan)');
-          
-          setTimeout(() => {
-             copyLogBtn.innerHTML = origHtml;
-             copyLogBtn.setAttribute('stroke', origStroke);
-          }, 2000);
-        } catch (e) {
-          console.error('Failed to copy logs:', e);
-        }
-      });
-    }
-
-  </script>
-
-  <script type="module">
-    // Import noir_js from local files
-    import { initNoir, Noir, decompressWitness } from './noir-web/noir-init.mjs';
-
-    // Make available globally
-    window.initNoir = initNoir;
-    window.Noir = Noir;
-    window.decompressWitness = decompressWitness;
-  </script>
-
-  <script type="module" src="src/demo-web.mjs"></script>
 </body>
 </html>

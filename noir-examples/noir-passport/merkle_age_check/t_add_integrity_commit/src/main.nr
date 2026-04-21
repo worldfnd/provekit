@@ -2,14 +2,9 @@ use common::{
     calculate_sod_hash, get_country_from_dg1,
     hash_salt_country_signed_attr_dg1_e_content_private_nullifier,
 };
-use data_check_integrity::{
-    check_dg1_hash_within_sod, check_signed_attributes_sha256,
-};
+use data_check_integrity::{check_dg1_hash_within_sod, check_signed_attributes_sha256};
 use poseidon::poseidon2::Poseidon2;
-use utils::{
-    pack_be_bytes_into_fields,
-    types::{DG1Data, EContentData, SignedAttrsData},
-};
+use utils::{pack_be_bytes_into_fields, types::{DG1Data, EContentData, SignedAttrsData}};
 
 /*
 ############################################################
@@ -48,7 +43,7 @@ fn main(
     comm_in: pub Field,
     salt_in: Field,
     dg1: DG1Data,
-    dg1_padded_length: u64,
+    dg1_padded_length: u32,
     dg1_hash_offset: u32,
     signed_attributes: SignedAttrsData,
     signed_attributes_size: u32,
@@ -72,7 +67,13 @@ fn main(
         "Commitment from sub-circuit 3 doesn't match",
     );
 
-    check_dg1_hash_within_sod(dg1, dg1_padded_length, e_content, e_content_len, dg1_hash_offset);
+    check_dg1_hash_within_sod(
+        dg1,
+        dg1_padded_length,
+        e_content,
+        e_content_len,
+        dg1_hash_offset,
+    );
 
     check_signed_attributes_sha256(signed_attributes, e_content, e_content_len);
 
