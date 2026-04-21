@@ -4,6 +4,39 @@ use {
     whir::algebra::{dot, linear_form::LinearForm, multilinear_extend},
 };
 
+/// Apply `acc[i] += scalar * vec[i]` to the prefix `acc[..vec.len()]` using
+/// rayon when the workload is big enough and we're not already on a rayon
+/// worker (top-level thread only — avoids nested-parallelism scheduler
+/// overhead that turned out to be a 20 % CPU sink).
+#[inline]
+fn scalar_mul_add_prefix(acc: &mut [FieldElement], vec: &[FieldElement], scalar: FieldElement) {
+    debug_assert!(acc.len() >= vec.len());
+    // Roughly L2-sized chunk, picked to match WHIR's `workload_size::<Fr>()`.
+    const CHUNK: usize = 1 << 13;
+    let n = vec.len();
+    if n == 0 {
+        return;
+    }
+
+    #[cfg(feature = "parallel")]
+    if n > CHUNK && rayon::current_thread_index().is_none() {
+        use rayon::prelude::*;
+        acc[..n]
+            .par_chunks_mut(CHUNK)
+            .zip(vec.par_chunks(CHUNK))
+            .for_each(|(a, v)| {
+                for (a_i, v_i) in a.iter_mut().zip(v) {
+                    *a_i += scalar * *v_i;
+                }
+            });
+        return;
+    }
+
+    for (a_i, v_i) in acc[..n].iter_mut().zip(vec) {
+        *a_i += scalar * *v_i;
+    }
+}
+
 /// A covector that stores only a power-of-two prefix, with the rest
 /// implicitly zero-padded to `domain_size`. Saves memory when the
 /// covector is known to be zero beyond the prefix (e.g. R1CS alpha
@@ -76,12 +109,7 @@ impl LinearForm<FieldElement> for PrefixCovector {
     }
 
     fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
-        for (acc, val) in accumulator[..self.vector.len()]
-            .iter_mut()
-            .zip(&self.vector)
-        {
-            *acc += scalar * *val;
-        }
+        scalar_mul_add_prefix(accumulator, &self.vector, scalar);
     }
 }
 
@@ -139,12 +167,8 @@ impl LinearForm<FieldElement> for OffsetCovector {
     }
 
     fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
-        for (acc, &w) in accumulator[self.offset..self.offset + self.weights.len()]
-            .iter_mut()
-            .zip(&self.weights)
-        {
-            *acc += scalar * w;
-        }
+        let dst = &mut accumulator[self.offset..self.offset + self.weights.len()];
+        scalar_mul_add_prefix(dst, &self.weights, scalar);
     }
 }
 

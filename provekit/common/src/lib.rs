@@ -41,23 +41,61 @@ pub use {
 ///
 /// Must be called once before any prove/verify operations.
 /// Idempotent — safe to call multiple times.
-pub fn register_ntt() {
-    use std::sync::{Arc, Once};
+pub fn register_whir_backends() {
+    use std::sync::Once;
     static INIT: Once = Once::new();
     INIT.call_once(|| {
-        // Register NTT for polynomial operations
-        #[cfg(not(feature = "provekit_ntt"))]
-        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield());
-
-        #[cfg(feature = "provekit_ntt")]
-        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(crate::ntt::RSFr);
-
-        whir::algebra::ntt::NTT.insert(ntt);
+        let irs_committer = build_irs_committer();
+        whir::protocols::irs_commit::IRS_COMMITTERS.insert(irs_committer);
 
         // Register Skyscraper (ProveKit-specific); WHIR's built-in engines
         // (SHA2, Keccak, Blake3, etc.) are pre-registered via whir::hash::ENGINES.
-        whir::hash::ENGINES.register(Arc::new(skyscraper::SkyscraperHashEngine));
+        whir::hash::ENGINES
+            .register(std::sync::Arc::new(skyscraper::SkyscraperHashEngine));
     });
+}
+
+/// Build the IRS committer for BN254.
+///
+/// With `provekit_ntt`: uses ProveKit's optimized NTT backends (Metal on
+/// macOS with CPU fallback, CPU-only on other targets).
+/// Without `provekit_ntt`: uses whir's built-in `NttEngine`.
+fn build_irs_committer()
+-> std::sync::Arc<dyn whir::protocols::irs_commit::IrsCommitter<FieldElement>> {
+    use std::sync::Arc;
+    use whir::protocols::irs_commit::CpuIrsCommitter;
+
+    #[cfg(feature = "provekit_ntt")]
+    {
+        #[cfg(target_os = "macos")]
+        match crate::ntt::MetalBn254Ntt::new() {
+            Ok(ntt) => return Arc::new(ntt),
+            Err(err) => {
+                tracing::info!(
+                    error = %err,
+                    "Metal BN254 IRS backend unavailable, using ProveKit CPU fallback"
+                );
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        match crate::ntt::CudaBn254Ntt::new() {
+            Ok(ntt) => return Arc::new(ntt),
+            Err(err) => {
+                tracing::info!(
+                    error = %err,
+                    "CUDA BN254 IRS backend unavailable, using ProveKit CPU fallback"
+                );
+            }
+        }
+
+        Arc::new(CpuIrsCommitter::new(Arc::new(crate::ntt::RSFr)))
+    }
+
+    #[cfg(not(feature = "provekit_ntt"))]
+    {
+        Arc::new(CpuIrsCommitter::new(Arc::new(
+            whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield(),
+        )))
+    }
 }

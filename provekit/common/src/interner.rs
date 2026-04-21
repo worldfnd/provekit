@@ -9,7 +9,7 @@ pub struct Interner {
     values: Vec<FieldElement>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InternedFieldElement(usize);
 
 impl Default for Interner {

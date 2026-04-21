@@ -159,6 +159,8 @@ xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
 zstd = "0.13"
+metal = "0.33.0"
+cudarc = { version = "0.19.4", default-features = false, features = ["cuda-12000", "driver", "nvrtc", "dynamic-loading"] }
 
 # WASM-specific dependencies
 js-sys = "0.3"
@@ -200,4 +202,4 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "sha2",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { git ="https://github.com/WizardOfMenlo/whir/", rev="0aeaa7f337c743d9ddfcb9d909628d6491e3355c", features = ["tracing", "rs_in_order"] }
+whir = { git = "https://github.com/zkfriendly/whir.git", branch = "zkfr/add-metal-gpu-refactor", features = ["tracing", "rs_in_order"] }
