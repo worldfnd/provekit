@@ -29,7 +29,7 @@ jobs:
     # Block fork PRs from executing arbitrary build scripts on the self-hosted runner.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
     name: Noir execution_success suite (${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.noir_ref != '' && github.event.inputs.noir_ref || 'v1.0.0-beta.19') || 'v1.0.0-beta.19' }})
-    runs-on: [self-hosted, Linux, ARM64, provekit-build]
+    runs-on: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@v4
