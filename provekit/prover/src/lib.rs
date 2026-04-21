@@ -8,8 +8,8 @@ use {
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
-        hash_config, utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver,
-        Prover, PublicInputs, TranscriptSponge,
+        utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, Prover,
+        PublicInputs, TranscriptSponge,
     },
     std::mem::size_of,
     tracing::{debug, info_span, instrument},
@@ -104,7 +104,6 @@ impl Prove for NoirProver {
         acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
     ) -> Result<NoirProof> {
         provekit_common::register_ntt();
-        provekit_common::register_hash_config(self.hash_config);
 
         let mut public_input_indices = self.program.functions[0].public_inputs().indices();
         public_input_indices.sort_unstable();
@@ -134,12 +133,13 @@ impl Prove for NoirProver {
         let num_constraints = compressed_r1cs.num_constraints();
 
         // Set up transcript with public inputs bound to the instance.
-        let instance = public_inputs.hash_bytes();
+        let instance = public_inputs.hash_bytes_with(self.hash_config);
+        let public_inputs_hash = public_inputs.hash_with(self.hash_config);
         let ds = self
             .whir_for_witness
             .create_domain_separator()
             .instance(&instance);
-        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(hash_config()));
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 
         // Allocate space for real + virtual witnesses. Virtual witnesses are
         // computation-only (zero entries in A/B/C) but needed by builders.
@@ -258,7 +258,14 @@ impl Prove for NoirProver {
 
         let whir_r1cs_proof = self
             .whir_for_witness
-            .prove_noir(merlin, r1cs, commitments, full_witness, &public_inputs)
+            .prove_noir(
+                merlin,
+                r1cs,
+                commitments,
+                full_witness,
+                public_inputs_hash,
+                public_inputs.len(),
+            )
             .context("While proving R1CS instance")?;
 
         Ok(NoirProof {
@@ -273,7 +280,6 @@ impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
     fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
         provekit_common::register_ntt();
-        provekit_common::register_hash_config(self.hash_config);
 
         let params = crate::input_utils::ordered_params_from_btreemap(&self.abi, &input_map)?;
         let phase1 = mavros_interpreter::run_phase1(
@@ -291,12 +297,13 @@ impl Prove for MavrosProver {
         };
 
         // Set up transcript with public inputs bound to the instance.
-        let instance = public_inputs.hash_bytes();
+        let instance = public_inputs.hash_bytes_with(self.hash_config);
+        let public_inputs_hash = public_inputs.hash_with(self.hash_config);
         let ds = self
             .whir_for_witness
             .create_domain_separator()
             .instance(&instance);
-        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(hash_config()));
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 
         let commitment_1 = self
             .whir_for_witness
@@ -349,7 +356,8 @@ impl Prove for MavrosProver {
                 merlin,
                 phase1,
                 commitments,
-                &public_inputs,
+                public_inputs_hash,
+                public_inputs.len(),
                 self.witness_layout,
                 self.constraints_layout,
                 &self.ad_binary,

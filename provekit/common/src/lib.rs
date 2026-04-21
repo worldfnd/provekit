@@ -61,25 +61,3 @@ pub fn register_ntt() {
         whir::hash::ENGINES.register(Arc::new(skyscraper::SkyscraperHashEngine));
     });
 }
-
-static HASH_CONFIG: std::sync::OnceLock<HashConfig> = std::sync::OnceLock::new();
-
-/// Returns the globally registered [`HashConfig`]. Panics if
-/// [`register_hash_config`] was not called.
-pub fn hash_config() -> HashConfig {
-    *HASH_CONFIG
-        .get()
-        .expect("register_hash_config must be called before proof operations")
-}
-
-pub(crate) fn field_hasher() -> fn(&[FieldElement]) -> FieldElement {
-    witness::field_hasher_for(hash_config())
-}
-
-/// Register the global hash configuration. Call once at startup alongside
-/// [`register_ntt`].
-///
-/// Idempotent — safe to call multiple times.
-pub fn register_hash_config(config: HashConfig) {
-    HASH_CONFIG.get_or_init(|| config);
-}

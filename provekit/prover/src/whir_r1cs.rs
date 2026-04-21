@@ -17,8 +17,7 @@ use {
             },
             HALF,
         },
-        FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
-        WhirR1CSScheme, R1CS,
+        FieldElement, PrefixCovector, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
     tracing::instrument,
@@ -61,7 +60,8 @@ pub trait WhirR1CSProver {
         r1cs: R1CS,
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
-        public_inputs: &PublicInputs,
+        public_inputs_hash: FieldElement,
+        public_inputs_len: usize,
     ) -> Result<WhirR1CSProof>;
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -70,7 +70,8 @@ pub trait WhirR1CSProver {
         merlin: ProverState<TranscriptSponge>,
         phase1: Phase1Result,
         commitments: Vec<WhirR1CSCommitment>,
-        public_inputs: &PublicInputs,
+        public_inputs_hash: FieldElement,
+        public_inputs_len: usize,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
@@ -146,7 +147,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
         r1cs: R1CS,
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
-        public_inputs: &PublicInputs,
+        public_inputs_hash: FieldElement,
+        public_inputs_len: usize,
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -182,7 +184,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_offset,
             blinding_weights,
             commitments,
-            public_inputs,
+            public_inputs_hash,
+            public_inputs_len,
         )
     }
 
@@ -193,7 +196,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
         mut merlin: ProverState<TranscriptSponge>,
         phase1: Phase1Result,
         commitments: Vec<WhirR1CSCommitment>,
-        public_inputs: &PublicInputs,
+        public_inputs_hash: FieldElement,
+        public_inputs_len: usize,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
@@ -238,7 +242,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_offset,
             blinding_weights,
             commitments,
-            public_inputs,
+            public_inputs_hash,
+            public_inputs_len,
         )
     }
 }
@@ -252,10 +257,12 @@ fn prove_from_alphas(
     blinding_offset: usize,
     blinding_weights: Vec<FieldElement>,
     commitments: Vec<WhirR1CSCommitment>,
-    public_inputs: &PublicInputs,
+    public_inputs_hash: FieldElement,
+    public_inputs_len: usize,
 ) -> Result<WhirR1CSProof> {
     let is_single = commitments.len() == 1;
-    let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, scheme.m);
+    let (x, public_weight) =
+        get_public_weights(public_inputs_hash, public_inputs_len, &mut merlin, scheme.m);
 
     let domain_size = 1usize << scheme.m;
 
@@ -272,7 +279,7 @@ fn prove_from_alphas(
             merlin.prover_message(eval);
         }
 
-        if !public_inputs.is_empty() {
+        if public_inputs_len > 0 {
             let public_eval = compute_public_weight_evaluation(
                 &mut weights,
                 &commitment.polynomial,
@@ -333,8 +340,8 @@ fn prove_from_alphas(
             merlin.prover_message(eval);
         }
 
-        let public_1 = if !public_inputs.is_empty() {
-            let p1 = compute_public_eval(x, public_inputs.len(), &c1.polynomial);
+        let public_1 = if public_inputs_len > 0 {
+            let p1 = compute_public_eval(x, public_inputs_len, &c1.polynomial);
             merlin.prover_message(&p1);
             Some(p1)
         } else {
@@ -360,7 +367,7 @@ fn prove_from_alphas(
             let mut weights = build_prefix_covectors(scheme.m, alphas_1);
             let mut evaluations: Vec<FieldElement> = Vec::new();
             if let Some(pe) = public_1 {
-                weights.insert(0, make_public_weight(x, public_inputs.len(), scheme.m));
+                weights.insert(0, make_public_weight(x, public_inputs_len, scheme.m));
                 evaluations.push(pe);
             }
             evaluations.extend_from_slice(&evals_1);
@@ -663,14 +670,14 @@ fn compute_public_weight_evaluation(
 }
 
 fn get_public_weights(
-    public_inputs: &PublicInputs,
+    public_inputs_hash: FieldElement,
+    public_inputs_len: usize,
     merlin: &mut ProverState<TranscriptSponge>,
     m: usize,
 ) -> (FieldElement, PrefixCovector) {
-    let public_inputs_hash = public_inputs.hash();
     merlin.prover_message(&public_inputs_hash);
 
     let x: FieldElement = merlin.verifier_message();
 
-    (x, make_public_weight(x, public_inputs.len(), m))
+    (x, make_public_weight(x, public_inputs_len, m))
 }

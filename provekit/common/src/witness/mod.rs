@@ -65,7 +65,7 @@ impl ConstantOrR1CSWitness {
 /// indicate a field larger than BN254
 fn fe_to_bytes_le(fe: &FieldElement) -> [u8; 32] {
     let bytes = fe.into_bigint().to_bytes_le();
-    assert!(
+    debug_assert!(
         bytes.len() <= 32,
         "field element serialized to {} bytes; expected ≤ 32 (BN254 is 254-bit)",
         bytes.len()
@@ -81,9 +81,14 @@ fn hash_with_skyscraper(elements: &[FieldElement]) -> FieldElement {
         FieldElement::new(BigInt(out))
     }
     match elements.len() {
+        // Preserve the long-standing Skyscraper empty-input behavior; changing
+        // this would change transcript-visible public-input binding semantics.
         0 => FieldElement::from(0u64),
         1 => compress(elements[0], FieldElement::from(0u64)),
-        _ => elements.iter().copied().reduce(compress).unwrap(),
+        _ => {
+            let first = elements[0];
+            elements[1..].iter().copied().fold(first, compress)
+        }
     }
 }
 
@@ -147,22 +152,23 @@ impl PublicInputs {
         self.0.is_empty()
     }
 
-    /// Compute the public-inputs commitment as a field element.
+    /// Compute the public-inputs commitment as a field element for the given
+    /// hash configuration.
     ///
-    /// Uses the hash algorithm registered via [`crate::register_hash_config`].
     /// Used as a prover transcript message (bound to the Fiat-Shamir instance)
     /// and checked by the verifier.
     #[must_use]
-    pub fn hash(&self) -> FieldElement {
-        crate::field_hasher()(&self.0)
+    pub fn hash_with(&self, config: crate::HashConfig) -> FieldElement {
+        field_hasher_for(config)(&self.0)
     }
 
-    /// Compute the public-inputs hash as a 32-byte array (little-endian).
+    /// Compute the public-inputs hash as a 32-byte array (little-endian) for
+    /// the given hash configuration.
     ///
     /// Used to bind public inputs to the Fiat-Shamir transcript instance.
     #[must_use]
-    pub fn hash_bytes(&self) -> [u8; 32] {
-        fe_to_bytes_le(&self.hash())
+    pub fn hash_bytes_with(&self, config: crate::HashConfig) -> [u8; 32] {
+        fe_to_bytes_le(&self.hash_with(config))
     }
 }
 
@@ -197,6 +203,126 @@ mod tests {
 
     fn hash_bytes(config: HashConfig, inputs: &PublicInputs) -> [u8; 32] {
         fe_to_bytes_le(&hash(config, inputs))
+    }
+
+    #[test]
+    fn public_inputs_hash_with_matches_helper_for_all_configs() {
+        let inputs = pi(&[3, 5, 8]);
+        for config in ALL_CONFIGS {
+            assert_eq!(
+                inputs.hash_with(config),
+                hash(config, &inputs),
+                "{config:?}: hash_with must match the configured helper"
+            );
+        }
+    }
+
+    #[test]
+    fn public_inputs_hash_bytes_with_matches_helper_for_all_configs() {
+        let inputs = pi(&[13, 21]);
+        for config in ALL_CONFIGS {
+            assert_eq!(
+                inputs.hash_bytes_with(config),
+                hash_bytes(config, &inputs),
+                "{config:?}: hash_bytes_with must match the configured helper"
+            );
+        }
+    }
+
+    #[test]
+    fn public_inputs_hashing_requires_no_prior_registration() {
+        let inputs = pi(&[1, 1, 2, 3, 5]);
+        for config in ALL_CONFIGS {
+            let _ = inputs.hash_with(config);
+            let _ = inputs.hash_bytes_with(config);
+        }
+    }
+
+    #[test]
+    fn public_inputs_hashing_is_order_independent_across_configs() {
+        let inputs = pi(&[55, 89]);
+        let first = inputs.hash_with(HashConfig::Sha256);
+        let second = inputs.hash_with(HashConfig::Keccak);
+        let third = inputs.hash_with(HashConfig::Sha256);
+
+        assert_eq!(
+            first, third,
+            "Sha256 result must not depend on prior Keccak call"
+        );
+        assert_ne!(
+            first, second,
+            "different configs must still produce different hashes"
+        );
+    }
+
+    #[test]
+    fn known_answer_vectors_for_empty_input_are_stable() {
+        let empty = PublicInputs::new();
+        let expected = [
+            (HashConfig::Skyscraper, [
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                0x00, 0x00, 0x00, 0x00,
+            ]),
+            (HashConfig::Sha256, [
+                0xe2, 0xb0, 0xc4, 0x52, 0x04, 0x07, 0x3b, 0xd0, 0x08, 0x8b, 0x3b, 0x4f, 0x51, 0x87,
+                0x85, 0xfc, 0xc9, 0x55, 0xc0, 0x62, 0xae, 0x55, 0x43, 0x94, 0x7a, 0xf5, 0x67, 0x3a,
+                0x05, 0x04, 0x54, 0x25,
+            ]),
+            (HashConfig::Keccak, [
+                0xc3, 0xd2, 0x46, 0x21, 0x5e, 0x0c, 0x60, 0xb4, 0x6f, 0x9d, 0x0a, 0xbf, 0x4b, 0xf7,
+                0x9b, 0x6f, 0x2b, 0x50, 0xb3, 0x50, 0x5d, 0xf7, 0x86, 0xca, 0x27, 0xba, 0x75, 0x42,
+                0x77, 0xe8, 0xdb, 0x0f,
+            ]),
+            (HashConfig::Blake3, [
+                0xad, 0x13, 0x49, 0xd9, 0xcd, 0x0e, 0xde, 0x1e, 0x7e, 0x5f, 0xda, 0xf6, 0xa5, 0x0b,
+                0x62, 0xf9, 0xe0, 0x1a, 0x23, 0xc6, 0x40, 0x36, 0x72, 0x46, 0x79, 0x5a, 0x30, 0x08,
+                0xff, 0x82, 0x69, 0x01,
+            ]),
+        ];
+
+        for (config, expected_bytes) in expected {
+            assert_eq!(
+                empty.hash_bytes_with(config),
+                expected_bytes,
+                "{config:?}: empty-input vector changed"
+            );
+        }
+    }
+
+    #[test]
+    fn known_answer_vectors_for_one_two_are_stable() {
+        let one_two = pi(&[1, 2]);
+        let expected = [
+            (HashConfig::Skyscraper, [
+                0x7c, 0x38, 0x2a, 0x25, 0xa9, 0x25, 0x53, 0x1f, 0x7e, 0x26, 0xa8, 0xab, 0xdc, 0x91,
+                0x1a, 0x03, 0x95, 0x2a, 0x46, 0x9e, 0xfb, 0xb5, 0x71, 0xe9, 0x86, 0x3f, 0x1c, 0xcd,
+                0x56, 0x7e, 0xe6, 0x2d,
+            ]),
+            (HashConfig::Sha256, [
+                0xfc, 0x55, 0xc9, 0xa9, 0xba, 0xc7, 0x9a, 0xe8, 0x1a, 0x88, 0x38, 0x80, 0x70, 0x2a,
+                0xde, 0xcc, 0x7c, 0xb1, 0xbb, 0xe2, 0x2e, 0x67, 0xc4, 0xd4, 0xa8, 0xf1, 0xed, 0x12,
+                0xb7, 0x84, 0x74, 0x03,
+            ]),
+            (HashConfig::Keccak, [
+                0x4d, 0x44, 0x53, 0xa7, 0xd6, 0x82, 0x09, 0xf1, 0x87, 0x49, 0xbd, 0x41, 0x7e, 0x8e,
+                0xde, 0x31, 0xa7, 0x86, 0x9b, 0xee, 0x89, 0x32, 0x7e, 0x0f, 0xb6, 0x63, 0xb0, 0xe9,
+                0x12, 0x9e, 0x4a, 0x23,
+            ]),
+            (HashConfig::Blake3, [
+                0x58, 0x22, 0xd9, 0xc8, 0xc4, 0x69, 0xe6, 0xea, 0x92, 0x6b, 0xb6, 0x54, 0x12, 0x09,
+                0x5d, 0x30, 0x25, 0x7f, 0xbc, 0xd2, 0x95, 0x6e, 0x46, 0x39, 0x12, 0x73, 0xc6, 0x75,
+                0x32, 0x4a, 0x19, 0x06,
+            ]),
+        ];
+
+        for (config, expected_bytes) in expected {
+            assert_eq!(
+                one_two.hash_bytes_with(config),
+                expected_bytes,
+                "{config:?}: [1, 2] vector changed"
+            );
+        }
     }
 
     // --- determinism ---
