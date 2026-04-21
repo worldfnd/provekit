@@ -133,7 +133,7 @@ impl Prove for NoirProver {
         let num_constraints = compressed_r1cs.num_constraints();
 
         // Set up transcript with public inputs bound to the instance.
-        let instance = public_inputs.hash_bytes();
+        let instance = public_inputs.hash_bytes(self.hash_config);
         let ds = self
             .whir_for_witness
             .create_domain_separator()
@@ -289,7 +289,7 @@ impl Prove for MavrosProver {
         };
 
         // Set up transcript with public inputs bound to the instance.
-        let instance = public_inputs.hash_bytes();
+        let instance = public_inputs.hash_bytes(self.hash_config);
         let ds = self
             .whir_for_witness
             .create_domain_separator()
