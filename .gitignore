@@ -1,6 +1,8 @@
 .DS_Store
 /target
 *.sage.py
+.omc/
+.omx/
 
 # Noir and prover artifacts
 *.json
