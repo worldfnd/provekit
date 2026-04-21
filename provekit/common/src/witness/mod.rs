@@ -322,8 +322,7 @@ mod tests {
 
     #[test]
     fn kat_empty_poseidon2() {
-        // Poseidon2 encodes length via capacity IV, so empty input still
-        // produces a distinct non-zero output = poseidon2_permutation([0;4])[0].
+        // Non-zero because the capacity-lane IV still permutes on empty input.
         let got = PublicInputs::new().hash_bytes(HashConfig::Poseidon2);
         assert_eq!(got, KAT_EMPTY_POSEIDON2, "Poseidon2 empty-input KAT drift");
     }
@@ -366,8 +365,7 @@ mod tests {
         0x4e, 0x47, 0x7d, 0x1f, 0xf9, 0xf5, 0x79, 0xc1, 0x46, 0xb4, 0x28, 0x84, 0xa5, 0x6b, 0xc5,
         0xa5, 0x25,
     ];
-    // Poseidon2([]) = poseidon2_permutation([0,0,0,0])[0], in LE bytes.
-    // Same value frozen in poseidon2/sponge.rs::permutation_matches_known_output.
+    // Poseidon2([]) = poseidon2_permutation([0; 4])[0], in LE bytes.
     const KAT_EMPTY_POSEIDON2: [u8; 32] = [
         0x2e, 0x73, 0xc6, 0x8b, 0x69, 0x5c, 0x78, 0x96, 0xb4, 0x36, 0x42, 0x84, 0x9d, 0x6d, 0xe9,
         0x1c, 0x8b, 0xf7, 0x8d, 0xfc, 0xfe, 0x4e, 0x97, 0xff, 0x9c, 0x22, 0x82, 0x9b, 0xdc, 0xb8,
