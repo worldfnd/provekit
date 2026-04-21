@@ -22,11 +22,16 @@ noirc_abi.workspace = true
 
 # Cryptography and proof systems
 ark-ff.workspace = true
+ark-serialize.workspace = true
+sha3.workspace = true
+spongefish.workspace = true
+whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
 argh.workspace = true
 base64.workspace = true
+ciborium = "0.2.2"
 hex.workspace = true
 postcard.workspace = true
 rayon.workspace = true
