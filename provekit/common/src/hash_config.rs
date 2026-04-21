@@ -112,14 +112,10 @@ impl HashConfig {
 
     /// Hashes `elements` into a single field element under this configuration.
     ///
-    /// Used to bind public inputs to the Fiat-Shamir transcript instance: the
-    /// prover absorbs this value and the verifier recomputes and compares.
-    /// Any change in `self`, the elements, or the domain-separation tag
-    /// produces a different output with overwhelming probability.
-    ///
-    /// # Determinism
-    ///
-    /// Deterministic in `(self, elements)`.
+    /// Binds public inputs to the Fiat-Shamir transcript instance: the prover
+    /// absorbs this value and the verifier recomputes and compares.
+    /// Deterministic in `(self, elements)`; any change in either produces a
+    /// different output with overwhelming probability.
     ///
     /// # Examples
     ///
@@ -175,11 +171,8 @@ pub(crate) fn fe_to_bytes_le(fe: &FieldElement) -> [u8; 32] {
     result
 }
 
-/// Hashes `elements` via pairwise Skyscraper compression, preserving the
-/// transcript-visible behaviour that an empty input hashes to 0.
-///
-/// No domain-separation tag: Skyscraper's output is part of the stable
-/// proof format; introducing a tag would break backward compatibility.
+/// Pairwise Skyscraper compression; empty input hashes to 0. Not
+/// domain-separated (see [`PUBLIC_INPUTS_DST`]).
 #[inline]
 fn hash_skyscraper(elements: &[FieldElement]) -> FieldElement {
     #[inline]
@@ -196,13 +189,12 @@ fn hash_skyscraper(elements: &[FieldElement]) -> FieldElement {
     }
 }
 
-/// Hashes `elements` under a [`sha2::digest::Digest`]-compatible hash `D`
-/// (SHA-256, Keccak-256) with a fixed domain-separation tag.
+/// DST-tagged [`sha2::digest::Digest`] hash (SHA-256, Keccak-256) over
+/// `elements`.
 ///
 /// The final [`FieldElement::from_le_bytes_mod_order`] reduction introduces
-/// a statistical bias of ~2⁻²⁵⁴ relative to uniform sampling over the BN254
-/// scalar field. This is negligible for Fiat-Shamir instance binding; do
-/// **not** reuse this construction as a uniform field sampler.
+/// ~2⁻²⁵⁴ bias — negligible for FS instance binding, but this is not a
+/// uniform field sampler.
 #[inline]
 fn hash_digest<D>(dst: &[u8], elements: &[FieldElement]) -> FieldElement
 where
@@ -217,8 +209,8 @@ where
 }
 
 /// BLAKE3 analogue of [`hash_digest`]. BLAKE3 does not implement
-/// [`sha2::digest::Digest`] without the optional `traits-preview` feature, so it
-/// gets its own small helper.
+/// [`sha2::digest::Digest`] without the optional `traits-preview` feature, so
+/// it gets its own small helper.
 #[inline]
 fn hash_blake3(dst: &[u8], elements: &[FieldElement]) -> FieldElement {
     let mut hasher = blake3::Hasher::new();
