@@ -300,14 +300,14 @@ def main(csv_path: Path, out_dir: Path) -> None:
     provekit_better = sum(1 for _, m, p in comparable if p < m)
 
     lines = [
-        "# Mavros vs Provekit Witnesses Count",
+        "# Mavros vs ProveKit Witnesses Count",
         "",
         f"Union {len(all_names)} circuits: {len(comparable)} comparable, "
-        f"{missing_in_provekit} missing in Provekit, {missing_in_mavros} missing in Mavros.",
+        f"{missing_in_provekit} missing in ProveKit, {missing_in_mavros} missing in Mavros.",
         f"Among comparable: {equal} equal, {mavros_better} Mavros better, "
-        f"{provekit_better} Provekit better.",
+        f"{provekit_better} ProveKit better.",
         "",
-        "| Test | Mavros Cols | Provekit Post-GE | Delta | Better | Factor |",
+        "| Test | Mavros Cols | ProveKit Post-GE | Delta | Better | Factor |",
         "|------|-------------|------------------|-------|--------|--------|",
     ]
 

@@ -172,17 +172,17 @@ def _classify_failure(text: str, stage: str) -> str:
     return f"Unknown failure ({stage})"
 
 
-def build_grouped_report(log_dir: Path, passed_count: int) -> None:
+def build_grouped_report(log_dir: Path, passed: int, failed: int, skipped: int) -> None:
     """Scan ``log_dir/per_test/*.log`` and write ``log_dir/grouped_error_report.txt``.
 
-    PASS logs are deleted by the shell runner after each successful test, so
-    the PASS count is threaded in as ``passed_count`` rather than inferred.
+    PASS/FAIL/SKIP totals come from the shell runner — it has the authoritative
+    counts (including blackbox skips, which don't produce per-test logs). Logs
+    are consulted only for the ``[stages]`` and ``[grouped]`` sections.
     """
     per_test_dir = log_dir / "per_test"
     report_file = log_dir / "grouped_error_report.txt"
 
     logs = sorted(per_test_dir.glob("*.log"))
-    status_counts = {"PASS": passed_count, "FAIL": 0, "SKIP": 0}
     grouped: dict[str, list[str]] = defaultdict(list)
     stage_groups: dict[str, list[str]] = defaultdict(list)
 
@@ -191,13 +191,11 @@ def build_grouped_report(log_dir: Path, passed_count: int) -> None:
         name = fp.stem
 
         if "SKIP:" in text:
-            status_counts["SKIP"] += 1
             skip_match = _SKIP_REASON_RE.search(text)
             reason = skip_match.group(1).strip() if skip_match else "unknown"
             grouped[f"SKIP: {reason}"].append(name)
             continue
 
-        status_counts["FAIL"] += 1
         fail_stages = _FAIL_STAGE_RE.findall(text)
         stage = fail_stages[-1].strip() if fail_stages else "unknown stage"
         stage_groups[stage].append(name)
@@ -205,9 +203,9 @@ def build_grouped_report(log_dir: Path, passed_count: int) -> None:
 
     with report_file.open("w") as f:
         f.write(f"logs={len(logs)}\n")
-        f.write(f"PASS={status_counts['PASS']}\n")
-        f.write(f"FAIL={status_counts['FAIL']}\n")
-        f.write(f"SKIP={status_counts['SKIP']}\n")
+        f.write(f"PASS={passed}\n")
+        f.write(f"FAIL={failed}\n")
+        f.write(f"SKIP={skipped}\n")
         f.write("\n[stages]\n")
         for stage, tests in sorted(stage_groups.items(), key=lambda kv: (-len(kv[1]), kv[0])):
             f.write(f"{stage}\t{len(tests)}\t{', '.join(tests)}\n")
@@ -233,6 +231,8 @@ def main() -> int:
     p = sub.add_parser("build-report")
     p.add_argument("log_dir", type=Path)
     p.add_argument("passed_count", type=int)
+    p.add_argument("failed_count", type=int)
+    p.add_argument("skipped_count", type=int)
 
     sub.add_parser("skip-tests", help="print the skip list, one name per line")
 
@@ -246,7 +246,12 @@ def main() -> int:
     elif args.cmd == "package-name":
         print(read_package_name(args.project_dir))
     elif args.cmd == "build-report":
-        build_grouped_report(args.log_dir, args.passed_count)
+        build_grouped_report(
+            args.log_dir,
+            args.passed_count,
+            args.failed_count,
+            args.skipped_count,
+        )
     elif args.cmd == "skip-tests":
         for name in sorted(load_skip_tests()):
             print(name)

@@ -169,22 +169,25 @@ for test_name in "${test_dirs[@]}"; do
     continue
   fi
 
+  # leaf name (no sub-path) is what we key on in the skip set
+  leaf_name="${test_name%%/*}"
+
+  # --- Unimplemented blackbox skip list: no log, no noise ---
+  # Skip BEFORE incrementing `total` so MAX_TESTS caps only attempted tests.
+  if [[ "${SKIP_SET["${leaf_name}"]:-}" == "1" ]]; then
+    echo "SKIP (blackbox): ${test_name}"
+    (( skipped += 1 ))
+    continue
+  fi
+
   (( total += 1 ))
 
   if [[ "${MAX_TESTS}" -gt 0 && "${total}" -gt "${MAX_TESTS}" ]]; then
     break
   fi
 
-  # leaf name (no sub-path) is what we key on in the skip set
-  leaf_name="${test_name%%/*}"
   test_dir="${TEST_ROOT}/${test_name}"
   safe_test_name="${test_name//\//__}"
-  # --- Unimplemented blackbox skip list: no log, no noise ---
-  if [[ "${SKIP_SET["${leaf_name}"]:-}" == "1" ]]; then
-    echo "SKIP (blackbox): ${test_name}"
-    (( skipped += 1 ))
-    continue
-  fi
 
   test_log="${LOG_DIR}/per_test/${safe_test_name}.log"
 
@@ -207,7 +210,7 @@ for test_name in "${test_dirs[@]}"; do
     continue
   fi
 
-  if [[ ! -d "${TEST_LIB_ROOT}" ]] && grep -qr 'test_libraries' "${test_dir}"/Nargo.toml 2>/dev/null; then
+  if [[ ! -d "${TEST_LIB_ROOT}" ]] && grep -q 'test_libraries' "${test_dir}"/Nargo.toml 2>/dev/null; then
     echo "SKIP: missing test_libraries for relative path dependency"
     append_stage_marker "${test_log}" "test" "SKIP"
     echo "SKIP: missing test_libraries for relative path dependency" >> "${test_log}"
@@ -374,7 +377,7 @@ echo "Failed           : ${failed}"
 echo "Skipped          : ${skipped}  (${#SKIP_TESTS[@]} unimplemented-blackbox tests)"
 echo "Log directory    : ${LOG_DIR}"
 
-python3 "${HELPER}" build-report "${LOG_DIR}" "${passed}"
+python3 "${HELPER}" build-report "${LOG_DIR}" "${passed}" "${failed}" "${skipped}"
 
 # Emit GitHub Step Summary when running inside Actions
 # (must be after the Python report generator so grouped_error_report.txt exists)
