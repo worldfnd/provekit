@@ -38,6 +38,16 @@ impl PKBuf {
     }
 }
 
+/// Format of an in-memory input string passed to `pk_prove_inputs`.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub enum PKInputFormat {
+    /// JSON-encoded inputs (e.g. `{"x": "5", "y": "10"}`).
+    Json = 0,
+    /// TOML-encoded inputs (e.g. `x = "5"\ny = "10"`).
+    Toml = 1,
+}
+
 /// Status codes returned by FFI functions.
 #[repr(C)]
 #[derive(Debug)]
