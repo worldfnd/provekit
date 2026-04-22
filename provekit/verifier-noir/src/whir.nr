@@ -224,11 +224,7 @@ pub fn squeeze_stir_challenges(
     bytes_per_index: u32,
 ) {
     let total_bytes = num_queries * bytes_per_index;
-    for _i in 0..crate::types::MAX_STIR_BYTES {
-        if (_i as u32) < total_bytes {
-            let _byte = sho.squeeze_1();
-        }
-    }
+    sho.advance_squeeze_bytes(total_bytes);
 }
 
 // --- Univariate polynomial evaluation ---
