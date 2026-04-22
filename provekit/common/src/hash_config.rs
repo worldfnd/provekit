@@ -9,7 +9,7 @@ use {
     crate::FieldElement,
     ark_ff::{BigInt, BigInteger, PrimeField},
     serde::{Deserialize, Serialize},
-    std::fmt,
+    std::{fmt, sync::LazyLock},
 };
 
 /// Hash algorithm configuration that can be selected at runtime.
@@ -40,10 +40,11 @@ pub enum HashConfig {
 /// Domain-separation tag for public-input instance binding.
 ///
 /// **Protocol-visible constant.** This string is absorbed into the SHA-256,
-/// Keccak, and BLAKE3 hashes used for public-input commitments; changing it
-/// invalidates every proof generated under those configurations. The `V1`
-/// suffix reserves an unambiguous upgrade path (`_V2`, …) for any future
-/// construction change.
+/// Keccak, and BLAKE3 hashes used for public-input commitments; for Poseidon2
+/// it is reduced to a [`FieldElement`] via [`PUBLIC_INPUTS_DST_FE`] and
+/// prepended to the hash input. Changing it invalidates every proof generated
+/// under those configurations. The `V1` suffix reserves an unambiguous
+/// upgrade path (`_V2`, …) for any future construction change.
 ///
 /// [`HashConfig::Skyscraper`] intentionally omits the tag — its
 /// empty-input-returns-0 output is part of the stable Skyscraper proof
@@ -53,6 +54,10 @@ pub enum HashConfig {
 /// Regression trip-wires: the KATs in `witness::tests` freeze the
 /// byte-exact output of each variant under this constant.
 const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V1";
+static PUBLIC_INPUTS_DST_FE: LazyLock<FieldElement> = LazyLock::new(|| {
+    use sha2::{Digest, Sha256};
+    FieldElement::from_le_bytes_mod_order(&Sha256::digest(PUBLIC_INPUTS_DST))
+});
 
 impl HashConfig {
     /// Returns the canonical name of this hash configuration.
@@ -219,12 +224,18 @@ where
 
 /// Poseidon2 one-shot hash over `elements` (including empty input).
 ///
-/// Does NOT use [`PUBLIC_INPUTS_DST`] — length domain-separation is handled
-/// by the capacity-lane IV (`n * 2^64`), so `poseidon2_hash([])` already
-/// produces a distinct non-zero output for the empty case.
+/// Prepends [`PUBLIC_INPUTS_DST_FE`] as the first absorbed field element
+/// to provide **role** domain-separation (distinct from Merkle/FS usages of
+/// the same Poseidon2 permutation). The capacity-lane IV inside
+/// [`poseidon2::poseidon2_hash`] separately provides **length** domain-
+/// separation, so the two combined mirror what SHA/Keccak/BLAKE3 get via
+/// the raw [`PUBLIC_INPUTS_DST`] byte prefix.
 #[inline]
 fn hash_poseidon2(elements: &[FieldElement]) -> FieldElement {
-    poseidon2::poseidon2_hash(elements)
+    let mut tagged = Vec::with_capacity(elements.len() + 1);
+    tagged.push(*PUBLIC_INPUTS_DST_FE);
+    tagged.extend_from_slice(elements);
+    poseidon2::poseidon2_hash(&tagged)
 }
 
 /// BLAKE3 analogue of [`hash_digest`]. BLAKE3 does not implement
