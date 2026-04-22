@@ -7,6 +7,22 @@
 //! re-encoded via canonical LE bytes. Between permutations the state is
 //! always canonical, so the reduction is a no-op.
 //!
+//! # Canonical-lane invariant
+//!
+//! [`crate::utils::bytes_to_field`] is `from_le_bytes_mod_order`, which
+//! reduces each 32-byte lane mod p. This adapter is therefore only
+//! **byte-injective** when every absorbed lane is already < p. spongefish
+//! writes raw bytes straight into `permutation_state` (see
+//! `duplex_sponge.rs:197-213`), and the domain separator absorbs arbitrary
+//! `as_bytes()`, so the sponge layer cannot enforce canonicality on its
+//! own. We rely on the protocol to only ever absorb canonical encodings —
+//! currently true (all absorbs are either field elements round-tripped
+//! through [`crate::utils::field_to_bytes_le`], engine outputs, or ASCII
+//! DS bytes — all < p in any 32-byte lane), but nothing enforces it.
+//! [`crate::skyscraper::SkyscraperSponge`] shares the same adapter
+//! (`bytes_to_field` / `field_to_bytes_le`) and inherits the same
+//! invariant.
+//!
 //! Not interchangeable with [`poseidon2::poseidon2_hash`] — that is the
 //! one-shot hash with a length-encoded IV (matches Noir's
 //! `Poseidon2::hash()`); this is the duplex transcript sponge.

@@ -3,7 +3,11 @@
 //! Sponge parameters: width=4, rate=3, capacity=1 over BN254's scalar field.
 
 use {
-    crate::permutation::poseidon2_permutation, ark_bn254::Fr, ark_std::Zero, std::sync::LazyLock,
+    crate::permutation::poseidon2_permutation,
+    ark_bn254::Fr,
+    ark_ff::{BigInteger, PrimeField},
+    ark_std::Zero,
+    std::sync::LazyLock,
 };
 
 const RATE: usize = 3;
@@ -44,6 +48,44 @@ pub fn poseidon2_hash(inputs: &[Fr]) -> Fr {
     state = poseidon2_permutation(&state);
 
     state[0]
+}
+
+/// Byte-oriented variant of [`poseidon2_hash`]. `msg` is `num_fes` canonical
+/// 32-byte little-endian field elements concatenated; output is `state[0]`
+/// serialized to 32 canonical LE bytes.
+///
+/// Semantically equivalent to
+/// `field_to_bytes_le(poseidon2_hash(decode(msg, num_fes)))` for all
+/// `num_fes >= 1`. For `num_fes = 0` this skips the final permutation and
+/// returns `[0u8; 32]`, whereas [`poseidon2_hash`] over an empty slice runs
+/// one permutation and returns a non-zero digest. The divergence is
+/// intentional: the only caller (WHIR's Poseidon2 Merkle engine) rejects
+/// zero-length messages at its `supports_size` gate, so the byte variant
+/// never sees `num_fes = 0`.
+///
+/// Each 32-byte lane is decoded with `from_le_bytes_mod_order`, so inputs
+/// must be canonical (< p) for the function to be byte-injective. WHIR
+/// Merkle inputs are always engine outputs or canonical field encodings, so
+/// this holds in practice — but nothing in the type system enforces it.
+pub fn poseidon2_hash_bytes(msg: &[u8], num_fes: usize) -> [u8; 32] {
+    let iv = Fr::from(num_fes as u64) * *TWO_POW_64;
+    let mut state = [Fr::zero(), Fr::zero(), Fr::zero(), iv];
+
+    let mut absorbed = 0;
+    while absorbed < num_fes {
+        let batch = (num_fes - absorbed).min(RATE);
+        for j in 0..batch {
+            let fe_bytes = &msg[(absorbed + j) * 32..(absorbed + j + 1) * 32];
+            state[j] += Fr::from_le_bytes_mod_order(fe_bytes);
+        }
+        state = poseidon2_permutation(&state);
+        absorbed += batch;
+    }
+
+    let bytes = state[0].into_bigint().to_bytes_le();
+    let mut out = [0u8; 32];
+    out[..bytes.len()].copy_from_slice(&bytes);
+    out
 }
 
 #[cfg(test)]
@@ -217,5 +259,39 @@ mod tests {
 
         // Same input repeated should produce different hash due to length encoding
         assert_ne!(hash3, hash6);
+    }
+
+    /// Byte-oriented variant must match the field-oriented variant for all
+    /// non-zero input lengths. (The two diverge at `num_fes = 0` by design;
+    /// see `poseidon2_hash_bytes` doc.)
+    #[test]
+    fn byte_variant_matches_field_variant() {
+        for n in 1..=10usize {
+            let fes: Vec<Fr> = (1..=n as u64).map(Fr::from).collect();
+            let msg: Vec<u8> = fes
+                .iter()
+                .flat_map(|f| {
+                    let b = f.into_bigint().to_bytes_le();
+                    let mut out = [0u8; 32];
+                    out[..b.len()].copy_from_slice(&b);
+                    out
+                })
+                .collect();
+
+            let field_out = poseidon2_hash(&fes);
+            let byte_out = poseidon2_hash_bytes(&msg, n);
+
+            let field_bytes = {
+                let b = field_out.into_bigint().to_bytes_le();
+                let mut out = [0u8; 32];
+                out[..b.len()].copy_from_slice(&b);
+                out
+            };
+
+            assert_eq!(
+                byte_out, field_bytes,
+                "byte/field variant divergence at num_fes={n}"
+            );
+        }
     }
 }
