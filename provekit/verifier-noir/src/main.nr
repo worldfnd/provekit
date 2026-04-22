@@ -178,7 +178,10 @@ fn main(
     sho.absorb_field_aligned(initial_root_hash);
 
     // Capture initial OOD points: Rust uses them as constraint points for
-    // the initial-form RLC fed into the first WHIR sumcheck (Stage F).
+    // the initial-form RLC fed into the first WHIR sumcheck.
+    // TODO: feed (initial_ood_queries, initial_ood_answers)
+    // pairs into the `the_sum` construction for the initial inner-WHIR
+    // sumcheck, weighted by oods_rlc_coeffs = constraint_rlc[NUM_LINEAR_FORMS..].
     let mut initial_ood_queries: [Field; OOD_SAMPLES] = [0; OOD_SAMPLES];
     for i in 0..OOD_SAMPLES {
         initial_ood_queries[i] = sho.squeeze_field_aligned();
@@ -191,6 +194,8 @@ fn main(
     // there are BLINDING_OOD_SAMPLES * NUM_BLINDING_VECTORS OOD answers).
     sho.absorb_field_aligned(blinding_root_hash);
 
+    // TODO: feed (blinding_initial_ood_queries,
+    // blinding_ood_answers) into the blinding WHIR initial constraint RLC.
     let mut blinding_initial_ood_queries: [Field; BLINDING_OOD_SAMPLES] = [0; BLINDING_OOD_SAMPLES];
     for i in 0..BLINDING_OOD_SAMPLES {
         blinding_initial_ood_queries[i] = sho.squeeze_field_aligned();
@@ -234,9 +239,16 @@ fn main(
     // ===================================================================
 
     // 4.1: blinding_challenge (verifier_message)
+    // TODO: rename to `beta` and use in the batched_h_claims
+    // equality (h(gamma, beta) = m_eval + sum_j beta^(j+1) * gamma^(2^j) * g_hat_j,
+    // squaring ladder on gamma, linear ladder on beta). Blocked on h_gammas
     let _beta: Field = sho.squeeze_field();
 
     // 4.2: w_folded_blinding_evals (prover_messages_vec)
+    // TODO: port extract_m_evals (first element of each
+    // (NUM_WITNESS_VARIABLES+1)-sized block) and feed the resulting m_evals
+    // into the witness-side WHIR evaluations via modified_evaluations =
+    // evaluations + m_evals (whir_zk/verifier.rs L110-114).
     for i in 0..NUM_W_FOLDED_EVALS {
         sho.absorb_field(w_folded_evals[i]);
     }
@@ -275,6 +287,8 @@ fn main(
     sho.absorb_field(combined_claims);
 
     // 4.9: batched_h_claims (prover_messages_vec, 1 per polynomial)
+    // TODO: assert batched_h_claims == expected_batched_h_claims,
+    // where expected = sum_k tau2^k * h(gamma_k, beta) for each gamma point.
     sho.absorb_field(batched_h_claims);
 
     // --- Build m_claim and g_hat_claims by tau2-weighted accumulation ---
@@ -287,8 +301,8 @@ fn main(
     // Note: expected_batched_h_claims also lives here in Rust but it uses
     // the gamma values themselves via h(gamma, beta) = m_eval +
     // sum_j beta^(j+1) * gamma^(2^j) * g_hat_j. Since gamma = all_gammas(...)
-    // needs an in-circuit coset expansion (omega, zeta powers) or Prover.toml
-    // hints (see AUDIT.md P1), the batched_h_claims equality is TODO. The
+    // needs an in-circuit coset expansion (omega, zeta powers) or a
+    // Prover.toml hint, the batched_h_claims equality is TODO. The
     // combined_claims equality below is enforceable with only the
     // already-absorbed data.
     let mut m_claim: Field = 0;
@@ -342,8 +356,12 @@ fn main(
 
     // 4a.2: geometric_challenge(INNER_WHIR_CONSTRAINT_COUNT)
     // count = OOD_SAMPLES + NUM_LINEAR_FORMS (e.g. 1 + 4 = 5)
-    // Used in Stage F to RLC (OOD constraints, initial-form claims) into
-    // the initial sumcheck sum and into the FinalClaim linear_form_rlc check.
+    // TODO: use `constraint_rlc` to build the initial
+    // sumcheck sum `the_sum = sum_i initial_form_rlc[i] * evals[i] + sum_i
+    // oods_rlc[i] * oods_matrix[i]` (whir/verifier.rs L106-114) and pass
+    // `the_sum` instead of 0 into the initial run_whir_sumcheck call below.
+    // initial_form_rlc = constraint_rlc[0..NUM_LINEAR_FORMS],
+    // oods_rlc = constraint_rlc[NUM_LINEAR_FORMS..].
     let constraint_rlc: [Field; INNER_WHIR_CONSTRAINT_COUNT] =
         generate_combination_randomness(&mut sho, INNER_WHIR_CONSTRAINT_COUNT);
 
@@ -351,6 +369,12 @@ fn main(
     let mut total_folding_rand: [Field; LOG_NUM_VARIABLES] = [0; LOG_NUM_VARIABLES];
 
     // 4a.3: Initial WHIR sumcheck (FOLDING_FACTOR rounds, quadratic)
+    // TODO: replace the `0` initial sum with `the_sum`
+    // from whir/verifier.rs L106-114:
+    //   the_sum = sum_i initial_form_rlc[i] * (evals[i] + m_evals[i])
+    //           + sum_j oods_rlc[j] * initial_ood_answers[j]
+    // where initial_form_rlc = constraint_rlc[0..NUM_LINEAR_FORMS] and
+    // oods_rlc = constraint_rlc[NUM_LINEAR_FORMS..]. The `m_evals[i]`
     let (initial_fold_rand, mut last_eval) =
         run_whir_sumcheck(&mut sho, 0, initial_whir_sumcheck_coeffs);
 
@@ -360,7 +384,7 @@ fn main(
     }
 
     // 4a.4: Per-round WHIR verification (for NUM_WHIR_ROUNDS > 0)
-    // Capture per-round OOD points for the Stage F constraint RLC.
+    // Capture per-round OOD points for use in the per-round constraint RLC.
     let mut round_ood_pts: [[Field; OOD_SAMPLES]; ROUND_ARRAY_SIZE] =
         [[0; OOD_SAMPLES]; ROUND_ARRAY_SIZE];
     for r in 0..NUM_WHIR_ROUNDS {
@@ -402,9 +426,18 @@ fn main(
         }
 
         // Compute fold from leaf values
+        // TODO: assert that this `fold` is consistent with
+        // the per-round sumcheck claim at `last_eval`, i.e. enforce
+        //   sum_q per_query_weight(q) * fold[q] == (contribution to last_eval)
+        // per whir/verifier.rs L218-226 (in-domain constraint direct check).
+        // Without this, a prover can commit to arbitrary leaves and pass.
         let fold = compute_fold(round_merkle_leaves[r], initial_fold_rand, n_queries);
 
         // Constraint RLC for this round (geometric_challenge)
+        // TODO: use `round_constraint_rlc` powers to batch
+        // (this round's OOD answers + in-domain constraints) into
+        // `last_eval` before calling run_whir_sumcheck below -- see
+        // whir/verifier.rs L178-180: the_sum += dot(constraint_rlc_coeffs, constraint_values).
         let round_constraint_rlc: Field = sho.squeeze_field();
 
         // Round sumcheck (quadratic, with potential per-round PoW inside)
@@ -453,9 +486,15 @@ fn main(
 
     // 4a.8: Final sumcheck (FINAL_SUMCHECK_ROUNDS rounds)
     //
-    // final_last_eval is the inner-WHIR sumcheck's exit value, a.k.a. the
-    // FinalClaim.linear_form_rlc that gap #17 compares against the RLC of
-    // weight MLEs at the final folding point (Stage F).
+    // TODO: `final_last_eval` is the inner-WHIR
+    // sumcheck's exit value. It feeds the FinalClaim linear_form_rlc check:
+    //   linear_form_rlc = final_last_eval / poly_eval
+    //                   - sum_{round, k} round_rlc[k] * round_weight_k.mle_evaluate(eval_point[start..])
+    //   assert sum_i initial_form_rlc[i] * weight_i.mle_evaluate(eval_point) == linear_form_rlc
+    // Weights: PrefixCovector per matrix (= matrix_evals below), blinding
+    // OffsetCovector, public_weight if MAX_PUBLIC_INPUTS > 0. Also need the
+    // final_vector-based `weights.evaluate(Identity, &final_vector) == evals`
+    // direct check per whir/verifier.rs L218-226.
     let (final_fold_rand, final_last_eval) =
         run_whir_sumcheck(&mut sho, last_eval, final_whir_sumcheck_coeffs);
 
@@ -475,12 +514,16 @@ fn main(
     let blinding_vector_rlc: [Field; NUM_BLINDING_VECTORS] =
         generate_combination_randomness(&mut sho, NUM_BLINDING_VECTORS);
 
-    // geometric_challenge for blinding constraints -- consumed in Stage F
-    // (FinalClaim linear_form_rlc for the blinding commitment)
+    // geometric_challenge for blinding constraints
+    // TODO: use `blinding_constraint_rlc` to build
+    // "the_sum" for the blinding initial sumcheck, same structure as
+    // gap #8 but applied to blinding commitments / blinding OOD answers.
     let blinding_constraint_rlc: [Field; BLINDING_WHIR_CONSTRAINT_COUNT] =
         generate_combination_randomness(&mut sho, BLINDING_WHIR_CONSTRAINT_COUNT);
 
     // Blinding initial sumcheck
+    // TODO: replace `0` with blinding `the_sum` from
+    // blinding_constraint_rlc + blinding evaluation claims.
     let (blinding_initial_fold_rand, mut blinding_last_eval) =
         run_whir_sumcheck(&mut sho, 0, blinding_whir_initial_coeffs);
 
@@ -561,9 +604,16 @@ fn main(
                 }
             }
         }
+        // TODO: assert `blinding_fold` is consistent with
+        // the blinding per-round sumcheck claim (mirror of gap #12 on
+        // blinding side). Merkle alone is not sufficient.
         let blinding_fold =
             compute_fold(blinding_fold_leaves, blinding_initial_fold_rand, n_queries);
 
+        // TODO: use `blinding_round_rlc` powers to fold this
+        // round's OOD answers + in-domain constraints into blinding_last_eval
+        // before the sumcheck below. Also track `new_fold_rand` for
+        // multi-round FinalClaim (currently dropped).
         let blinding_round_rlc: Field = sho.squeeze_field();
 
         let (new_fold_rand, new_last_eval) = run_whir_sumcheck(
@@ -616,6 +666,11 @@ fn main(
 
     // Blinding final sumcheck: BLINDING_FINAL_SUMCHECK_ROUNDS=0 means no rounds.
     // The array is sized BLINDING_FINAL_SC_ARRAY_SIZE=1 for Noir, but we skip execution.
+    // TODO: when this branch is live, assert
+    //   blinding_final_eval == sum_k tau2^k * beq((gamma_k, -rho), final_eval_point)
+    // via `construct_batched_eq_weights_from_gammas` (whir_zk/utils.rs L279-348)
+    // MLE-evaluated at the final blinding folding point. Requires h_gammas
+    // and a port of fill_eq_weights_at_gamma's squaring ladder.
     if BLINDING_FINAL_SUMCHECK_ROUNDS > 0 {
         let (_blinding_final_fold, _blinding_final_eval) =
             run_whir_sumcheck(&mut sho, blinding_last_eval, blinding_final_sumcheck_coeffs);
@@ -655,9 +710,23 @@ fn main(
     );
     // matrix_evals[k] = M_k_MLE(alpha, total_folding_rand). These are the
     // values of the PrefixCovector weights at the final WHIR folding point;
-    // they feed the FinalClaim::verify RLC in Stage F (see AUDIT.md gap #17).
-    // They are intentionally not compared to evals_az/bz/cz here: those
-    // scalars are (M_k * z)(alpha), which is a different object.
+    // they feed the FinalClaim::verify RLC below. They are intentionally
+    // not compared to evals_az/bz/cz here: those scalars are (M_k * z)(alpha),
+    // which is a different object.
+    //
+    // TODO: port FinalClaim::verify (whir/mod.rs) and enforce
+    //   linear_form_rlc = final_last_eval / poly_eval
+    //                   - sum_{round, k} round_weight_rlc[k] * round_weight_k.mle_evaluate(...)
+    //   assert sum_i initial_form_rlc[i] * weight_i.mle_evaluate(final_fold_point) == linear_form_rlc
+    // where weight_i for i in 0..3 is PrefixCovector(M_i^T * eq_alpha) -- whose MLE
+    // at total_folding_rand equals matrix_evals[i] -- and weight_3 is the
+    // blinding OffsetCovector (m_eval correction from w_folded_evals applies
+    // on the claimed side). `poly_eval` is
+    // MultilinearExtension(final_fold_rand).evaluate(&final_coefficients).
+    //
+    // TODO: when num_polynomials > 1 or num_vectors > 1,
+    // combined_claims / batched_h_claims become length-n vectors and all
+    // downstream checks must loop. Currently hard-coded to 1.
 
     // ===================================================================
     // Phase 6: Final Spartan relation check
