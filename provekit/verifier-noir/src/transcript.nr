@@ -674,3 +674,44 @@ fn absorb_3_gammas_then_2_gammas_matches_sequential() {
     assert(a.state[3] == b.state[3]);
     assert(a.absorb_pos == b.absorb_pos);
 }
+
+#[test]
+fn post_domain_separator_state_matches_rust() {
+    // Verifies that Noir's three-call absorb sequence (protocol_id 64 B +
+    // session_id 32 zero B + instance 32 B) produces the same state as a
+    // single 128-byte absorb. Matches spongefish's byte-level absorb
+    // semantic. Protects against any subtle permute-timing difference
+    // between multi-call and single-call absorbs at the rate boundary.
+
+    let mut concat: [u8; 128] = [0; 128];
+    for i in 0..64 {
+        concat[i] = (i as u8) + 1;
+    }
+    for i in 0..32 {
+        concat[96 + i] = (i as u8) + 100;
+    }
+
+    let mut a = Sponge::new();
+    a.absorb_bytes(concat);
+
+    let mut proto: [u8; 64] = [0; 64];
+    for i in 0..64 {
+        proto[i] = (i as u8) + 1;
+    }
+    let session: [u8; 32] = [0; 32];
+    let mut instance: [u8; 32] = [0; 32];
+    for i in 0..32 {
+        instance[i] = (i as u8) + 100;
+    }
+
+    let mut b = Sponge::new();
+    b.absorb_bytes(proto);
+    b.absorb_bytes(session);
+    b.absorb_bytes(instance);
+
+    assert(a.state[0] == b.state[0]);
+    assert(a.state[1] == b.state[1]);
+    assert(a.state[2] == b.state[2]);
+    assert(a.state[3] == b.state[3]);
+    assert(a.absorb_pos == b.absorb_pos);
+}

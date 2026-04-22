@@ -158,6 +158,11 @@ fn main(
 
     let mut sho = Sponge::new();
     sho.absorb_bytes(protocol_id);
+    // spongefish DomainSeparator absorbs session_id between protocol_id and
+    // instance (see spongefish/src/domain_separator.rs to_verifier). In the
+    // provekit flow session_id is always [0; 32].
+    let session_id: [u8; 32] = [0; 32];
+    sho.absorb_bytes(session_id);
     sho.absorb_bytes(instance);
 
     // ===================================================================
@@ -172,8 +177,11 @@ fn main(
     // whir::protocols::irs_commit::receive_commitment.
     sho.absorb_field_aligned(initial_root_hash);
 
-    for _i in 0..OOD_SAMPLES {
-        let _ood_query = sho.squeeze_field_aligned();
+    // Capture initial OOD points: Rust uses them as constraint points for
+    // the initial-form RLC fed into the first WHIR sumcheck (Stage F).
+    let mut initial_ood_queries: [Field; OOD_SAMPLES] = [0; OOD_SAMPLES];
+    for i in 0..OOD_SAMPLES {
+        initial_ood_queries[i] = sho.squeeze_field_aligned();
     }
     for i in 0..INITIAL_OOD_COUNT {
         sho.absorb_field_aligned(initial_ood_answers[i]);
@@ -183,8 +191,9 @@ fn main(
     // there are BLINDING_OOD_SAMPLES * NUM_BLINDING_VECTORS OOD answers).
     sho.absorb_field_aligned(blinding_root_hash);
 
-    for _i in 0..BLINDING_OOD_SAMPLES {
-        let _blinding_ood_query = sho.squeeze_field_aligned();
+    let mut blinding_initial_ood_queries: [Field; BLINDING_OOD_SAMPLES] = [0; BLINDING_OOD_SAMPLES];
+    for i in 0..BLINDING_OOD_SAMPLES {
+        blinding_initial_ood_queries[i] = sho.squeeze_field_aligned();
     }
     for i in 0..BLINDING_INITIAL_OOD_COUNT {
         sho.absorb_field_aligned(blinding_ood_answers[i]);
@@ -241,11 +250,11 @@ fn main(
     // points for gamma computation. This squeezes STIR_TOTAL_BYTES bytes.
     squeeze_stir_challenges(&mut sho, MAX_QUERIES_PER_ROUND, STIR_BYTES_PER_INDEX);
 
-    // 4.5: tau1 (verifier_message)
-    let _tau1: Field = sho.squeeze_field();
+    // 4.5: tau1 (verifier_message) -- used in build_combined_and_subproof_claims
+    let tau1: Field = sho.squeeze_field();
 
-    // 4.6: tau2 (verifier_message)
-    let _tau2: Field = sho.squeeze_field();
+    // 4.6: tau2 (verifier_message) -- used to RLC m_evals/g_hat_evals/h across gammas
+    let tau2: Field = sho.squeeze_field();
 
     // 4.7: Per-gamma prover messages
     // For each gamma point, absorb m_eval + 13 g_hat_evals = 14 fields.
@@ -268,6 +277,51 @@ fn main(
     // 4.9: batched_h_claims (prover_messages_vec, 1 per polynomial)
     sho.absorb_field(batched_h_claims);
 
+    // --- Build m_claim and g_hat_claims by tau2-weighted accumulation ---
+    //
+    // Mirrors whir_zk/verifier.rs L85-107 (num_polynomials = 1 in our config):
+    //   m_claim         = sum_k tau2^k * gamma_m_evals[k]
+    //   g_hat_claims[j] = sum_k tau2^k * gamma_g_hat_evals[k][j]
+    // where k runs over the MAX_GAMMAS gamma points.
+    //
+    // Note: expected_batched_h_claims also lives here in Rust but it uses
+    // the gamma values themselves via h(gamma, beta) = m_eval +
+    // sum_j beta^(j+1) * gamma^(2^j) * g_hat_j. Since gamma = all_gammas(...)
+    // needs an in-circuit coset expansion (omega, zeta powers) or Prover.toml
+    // hints (see AUDIT.md P1), the batched_h_claims equality is TODO. The
+    // combined_claims equality below is enforceable with only the
+    // already-absorbed data.
+    let mut m_claim: Field = 0;
+    let mut g_hat_claims: [Field; NUM_WITNESS_VARIABLES] = [0; NUM_WITNESS_VARIABLES];
+    let mut tau2_power: Field = 1;
+    for k in 0..MAX_GAMMAS {
+        m_claim += tau2_power * gamma_m_evals[k];
+        for j in 0..NUM_WITNESS_VARIABLES {
+            g_hat_claims[j] += tau2_power * gamma_g_hat_evals[k][j];
+        }
+        tau2_power *= tau2;
+    }
+
+    // --- Recompute expected_combined_claims from (m_claim, g_hat_claims, tau1) ---
+    //
+    // Mirrors combine_claim_from_components in whir_zk/utils.rs L157-165:
+    //   combined = m_claim + 2 * tau1 * univariate_eval(g_hat_claims, tau1)
+    //   univariate_eval([c_0, ..., c_{mu-1}], tau1) = sum_j c_j * tau1^j
+    //
+    // The factor 2 compensates for the (ell+1)-variable embedding where g_hat
+    // coefficients occupy only even slots (Rust comment at L158-163).
+    let mut univar_g_hat: Field = 0;
+    let mut tau1_power: Field = 1;
+    for j in 0..NUM_WITNESS_VARIABLES {
+        univar_g_hat += tau1_power * g_hat_claims[j];
+        tau1_power *= tau1;
+    }
+    let expected_combined_claims: Field = m_claim + 2 * tau1 * univar_g_hat;
+    assert(
+        combined_claims == expected_combined_claims,
+        "combined_claims mismatch (whir_zk/verifier.rs L124)",
+    );
+
     // ===================================================================
     // Phase 4a: Inner WHIR verify (blinded_commitment: whir::Config::verify)
     // ===================================================================
@@ -287,8 +341,10 @@ fn main(
     let _vector_rlc: [Field; 1] = generate_combination_randomness(&mut sho, 1);
 
     // 4a.2: geometric_challenge(INNER_WHIR_CONSTRAINT_COUNT)
-    // count = OOD_SAMPLES + NUM_LINEAR_FORMS (e.g. 1 + 5 = 6)
-    let _constraint_rlc: [Field; INNER_WHIR_CONSTRAINT_COUNT] =
+    // count = OOD_SAMPLES + NUM_LINEAR_FORMS (e.g. 1 + 4 = 5)
+    // Used in Stage F to RLC (OOD constraints, initial-form claims) into
+    // the initial sumcheck sum and into the FinalClaim linear_form_rlc check.
+    let constraint_rlc: [Field; INNER_WHIR_CONSTRAINT_COUNT] =
         generate_combination_randomness(&mut sho, INNER_WHIR_CONSTRAINT_COUNT);
 
     // Accumulator for all folding randomness across sumcheck phases (total = m)
@@ -304,12 +360,15 @@ fn main(
     }
 
     // 4a.4: Per-round WHIR verification (for NUM_WHIR_ROUNDS > 0)
+    // Capture per-round OOD points for the Stage F constraint RLC.
+    let mut round_ood_pts: [[Field; OOD_SAMPLES]; ROUND_ARRAY_SIZE] =
+        [[0; OOD_SAMPLES]; ROUND_ARRAY_SIZE];
     for r in 0..NUM_WHIR_ROUNDS {
         // Receive round commitment (irs_commit::receive_commitment)
         sho.absorb_field(round_root_hashes[r]);
 
-        for _i in 0..OOD_SAMPLES {
-            let _ood_pt = sho.squeeze_field();
+        for i in 0..OOD_SAMPLES {
+            round_ood_pts[r][i] = sho.squeeze_field();
         }
         for i in 0..OOD_SAMPLES {
             sho.absorb_field(round_ood_answers[r][i]);
@@ -321,6 +380,12 @@ fn main(
         // Open previous commitment: STIR challenge indices (squeeze bytes)
         squeeze_stir_challenges(&mut sho, round_num_queries[r], STIR_BYTES_PER_INDEX);
 
+        // Merkle proofs open the PREVIOUS commitment (initial for r=0,
+        // round_configs[r-1] for r>0). Matches Rust-side at
+        // generate_noir_inputs.rs:605-609.
+        let verify_root: Field =
+            if r == 0 { initial_root_hash } else { round_root_hashes[r - 1] };
+
         // Verify Merkle proofs for the opening
         let n_queries = round_num_queries[r];
         for q in 0..MAX_QUERIES_PER_ROUND {
@@ -331,16 +396,16 @@ fn main(
                     round_merkle_siblings[r][q],
                     round_merkle_tree_heights[r],
                     round_merkle_indices[r][q],
-                    round_root_hashes[r],
+                    verify_root,
                 );
             }
         }
 
         // Compute fold from leaf values
-        let _fold = compute_fold(round_merkle_leaves[r], initial_fold_rand, n_queries);
+        let fold = compute_fold(round_merkle_leaves[r], initial_fold_rand, n_queries);
 
         // Constraint RLC for this round (geometric_challenge)
-        let _round_constraint_rlc: Field = sho.squeeze_field();
+        let round_constraint_rlc: Field = sho.squeeze_field();
 
         // Round sumcheck (quadratic, with potential per-round PoW inside)
         let (round_fold_rand, new_last_eval) =
@@ -387,7 +452,11 @@ fn main(
     }
 
     // 4a.8: Final sumcheck (FINAL_SUMCHECK_ROUNDS rounds)
-    let (final_fold_rand, _final_last_eval) =
+    //
+    // final_last_eval is the inner-WHIR sumcheck's exit value, a.k.a. the
+    // FinalClaim.linear_form_rlc that gap #17 compares against the RLC of
+    // weight MLEs at the final folding point (Stage F).
+    let (final_fold_rand, final_last_eval) =
         run_whir_sumcheck(&mut sho, last_eval, final_whir_sumcheck_coeffs);
 
     // Accumulate final folding randomness
@@ -406,8 +475,9 @@ fn main(
     let blinding_vector_rlc: [Field; NUM_BLINDING_VECTORS] =
         generate_combination_randomness(&mut sho, NUM_BLINDING_VECTORS);
 
-    // geometric_challenge for blinding constraints
-    let _blinding_constraint_rlc: [Field; BLINDING_WHIR_CONSTRAINT_COUNT] =
+    // geometric_challenge for blinding constraints -- consumed in Stage F
+    // (FinalClaim linear_form_rlc for the blinding commitment)
+    let blinding_constraint_rlc: [Field; BLINDING_WHIR_CONSTRAINT_COUNT] =
         generate_combination_randomness(&mut sho, BLINDING_WHIR_CONSTRAINT_COUNT);
 
     // Blinding initial sumcheck
@@ -415,11 +485,13 @@ fn main(
         run_whir_sumcheck(&mut sho, 0, blinding_whir_initial_coeffs);
 
     // Per-round blinding WHIR verification
+    let mut blinding_round_ood_pts: [[Field; BLINDING_OOD_SAMPLES]; BLINDING_ROUND_ARRAY_SIZE] =
+        [[0; BLINDING_OOD_SAMPLES]; BLINDING_ROUND_ARRAY_SIZE];
     for r in 0..BLINDING_WHIR_ROUNDS {
         sho.absorb_field(blinding_round_root_hashes[r]);
 
-        for _i in 0..BLINDING_OOD_SAMPLES {
-            let _ood_pt = sho.squeeze_field();
+        for i in 0..BLINDING_OOD_SAMPLES {
+            blinding_round_ood_pts[r][i] = sho.squeeze_field();
         }
         for i in 0..BLINDING_OOD_SAMPLES {
             sho.absorb_field(blinding_round_ood_answers[r][i]);
@@ -434,17 +506,42 @@ fn main(
             BLINDING_STIR_BYTES_PER_INDEX,
         );
 
+        // Opens the PREVIOUS blinding commitment (see inner WHIR above).
+        let blinding_verify_root: Field =
+            if r == 0 { blinding_root_hash } else { blinding_round_root_hashes[r - 1] };
+
+        // Blinding round 0's leaf is NUM_BLINDING_VECTORS * BLINDING_FOLD_SIZE
+        // fields wide (one row of the initial interleaved commitment).
+        // Rounds 1+ open a folded tree whose rows are BLINDING_FOLD_SIZE
+        // fields wide; Prover.toml pads them into the same typed array.
+        // Slice the first BLINDING_FOLD_SIZE fields for the narrower hash.
         let n_queries = blinding_round_num_queries[r];
         for q in 0..BLINDING_MAX_QUERIES {
             if (q as u32) < n_queries {
-                verify_merkle_proof_dynamic(
-                    blinding_round_merkle_leaves[r][q],
-                    blinding_round_merkle_leaf_sizes[r],
-                    blinding_round_merkle_siblings[r][q],
-                    blinding_round_merkle_tree_heights[r],
-                    blinding_round_merkle_indices[r][q],
-                    blinding_round_root_hashes[r],
-                );
+                if r == 0 {
+                    verify_merkle_proof_dynamic(
+                        blinding_round_merkle_leaves[r][q],
+                        blinding_round_merkle_leaf_sizes[r],
+                        blinding_round_merkle_siblings[r][q],
+                        blinding_round_merkle_tree_heights[r],
+                        blinding_round_merkle_indices[r][q],
+                        blinding_verify_root,
+                    );
+                } else {
+                    let mut small_leaf: [Field; BLINDING_FOLD_SIZE] =
+                        [0; BLINDING_FOLD_SIZE];
+                    for i in 0..BLINDING_FOLD_SIZE {
+                        small_leaf[i] = blinding_round_merkle_leaves[r][q][i];
+                    }
+                    verify_merkle_proof_dynamic(
+                        small_leaf,
+                        BLINDING_FOLD_SIZE,
+                        blinding_round_merkle_siblings[r][q],
+                        blinding_round_merkle_tree_heights[r],
+                        blinding_round_merkle_indices[r][q],
+                        blinding_verify_root,
+                    );
+                }
             }
         }
 
@@ -464,12 +561,12 @@ fn main(
                 }
             }
         }
-        let _blinding_fold =
+        let blinding_fold =
             compute_fold(blinding_fold_leaves, blinding_initial_fold_rand, n_queries);
 
-        let _blinding_round_rlc: Field = sho.squeeze_field();
+        let blinding_round_rlc: Field = sho.squeeze_field();
 
-        let (_new_fold_rand, new_last_eval) = run_whir_sumcheck(
+        let (new_fold_rand, new_last_eval) = run_whir_sumcheck(
             &mut sho,
             blinding_last_eval,
             blinding_round_sumcheck_coeffs[r],
@@ -498,11 +595,17 @@ fn main(
     } else {
         blinding_round_root_hashes[BLINDING_WHIR_ROUNDS - 1]
     };
+    // Blinding final opens a folded tree (BLINDING_FOLD_SIZE-wide rows);
+    // Prover.toml pads them into the 112-wide typed array. Slice to match.
     for q in 0..BLINDING_MAX_QUERIES {
         if (q as u32) < blinding_final_num_queries {
+            let mut small_leaf: [Field; BLINDING_FOLD_SIZE] = [0; BLINDING_FOLD_SIZE];
+            for i in 0..BLINDING_FOLD_SIZE {
+                small_leaf[i] = blinding_final_merkle_leaves[q][i];
+            }
             verify_merkle_proof_dynamic(
-                blinding_final_merkle_leaves[q],
-                blinding_final_merkle_leaf_size,
+                small_leaf,
+                BLINDING_FOLD_SIZE,
                 blinding_final_merkle_siblings[q],
                 blinding_final_merkle_tree_height,
                 blinding_final_merkle_indices[q],
@@ -550,10 +653,11 @@ fn main(
         eq_row,
         eq_col,
     );
-
-    assert(matrix_evals[0] == evals_az, "Matrix A evaluation mismatch");
-    assert(matrix_evals[1] == evals_bz, "Matrix B evaluation mismatch");
-    assert(matrix_evals[2] == evals_cz, "Matrix C evaluation mismatch");
+    // matrix_evals[k] = M_k_MLE(alpha, total_folding_rand). These are the
+    // values of the PrefixCovector weights at the final WHIR folding point;
+    // they feed the FinalClaim::verify RLC in Stage F (see AUDIT.md gap #17).
+    // They are intentionally not compared to evals_az/bz/cz here: those
+    // scalars are (M_k * z)(alpha), which is a different object.
 
     // ===================================================================
     // Phase 6: Final Spartan relation check
