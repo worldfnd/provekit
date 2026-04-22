@@ -1,4 +1,7 @@
+#[cfg(target_arch = "wasm32")]
+use crate::b51_interleaved::ntt_nr_b51;
 use {
+    crate::ark_interleaved::ntt_nr_ark,
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
     rayon::{
@@ -92,6 +95,11 @@ impl NTTEngine {
     fn order(&self) -> usize {
         self.0.len() * 2
     }
+
+    /// Returns the precomputed roots of unity as a slice.
+    pub fn roots(&self) -> &[Fr] {
+        &self.0
+    }
 }
 
 static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEngine::new()));
@@ -103,11 +111,13 @@ static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEng
 /// * `values` - A mutable reference to an NTT container holding the
 ///   coefficients to be transformed.
 pub fn ntt_nr(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
-    let new_root = extend_roots_table(codeword_size);
-    interleaved_ntt_nr(&new_root.0, values, codeword_size, num_groups)
+    #[cfg(not(target_arch = "wasm32"))]
+    ntt_nr_ark(values, codeword_size, num_groups);
+    #[cfg(target_arch = "wasm32")]
+    ntt_nr_b51(values, codeword_size, num_groups);
 }
 
-fn extend_roots_table<'a>(codeword_size: usize) -> RwLockReadGuard<'a, NTTEngine> {
+pub fn extend_roots_table<'a>(codeword_size: usize) -> RwLockReadGuard<'a, NTTEngine> {
     let roots = ENGINE.read().unwrap();
     let new_root = if roots.order() >= codeword_size {
         roots
@@ -127,123 +137,6 @@ fn extend_roots_table<'a>(codeword_size: usize) -> RwLockReadGuard<'a, NTTEngine
 impl Default for NTTEngine {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// In-place Number Theoretic Transform (NTT) from normal order to reverse bit
-/// order.
-///
-/// # Use Case
-///
-/// Use this function when you have multiple polynomials
-/// stored in an interleaved fashion within a single vector, such as
-/// `[a0, b0, c0, d0, a1, b1, c1, d1, ...]` for four polynomials `a`, `b`,
-/// `c`, and `d`. By operating on interleaved data, you can perform the
-/// NTT on all polynomials in-place without needing to first transpose
-/// the data
-///
-/// # Arguments
-/// * `reversed_ordered_roots` - Precomputed roots of unity in reverse bit
-///   order.
-/// * `values` - coefficients to be transformed in place with evaluation or vice
-///   versa.
-fn interleaved_ntt_nr(
-    reversed_ordered_roots: &[Fr],
-    values: &mut [Fr],
-    codeword_size: usize,
-    mut num_groups: usize,
-) {
-    // Reversed ordered roots idea from "Inside the FFT blackbox"
-    // Implementation is a DIT NR algorithm
-
-    // This conditional is here because chunk_size for *chunk_exact_mut can't be 0
-    if codeword_size <= 1 {
-        return;
-    }
-
-    assert!(
-        values.len() % num_groups == 0,
-        "values.len() must be divisible by num_groups"
-    );
-
-    assert!(codeword_size.is_power_of_two());
-
-    // Each unique twiddle factor within a stage is a group.
-    let mut elements_in_group = values.len() / num_groups;
-
-    // num of groups is the same as inner inner ntt size
-    // let mut num_groups = 1;
-
-    // For large NTTs we start with linear scans through memory and once all the
-    // elements of the sub NTTs reach the size of workload_size we know that they
-    // are contiguous in cache memory and we switch over to a different strategy.
-    // If at the start the NTT already fits in cache memory we go directly to the
-    // cache strategy strategy.
-
-    // These following two loops could be merged together, but in microbenchmarks
-    // this split performs 5% better than nesting par_iter_mut inside
-    // par_chunks_exact over the ranges 2ˆ20 to 2ˆ24.
-
-    // Parallelizing over the groups is most effective but in the beginning there
-    // aren't enough groups to occupy all threads.
-    while num_groups < 32.min(codeword_size) && elements_in_group > workload_size::<Fr>() {
-        values
-            .chunks_exact_mut(elements_in_group)
-            .enumerate()
-            .for_each(|(k, group)| {
-                let omega = reversed_ordered_roots[k];
-                let (evens, odds) = group.split_at_mut(elements_in_group / 2);
-
-                evens.par_iter_mut().zip(odds).for_each(|(even, odd)| {
-                    (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
-                });
-            });
-        elements_in_group /= 2;
-        num_groups *= 2;
-    }
-
-    while num_groups < codeword_size && elements_in_group > workload_size::<Fr>() {
-        values
-            .par_chunks_exact_mut(elements_in_group)
-            .enumerate()
-            .for_each(|(k, group)| {
-                let omega = reversed_ordered_roots[k];
-                let (evens, odds) = group.split_at_mut(elements_in_group / 2);
-
-                evens.iter_mut().zip(odds).for_each(|(even, odd)| {
-                    (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
-                });
-            });
-        elements_in_group /= 2;
-        num_groups *= 2;
-    }
-
-    values
-        .par_chunks_exact_mut(elements_in_group)
-        .enumerate()
-        .for_each(|(k, group)| {
-            dit_nr_cache(reversed_ordered_roots, k, group, codeword_size / num_groups);
-        });
-}
-
-fn dit_nr_cache(reverse_ordered_roots: &[Fr], segment: usize, input: &mut [Fr], size: usize) {
-    let mut elements_in_group = input.len();
-    let mut num_of_groups = 1;
-
-    debug_assert!(size.is_power_of_two());
-
-    while num_of_groups < size {
-        let twiddle_base = segment * num_of_groups;
-        for (k, group) in input.chunks_exact_mut(elements_in_group).enumerate() {
-            let twiddle = twiddle_base + k;
-            let omega = reverse_ordered_roots[twiddle];
-            let (evens, odds) = group.split_at_mut(elements_in_group / 2);
-            evens.iter_mut().zip(odds).for_each(|(even, odd)| {
-                (*even, *odd) = (*even + omega * *odd, *even - omega * *odd)
-            });
-        }
-        elements_in_group /= 2;
-        num_of_groups *= 2;
     }
 }
 
@@ -347,10 +240,8 @@ fn intt_nr(values: &mut [Fr]) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    #[cfg(test)]
-    use proptest::prelude::*;
     use {
         super::{init_roots_reverse_ordered, reverse_order},
         crate::{
@@ -359,7 +250,7 @@ mod tests {
         },
         ark_bn254::Fr,
         ark_ff::BigInt,
-        proptest::collection,
+        proptest::{collection, prelude::*},
         std::{
             fmt,
             num::{NonZero, NonZeroUsize},

@@ -102,6 +102,19 @@ def warren_magic(max_bit_size, apply_sub: bool = False):
     return res
 
 
+def two_bit():
+    for i in range(0, 6):
+        val = i * p
+        subtractions = val >> 254
+        rem = val - subtractions * p
+        print(f"{i}p", subtractions, rem / p)
+
+    val = 2**256 - 1
+    subtractions = 2**256 - 1 >> 254
+    rem = val - subtractions * p
+    print("2**256-1", subtractions, rem / p)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Sub-reduction strategies for bn254.")
     parser.add_argument(
@@ -111,13 +124,16 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    print("two_bit")
+    two_bit()
+
     print("shift sum")
     shift_sum()
 
     print("\n warren")
     print(f"{'w':>3} {'m_bits':>6} {'sub':>5} {'shift':>5} {'m':>20}")
-    for w, m_bits, sub, shift, m in warren_magic(257, apply_sub=args.sub):
-        print(f"{w:>3} {m_bits:>6} {str(sub):>5} {shift:>5} {hex(m):>20}")
+    # for w, m_bits, sub, shift, m in warren_magic(257, apply_sub=args.sub):
+    #     print(f"{w:>3} {m_bits:>6} {str(sub):>5} {shift:>5} {hex(m):>20}")
 
     for w, m_bits, sub, shift, m in warren_magic(256, apply_sub=args.sub):
         print(f"{w:>3} {m_bits:>6} {str(sub):>5} {shift:>5} {hex(m):>20}")

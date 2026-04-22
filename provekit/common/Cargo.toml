@@ -61,6 +61,8 @@ ignored = ["keccak"] # Intentionally anchored to keep Noir beta.19-compatible RC
 
 [dev-dependencies]
 divan.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 proptest.workspace = true
 
 [[bench]]
