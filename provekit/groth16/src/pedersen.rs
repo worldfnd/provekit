@@ -1,0 +1,268 @@
+/// Pedersen commitment scheme for BSB22 extension.
+///
+/// Ported from gnark-crypto's `ecc/bn254/fr/pedersen/pedersen.go`.
+///
+/// A Pedersen commitment C = Σ vᵢ·Gᵢ binds the prover to values v₁..vₖ
+/// using bases G₁..Gₖ from the trusted setup. The proof of knowledge (PoK)
+/// proves the prover knows the committed values without revealing them.
+use anyhow::{ensure, Result};
+use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
+use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
+use ark_ff::{Field, One, UniformRand, Zero};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+
+/// Pedersen proving key: bases for commitment and PoK generation.
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct ProvingKey {
+    /// Original bases [G₁, G₂, ..., Gₖ] from trusted setup.
+    pub basis: Vec<G1Affine>,
+    /// Bases raised to secret sigma: [G₁^σ, G₂^σ, ..., Gₖ^σ].
+    pub basis_exp_sigma: Vec<G1Affine>,
+}
+
+/// Pedersen verifying key: G2 elements for pairing-based verification.
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct VerifyingKey {
+    /// Random G2 generator chosen during setup.
+    pub g: G2Affine,
+    /// G^(-σ) where σ is the secret from setup.
+    pub g_sigma_neg: G2Affine,
+}
+
+/// Generate Pedersen commitment keys from bases.
+///
+/// `bases_per_commitment` is a slice of slices — one set of bases per commitment.
+/// `g2_point` is an optional pre-chosen G2 point (if None, a random one is sampled).
+///
+/// Ported from gnark-crypto `pedersen.Setup()`.
+pub fn setup(
+    bases_per_commitment: &[&[G1Affine]],
+    g2_point: Option<G2Affine>,
+) -> Result<(Vec<ProvingKey>, VerifyingKey)> {
+    let mut rng = ark_std::test_rng();
+
+    // Choose G2 generator
+    let g = g2_point.unwrap_or_else(|| G2Projective::rand(&mut rng).into_affine());
+
+    // Sample secret sigma
+    let sigma = Fr::rand(&mut rng);
+    ensure!(!sigma.is_zero(), "sigma must be non-zero");
+
+    // Compute G^(-sigma)
+    let g_sigma_neg: G2Affine = (-(G2Projective::from(g) * sigma)).into_affine();
+
+    let vk = VerifyingKey { g, g_sigma_neg };
+
+    let pks: Vec<ProvingKey> = bases_per_commitment
+        .iter()
+        .map(|bases| {
+            // BasisExpSigma[i] = Basis[i] * sigma
+            let basis_exp_sigma: Vec<G1Affine> = bases
+                .iter()
+                .map(|b| (G1Projective::from(*b) * sigma).into_affine())
+                .collect();
+
+            ProvingKey {
+                basis: bases.to_vec(),
+                basis_exp_sigma,
+            }
+        })
+        .collect();
+
+    Ok((pks, vk))
+}
+
+impl ProvingKey {
+    /// Compute Pedersen commitment: C = Σ vᵢ · Basis[i].
+    ///
+    /// Ported from gnark-crypto `ProvingKey.Commit()`.
+    pub fn commit(&self, values: &[Fr]) -> Result<G1Affine> {
+        ensure!(
+            values.len() == self.basis.len(),
+            "commit: got {} values, expected {}",
+            values.len(),
+            self.basis.len()
+        );
+
+        if values.is_empty() {
+            return Ok(G1Affine::zero());
+        }
+
+        let commitment = G1Projective::msm(&self.basis, values).map_err(crate::msm_err)?;
+        Ok(commitment.into_affine())
+    }
+
+    /// Generate proof of knowledge: PoK = Σ vᵢ · BasisExpSigma[i].
+    ///
+    /// Proves the prover knows the values inside the commitment without
+    /// revealing them. The verifier checks e(C, G^(-σ)) · e(PoK, G) == 1.
+    ///
+    /// Ported from gnark-crypto `ProvingKey.ProveKnowledge()`.
+    pub fn prove_knowledge(&self, values: &[Fr]) -> Result<G1Affine> {
+        ensure!(
+            values.len() == self.basis_exp_sigma.len(),
+            "prove_knowledge: got {} values, expected {}",
+            values.len(),
+            self.basis_exp_sigma.len()
+        );
+
+        if values.is_empty() {
+            return Ok(G1Affine::zero());
+        }
+
+        let pok = G1Projective::msm(&self.basis_exp_sigma, values).map_err(crate::msm_err)?;
+        Ok(pok.into_affine())
+    }
+}
+
+/// Fold multiple G1 points into one using a random linear combination.
+///
+/// Returns: points[0] + coeff·points[1] + coeff²·points[2] + ...
+///
+/// Ported from gnark-crypto `G1Affine.Fold()`.
+pub fn fold(points: &[G1Affine], coeff: Fr) -> Result<G1Affine> {
+    if points.is_empty() {
+        return Ok(G1Affine::zero());
+    }
+    if points.len() == 1 {
+        return Ok(points[0]);
+    }
+
+    // Build scalars: [1, coeff, coeff², coeff³, ...]
+    let mut scalars = Vec::with_capacity(points.len());
+    let mut power = Fr::one();
+    for _ in 0..points.len() {
+        scalars.push(power);
+        power *= coeff;
+    }
+
+    let result = G1Projective::msm(points, &scalars).map_err(crate::msm_err)?;
+    Ok(result.into_affine())
+}
+
+/// Batch verify multiple commitments against multiple verifying keys.
+///
+/// Checks that for each commitment Cᵢ with PoKᵢ and verifying key VKᵢ:
+///   e(Cᵢ, VKᵢ.GSigmaNeg) · e(PoKᵢ, VKᵢ.G) == 1
+///
+/// All PoKs are expected to have already been folded into a single point.
+///
+/// Ported from gnark-crypto `pedersen.BatchVerifyMultiVk()`.
+pub fn batch_verify_multi_vk(
+    vks: &[VerifyingKey],
+    commitments: &[G1Affine],
+    folded_pok: G1Affine,
+    folding_challenge: Fr,
+) -> Result<()> {
+    use ark_bn254::Bn254;
+    use ark_ec::pairing::Pairing;
+
+    ensure!(
+        vks.len() == commitments.len(),
+        "batch_verify: {} vks vs {} commitments",
+        vks.len(),
+        commitments.len()
+    );
+
+    if vks.is_empty() {
+        return Ok(());
+    }
+
+    // All VKs should share the same G point (enforced during setup).
+    let g = vks[0].g;
+
+    // Fold commitments: C_folded = C₀ + challenge·C₁ + challenge²·C₂ + ...
+    let folded_commitment = fold(commitments, folding_challenge)?;
+
+    // Fold GSigmaNeg: we need Σ rⁱ·VKᵢ.GSigmaNeg
+    // Since all G points are the same, this simplifies to:
+    // GSigmaNeg_folded = Σ rⁱ · GSigmaNeg_i
+    let g_sigma_negs: Vec<G2Affine> = vks.iter().map(|vk| vk.g_sigma_neg).collect();
+    let fold_scalars: Vec<Fr> = {
+        let mut s = Vec::with_capacity(vks.len());
+        let mut power = Fr::one();
+        for _ in 0..vks.len() {
+            s.push(power);
+            power *= folding_challenge;
+        }
+        s
+    };
+    let g_sigma_neg_folded: G2Affine = {
+        use ark_ec::VariableBaseMSM;
+        <G2Projective as VariableBaseMSM>::msm(&g_sigma_negs, &fold_scalars).map_err(crate::msm_err)?.into_affine()
+    };
+
+    // Pairing check: e(folded_commitment, g_sigma_neg_folded) · e(folded_pok, g) == 1
+    let result = Bn254::multi_pairing(
+        [folded_commitment, folded_pok],
+        [g_sigma_neg_folded, g],
+    );
+
+    ensure!(
+        result.0.is_one(),
+        "pedersen batch verification failed: pairing check did not pass"
+    );
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ark_ff::UniformRand;
+
+    #[test]
+    fn test_commit_and_verify() {
+        let mut rng = ark_std::test_rng();
+
+        // Generate random bases
+        let bases: Vec<G1Affine> = (0..5)
+            .map(|_| G1Projective::rand(&mut rng).into_affine())
+            .collect();
+
+        let (pks, vk) = setup(&[&bases], None).unwrap();
+        let pk = &pks[0];
+
+        // Commit to random values
+        let values: Vec<Fr> = (0..5).map(|_| Fr::rand(&mut rng)).collect();
+        let commitment = pk.commit(&values).unwrap();
+        let pok = pk.prove_knowledge(&values).unwrap();
+
+        // Verify
+        batch_verify_multi_vk(
+            &[vk],
+            &[commitment],
+            pok,
+            Fr::one(), // trivial challenge for single commitment
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn test_fold_single() {
+        let mut rng = ark_std::test_rng();
+        let p = G1Projective::rand(&mut rng).into_affine();
+        let result = fold(&[p], Fr::rand(&mut rng)).unwrap();
+        assert_eq!(result, p);
+    }
+
+    #[test]
+    fn test_commit_wrong_values_fails() {
+        let mut rng = ark_std::test_rng();
+        let bases: Vec<G1Affine> = (0..3)
+            .map(|_| G1Projective::rand(&mut rng).into_affine())
+            .collect();
+        let (pks, vk) = setup(&[&bases], None).unwrap();
+        let pk = &pks[0];
+
+        let values: Vec<Fr> = (0..3).map(|_| Fr::rand(&mut rng)).collect();
+        let commitment = pk.commit(&values).unwrap();
+
+        // Generate PoK with WRONG values
+        let wrong_values: Vec<Fr> = (0..3).map(|_| Fr::rand(&mut rng)).collect();
+        let wrong_pok = pk.prove_knowledge(&wrong_values).unwrap();
+
+        let result = batch_verify_multi_vk(&[vk], &[commitment], wrong_pok, Fr::one());
+        assert!(result.is_err());
+    }
+}

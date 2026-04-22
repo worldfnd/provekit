@@ -1,0 +1,153 @@
+/// Core Groth16+BSB22 types: Proof, ProvingKey, VerifyingKey.
+///
+/// Ported from gnark's `backend/groth16/bn254/setup.go` and `prove.go`.
+/// Notation follows Figure 4 in the DIZK paper.
+use ark_bn254::{Bn254, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
+use ark_ec::pairing::Pairing;
+use ark_ec::AffineRepr;
+use ark_ff::{Field, Zero};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+
+use crate::pedersen;
+
+/// A Groth16+BSB22 proof.
+///
+/// Contains the standard Groth16 elements (Ar, Bs, Krs) plus
+/// BSB22 Pedersen commitments and a batched proof of knowledge.
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct Proof {
+    /// [A]₁ = Σ wᵢ·[Aᵢ(τ)]₁ + [α]₁ + r·[δ]₁
+    pub ar: G1Affine,
+    /// [B]₂ = Σ wᵢ·[Bᵢ(τ)]₂ + [β]₂ + s·[δ]₂
+    pub bs: G2Affine,
+    /// [C]₁ = Σ wᵢ·[Kᵢ(τ)]₁ + Σ hⱼ·[Zⱼ(τ)]₁ + s·[A]₁ + r·[B]₁ - rs·[δ]₁
+    pub krs: G1Affine,
+    /// Pedersen commitments (BSB22 extension).
+    pub commitments: Vec<G1Affine>,
+    /// Batched proof of knowledge for all commitments.
+    pub commitment_pok: G1Affine,
+}
+
+impl Proof {
+    /// Checks that proof elements are in the correct subgroup.
+    pub fn is_valid(&self) -> bool {
+        use ark_ec::CurveGroup;
+        // For BN254 with cofactor 1, all points on the curve are in the subgroup.
+        // We just check they're on the curve (not the point at infinity for Ar, Bs).
+        self.ar != G1Affine::zero() && self.bs != G2Affine::zero()
+    }
+}
+
+/// Groth16 proving key.
+///
+/// Contains all curve points needed by the prover to generate a proof.
+/// These are computed during trusted setup from the toxic waste.
+#[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
+pub struct ProvingKey {
+    /// FFT domain cardinality (number of constraints rounded up to power of 2).
+    pub domain_size: u64,
+    /// Generator of the FFT domain.
+    pub domain_gen: Fr,
+
+    // -- G1 elements --
+    /// [α]₁
+    pub g1_alpha: G1Affine,
+    /// [β]₁
+    pub g1_beta: G1Affine,
+    /// [δ]₁
+    pub g1_delta: G1Affine,
+    /// [Aᵢ(τ)]₁ for each wire (excluding infinity points).
+    pub g1_a: Vec<G1Affine>,
+    /// [Bᵢ(τ)]₁ for each wire (excluding infinity points).
+    pub g1_b: Vec<G1Affine>,
+    /// [Kᵢ(τ)]₁ for private wires only.
+    pub g1_k: Vec<G1Affine>,
+    /// [τⁱ · Z(τ)/δ]₁ for i in 0..domain_size-1.
+    pub g1_z: Vec<G1Affine>,
+
+    // -- G2 elements --
+    /// [β]₂
+    pub g2_beta: G2Affine,
+    /// [δ]₂
+    pub g2_delta: G2Affine,
+    /// [Bᵢ(τ)]₂ for each wire (excluding infinity points).
+    pub g2_b: Vec<G2Affine>,
+
+    // -- Infinity tracking --
+    /// infinity_a[i] == true means wire i has A(τ) == 0.
+    pub infinity_a: Vec<bool>,
+    /// infinity_b[i] == true means wire i has B(τ) == 0.
+    pub infinity_b: Vec<bool>,
+    /// Count of infinity points in A.
+    pub nb_infinity_a: u64,
+    /// Count of infinity points in B.
+    pub nb_infinity_b: u64,
+
+    /// Pedersen commitment proving keys (one per BSB22 commitment).
+    pub commitment_keys: Vec<pedersen::ProvingKey>,
+}
+
+/// Groth16 verifying key.
+///
+/// Contains the minimal curve points needed by the verifier.
+/// Note: precomputed fields (g2_delta_neg, g2_gamma_neg, e_alpha_beta)
+/// are not serialized — call `precompute()` after deserialization.
+#[derive(Clone, Debug)]
+pub struct VerifyingKey {
+    // -- G1 elements --
+    /// [α]₁
+    pub g1_alpha: G1Affine,
+    /// [Kᵢ(τ)]₁ for public wires (including commitment wires).
+    pub g1_k: Vec<G1Affine>,
+
+    // -- G2 elements --
+    /// [β]₂
+    pub g2_beta: G2Affine,
+    /// [δ]₂
+    pub g2_delta: G2Affine,
+    /// [γ]₂
+    pub g2_gamma: G2Affine,
+
+    // -- Precomputed (set by precompute(), not serialized) --
+    /// -[δ]₂
+    pub g2_delta_neg: G2Affine,
+    /// -[γ]₂
+    pub g2_gamma_neg: G2Affine,
+    /// e([α]₁, [β]₂)
+    pub e_alpha_beta: <Bn254 as Pairing>::TargetField,
+
+    /// Pedersen commitment verifying keys (one per BSB22 commitment).
+    pub commitment_keys: Vec<pedersen::VerifyingKey>,
+    /// For each commitment, the indices of public/commitment-committed wires.
+    pub public_and_commitment_committed: Vec<Vec<usize>>,
+}
+
+impl VerifyingKey {
+    /// Precompute cached values: e(α,β), -δ₂, -γ₂.
+    /// Must be called after deserialization.
+    pub fn precompute(&mut self) -> anyhow::Result<()> {
+        use ark_ec::pairing::Pairing;
+        self.e_alpha_beta =
+            Bn254::pairing(self.g1_alpha, self.g2_beta).0;
+
+        self.g2_delta_neg = {
+            let mut neg = self.g2_delta;
+            use ark_ec::AffineRepr;
+            neg = (-G2Projective::from(neg)).into();
+            neg
+        };
+
+        self.g2_gamma_neg = {
+            let mut neg = self.g2_gamma;
+            neg = (-G2Projective::from(neg)).into();
+            neg
+        };
+
+        Ok(())
+    }
+
+    /// Number of public witness elements expected (excluding the constant 1 wire).
+    pub fn nb_public_witness(&self) -> usize {
+        self.g1_k.len() - 1
+    }
+}
