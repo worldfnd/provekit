@@ -248,16 +248,19 @@ fn main(
     let _tau2: Field = sho.squeeze_field();
 
     // 4.7: Per-gamma prover messages
-    // For each gamma point (from the STIR opening), for each polynomial:
-    //   absorb m_eval, then g_hat_eval per witness variable
-    for g in 0..MAX_GAMMAS {
-        if (g as u32) < num_gammas {
-            sho.absorb_field(gamma_m_evals[g]);
-            for v in 0..NUM_WITNESS_VARIABLES {
-                sho.absorb_field(gamma_g_hat_evals[g][v]);
-            }
-        }
+    // For each gamma point, absorb m_eval + 13 g_hat_evals = 14 fields.
+    // MAX_GAMMAS = num_gammas = 1016 by protocol (see generate_noir_inputs.rs:750).
+    // Batched into 3-gamma aligned groups (42 absorbs = 14 rate cycles) to
+    // eliminate runtime lane dispatch. 1016 = 3 * 338 + 2, so 338 full
+    // batches + 1 trailing 2-gamma batch.
+    assert(
+        num_gammas == MAX_GAMMAS,
+        "num_gammas must equal MAX_GAMMAS for batched absorb",
+    );
+    for batch in 0..338 {
+        sho.absorb_3_gammas(gamma_m_evals, gamma_g_hat_evals, batch * 3);
     }
+    sho.absorb_2_gammas(gamma_m_evals, gamma_g_hat_evals, 338 * 3);
 
     // 4.8: combined_claims (prover_messages_vec, 1 per polynomial)
     sho.absorb_field(combined_claims);

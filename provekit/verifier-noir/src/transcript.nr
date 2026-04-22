@@ -259,6 +259,172 @@ impl Sponge {
         self.state[2] = 0;
         self.do_permute();
     }
+
+    // =====================================================================
+    // Gamma-batched absorbs (Phase E)
+    //
+    // The per-gamma loop at [main.nr:253] calls `absorb_field` 14 times per
+    // gamma (1 gm + 13 gg), which in ACIR costs the runtime
+    // `state[absorb_pos / 32] = f` dispatch per call. These helpers rewrite
+    // the batch as compile-time-indexed rate-cycle groups, eliminating the
+    // runtime lane dispatch and reducing the per-gamma-loop opcode count.
+    //
+    // Cycle math: 14 fields-per-gamma * 3 gammas = 42 = 14 rate-cycles
+    // (perfectly aligned, absorb_pos goes 0 -> 96 after a 3-gamma batch).
+    // 2-gamma leftover (28 absorbs) ends at absorb_pos = 32.
+    // =====================================================================
+
+    /// Absorb 3 consecutive gammas (42 fields) with compile-time lane writes.
+    /// Caller guarantees `g_base + 2 < MAX_GAMMAS`. Ends with absorb_pos = 96.
+    pub fn absorb_3_gammas(
+        &mut self,
+        gm: [Field; crate::types::MAX_GAMMAS],
+        gg: [[Field; crate::types::NUM_WITNESS_VARIABLES]; crate::types::MAX_GAMMAS],
+        g_base: u32,
+    ) {
+        self.squeeze_pos = RATE_BYTES;
+        if self.absorb_pos == RATE_BYTES {
+            self.do_permute();
+            self.absorb_pos = 0;
+        }
+
+        // Cycle 0: gm[g], gg[g][0], gg[g][1]   (no leading permute)
+        self.state[0] = gm[g_base];
+        self.state[1] = gg[g_base][0];
+        self.state[2] = gg[g_base][1];
+        // Cycle 1
+        self.do_permute();
+        self.state[0] = gg[g_base][2];
+        self.state[1] = gg[g_base][3];
+        self.state[2] = gg[g_base][4];
+        // Cycle 2
+        self.do_permute();
+        self.state[0] = gg[g_base][5];
+        self.state[1] = gg[g_base][6];
+        self.state[2] = gg[g_base][7];
+        // Cycle 3
+        self.do_permute();
+        self.state[0] = gg[g_base][8];
+        self.state[1] = gg[g_base][9];
+        self.state[2] = gg[g_base][10];
+        // Cycle 4: spills into gm[g+1]
+        self.do_permute();
+        self.state[0] = gg[g_base][11];
+        self.state[1] = gg[g_base][12];
+        self.state[2] = gm[g_base + 1];
+        // Cycle 5
+        self.do_permute();
+        self.state[0] = gg[g_base + 1][0];
+        self.state[1] = gg[g_base + 1][1];
+        self.state[2] = gg[g_base + 1][2];
+        // Cycle 6
+        self.do_permute();
+        self.state[0] = gg[g_base + 1][3];
+        self.state[1] = gg[g_base + 1][4];
+        self.state[2] = gg[g_base + 1][5];
+        // Cycle 7
+        self.do_permute();
+        self.state[0] = gg[g_base + 1][6];
+        self.state[1] = gg[g_base + 1][7];
+        self.state[2] = gg[g_base + 1][8];
+        // Cycle 8
+        self.do_permute();
+        self.state[0] = gg[g_base + 1][9];
+        self.state[1] = gg[g_base + 1][10];
+        self.state[2] = gg[g_base + 1][11];
+        // Cycle 9: spills into gm[g+2] and first gg of 3rd gamma
+        self.do_permute();
+        self.state[0] = gg[g_base + 1][12];
+        self.state[1] = gm[g_base + 2];
+        self.state[2] = gg[g_base + 2][0];
+        // Cycle 10
+        self.do_permute();
+        self.state[0] = gg[g_base + 2][1];
+        self.state[1] = gg[g_base + 2][2];
+        self.state[2] = gg[g_base + 2][3];
+        // Cycle 11
+        self.do_permute();
+        self.state[0] = gg[g_base + 2][4];
+        self.state[1] = gg[g_base + 2][5];
+        self.state[2] = gg[g_base + 2][6];
+        // Cycle 12
+        self.do_permute();
+        self.state[0] = gg[g_base + 2][7];
+        self.state[1] = gg[g_base + 2][8];
+        self.state[2] = gg[g_base + 2][9];
+        // Cycle 13
+        self.do_permute();
+        self.state[0] = gg[g_base + 2][10];
+        self.state[1] = gg[g_base + 2][11];
+        self.state[2] = gg[g_base + 2][12];
+
+        self.absorb_pos = RATE_BYTES;
+    }
+
+    /// Absorb 2 consecutive gammas (28 fields = 9 cycles + 1 residual).
+    /// Used for the 2-gamma leftover after 338 aligned 3-gamma batches
+    /// (1016 mod 3 == 2). Ends with absorb_pos = 32.
+    pub fn absorb_2_gammas(
+        &mut self,
+        gm: [Field; crate::types::MAX_GAMMAS],
+        gg: [[Field; crate::types::NUM_WITNESS_VARIABLES]; crate::types::MAX_GAMMAS],
+        g_base: u32,
+    ) {
+        self.squeeze_pos = RATE_BYTES;
+        if self.absorb_pos == RATE_BYTES {
+            self.do_permute();
+            self.absorb_pos = 0;
+        }
+
+        // Cycle 0
+        self.state[0] = gm[g_base];
+        self.state[1] = gg[g_base][0];
+        self.state[2] = gg[g_base][1];
+        // Cycle 1
+        self.do_permute();
+        self.state[0] = gg[g_base][2];
+        self.state[1] = gg[g_base][3];
+        self.state[2] = gg[g_base][4];
+        // Cycle 2
+        self.do_permute();
+        self.state[0] = gg[g_base][5];
+        self.state[1] = gg[g_base][6];
+        self.state[2] = gg[g_base][7];
+        // Cycle 3
+        self.do_permute();
+        self.state[0] = gg[g_base][8];
+        self.state[1] = gg[g_base][9];
+        self.state[2] = gg[g_base][10];
+        // Cycle 4: spills into gm[g+1]
+        self.do_permute();
+        self.state[0] = gg[g_base][11];
+        self.state[1] = gg[g_base][12];
+        self.state[2] = gm[g_base + 1];
+        // Cycle 5
+        self.do_permute();
+        self.state[0] = gg[g_base + 1][0];
+        self.state[1] = gg[g_base + 1][1];
+        self.state[2] = gg[g_base + 1][2];
+        // Cycle 6
+        self.do_permute();
+        self.state[0] = gg[g_base + 1][3];
+        self.state[1] = gg[g_base + 1][4];
+        self.state[2] = gg[g_base + 1][5];
+        // Cycle 7
+        self.do_permute();
+        self.state[0] = gg[g_base + 1][6];
+        self.state[1] = gg[g_base + 1][7];
+        self.state[2] = gg[g_base + 1][8];
+        // Cycle 8
+        self.do_permute();
+        self.state[0] = gg[g_base + 1][9];
+        self.state[1] = gg[g_base + 1][10];
+        self.state[2] = gg[g_base + 1][11];
+        // Residual absorb (permute + lane 0)
+        self.do_permute();
+        self.state[0] = gg[g_base + 1][12];
+        self.absorb_pos = 32;
+    }
 }
 
 // =========================================================================
@@ -411,4 +577,100 @@ fn absorb_bytes_96_spans_all_rate_lanes() {
     assert(a.state[2] == bytes_le_to_field(l2));
     assert(a.state[3] == 0);
     assert(a.absorb_pos == 96);
+}
+
+#[test]
+fn absorb_3_gammas_matches_sequential() {
+    // Fill the first 3 gammas with deterministic test data; rest stays zero.
+    let mut gm: [Field; crate::types::MAX_GAMMAS] = [0; crate::types::MAX_GAMMAS];
+    let mut gg: [[Field; crate::types::NUM_WITNESS_VARIABLES]; crate::types::MAX_GAMMAS] =
+        [[0; crate::types::NUM_WITNESS_VARIABLES]; crate::types::MAX_GAMMAS];
+    for i in 0..3 {
+        gm[i] = (i as Field) * 100 + 1;
+        for v in 0..13 {
+            gg[i][v] = (i as Field) * 1000 + (v as Field) * 10 + 7;
+        }
+    }
+
+    // Sponge A: batched helper.
+    let mut a = Sponge::new();
+    a.absorb_3_gammas(gm, gg, 0);
+
+    // Sponge B: sequential absorb_field in the same order.
+    let mut b = Sponge::new();
+    for g in 0..3 {
+        b.absorb_field(gm[g]);
+        for v in 0..13 {
+            b.absorb_field(gg[g][v]);
+        }
+    }
+
+    assert(a.state[0] == b.state[0]);
+    assert(a.state[1] == b.state[1]);
+    assert(a.state[2] == b.state[2]);
+    assert(a.state[3] == b.state[3]);
+    assert(a.absorb_pos == b.absorb_pos);
+}
+
+#[test]
+fn absorb_2_gammas_matches_sequential() {
+    let mut gm: [Field; crate::types::MAX_GAMMAS] = [0; crate::types::MAX_GAMMAS];
+    let mut gg: [[Field; crate::types::NUM_WITNESS_VARIABLES]; crate::types::MAX_GAMMAS] =
+        [[0; crate::types::NUM_WITNESS_VARIABLES]; crate::types::MAX_GAMMAS];
+    for i in 0..2 {
+        gm[i] = (i as Field) * 100 + 1;
+        for v in 0..13 {
+            gg[i][v] = (i as Field) * 1000 + (v as Field) * 10 + 7;
+        }
+    }
+
+    let mut a = Sponge::new();
+    a.absorb_2_gammas(gm, gg, 0);
+
+    let mut b = Sponge::new();
+    for g in 0..2 {
+        b.absorb_field(gm[g]);
+        for v in 0..13 {
+            b.absorb_field(gg[g][v]);
+        }
+    }
+
+    assert(a.state[0] == b.state[0]);
+    assert(a.state[1] == b.state[1]);
+    assert(a.state[2] == b.state[2]);
+    assert(a.state[3] == b.state[3]);
+    assert(a.absorb_pos == b.absorb_pos);
+}
+
+#[test]
+fn absorb_3_gammas_then_2_gammas_matches_sequential() {
+    // End-to-end: simulate the main.nr pattern of 1 full 3-batch + 1 trailing 2-batch,
+    // spanning 5 gammas. Catches any error in the entry-permute handoff between batches.
+    let mut gm: [Field; crate::types::MAX_GAMMAS] = [0; crate::types::MAX_GAMMAS];
+    let mut gg: [[Field; crate::types::NUM_WITNESS_VARIABLES]; crate::types::MAX_GAMMAS] =
+        [[0; crate::types::NUM_WITNESS_VARIABLES]; crate::types::MAX_GAMMAS];
+    for i in 0..5 {
+        gm[i] = (i as Field) * 100 + 1;
+        for v in 0..13 {
+            gg[i][v] = (i as Field) * 1000 + (v as Field) * 10 + 7;
+        }
+    }
+
+    let mut a = Sponge::new();
+    a.absorb_3_gammas(gm, gg, 0);
+    a.absorb_2_gammas(gm, gg, 3);
+
+    let mut b = Sponge::new();
+    for g in 0..5 {
+        b.absorb_field(gm[g]);
+        for v in 0..13 {
+            b.absorb_field(gg[g][v]);
+        }
+    }
+
+    assert(a.state[0] == b.state[0]);
+    assert(a.state[1] == b.state[1]);
+    assert(a.state[2] == b.state[2]);
+    assert(a.state[3] == b.state[3]);
+    assert(a.absorb_pos == b.absorb_pos);
 }
