@@ -1,6 +1,6 @@
 # Tests that use blackbox functions not yet supported by provekit.
 # Counted as SKIP (not FAIL) by scripts/run_noir_execution_success.sh
-# and excluded from scripts/generate_witness_comparison.py.
+# and excluded from scripts/generate_provekit_witness_report.py.
 # Remove entries here once the corresponding blackbox is supported.
 #
 # Format: one bare test name per line. Blank lines and `#` comments are ignored.

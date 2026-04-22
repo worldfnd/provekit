@@ -89,7 +89,7 @@ jobs:
         run: |
           python3 .github/scripts/build_noir_pr_comment.py \
             --grouped-report "noir-execution-logs/grouped_error_report.txt" \
-            --witness-report "noir-execution-logs/witness_comparison.md" \
+            --witness-report "noir-execution-logs/provekit_witness_report.md" \
             --output "noir-execution-logs/pr_comment.md" \
             --run-id "${{ github.run_id }}" \
             --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \

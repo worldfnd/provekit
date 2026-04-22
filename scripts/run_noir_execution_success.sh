@@ -50,7 +50,7 @@ fi
 # ---------------------------------------------------------------------------
 # Unimplemented-blackbox skip list
 # Single source of truth: scripts/noir_skip_tests.txt (shared with
-# scripts/generate_witness_comparison.py). Counted as SKIP (not FAIL).
+# scripts/generate_provekit_witness_report.py). Counted as SKIP (not FAIL).
 # ---------------------------------------------------------------------------
 SKIP_TESTS=()
 declare -A SKIP_SET
@@ -107,7 +107,7 @@ fi
 mkdir -p "${LOG_DIR}/per_test"
 GROUPED_REPORT_FILE="${LOG_DIR}/grouped_error_report.txt"
 WITNESS_CSV="${LOG_DIR}/provekit_witness_counts.csv"
-echo "test_name,provekit_witnesses" > "${WITNESS_CSV}"
+echo "test_name,provekit_constraints,provekit_witnesses" > "${WITNESS_CSV}"
 
 shopt -s nullglob globstar
 
@@ -318,15 +318,17 @@ for test_name in "${test_dirs[@]}"; do
   fi
   append_stage_marker "${test_log}" "provekit-cli prepare" "PASS"
 
-  # Extract ProveKit post-GE witness count before the log is deleted on success.
+  # Extract ProveKit post-GE constraint and witness counts before the log is deleted on success.
   # Keep this non-fatal under `set -euo pipefail` if the log format changes/misses.
   _ge_line="$(grep -o 'After GE optimization: [0-9]* constraints, [0-9]* witnesses' "${test_log}" | tail -1 || true)"
+  _pk_constraints=""
   _pk_witnesses=""
-  if [[ "${_ge_line}" =~ ([0-9]+)\ witnesses$ ]]; then
-    _pk_witnesses="${BASH_REMATCH[1]}"
+  if [[ "${_ge_line}" =~ ([0-9]+)\ constraints,\ ([0-9]+)\ witnesses$ ]]; then
+    _pk_constraints="${BASH_REMATCH[1]}"
+    _pk_witnesses="${BASH_REMATCH[2]}"
   fi
   if [[ -n "${_pk_witnesses}" ]]; then
-    echo "${test_name},${_pk_witnesses}" >> "${WITNESS_CSV}"
+    echo "${test_name},${_pk_constraints},${_pk_witnesses}" >> "${WITNESS_CSV}"
   fi
 
   append_stage_marker "${test_log}" "provekit-cli prove" "START"
@@ -404,16 +406,16 @@ fi
 
 echo "Grouped report  : ${GROUPED_REPORT_FILE}"
 
-# Generate Mavros vs ProveKit witness comparison table
-if [[ -f "${WITNESS_CSV}" ]] && python3 "${SCRIPT_DIR}/generate_witness_comparison.py" "${WITNESS_CSV}" "${LOG_DIR}"; then
-  echo "Witness comparison: ${LOG_DIR}/witness_comparison.md"
+# Generate ProveKit witness count report
+if [[ -f "${WITNESS_CSV}" ]] && python3 "${SCRIPT_DIR}/generate_provekit_witness_report.py" "${WITNESS_CSV}" "${LOG_DIR}"; then
+  echo "ProveKit witness report: ${LOG_DIR}/provekit_witness_report.md"
   if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
     {
       echo ""
-      echo "## Mavros vs ProveKit Witness Count"
-      head -4 "${LOG_DIR}/witness_comparison.md"
+      echo "## ProveKit Witness Counts"
+      head -4 "${LOG_DIR}/provekit_witness_report.md"
       echo ""
-      echo "_Full table available in artifact: \`witness_comparison.md\`_"
+      echo "_Full table available in artifact: \`provekit_witness_report.md\`_"
     } >> "${GITHUB_STEP_SUMMARY}"
   fi
 fi

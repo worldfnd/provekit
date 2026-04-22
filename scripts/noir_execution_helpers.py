@@ -9,7 +9,7 @@ Subcommands:
   skip-tests                                — print the skip list (one per line)
 
 The skip list lives in scripts/noir_skip_tests.txt and is the single source
-of truth shared with scripts/generate_witness_comparison.py.
+of truth shared with scripts/generate_provekit_witness_report.py.
 """
 
 from __future__ import annotations

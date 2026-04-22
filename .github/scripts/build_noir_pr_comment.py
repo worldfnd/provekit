@@ -65,7 +65,7 @@ def compose_comment(
         else ""
     )
     witness_truncated_note = (
-        "\n_Witness comparison truncated to fit GitHub comment size limits._\n"
+        "\n_ProveKit witness report truncated to fit GitHub comment size limits._\n"
         if witness_truncated
         else ""
     )
@@ -94,7 +94,7 @@ def compose_comment(
         "</details>",
         "",
         "<details>",
-        "<summary><code>witness_comparison.md</code></summary>",
+        "<summary><code>provekit_witness_report.md</code></summary>",
         "",
         witness_report_text,
         witness_truncated_note,
@@ -149,7 +149,7 @@ def build_with_truncation(
 
         excess = len(comment) - MAX_COMMENT_CHARS
         witness_work, witness_changed = clip_tail(
-            witness_work, MIN_SECTION_CHARS, excess, "witness_comparison.md"
+            witness_work, MIN_SECTION_CHARS, excess, "provekit_witness_report.md"
         )
         witness_truncated = witness_truncated or witness_changed
         if witness_changed:
@@ -200,7 +200,7 @@ def main() -> None:
     args = parse_args()
 
     grouped_report_text = read_report(args.grouped_report, "grouped_error_report.txt")
-    witness_report_text = read_report(args.witness_report, "witness_comparison.md")
+    witness_report_text = read_report(args.witness_report, "provekit_witness_report.md")
 
     body = build_with_truncation(
         grouped_report_text=grouped_report_text,
