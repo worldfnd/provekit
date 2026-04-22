@@ -10,6 +10,7 @@ members = [
   "provekit/r1cs-compiler",
   "provekit/prover",
   "provekit/verifier",
+  "provekit/groth16",
   "tooling/cli",
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
@@ -100,6 +101,7 @@ provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" , features = ["provekit_ntt"]}
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
+provekit-groth16 = { path = "provekit/groth16" }
 provekit-prover = { path = "provekit/prover", default-features = false }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-verifier = { path = "provekit/verifier" }
