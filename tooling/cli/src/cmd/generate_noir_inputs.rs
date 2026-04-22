@@ -2177,10 +2177,14 @@ impl Command for Args {
         writeln!(out)?;
 
         // === R1CS matrices ===
+        // Noir main.nr declares matrix_{a,b,c}_{rows,cols,vals} as fixed-size
+        // arrays of length MAX_MATRIX_CELLS = max(a,b,c nnz). Pad the shorter
+        // matrices with zero-valued trailing cells so every array matches.
+        let max_matrix_cells = a_cells.len().max(b_cells.len()).max(c_cells.len());
         writeln!(out, "# --- Phase 5: R1CS matrices ---")?;
-        write_matrix_cells(&mut out, "matrix_a", &a_cells)?;
-        write_matrix_cells(&mut out, "matrix_b", &b_cells)?;
-        write_matrix_cells(&mut out, "matrix_c", &c_cells)?;
+        write_matrix_cells(&mut out, "matrix_a", &a_cells, max_matrix_cells)?;
+        write_matrix_cells(&mut out, "matrix_b", &b_cells, max_matrix_cells)?;
+        write_matrix_cells(&mut out, "matrix_c", &c_cells, max_matrix_cells)?;
 
         let mut toml_file =
             File::create(&self.output_path).context("while creating Prover.toml")?;
@@ -2224,13 +2228,23 @@ fn write_matrix_cells(
     out: &mut String,
     prefix: &str,
     cells: &[(u32, u32, FieldElement)],
+    max_len: usize,
 ) -> std::fmt::Result {
+    debug_assert!(cells.len() <= max_len);
+    let pad = max_len.saturating_sub(cells.len());
+
     write!(out, "{prefix}_rows = [")?;
     for (i, (r, ..)) in cells.iter().enumerate() {
         if i > 0 {
             write!(out, ", ")?;
         }
         write!(out, "{r}")?;
+    }
+    for i in 0..pad {
+        if cells.len() + i > 0 {
+            write!(out, ", ")?;
+        }
+        write!(out, "0")?;
     }
     writeln!(out, "]")?;
 
@@ -2241,6 +2255,12 @@ fn write_matrix_cells(
         }
         write!(out, "{c}")?;
     }
+    for i in 0..pad {
+        if cells.len() + i > 0 {
+            write!(out, ", ")?;
+        }
+        write!(out, "0")?;
+    }
     writeln!(out, "]")?;
 
     write!(out, "{prefix}_vals = [")?;
@@ -2249,6 +2269,12 @@ fn write_matrix_cells(
             write!(out, ", ")?;
         }
         write!(out, "\"{}\"", field_str(v))?;
+    }
+    for i in 0..pad {
+        if cells.len() + i > 0 {
+            write!(out, ", ")?;
+        }
+        write!(out, "\"0\"")?;
     }
     writeln!(out, "]")?;
 
