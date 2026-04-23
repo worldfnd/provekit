@@ -8,8 +8,7 @@ mod witness_generator;
 
 use {
     crate::{
-        hash_config::fe_to_bytes_le,
-        utils::{serde_ark, serde_ark_vec},
+        utils::{field_to_bytes_le, serde_ark, serde_ark_vec},
         FieldElement, HashConfig,
     },
     ark_ff::One,
@@ -102,7 +101,7 @@ impl PublicInputs {
     #[inline]
     #[must_use]
     pub fn hash_bytes(&self, config: HashConfig) -> [u8; 32] {
-        fe_to_bytes_le(&self.hash(config))
+        field_to_bytes_le(self.hash(config))
     }
 }
 
@@ -116,11 +115,12 @@ impl Default for PublicInputs {
 mod tests {
     use {super::*, proptest::prelude::*};
 
-    const ALL_CONFIGS: [HashConfig; 4] = [
+    const ALL_CONFIGS: [HashConfig; 5] = [
         HashConfig::Skyscraper,
         HashConfig::Sha256,
         HashConfig::Keccak,
         HashConfig::Blake3,
+        HashConfig::Poseidon2,
     ];
 
     fn fe(n: u64) -> FieldElement {
@@ -163,7 +163,7 @@ mod tests {
         for config in ALL_CONFIGS {
             assert_eq!(
                 inputs.hash_bytes(config),
-                fe_to_bytes_le(&inputs.hash(config)),
+                field_to_bytes_le(inputs.hash(config)),
                 "{config:?}: hash_bytes must equal LE(hash())"
             );
         }
@@ -319,6 +319,20 @@ mod tests {
         assert_eq!(got, KAT_ONE_TWO_BLAKE3, "BLAKE3 [1, 2] KAT drift");
     }
 
+    #[test]
+    fn kat_empty_poseidon2() {
+        // Non-zero: even with no user inputs, the DST field element is
+        // prepended and the capacity-lane IV still permutes.
+        let got = PublicInputs::new().hash_bytes(HashConfig::Poseidon2);
+        assert_eq!(got, KAT_EMPTY_POSEIDON2, "Poseidon2 empty-input KAT drift");
+    }
+
+    #[test]
+    fn kat_one_two_poseidon2() {
+        let got = pi(&[1, 2]).hash_bytes(HashConfig::Poseidon2);
+        assert_eq!(got, KAT_ONE_TWO_POSEIDON2, "Poseidon2 [1, 2] KAT drift");
+    }
+
     // Frozen outputs. Regenerate only for a deliberate, reviewed format change.
 
     const KAT_EMPTY_SHA256: [u8; 32] = [
@@ -351,6 +365,20 @@ mod tests {
         0x4e, 0x47, 0x7d, 0x1f, 0xf9, 0xf5, 0x79, 0xc1, 0x46, 0xb4, 0x28, 0x84, 0xa5, 0x6b, 0xc5,
         0xa5, 0x25,
     ];
+    // Poseidon2([]) = poseidon2_hash([PUBLIC_INPUTS_DST_FE]) in LE bytes —
+    // the empty-input case is still a one-element absorb of the DST tag
+    // (role-DS) with the length-IV set for `n = 1`. The DST field element
+    // is derived as SHA256(PUBLIC_INPUTS_DST) reduced mod p.
+    const KAT_EMPTY_POSEIDON2: [u8; 32] = [
+        0x88, 0x8d, 0xd0, 0xb7, 0xbb, 0x12, 0xee, 0x46, 0xf0, 0x73, 0x14, 0x15, 0x2c, 0xec, 0x94,
+        0xf8, 0x5f, 0x5a, 0xbd, 0x58, 0xe3, 0xfd, 0x8a, 0x96, 0xb5, 0x18, 0x4c, 0x23, 0xd8, 0x7d,
+        0xf3, 0x01,
+    ];
+    const KAT_ONE_TWO_POSEIDON2: [u8; 32] = [
+        0x54, 0xfa, 0xbf, 0xce, 0x1b, 0xe4, 0xbb, 0xe9, 0x92, 0xb0, 0x6a, 0x42, 0xeb, 0xf7, 0x2d,
+        0xf4, 0x47, 0x8a, 0x2d, 0xb1, 0x9c, 0x5f, 0x35, 0xbf, 0x7c, 0x62, 0xba, 0x9d, 0x65, 0x67,
+        0x01, 0x22,
+    ];
 
     // --- property tests ---
 
@@ -360,6 +388,7 @@ mod tests {
             Just(HashConfig::Sha256),
             Just(HashConfig::Keccak),
             Just(HashConfig::Blake3),
+            Just(HashConfig::Poseidon2),
         ]
     }
 

@@ -155,7 +155,7 @@ pub unsafe extern "C" fn pk_get_memory_stats(
 /// Compile a Noir circuit into prover and verifier handles.
 ///
 /// `hash_config` selects the hash algorithm: 0 = Skyscraper (default),
-/// 1 = SHA-256, 2 = Keccak, 3 = Blake3.
+/// 1 = SHA-256, 2 = Keccak, 3 = Blake3, 4 = Poseidon2.
 ///
 /// No files are written and both handles live in memory. The caller must free
 /// each handle exactly once via `pk_free_prover` / `pk_free_verifier`.
@@ -186,7 +186,8 @@ pub unsafe extern "C" fn pk_prepare(
             let hash = HashConfig::from_byte(hash_config.try_into().unwrap_or(u8::MAX))
                 .ok_or_else(|| {
                     set_last_error(
-                        "hash_config must be 0-3 (skyscraper, sha256, keccak, blake3)".into(),
+                        "hash_config must be 0-4 (skyscraper, sha256, keccak, blake3, poseidon2)"
+                            .into(),
                     );
                     PKStatus::InvalidInput
                 })?;

@@ -13,7 +13,7 @@ fn fe_hex(s: &str) -> F {
     let s = s.strip_prefix("0x").unwrap_or(s);
     let mut bytes = hex_to_bytes(s);
 
-    let field_byte_len = ((F::MODULUS_BIT_SIZE as usize) + 7) / 8;
+    let field_byte_len = (F::MODULUS_BIT_SIZE as usize).div_ceil(8);
     assert!(
         bytes.len() <= field_byte_len,
         "constant too large for field"
@@ -28,7 +28,7 @@ fn fe_hex(s: &str) -> F {
 
 /// Converts a hex string to bytes (big-endian nibbles).
 fn hex_to_bytes(s: &str) -> Vec<u8> {
-    let mut out = Vec::with_capacity((s.len() + 1) / 2);
+    let mut out = Vec::with_capacity(s.len().div_ceil(2));
     let mut n: u8 = 0;
     for (i, ch) in s.bytes().enumerate() {
         let v = match ch {

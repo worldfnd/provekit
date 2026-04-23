@@ -21,7 +21,7 @@ use {
         },
         types::{PKBuf, PKProver, PKStatus, PKVerifier},
     },
-    std::{ffi::CString, path::PathBuf, sync::Once},
+    std::{ffi::CString, os::raw::c_int, path::PathBuf, sync::Once},
 };
 
 // ---------------------------------------------------------------------------
@@ -143,14 +143,14 @@ impl<T> SendPtr<T> {
     }
 }
 
-/// Prepare handles for the basic-2 circuit. Returns (ScopedProver,
-/// ScopedVerifier). Panics if `pk_prepare` fails.
-unsafe fn prepare_basic_circuit() -> (ScopedProver, ScopedVerifier) {
+/// Prepare handles for the basic-2 circuit with the given hash-config byte.
+/// Returns (ScopedProver, ScopedVerifier). Panics if `pk_prepare` fails.
+unsafe fn prepare_basic_circuit_with_config(hash_config: c_int) -> (ScopedProver, ScopedVerifier) {
     init();
     let circuit = circuit_json_cstring();
     let mut prover: *mut PKProver = std::ptr::null_mut();
     let mut verifier: *mut PKVerifier = std::ptr::null_mut();
-    let status = pk_prepare(circuit.as_ptr(), 0, &mut prover, &mut verifier);
+    let status = pk_prepare(circuit.as_ptr(), hash_config, &mut prover, &mut verifier);
     if status != PK_SUCCESS {
         let mut err_buf = PKBuf::empty();
         pk_get_last_error(&mut err_buf);
@@ -163,12 +163,17 @@ unsafe fn prepare_basic_circuit() -> (ScopedProver, ScopedVerifier) {
         };
         pk_free_buf(err_buf);
         panic!(
-            "pk_prepare returned status {status} (expected {PK_SUCCESS}). Circuit path: {:?}. \
-             Error: {msg}",
+            "pk_prepare returned status {status} (expected {PK_SUCCESS}) with hash_config \
+             {hash_config}. Circuit path: {:?}. Error: {msg}",
             circuit.to_str().unwrap_or("?")
         );
     }
     (ScopedProver(prover), ScopedVerifier(verifier))
+}
+
+/// Prepare handles for the basic-2 circuit with Skyscraper (byte 0)
+unsafe fn prepare_basic_circuit() -> (ScopedProver, ScopedVerifier) {
+    prepare_basic_circuit_with_config(0)
 }
 
 /// Read the last error into a ScopedBuf (clears it).
@@ -361,23 +366,57 @@ fn d_prove_toml_proof_bytes_nonempty() {
     assert!(proof.as_slice().len() > 0, "proof buffer must not be empty");
 }
 
-#[test]
-#[cfg_attr(debug_assertions, ignore)]
-fn d_prove_toml_roundtrip() {
-    let (pk, vk) = unsafe { prepare_basic_circuit() };
+/// Full prove+verify round-trip against the basic-2 circuit for a given
+/// hash-config byte. Panics on any failure, tagging the error with
+/// `name` so individual test cases remain distinguishable.
+fn run_toml_roundtrip(hash_config: c_int, name: &str) {
+    let (pk, vk) = unsafe { prepare_basic_circuit_with_config(hash_config) };
     let toml = toml_input_cstring();
 
     let mut proof_buf = PKBuf::empty();
     let prove_status = unsafe { pk_prove_toml(pk.0, toml.as_ptr(), &mut proof_buf) };
-    assert_eq!(prove_status, PK_SUCCESS, "pk_prove_toml failed");
+    assert_eq!(
+        prove_status, PK_SUCCESS,
+        "pk_prove_toml failed with {name} hash_config"
+    );
 
     let proof = ScopedBuf(proof_buf);
     let verify_status =
         unsafe { pk_verify(vk.0, proof.as_slice().as_ptr(), proof.as_slice().len()) };
     assert_eq!(
         verify_status, PK_SUCCESS,
-        "pk_verify failed for toml-proved proof"
+        "pk_verify failed for {name} toml-proved proof"
     );
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore)]
+fn d_prove_toml_roundtrip() {
+    run_toml_roundtrip(0, "Skyscraper");
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore)]
+fn d_prove_toml_roundtrip_sha256() {
+    run_toml_roundtrip(1, "Sha256");
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore)]
+fn d_prove_toml_roundtrip_keccak() {
+    run_toml_roundtrip(2, "Keccak");
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore)]
+fn d_prove_toml_roundtrip_blake3() {
+    run_toml_roundtrip(3, "Blake3");
+}
+
+#[test]
+#[cfg_attr(debug_assertions, ignore)]
+fn d_prove_toml_roundtrip_poseidon2() {
+    run_toml_roundtrip(4, "Poseidon2");
 }
 
 #[test]
