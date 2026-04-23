@@ -5,6 +5,7 @@
 use {
     crate::constants::{load_diag, load_rc_full1, load_rc_full2, load_rc_partial},
     ark_bn254::Fr,
+    ark_ff::Field,
     ark_std::Zero,
     std::sync::LazyLock,
 };
@@ -87,53 +88,15 @@ impl<'a> Poseidon2<'a> {
         }
     }
 
-    /// S-box: x -> x^5
-    #[inline]
+    // --- test-only accessors that mirror the old `&self` method API ---
+    // Production callers should use `poseidon2_permute_in_place` directly.
+
+    /// S-box: x → x^5, computed via two squarings + one multiplication.
+    /// `Fr::square()` is ~30% faster than `x * x` in arkworks.
+    #[cfg(test)]
+    #[inline(always)]
     fn single_box(&self, x: Fr) -> Fr {
-        let s = x * x;
-        s * s * x
-    }
-
-    fn s_box(&self, state: &mut [Fr; 4]) {
-        for x in state.iter_mut() {
-            *x = self.single_box(*x);
-        }
-    }
-
-    fn add_round_constants(&self, state: &mut [Fr; 4], round: usize) {
-        for (s, c) in state.iter_mut().zip(self.config.round_constant[round]) {
-            *s += c;
-        }
-    }
-
-    /// Algorithm is taken directly from the Poseidon2 implementation in
-    /// Barretenberg crypto module.
-    fn matrix_multiplication_4x4(&self, input: &mut [Fr; 4]) {
-        let t0 = input[0] + input[1]; // A + B
-        let t1 = input[2] + input[3]; // C + D
-        let mut t2 = input[1] + input[1]; // 2B
-        t2 += t1; // 2B + C + D
-        let mut t3 = input[3] + input[3]; // 2D
-        t3 += t0; // 2D + A + B
-        let mut t4 = t1 + t1;
-        t4 += t4;
-        t4 += t3; // A + B + 4C + 6D
-        let mut t5 = t0 + t0;
-        t5 += t5;
-        t5 += t2; // 4A + 6B + C + D
-        let t6 = t3 + t5; // 5A + 7B + C + 3D
-        let t7 = t2 + t4; // A + 3B + 5C + 7D
-        input[0] = t6;
-        input[1] = t5;
-        input[2] = t7;
-        input[3] = t4;
-    }
-
-    fn internal_m_multiplication(&self, state: &mut [Fr; 4]) {
-        let sum: Fr = state.iter().copied().sum();
-        for (i, s) in state.iter_mut().enumerate() {
-            *s = *s * self.config.internal_matrix_diagonal[i] + sum;
-        }
+        single_box(x)
     }
 
     /// Executes the Poseidon2 permutation.
@@ -142,43 +105,126 @@ impl<'a> Poseidon2<'a> {
     ///                         → [RC(lane0) + S-box(lane0) → int_MDS] × rp
     /// partial                         → [RC + S-box → ext_MDS] × rf/2 full
     pub fn permutation(&self, inputs: &[Fr; 4]) -> [Fr; 4] {
-        let rf_first = (self.config.rounds_f / 2) as usize;
-        let p_end = rf_first + self.config.rounds_p as usize;
-        let num_rounds = (self.config.rounds_f + self.config.rounds_p) as usize;
-
         let mut state = *inputs;
-
-        // Initial linear layer
-        self.matrix_multiplication_4x4(&mut state);
-
-        // First rf/2 full rounds
-        for r in 0..rf_first {
-            self.add_round_constants(&mut state, r);
-            self.s_box(&mut state);
-            self.matrix_multiplication_4x4(&mut state);
-        }
-
-        // Partial rounds
-        for r in rf_first..p_end {
-            state[0] += self.config.round_constant[r][0];
-            state[0] = self.single_box(state[0]);
-            self.internal_m_multiplication(&mut state);
-        }
-
-        // Last rf/2 full rounds
-        for r in p_end..num_rounds {
-            self.add_round_constants(&mut state, r);
-            self.s_box(&mut state);
-            self.matrix_multiplication_4x4(&mut state);
-        }
-
+        permute_with_config(self.config, &mut state);
         state
     }
 }
 
+/// In-place Poseidon2 permutation using the default BN254 config. Prefer
+/// this over [`poseidon2_permutation`] in hot paths to avoid a 128-byte
+/// return-slot copy.
+#[inline]
+pub fn poseidon2_permute_in_place(state: &mut [Fr; 4]) {
+    permute_with_config(&POSEIDON2_CONFIG, state);
+}
+
 /// runs Poseidon2 permutation with the default BN254 config.
+#[inline]
 pub fn poseidon2_permutation(inputs: &[Fr; 4]) -> [Fr; 4] {
-    Poseidon2::new().permutation(inputs)
+    let mut state = *inputs;
+    poseidon2_permute_in_place(&mut state);
+    state
+}
+
+// ============================================================================
+// Internal primitives — free functions to avoid `&self` dispatch on the hot
+// path and to let LLVM inline aggressively even without LTO.
+// ============================================================================
+
+#[inline(always)]
+fn permute_with_config(config: &Poseidon2Config, state: &mut [Fr; 4]) {
+    let rf_first = (config.rounds_f / 2) as usize;
+    let p_end = rf_first + config.rounds_p as usize;
+    let num_rounds = (config.rounds_f + config.rounds_p) as usize;
+
+    // Initial linear layer.
+    ext_mds(state);
+
+    // First rf/2 full rounds.
+    for r in 0..rf_first {
+        add_round_constants(state, &config.round_constant[r]);
+        s_box(state);
+        ext_mds(state);
+    }
+
+    // Partial rounds: only lane 0 gets the S-box.
+    for r in rf_first..p_end {
+        state[0] += config.round_constant[r][0];
+        state[0] = single_box(state[0]);
+        int_mds(state, &config.internal_matrix_diagonal);
+    }
+
+    // Last rf/2 full rounds.
+    for r in p_end..num_rounds {
+        add_round_constants(state, &config.round_constant[r]);
+        s_box(state);
+        ext_mds(state);
+    }
+}
+
+/// S-box x → x^5. Uses [`Field::square`] which is ~30% faster than `x * x`.
+#[inline(always)]
+fn single_box(x: Fr) -> Fr {
+    let x2 = x.square();
+    let x4 = x2.square();
+    x4 * x
+}
+
+/// Full-round S-box: x^5 on all four lanes.
+#[inline(always)]
+fn s_box(state: &mut [Fr; 4]) {
+    state[0] = single_box(state[0]);
+    state[1] = single_box(state[1]);
+    state[2] = single_box(state[2]);
+    state[3] = single_box(state[3]);
+}
+
+/// Adds the round constants to the state. Explicit unroll so the compiler
+/// doesn't need to reason about a 4-iteration zip.
+#[inline(always)]
+fn add_round_constants(state: &mut [Fr; 4], rc: &[Fr; 4]) {
+    state[0] += rc[0];
+    state[1] += rc[1];
+    state[2] += rc[2];
+    state[3] += rc[3];
+}
+
+/// External MDS (4×4 matrix multiplication).
+///
+/// Algorithm taken directly from the Poseidon2 implementation in the
+/// Barretenberg crypto module: ~13 additions, zero multiplications.
+#[inline(always)]
+fn ext_mds(input: &mut [Fr; 4]) {
+    let t0 = input[0] + input[1]; // A + B
+    let t1 = input[2] + input[3]; // C + D
+    let mut t2 = input[1] + input[1]; // 2B
+    t2 += t1; // 2B + C + D
+    let mut t3 = input[3] + input[3]; // 2D
+    t3 += t0; // 2D + A + B
+    let mut t4 = t1 + t1;
+    t4 += t4;
+    t4 += t3; // A + B + 4C + 6D
+    let mut t5 = t0 + t0;
+    t5 += t5;
+    t5 += t2; // 4A + 6B + C + D
+    let t6 = t3 + t5; // 5A + 7B + C + 3D
+    let t7 = t2 + t4; // A + 3B + 5C + 7D
+    input[0] = t6;
+    input[1] = t5;
+    input[2] = t7;
+    input[3] = t4;
+}
+
+/// Internal MDS: `state[i] = state[i] * diag[i] + sum(state)` for i ∈ 0..4.
+/// Partial-round layer; 4 multiplications + 3 additions.
+#[inline(always)]
+fn int_mds(state: &mut [Fr; 4], diag: &[Fr; 4]) {
+    let sum = state[0] + state[1] + state[2] + state[3];
+    state[0] = state[0] * diag[0] + sum;
+    state[1] = state[1] * diag[1] + sum;
+    state[2] = state[2] * diag[2] + sum;
+    state[3] = state[3] * diag[3] + sum;
 }
 
 #[cfg(test)]
