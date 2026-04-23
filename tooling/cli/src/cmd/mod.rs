@@ -1,5 +1,6 @@
 mod analyze_pkp;
 mod circuit_stats;
+mod compile;
 mod generate_gnark_inputs;
 mod prepare;
 mod prove;
@@ -39,6 +40,7 @@ pub struct Args {
 #[argh(subcommand)]
 enum Commands {
     AnalyzePkp(analyze_pkp::Args),
+    Compile(compile::Args),
     Prepare(prepare::Args),
     Prove(prove::Args),
     CircuitStats(circuit_stats::Args),
@@ -57,6 +59,7 @@ impl Command for Commands {
     fn run(&self) -> Result<()> {
         match self {
             Self::AnalyzePkp(args) => args.run(),
+            Self::Compile(args) => args.run(),
             Self::Prepare(args) => args.run(),
             Self::Prove(args) => args.run(),
             Self::CircuitStats(args) => args.run(),
