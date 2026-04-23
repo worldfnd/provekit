@@ -30,7 +30,7 @@ pub use {
     mavros::{MavrosProver, MavrosSchemeData},
     noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
-    prover::{Groth16Prover, NoirProver, Prover},
+    prover::{Groth16CommitmentInfo, Groth16Prover, NoirProver, Prover},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
     verifier::Verifier,

@@ -10,6 +10,24 @@ use {
     serde::{Deserialize, Serialize},
 };
 
+/// Information about a single BSB22 commitment within the R1CS.
+///
+/// This is the serde-serializable version stored in `Groth16Prover`.
+/// Mirrors `provekit_groth16::CommitmentInfo` (which has the same fields).
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct Groth16CommitmentInfo {
+    /// Indices of public wires and other commitment wires hashed with this
+    /// commitment.
+    pub public_and_commitment_committed: Vec<usize>,
+    /// Indices of private/internal wires committed to.
+    pub private_committed: Vec<usize>,
+    /// Wire index where the commitment challenge value is stored.
+    pub commitment_index: usize,
+    /// Number of entries in `public_and_commitment_committed` that are public
+    /// (as opposed to other commitment indices).
+    pub nb_public_committed: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirProver {
     pub hash_config:            HashConfig,
@@ -29,6 +47,8 @@ pub struct Groth16Prover {
     pub witness_generator:      NoirWitnessGenerator,
     /// CanonicalSerialize'd `provekit_groth16::ProvingKey`.
     pub groth16_pk:             Vec<u8>,
+    /// BSB22 commitment metadata (empty if circuit has no commitments).
+    pub commitment_info:        Vec<Groth16CommitmentInfo>,
 }
 
 /// Groth16 prover: holds R1CS, witness builders, and the serialized proving key.

@@ -8,8 +8,8 @@ use {
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
-        utils::noir_to_native, FieldElement, Groth16Prover, NoirElement, NoirProof, NoirProver,
-        Prover, PublicInputs, TranscriptSponge,
+        utils::noir_to_native, FieldElement, Groth16CommitmentInfo, Groth16Prover, NoirElement,
+        NoirProof, NoirProver, Prover, PublicInputs, TranscriptSponge,
     },
     std::mem::size_of,
     tracing::{debug, info_span, instrument},
@@ -455,25 +455,106 @@ impl Prove for Groth16Prover {
 
         let num_witnesses = self.r1cs.num_witnesses();
 
-        // Allocate and solve witnesses (no Fiat-Shamir transcript for Groth16)
+        // Deserialize Groth16 proving key
+        let pk: provekit_groth16::ProvingKey =
+            CanonicalDeserialize::deserialize_compressed(&self.groth16_pk[..])
+                .context("while deserializing Groth16 proving key")?;
+
+        // Convert commitment info from common format to groth16 format
+        let commitment_info: Vec<provekit_groth16::CommitmentInfo> = self
+            .commitment_info
+            .iter()
+            .map(|ci| provekit_groth16::CommitmentInfo {
+                public_and_commitment_committed: ci.public_and_commitment_committed.clone(),
+                private_committed: ci.private_committed.clone(),
+                commitment_index: ci.commitment_index,
+                nb_public_committed: ci.nb_public_committed,
+            })
+            .collect();
+
+        let has_commitments = !commitment_info.is_empty();
+
+        // Allocate witness vector
         let mut witness: Vec<Option<FieldElement>> =
             vec![None; self.r1cs.num_witnesses_for_solving()];
 
-        // Solve all w1 witnesses. For Groth16, there's no challenge/w2 split.
+        // Create a dummy transcript — Groth16 doesn't use Fiat-Shamir during witness solving
+        let dummy_instance: Vec<u8> = Vec::new();
+        let ds = whir::transcript::DomainSeparator::protocol(&"groth16-dummy")
+            .instance(&dummy_instance);
+        let mut dummy_transcript = ProverState::new(&ds, TranscriptSponge::default());
+
+        // --- Phase 1: Solve w1 witnesses (pre-commitment) ---
         {
-            let _s = info_span!("solve_groth16_witness").entered();
-            // Create a dummy transcript — Groth16 doesn't use Fiat-Shamir during witness solving
-            let dummy_instance: Vec<u8> = Vec::new();
-            let ds = whir::transcript::DomainSeparator::protocol(&"groth16-dummy")
-                .instance(&dummy_instance);
-            let mut dummy_transcript = ProverState::new(&ds, TranscriptSponge::default());
+            let _s = info_span!("solve_groth16_w1").entered();
             crate::r1cs::solve_witness_vec(
                 &mut witness,
                 self.split_witness_builders.w1_layers,
                 &acir_witness_idx_to_value_map,
                 &mut dummy_transcript,
             )
-            .context("While solving Groth16 witnesses")?;
+            .context("While solving Groth16 w1 witnesses")?;
+        }
+
+        // --- Phase 2: BSB22 Pedersen commitments (if any) ---
+        let mut pedersen_commitments: Vec<ark_bn254::G1Affine> = Vec::new();
+        let mut committed_values: Vec<Vec<FieldElement>> = Vec::new();
+
+        if has_commitments {
+            let _s = info_span!("groth16_bsb22_commit").entered();
+
+            for (i, ci) in commitment_info.iter().enumerate() {
+                // Gather private committed witness values
+                let private_vals: Vec<FieldElement> = ci
+                    .private_committed
+                    .iter()
+                    .map(|&wire_idx| {
+                        witness[wire_idx].ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "BSB22: private committed wire {wire_idx} not solved before commitment {i}"
+                            )
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                // Compute Pedersen commitment: C = Σ vᵢ · Basis[i]
+                let commitment = pk.commitment_keys[i].commit(&private_vals)?;
+
+                // Gather public values for hashing
+                let public_vals: Vec<FieldElement> = ci
+                    .public_and_commitment_committed
+                    .iter()
+                    .map(|&wire_idx| {
+                        witness[wire_idx].ok_or_else(|| {
+                            anyhow::anyhow!(
+                                "BSB22: public wire {wire_idx} not solved before commitment {i}"
+                            )
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                // Hash commitment to derive challenge: Hash(C || public_values) → Fr
+                let challenge =
+                    provekit_groth16::prover::derive_commitment_challenge(&commitment, &public_vals)?;
+
+                // Insert challenge into witness at the commitment wire index
+                witness[ci.commitment_index] = Some(challenge);
+
+                pedersen_commitments.push(commitment);
+                committed_values.push(private_vals);
+            }
+        }
+
+        // --- Phase 3: Solve w2 witnesses (post-commitment, if any) ---
+        if has_commitments {
+            let _s = info_span!("solve_groth16_w2").entered();
+            crate::r1cs::solve_witness_vec(
+                &mut witness,
+                self.split_witness_builders.w2_layers,
+                &acir_witness_idx_to_value_map,
+                &mut dummy_transcript,
+            )
+            .context("While solving Groth16 w2 witnesses")?;
         }
 
         // Extract solved witness vector
@@ -489,26 +570,27 @@ impl Prove for Groth16Prover {
         let mut c_evals: Vec<FieldElement> = self.r1cs.c() * full_witness.as_slice();
 
         // Compute quotient polynomial H
-        let domain =
+        let domain: ark_poly::Radix2EvaluationDomain<FieldElement> =
             ark_poly::EvaluationDomain::new(self.r1cs.num_constraints())
                 .ok_or_else(|| anyhow::anyhow!("failed to create FFT domain"))?;
-        let h = provekit_groth16::prover::compute_h(&mut a_evals, &mut b_evals, &mut c_evals, &domain);
-
-        // Deserialize Groth16 proving key
-        let pk: provekit_groth16::ProvingKey =
-            CanonicalDeserialize::deserialize_compressed(&self.groth16_pk[..])
-                .context("while deserializing Groth16 proving key")?;
+        let h = provekit_groth16::prover::compute_h(
+            &mut a_evals,
+            &mut b_evals,
+            &mut c_evals,
+            &domain,
+        );
 
         let nb_public = 1 + self.r1cs.num_public_inputs;
 
-        // Call Groth16 prover (no BSB22 commitments for now)
+        // Call Groth16 prover with H and BSB22 data
         let proof = provekit_groth16::prover::prove(
             &pk,
             nb_public,
             &full_witness,
-            &[],   // no commitment_info
-            &[],   // no committed_values
-            &[],   // no commitments
+            &h,
+            &commitment_info,
+            &committed_values,
+            &pedersen_commitments,
         )
         .context("While generating Groth16 proof")?;
 

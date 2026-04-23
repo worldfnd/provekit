@@ -35,6 +35,7 @@ pub fn prove(
     pk: &ProvingKey,
     r1cs_nb_public: usize,
     wire_values: &[Fr],
+    h: &[Fr],
     commitment_info: &[CommitmentInfo],
     committed_values: &[Vec<Fr>],
     commitments: &[G1Affine],
@@ -65,16 +66,6 @@ pub fn prove(
     } else {
         G1Affine::zero()
     };
-
-    // --- Compute quotient polynomial H via FFT ---
-    let domain = Radix2EvaluationDomain::<Fr>::new(pk.domain_size as usize)
-        .ok_or_else(|| anyhow::anyhow!("invalid domain size"))?;
-    // Note: H computation requires A*w, B*w, C*w per constraint.
-    // For now, we assume these are precomputed by the caller or
-    // we compute H from the full solution.
-    // This is a simplified placeholder — full implementation would
-    // receive the R1CS solution vectors.
-    let h = compute_h_placeholder(&domain, pk.domain_size as usize);
 
     // --- Filter wire values for infinity points ---
     let wire_values_a: Vec<Fr> = wire_values
@@ -196,23 +187,6 @@ pub fn prove(
     })
 }
 
-/// Compute the quotient polynomial H = (A·B - C) / Z via FFT.
-///
-/// This is a placeholder that returns zeros. The full implementation needs
-/// the R1CS solution vectors (A·w, B·w, C·w) to compute H properly.
-///
-/// Ported from gnark's `computeH()` in prove.go:346-389.
-///
-/// Full implementation:
-/// 1. IFFT(a), IFFT(b), IFFT(c) — to coefficient form
-/// 2. FFT_coset(a), FFT_coset(b), FFT_coset(c) — evaluate on coset
-/// 3. h = IFFT_coset((a ⊙ b - c) / Z) — quotient
-fn compute_h_placeholder(domain: &Radix2EvaluationDomain<Fr>, n: usize) -> Vec<Fr> {
-    // TODO: Implement proper H computation from R1CS solution vectors.
-    // For now, return zeros (proof will be invalid but structure is correct).
-    vec![Fr::zero(); n]
-}
-
 /// Compute quotient polynomial H from the R1CS solution vectors.
 ///
 /// Given the wire-level evaluations of A·w, B·w, C·w for each constraint,
@@ -270,26 +244,102 @@ pub fn fr_to_bytes(val: &Fr) -> Vec<u8> {
     bytes
 }
 
-/// Hash bytes with a domain separator to produce a field element.
+/// RFC 9380 Section 5.3: expand_message_xmd using SHA-256.
 ///
-/// Mirrors gnark's `fr.Hash(data, dst, 1)`.
-pub fn hash_to_fr(data: &[u8], dst: &[u8]) -> Result<Fr> {
+/// Expands a message and DST into `len_in_bytes` pseudorandom bytes.
+/// This is the core building block for hash-to-field.
+fn expand_message_xmd(msg: &[u8], dst: &[u8], len_in_bytes: usize) -> Result<Vec<u8>> {
     use sha2::{Digest, Sha256};
 
-    let mut hasher = Sha256::new();
-    hasher.update(dst);
-    hasher.update(data);
-    let hash = hasher.finalize();
+    let b_in_bytes = 32usize; // SHA-256 output size
+    let r_in_bytes = 64usize; // SHA-256 block size
 
-    // Convert hash to field element (reduce mod p)
-    let mut bytes = [0u8; 32];
-    bytes.copy_from_slice(&hash[..32]);
-    Ok(Fr::from_be_bytes_mod_order(&bytes))
+    ensure!(dst.len() <= 255, "DST must be at most 255 bytes");
+    let ell = (len_in_bytes + b_in_bytes - 1) / b_in_bytes;
+    ensure!(ell <= 255, "expand_message_xmd: output too large");
+
+    // DST_prime = DST || I2OSP(len(DST), 1)
+    let mut dst_prime = Vec::with_capacity(dst.len() + 1);
+    dst_prime.extend_from_slice(dst);
+    dst_prime.push(dst.len() as u8);
+
+    // Z_pad = I2OSP(0, r_in_bytes) — 64 zero bytes
+    let z_pad = vec![0u8; r_in_bytes];
+
+    // l_i_b_str = I2OSP(len_in_bytes, 2) — 2-byte big-endian
+    let l_i_b_str = [(len_in_bytes >> 8) as u8, (len_in_bytes & 0xff) as u8];
+
+    // b_0 = H(Z_pad || msg || l_i_b_str || I2OSP(0, 1) || DST_prime)
+    let mut h = Sha256::new();
+    h.update(&z_pad);
+    h.update(msg);
+    h.update(l_i_b_str);
+    h.update([0u8]); // I2OSP(0, 1)
+    h.update(&dst_prime);
+    let b_0: [u8; 32] = h.finalize().into();
+
+    // b_1 = H(b_0 || I2OSP(1, 1) || DST_prime)
+    let mut h = Sha256::new();
+    h.update(b_0);
+    h.update([1u8]);
+    h.update(&dst_prime);
+    let mut b_prev: [u8; 32] = h.finalize().into();
+
+    let mut output = Vec::with_capacity(len_in_bytes);
+    output.extend_from_slice(&b_prev);
+
+    // b_i = H(strxor(b_0, b_(i-1)) || I2OSP(i, 1) || DST_prime)
+    for i in 2..=ell {
+        let mut xored = [0u8; 32];
+        for j in 0..32 {
+            xored[j] = b_0[j] ^ b_prev[j];
+        }
+        let mut h = Sha256::new();
+        h.update(xored);
+        h.update([i as u8]);
+        h.update(&dst_prime);
+        b_prev = h.finalize().into();
+        output.extend_from_slice(&b_prev);
+    }
+
+    output.truncate(len_in_bytes);
+    Ok(output)
+}
+
+/// Hash bytes with a domain separator to produce a field element.
+///
+/// Matches gnark's `fr.Hash(msg, dst, 1)`: uses expand_message_xmd (RFC 9380)
+/// with L = 48 bytes (32 byte field + 16 byte security parameter) to produce
+/// an unbiased field element.
+pub fn hash_to_fr(msg: &[u8], dst: &[u8]) -> Result<Fr> {
+    // L = ceil((ceil(log2(p)) + k) / 8) where k=128 (security parameter)
+    // For BN254: ceil((254 + 128) / 8) = ceil(382/8) = 48
+    const L: usize = 48;
+
+    let pseudo_random_bytes = expand_message_xmd(msg, dst, L)?;
+
+    // Interpret as big-endian integer and reduce mod p
+    Ok(Fr::from_be_bytes_mod_order(&pseudo_random_bytes))
+}
+
+/// Hash bytes with a domain separator to produce multiple field elements.
+///
+/// Matches gnark's `fr.Hash(msg, dst, count)`.
+pub fn hash_to_fr_multi(msg: &[u8], dst: &[u8], count: usize) -> Result<Vec<Fr>> {
+    const L: usize = 48;
+
+    let pseudo_random_bytes = expand_message_xmd(msg, dst, count * L)?;
+
+    let result = (0..count)
+        .map(|i| Fr::from_be_bytes_mod_order(&pseudo_random_bytes[i * L..(i + 1) * L]))
+        .collect();
+    Ok(result)
 }
 
 /// Hash a Pedersen commitment to derive a BSB22 challenge.
 ///
 /// Used during witness solving: Hash(C || public_values) → challenge.
+/// Matches gnark's commitment hashing with `hash_to_field.New("bsb22-commitment")`.
 pub fn derive_commitment_challenge(
     commitment: &G1Affine,
     public_values: &[Fr],
@@ -330,5 +380,36 @@ mod tests {
         let h1 = hash_to_fr(b"input1", b"dst").unwrap();
         let h2 = hash_to_fr(b"input2", b"dst").unwrap();
         assert_ne!(h1, h2);
+    }
+
+    #[test]
+    fn test_expand_message_xmd_basic() {
+        // Verify expand_message_xmd produces deterministic output
+        let out1 = expand_message_xmd(b"hello", b"dst", 48).unwrap();
+        let out2 = expand_message_xmd(b"hello", b"dst", 48).unwrap();
+        assert_eq!(out1, out2);
+        assert_eq!(out1.len(), 48);
+    }
+
+    #[test]
+    fn test_expand_message_xmd_different_inputs() {
+        let out1 = expand_message_xmd(b"hello", b"dst", 48).unwrap();
+        let out2 = expand_message_xmd(b"world", b"dst", 48).unwrap();
+        assert_ne!(out1, out2);
+    }
+
+    #[test]
+    fn test_hash_to_fr_produces_nonzero() {
+        let h = hash_to_fr(b"test", b"dst").unwrap();
+        assert!(!h.is_zero());
+    }
+
+    #[test]
+    fn test_hash_to_fr_multi() {
+        let results = hash_to_fr_multi(b"test", b"dst", 3).unwrap();
+        assert_eq!(results.len(), 3);
+        // All should be different
+        assert_ne!(results[0], results[1]);
+        assert_ne!(results[1], results[2]);
     }
 }
