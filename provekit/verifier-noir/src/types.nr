@@ -7,31 +7,31 @@
 // --- Protocol parameters (set per target inner circuit) ---
 
 // log2(number of R1CS constraints)
-pub global LOG_NUM_CONSTRAINTS: u32 = 1;
+pub global LOG_NUM_CONSTRAINTS: u32 = 19;
 // log2(number of witness variables in the WHIR MLE)
-pub global LOG_NUM_VARIABLES: u32 = 13;
+pub global LOG_NUM_VARIABLES: u32 = 19;
 // Number of WHIR middle folding rounds (excluding initial and final)
-pub global NUM_WHIR_ROUNDS: u32 = 3;
+pub global NUM_WHIR_ROUNDS: u32 = 5;
 // Folding factor per WHIR round
 pub global FOLDING_FACTOR: u32 = 3;
 // Number of in-domain queries per WHIR round
 pub global MAX_QUERIES_PER_ROUND: u32 = 127;
 // Merkle tree height = log2(codeword_length / interleaving_depth)
-pub global TREE_HEIGHT: u32 = 12;
+pub global TREE_HEIGHT: u32 = 18;
 // Number of out-of-domain samples per WHIR round
 pub global OOD_SAMPLES: u32 = 1;
 // Reed-Solomon rate (log2 of inverse rate)
 pub global LOG_INV_RATE: u32 = 0;
 // Proof-of-work bits per round
-pub global POW_BITS: u32 = 6;
+pub global POW_BITS: u32 = 9;
 // Maximum number of public inputs from the inner circuit
-pub global MAX_PUBLIC_INPUTS: u32 = 0;
+pub global MAX_PUBLIC_INPUTS: u32 = 4;
 // Maximum non-zero entries per R1CS matrix
-pub global MAX_MATRIX_CELLS: u32 = 3;
+pub global MAX_MATRIX_CELLS: u32 = 4500496;
 // Number of logup challenges (0 = single commitment mode)
 pub global NUM_CHALLENGES: u32 = 0;
 // Size of w1 (first witness segment)
-pub global W1_SIZE: u32 = 5;
+pub global W1_SIZE: u32 = 267272;
 // Number of WHIR batch polynomials
 pub global BATCH_SIZE: u32 = 1;
 
@@ -44,9 +44,9 @@ pub global BLINDING_WHIR_ROUNDS: u32 = 3;
 // Blinding tree height
 pub global BLINDING_TREE_HEIGHT: u32 = 11;
 // Number of blinding polynomial vectors
-pub global NUM_BLINDING_VECTORS: u32 = 14;
+pub global NUM_BLINDING_VECTORS: u32 = 20;
 // Number of witness variables in the WHIR (mu = m = LOG_NUM_VARIABLES)
-pub global NUM_WITNESS_VARIABLES: u32 = 13;
+pub global NUM_WITNESS_VARIABLES: u32 = 19;
 // Maximum queries for blinding WHIR rounds
 pub global BLINDING_MAX_QUERIES: u32 = 127;
 // Blinding fold size (same folding factor)
@@ -64,9 +64,9 @@ pub global BLINDING_INITIAL_OOD_COUNT: u32 = BLINDING_OOD_SAMPLES * NUM_BLINDING
 
 // --- WHIR inner verification parameters ---
 // Number of linear forms = 3 (evals_az/bz/cz) + 1 (blinding) = 4
-pub global NUM_LINEAR_FORMS: u32 = 4;
+pub global NUM_LINEAR_FORMS: u32 = 5;
 // Number of w_folded evaluations = NUM_LINEAR_FORMS * BATCH_SIZE * (NUM_WITNESS_VARIABLES + 1)
-pub global NUM_W_FOLDED_EVALS: u32 = 56;
+pub global NUM_W_FOLDED_EVALS: u32 = 100;
 // Final sumcheck polynomial size for the inner (blinded) WHIR
 pub global FINAL_POLY_SIZE: u32 = 2;
 // Final sumcheck polynomial size for the blinding WHIR
@@ -100,18 +100,60 @@ pub global BLINDING_STIR_TOTAL_BYTES: u32 = BLINDING_MAX_QUERIES * BLINDING_STIR
 
 // Upper bound for squeeze_stir_challenges loop iterations.
 // Must be >= max(STIR_TOTAL_BYTES, BLINDING_STIR_TOTAL_BYTES).
-pub global MAX_STIR_BYTES: u32 = 254;
+pub global MAX_STIR_BYTES: u32 = 381;
 
 // Number of constraint RLC terms for the inner WHIR.
-pub global INNER_WHIR_CONSTRAINT_COUNT: u32 = 5;
+pub global INNER_WHIR_CONSTRAINT_COUNT: u32 = 6;
 // Constraint count for the blinding WHIR.
-pub global BLINDING_WHIR_CONSTRAINT_COUNT: u32 = 5;
+pub global BLINDING_WHIR_CONSTRAINT_COUNT: u32 = 6;
 
 // Interleaving depth of the IRS commitment.
 pub global INTERLEAVING_DEPTH: u32 = 8; // = 1 << FOLDING_FACTOR
 
 // Number of gammas in the zkWHIR per-gamma loop.
 pub global MAX_GAMMAS: u32 = 1016;
+
+// --- BN254 NTT constants for in-circuit gamma coset expansion ---
+//
+// Layout for the initial IRS commitment (ProveKit uses its own `RSFr` NTT
+// engine; see provekit/common/src/ntt.rs). Values derive directly from
+// TREE_HEIGHT and INTERLEAVING_DEPTH.
+//   IRS_CODEWORD_LENGTH = 2^TREE_HEIGHT
+//     (== codeword_length in whir::irs_commit::Config; matches Merkle leaf count)
+//   FULL_DOMAIN_SIZE    = IRS_CODEWORD_LENGTH * INTERLEAVING_DEPTH = 2^(TREE_HEIGHT+3)
+//
+// OMEGA_FULL = ntt::generator(FULL_DOMAIN_SIZE)
+//            = TWO_ADIC_ROOT_OF_UNITY^(2^(TWO_ADICITY - log2(FULL_DOMAIN_SIZE)))
+// (see Fr::get_root_of_unity in ark-ff; ProveKit's RSFr::generator calls it).
+// For TREE_HEIGHT = 18 (FULL_DOMAIN_SIZE = 2^21), this is:
+pub global OMEGA_FULL: Field =
+    13536764371732269273912573961853310557438878140379554347802702086337840854307;
+
+// ZETA_POWERS[j] = OMEGA_FULL^(IRS_CODEWORD_LENGTH * j) for j in 0..INTERLEAVING_DEPTH.
+// zeta = OMEGA_FULL^IRS_CODEWORD_LENGTH is a primitive INTERLEAVING_DEPTH-th root
+// of unity (= primitive 8th root of unity for INTERLEAVING_DEPTH = 8).
+// Used in coset expansion: gamma_{q,j} = OMEGA_FULL^rev_idx_q * ZETA_POWERS[j].
+pub global ZETA_POWERS: [Field; 8] = [
+    1,
+    19540430494807482326159819597004422086093766032135589407132600596362845576832,
+    21888242871839275217838484774961031246007050428528088939761107053157389710902,
+    13274704216607947843011480449124596415239537050559949017414504948711435969894,
+    21888242871839275222246405745257275088548364400416034343698204186575808495616,
+    2347812377031792896086586148252853002454598368280444936565603590212962918785,
+    4407920970296243842541313971887945403937097133418418784715,
+    8613538655231327379234925296132678673308827349856085326283699237864372525723,
+];
+
+// Full IRS codeword length (num_leaves passed to challenge_indices);
+// STIR query indices are in [0, IRS_CODEWORD_LENGTH).
+pub global IRS_CODEWORD_LENGTH: u32 = 1 << TREE_HEIGHT;
+
+// ProveKit uses the `provekit_ntt` feature (see provekit/common/Cargo.toml),
+// which swaps in the `RSFr` NTT engine. Its `evaluation_points` bit-reverses
+// each raw index before raising the codeword-length generator to that power:
+//   alpha = RSFr::generator(IRS_CODEWORD_LENGTH)^bit_reverse(idx, TREE_HEIGHT)
+// so query_index(alpha, omega_powers) = bit_reverse(idx, TREE_HEIGHT), and the
+// coset_offset used in all_gammas is OMEGA_FULL^bit_reverse(idx, TREE_HEIGHT).
 
 // --- Sparse matrix representation ---
 
@@ -204,6 +246,38 @@ pub fn bytes_le_to_field_wide(bytes: [u8; 64]) -> Field {
     let low = bytes_le_to_field(low_bytes);
     let high = bytes_le_to_field(high_bytes);
     low + high * TWO_POW_256
+}
+
+// --- Field exponentiation by u32 ---
+
+// Compute base^exp via 32-round repeated squaring.
+// Works for any exp in [0, 2^32); result for exp = 0 is 1.
+pub fn pow_u32(base: Field, exp: u32) -> Field {
+    let mut result: Field = 1;
+    let mut base_pow = base;
+    let mut remaining = exp;
+    for _ in 0..32 {
+        if remaining & 1 == 1 {
+            result = result * base_pow;
+        }
+        base_pow = base_pow * base_pow;
+        remaining = remaining >> 1;
+    }
+    result
+}
+
+// Bit-reverse the low `bits` of x. For x < 2^bits, returns the bit-reversal
+// of x within that window. Bounded loop at 32 to cover u32 exponents.
+pub fn bit_reverse_u32(x: u32, bits: u32) -> u32 {
+    let mut r: u32 = 0;
+    let mut v = x;
+    for i in 0..32 {
+        if (i as u32) < bits {
+            r = (r << 1) | (v & 1);
+            v = v >> 1;
+        }
+    }
+    r
 }
 
 // --- Cubic polynomial evaluation ---

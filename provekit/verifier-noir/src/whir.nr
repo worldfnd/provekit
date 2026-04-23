@@ -227,6 +227,30 @@ pub fn squeeze_stir_challenges(
     sho.advance_squeeze_bytes(total_bytes);
 }
 
+// Squeeze NUM_QUERIES indices BIG-ENDIAN-decoded from BYTES_PER_INDEX-byte
+// chunks, reduced mod `num_leaves`. Matches
+// `whir::protocols::challenge_indices::challenge_indices`:
+//   chunk.iter().fold(0, |acc, &b| (acc << 8) | b as u32) % num_leaves
+//
+// BYTES_PER_INDEX is a compile-time const so the inner loop unrolls; it must
+// match (TREE_HEIGHT + 7) / 8 for the initial committer (or the equivalent
+// for any other commitment's `STIR_BYTES_PER_INDEX`).
+pub fn squeeze_stir_challenge_indices<let NUM_QUERIES: u32, let BYTES_PER_INDEX: u32>(
+    sho: &mut Sponge,
+    num_leaves: u32,
+) -> [u32; NUM_QUERIES] {
+    let mut indices: [u32; NUM_QUERIES] = [0; NUM_QUERIES];
+    for q in 0..NUM_QUERIES {
+        let mut raw: u32 = 0;
+        for _ in 0..BYTES_PER_INDEX {
+            let b = sho.squeeze_1();
+            raw = (raw << 8) | (b as u32);
+        }
+        indices[q] = raw % num_leaves;
+    }
+    indices
+}
+
 // --- Univariate polynomial evaluation ---
 
 // Evaluate a univariate polynomial (coefficient form) at multiple points.

@@ -30,19 +30,21 @@ use public_input::{verify_public_eval, verify_public_input_hash};
 use sumcheck::{run_sumcheck_verifier, SumcheckResult};
 use transcript::Sponge;
 use types::{
-    BLINDING_FINAL_POLY_ARRAY_SIZE, BLINDING_FINAL_POLY_SIZE, BLINDING_FINAL_SC_ARRAY_SIZE,
-    BLINDING_FINAL_SUMCHECK_ROUNDS, BLINDING_FOLD_SIZE, BLINDING_INITIAL_OOD_COUNT,
-    BLINDING_MAX_QUERIES, BLINDING_MERKLE_LEAF_SIZE, BLINDING_OOD_SAMPLES, BLINDING_ROUND_ARRAY_SIZE,
-    BLINDING_STIR_BYTES_PER_INDEX, BLINDING_TREE_HEIGHT, BLINDING_WHIR_CONSTRAINT_COUNT,
-    BLINDING_WHIR_ROUNDS, FINAL_POLY_SIZE, FINAL_SC_ARRAY_SIZE, FINAL_SUMCHECK_ROUNDS, FOLD_SIZE,
-    FOLDING_FACTOR, INITIAL_OOD_COUNT, INNER_WHIR_CONSTRAINT_COUNT, LOG_NUM_CONSTRAINTS,
+    bit_reverse_u32, BLINDING_FINAL_POLY_ARRAY_SIZE, BLINDING_FINAL_POLY_SIZE,
+    BLINDING_FINAL_SC_ARRAY_SIZE, BLINDING_FINAL_SUMCHECK_ROUNDS, BLINDING_FOLD_SIZE,
+    BLINDING_INITIAL_OOD_COUNT, BLINDING_MAX_QUERIES, BLINDING_MERKLE_LEAF_SIZE,
+    BLINDING_OOD_SAMPLES, BLINDING_ROUND_ARRAY_SIZE, BLINDING_STIR_BYTES_PER_INDEX,
+    BLINDING_TREE_HEIGHT, BLINDING_WHIR_CONSTRAINT_COUNT, BLINDING_WHIR_ROUNDS, FINAL_POLY_SIZE,
+    FINAL_SC_ARRAY_SIZE, FINAL_SUMCHECK_ROUNDS, FOLD_SIZE, FOLDING_FACTOR, INITIAL_OOD_COUNT,
+    INNER_WHIR_CONSTRAINT_COUNT, INTERLEAVING_DEPTH, IRS_CODEWORD_LENGTH, LOG_NUM_CONSTRAINTS,
     LOG_NUM_VARIABLES, MatrixCell, MAX_GAMMAS, MAX_MATRIX_CELLS, MAX_PUBLIC_INPUTS,
     MAX_QUERIES_PER_ROUND, NUM_BLINDING_VECTORS, NUM_W_FOLDED_EVALS, NUM_WHIR_ROUNDS,
-    NUM_WITNESS_VARIABLES, OOD_SAMPLES, ROUND_ARRAY_SIZE, STIR_BYTES_PER_INDEX, TREE_HEIGHT,
+    NUM_WITNESS_VARIABLES, OMEGA_FULL, OOD_SAMPLES, pow_u32, ROUND_ARRAY_SIZE,
+    STIR_BYTES_PER_INDEX, TREE_HEIGHT, ZETA_POWERS,
 };
 use whir::{
     check_pow, compute_fold, generate_combination_randomness, run_whir_sumcheck,
-    squeeze_stir_challenges,
+    squeeze_stir_challenge_indices, squeeze_stir_challenges,
 };
 
 // --- Compile-time sizes ---
@@ -238,11 +240,9 @@ fn main(
     // Phase 4: zkWHIR verification (whir_zk::Config::verify)
     // ===================================================================
 
-    // 4.1: blinding_challenge (verifier_message)
-    // TODO: rename to `beta` and use in the batched_h_claims
-    // equality (h(gamma, beta) = m_eval + sum_j beta^(j+1) * gamma^(2^j) * g_hat_j,
-    // squaring ladder on gamma, linear ladder on beta). Blocked on h_gammas
-    let _beta: Field = sho.squeeze_field();
+    // 4.1: blinding_challenge (verifier_message) -- used below in the
+    // h_value ladder for the batched_h_claims equality check.
+    let beta: Field = sho.squeeze_field();
 
     // 4.2: w_folded_blinding_evals (prover_messages_vec)
     // TODO: port extract_m_evals (first element of each
@@ -258,15 +258,42 @@ fn main(
     assert(masking_challenge != 0, "masking_challenge must be non-zero");
 
     // 4.4: STIR opening of initial blinded commitment (irs_commit::verify)
-    // The zkWHIR verifier opens the initial commitment to get in-domain
-    // points for gamma computation. This squeezes STIR_TOTAL_BYTES bytes.
-    squeeze_stir_challenges(&mut sho, MAX_QUERIES_PER_ROUND, STIR_BYTES_PER_INDEX);
+    // Squeeze and decode the in-domain query indices BIG-ENDIAN from
+    // STIR_BYTES_PER_INDEX-byte chunks, reduced mod IRS_CODEWORD_LENGTH. These
+    // indices feed the coset expansion that builds h_gammas below (see
+    // all_gammas in whir_zk/mod.rs). Byte count matches what
+    // squeeze_stir_challenges would advance.
+    let initial_query_indices: [u32; MAX_QUERIES_PER_ROUND] = squeeze_stir_challenge_indices::<
+        MAX_QUERIES_PER_ROUND,
+        STIR_BYTES_PER_INDEX,
+    >(&mut sho, IRS_CODEWORD_LENGTH);
 
     // 4.5: tau1 (verifier_message) -- used in build_combined_and_subproof_claims
     let tau1: Field = sho.squeeze_field();
 
     // 4.6: tau2 (verifier_message) -- used to RLC m_evals/g_hat_evals/h across gammas
     let tau2: Field = sho.squeeze_field();
+
+    // --- Expand in-domain query indices into coset gamma points ---
+    //
+    // Mirrors whir_zk::Config::all_gammas (whir_zk/mod.rs L213-229) composed
+    // with ProveKit's RSFr::evaluation_points (provekit/common/src/ntt.rs
+    // L22-42), which bit-reverses each raw index before mapping it to the
+    // IRS sub-domain:
+    //   alpha = RSFr::generator(IRS_CODEWORD_LENGTH)^bit_reverse(idx, TREE_HEIGHT)
+    //
+    // Since the `omega_powers` lookup in all_gammas returns that same
+    // bit-reversed index, the coset_offset raised from omega_full is:
+    //   coset_offset = OMEGA_FULL^bit_reverse(idx, TREE_HEIGHT)
+    // and each of INTERLEAVING_DEPTH gammas is coset_offset * ZETA_POWERS[j].
+    let mut h_gammas: [Field; MAX_GAMMAS] = [0; MAX_GAMMAS];
+    for q in 0..MAX_QUERIES_PER_ROUND {
+        let rev_idx = bit_reverse_u32(initial_query_indices[q], TREE_HEIGHT);
+        let coset_offset: Field = pow_u32(OMEGA_FULL, rev_idx);
+        for j in 0..INTERLEAVING_DEPTH {
+            h_gammas[q * INTERLEAVING_DEPTH + j] = coset_offset * ZETA_POWERS[j];
+        }
+    }
 
     // 4.7: Per-gamma prover messages
     // For each gamma point, absorb m_eval + 13 g_hat_evals = 14 fields.
@@ -287,34 +314,43 @@ fn main(
     sho.absorb_field(combined_claims);
 
     // 4.9: batched_h_claims (prover_messages_vec, 1 per polynomial)
-    // TODO: assert batched_h_claims == expected_batched_h_claims,
-    // where expected = sum_k tau2^k * h(gamma_k, beta) for each gamma point.
     sho.absorb_field(batched_h_claims);
 
-    // --- Build m_claim and g_hat_claims by tau2-weighted accumulation ---
+    // --- Build m_claim, g_hat_claims, and expected_batched_h_claim ---
     //
     // Mirrors whir_zk/verifier.rs L85-107 (num_polynomials = 1 in our config):
-    //   m_claim         = sum_k tau2^k * gamma_m_evals[k]
-    //   g_hat_claims[j] = sum_k tau2^k * gamma_g_hat_evals[k][j]
-    // where k runs over the MAX_GAMMAS gamma points.
-    //
-    // Note: expected_batched_h_claims also lives here in Rust but it uses
-    // the gamma values themselves via h(gamma, beta) = m_eval +
-    // sum_j beta^(j+1) * gamma^(2^j) * g_hat_j. Since gamma = all_gammas(...)
-    // needs an in-circuit coset expansion (omega, zeta powers) or a
-    // Prover.toml hint, the batched_h_claims equality is TODO. The
-    // combined_claims equality below is enforceable with only the
-    // already-absorbed data.
+    //   m_claim                   = sum_k tau2^k * gamma_m_evals[k]
+    //   g_hat_claims[j]           = sum_k tau2^k * gamma_g_hat_evals[k][j]
+    //   expected_batched_h_claim  = sum_k tau2^k * h(h_gammas[k], beta)
+    // where
+    //   h(gamma, beta) = m_eval + sum_j beta^(j+1) * gamma^(2^j) * g_hat_j
+    // with beta on a linear ladder (beta, beta^2, beta^3, ...) and gamma on a
+    // squaring ladder (gamma, gamma^2, gamma^4, ...) in lock-step over j.
     let mut m_claim: Field = 0;
     let mut g_hat_claims: [Field; NUM_WITNESS_VARIABLES] = [0; NUM_WITNESS_VARIABLES];
+    let mut expected_batched_h_claim: Field = 0;
     let mut tau2_power: Field = 1;
     for k in 0..MAX_GAMMAS {
-        m_claim += tau2_power * gamma_m_evals[k];
+        let m_eval_k = gamma_m_evals[k];
+        m_claim += tau2_power * m_eval_k;
+
+        let mut h_value: Field = m_eval_k;
+        let mut beta_power: Field = beta;
+        let mut gamma_power: Field = h_gammas[k];
         for j in 0..NUM_WITNESS_VARIABLES {
-            g_hat_claims[j] += tau2_power * gamma_g_hat_evals[k][j];
+            let g_hat_eval = gamma_g_hat_evals[k][j];
+            g_hat_claims[j] += tau2_power * g_hat_eval;
+            h_value += beta_power * gamma_power * g_hat_eval;
+            beta_power *= beta;
+            gamma_power = gamma_power * gamma_power;
         }
+        expected_batched_h_claim += tau2_power * h_value;
         tau2_power *= tau2;
     }
+    assert(
+        batched_h_claims == expected_batched_h_claim,
+        "batched_h_claims mismatch (whir_zk/verifier.rs L120)",
+    );
 
     // --- Recompute expected_combined_claims from (m_claim, g_hat_claims, tau1) ---
     //
