@@ -5,7 +5,7 @@
 use {
     crate::permutation::poseidon2_permutation,
     ark_bn254::Fr,
-    ark_ff::{BigInteger, PrimeField},
+    ark_ff::{BigInt, PrimeField},
     ark_std::Zero,
     std::sync::LazyLock,
 };
@@ -86,16 +86,41 @@ pub fn poseidon2_hash_bytes(msg: &[u8], num_fes: usize) -> [u8; 32] {
         let batch = (num_fes - absorbed).min(RATE);
         for j in 0..batch {
             let fe_bytes = &msg[(absorbed + j) * 32..(absorbed + j + 1) * 32];
-            state[j] += Fr::from_le_bytes_mod_order(fe_bytes);
+            state[j] += decode_canonical_fr(fe_bytes);
         }
         state = poseidon2_permutation(&state);
         absorbed += batch;
     }
 
-    let bytes = state[0].into_bigint().to_bytes_le();
+    // Canonical LE serialization without routing through `BigInt::to_bytes_le`'s
+    // `Vec<u8>`: copy the 4 limbs of `state[0].into_bigint()` straight out.
+    let limbs = state[0].into_bigint().0;
     let mut out = [0u8; 32];
-    out[..bytes.len()].copy_from_slice(&bytes);
+    for (i, &limb) in limbs.iter().enumerate() {
+        out[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+    }
     out
+}
+
+/// Decode a canonical 32-byte little-endian BN254 field element without
+/// heap allocations.
+///
+/// Required precondition: `bytes` encodes an integer `< p` — this is part of
+/// the `poseidon2_hash_bytes` contract (inputs are canonical encodings of
+/// field elements produced by `field_to_bytes_le` or engine outputs). The
+/// reduction is therefore a no-op on contract-respecting input, and we skip
+/// the allocating `Fr::from_le_bytes_mod_order` fast path. Calling with a
+/// non-canonical 32-byte value is a contract violation and yields an `Fr`
+/// whose internal representation is `>= p`, which ark-ff's MontBackend
+/// arithmetic does not guarantee to handle correctly.
+#[inline]
+fn decode_canonical_fr(bytes: &[u8]) -> Fr {
+    debug_assert_eq!(bytes.len(), 32);
+    let mut limbs = [0u64; 4];
+    for (i, chunk) in bytes.chunks_exact(8).enumerate() {
+        limbs[i] = u64::from_le_bytes(chunk.try_into().unwrap());
+    }
+    Fr::new(BigInt(limbs))
 }
 
 #[cfg(test)]
@@ -276,30 +301,27 @@ mod tests {
     /// see `poseidon2_hash_bytes` doc.)
     #[test]
     fn byte_variant_matches_field_variant() {
+        // Local canonical-limb serializer, mirroring the production path in
+        // `poseidon2_hash_bytes` / `utils::field_to_bytes_le`.
+        fn fe_to_bytes(fe: Fr) -> [u8; 32] {
+            let limbs = fe.into_bigint().0;
+            let mut out = [0u8; 32];
+            for (i, &limb) in limbs.iter().enumerate() {
+                out[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+            }
+            out
+        }
+
         for n in 1..=10usize {
             let fes: Vec<Fr> = (1..=n as u64).map(Fr::from).collect();
-            let msg: Vec<u8> = fes
-                .iter()
-                .flat_map(|f| {
-                    let b = f.into_bigint().to_bytes_le();
-                    let mut out = [0u8; 32];
-                    out[..b.len()].copy_from_slice(&b);
-                    out
-                })
-                .collect();
+            let msg: Vec<u8> = fes.iter().flat_map(|f| fe_to_bytes(*f)).collect();
 
             let field_out = poseidon2_hash(&fes);
             let byte_out = poseidon2_hash_bytes(&msg, n);
 
-            let field_bytes = {
-                let b = field_out.into_bigint().to_bytes_le();
-                let mut out = [0u8; 32];
-                out[..b.len()].copy_from_slice(&b);
-                out
-            };
-
             assert_eq!(
-                byte_out, field_bytes,
+                byte_out,
+                fe_to_bytes(field_out),
                 "byte/field variant divergence at num_fes={n}"
             );
         }
