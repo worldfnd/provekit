@@ -15,22 +15,21 @@ pub fn bytes_to_field(bytes: &[u8]) -> FieldElement {
 }
 
 /// Serializes a BN254 field element to its canonical 32-byte little-endian
-/// representation.
+/// representation. Zero-allocation: copies the 4 canonical limbs directly
+/// instead of routing through `BigInt::to_bytes_le`'s `Vec<u8>`.
 #[inline]
 pub fn field_to_bytes_le(fe: FieldElement) -> [u8; 32] {
-    let raw = fe.into_bigint().to_bytes_le();
-    debug_assert!(
-        raw.len() <= 32,
-        "field element serialized to more than 32 bytes"
-    );
+    let limbs = fe.into_bigint().0;
     let mut out = [0u8; 32];
-    out[..raw.len()].copy_from_slice(&raw);
+    for (i, &limb) in limbs.iter().enumerate() {
+        out[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+    }
     out
 }
 
 use {
     crate::{FieldElement, NoirElement},
-    ark_ff::{BigInt, BigInteger, Field, PrimeField},
+    ark_ff::{BigInt, Field, PrimeField},
     ruint::{aliases::U256, uint},
     std::{
         fmt::{Display, Formatter, Result as FmtResult},
