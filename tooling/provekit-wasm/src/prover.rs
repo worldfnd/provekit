@@ -70,7 +70,7 @@ impl Prover {
     pub fn get_circuit(&self) -> Result<Box<[u8]>, JsError> {
         let noir_prover = match self.inner_ref()? {
             ProverCore::Noir(p) => p,
-            ProverCore::Mavros(_) => {
+            ProverCore::Mavros(_) | ProverCore::Groth16(_) => {
                 return Err(JsError::new("Only Noir provers are supported in WASM"))
             }
         };

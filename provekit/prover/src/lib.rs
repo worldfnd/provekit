@@ -8,8 +8,8 @@ use {
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
-        utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, Prover,
-        PublicInputs, TranscriptSponge,
+        utils::noir_to_native, FieldElement, Groth16Prover, NoirElement, NoirProof, NoirProver,
+        Prover, PublicInputs, TranscriptSponge,
     },
     std::mem::size_of,
     tracing::{debug, info_span, instrument},
@@ -54,6 +54,38 @@ pub trait Prove {
 #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
 fn generate_noir_witness(
     prover: &mut NoirProver,
+    input_map: InputMap,
+) -> Result<WitnessMap<NoirElement>> {
+    let solver = Bn254BlackBoxSolver::default();
+    let mut output_buffer = Vec::new();
+    let mut foreign_call_executor = DefaultForeignCallBuilder {
+        output:       &mut output_buffer,
+        enable_mocks: false,
+        resolver_url: None,
+        root_path:    None,
+        package_name: None,
+    }
+    .build();
+
+    let initial_witness = prover.witness_generator.abi().encode(&input_map, None)?;
+
+    let mut witness_stack = nargo::ops::execute_program(
+        &prover.program,
+        initial_witness,
+        &solver,
+        &mut foreign_call_executor,
+    )?;
+
+    Ok(witness_stack
+        .pop()
+        .context("Missing witness results")?
+        .witness)
+}
+
+#[instrument(skip_all)]
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+fn generate_noir_witness_for_groth16(
+    prover: &mut Groth16Prover,
     input_map: InputMap,
 ) -> Result<WitnessMap<NoirElement>> {
     let solver = Bn254BlackBoxSolver::default();
@@ -260,7 +292,7 @@ impl Prove for NoirProver {
             .prove_noir(merlin, r1cs, commitments, full_witness, &public_inputs)
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof {
+        Ok(NoirProof::Whir {
             public_inputs,
             whir_r1cs_proof,
         })
@@ -354,7 +386,7 @@ impl Prove for MavrosProver {
             )
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof {
+        Ok(NoirProof::Whir {
             public_inputs,
             whir_r1cs_proof,
         })
@@ -380,12 +412,126 @@ impl Prove for MavrosProver {
     }
 }
 
+impl Prove for Groth16Prover {
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+    #[instrument(skip_all)]
+    fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
+        let witness = generate_noir_witness_for_groth16(&mut self, input_map)?;
+        self.prove_with_witness(witness)
+    }
+
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+    #[instrument(skip_all)]
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        let (input_map, _return_value) =
+            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+        self.prove(input_map)
+    }
+
+    #[instrument(skip_all)]
+    fn prove_with_witness(
+        self,
+        acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
+    ) -> Result<NoirProof> {
+        use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+
+        // Extract public inputs
+        let mut public_input_indices = self.program.functions[0].public_inputs().indices();
+        public_input_indices.sort_unstable();
+        let public_inputs = if public_input_indices.is_empty() {
+            PublicInputs::new()
+        } else {
+            let values = public_input_indices
+                .iter()
+                .map(|&idx| {
+                    let noir_val = acir_witness_idx_to_value_map
+                        .get(&Witness::from(idx))
+                        .ok_or_else(|| anyhow::anyhow!("Missing public input at index {idx}"))?;
+                    Ok(noir_to_native(*noir_val))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            PublicInputs::from_vec(values)
+        };
+
+        let num_witnesses = self.r1cs.num_witnesses();
+
+        // Allocate and solve witnesses (no Fiat-Shamir transcript for Groth16)
+        let mut witness: Vec<Option<FieldElement>> =
+            vec![None; self.r1cs.num_witnesses_for_solving()];
+
+        // Solve all w1 witnesses. For Groth16, there's no challenge/w2 split.
+        {
+            let _s = info_span!("solve_groth16_witness").entered();
+            // Create a dummy transcript — Groth16 doesn't use Fiat-Shamir during witness solving
+            let dummy_instance: Vec<u8> = Vec::new();
+            let ds = whir::transcript::DomainSeparator::protocol(&"groth16-dummy")
+                .instance(&dummy_instance);
+            let mut dummy_transcript = ProverState::new(&ds, TranscriptSponge::default());
+            crate::r1cs::solve_witness_vec(
+                &mut witness,
+                self.split_witness_builders.w1_layers,
+                &acir_witness_idx_to_value_map,
+                &mut dummy_transcript,
+            )
+            .context("While solving Groth16 witnesses")?;
+        }
+
+        // Extract solved witness vector
+        let full_witness: Vec<FieldElement> = witness[..num_witnesses]
+            .iter()
+            .enumerate()
+            .map(|(i, w)| w.ok_or_else(|| anyhow::anyhow!("Witness {i} unsolved")))
+            .collect::<Result<Vec<_>>>()?;
+
+        // Compute R1CS solution vectors: A·w, B·w, C·w
+        let mut a_evals: Vec<FieldElement> = self.r1cs.a() * full_witness.as_slice();
+        let mut b_evals: Vec<FieldElement> = self.r1cs.b() * full_witness.as_slice();
+        let mut c_evals: Vec<FieldElement> = self.r1cs.c() * full_witness.as_slice();
+
+        // Compute quotient polynomial H
+        let domain =
+            ark_poly::EvaluationDomain::new(self.r1cs.num_constraints())
+                .ok_or_else(|| anyhow::anyhow!("failed to create FFT domain"))?;
+        let h = provekit_groth16::prover::compute_h(&mut a_evals, &mut b_evals, &mut c_evals, &domain);
+
+        // Deserialize Groth16 proving key
+        let pk: provekit_groth16::ProvingKey =
+            CanonicalDeserialize::deserialize_compressed(&self.groth16_pk[..])
+                .context("while deserializing Groth16 proving key")?;
+
+        let nb_public = 1 + self.r1cs.num_public_inputs;
+
+        // Call Groth16 prover (no BSB22 commitments for now)
+        let proof = provekit_groth16::prover::prove(
+            &pk,
+            nb_public,
+            &full_witness,
+            &[],   // no commitment_info
+            &[],   // no committed_values
+            &[],   // no commitments
+        )
+        .context("While generating Groth16 proof")?;
+
+        // Serialize proof
+        let mut proof_bytes = Vec::new();
+        proof
+            .serialize_compressed(&mut proof_bytes)
+            .context("while serializing Groth16 proof")?;
+
+        Ok(NoirProof::Groth16 {
+            public_inputs,
+            groth16_proof: proof_bytes,
+        })
+    }
+}
+
 impl Prove for Prover {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof> {
         match self {
             Prover::Noir(p) => p.prove(input_map),
             Prover::Mavros(p) => p.prove(input_map),
+            Prover::Groth16(p) => p.prove(input_map),
         }
     }
 
@@ -394,6 +540,7 @@ impl Prove for Prover {
         match self {
             Prover::Noir(p) => p.prove_with_toml(prover_toml),
             Prover::Mavros(p) => p.prove_with_toml(prover_toml),
+            Prover::Groth16(p) => p.prove_with_toml(prover_toml),
         }
     }
 
@@ -406,6 +553,7 @@ impl Prove for Prover {
             Prover::Mavros(_) => {
                 anyhow::bail!("Mavros prover is not supported on WASM")
             }
+            Prover::Groth16(p) => p.prove_with_witness(witness),
         }
     }
 }

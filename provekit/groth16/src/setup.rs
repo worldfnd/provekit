@@ -9,10 +9,9 @@ use ark_ff::{BigInteger, Field, One, PrimeField, UniformRand, Zero};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_std::rand::Rng;
 
-use crate::{
-    pedersen, CommitmentInfo, R1CSMatrices, COEFF_ID_MINUS_ONE, COEFF_ID_ONE, COEFF_ID_TWO,
-    COEFF_ID_ZERO,
-};
+use provekit_common::R1CS;
+
+use crate::{pedersen, CommitmentInfo};
 
 /// Toxic waste: secret random values used during setup and then destroyed.
 struct ToxicWaste {
@@ -61,25 +60,27 @@ impl ToxicWaste {
 ///
 /// For production use, this should be replaced by an MPC ceremony.
 pub fn setup(
-    r1cs: &R1CSMatrices,
+    r1cs: &R1CS,
+    commitment_info: &[CommitmentInfo],
 ) -> Result<(crate::ProvingKey, crate::VerifyingKey)> {
     let mut rng = ark_std::test_rng();
     let toxic = ToxicWaste::sample(&mut rng)?;
 
-    let nb_wires = r1cs.nb_wires();
-    let commitment_info = &r1cs.commitment_info;
-    let commitment_wires = r1cs.commitment_indexes();
-    let private_committed = r1cs.private_committed();
+    let nb_wires = r1cs.num_witnesses();
+    // nb_public_variables includes constant-1 wire
+    let nb_public_variables = 1 + r1cs.num_public_inputs;
+    let commitment_wires: Vec<usize> = commitment_info.iter().map(|c| c.commitment_index).collect();
+    let private_committed: Vec<Vec<usize>> = commitment_info.iter().map(|c| c.private_committed.clone()).collect();
     let nb_private_committed: usize = private_committed.iter().map(|v| v.len()).sum();
 
     // Commitments are treated as public wires on the Groth16 level.
-    let nb_public = r1cs.nb_public_variables + commitment_info.len();
-    let nb_private = r1cs.nb_secret_variables + r1cs.nb_internal_variables
+    let nb_public = nb_public_variables + commitment_info.len();
+    let nb_private = nb_wires - nb_public_variables
         - nb_private_committed
         - commitment_info.len();
 
     // FFT domain
-    let domain = Radix2EvaluationDomain::<Fr>::new(r1cs.nb_constraints)
+    let domain = Radix2EvaluationDomain::<Fr>::new(r1cs.num_constraints())
         .ok_or_else(|| anyhow::anyhow!("failed to create FFT domain"))?;
     let domain_size = domain.size() as u64;
 
@@ -108,7 +109,7 @@ pub fn setup(
     let mut nb_committed_seen = 0usize;
 
     for i in 0..nb_wires {
-        let is_public = i < r1cs.nb_public_variables;
+        let is_public = i < nb_public_variables;
         let is_commitment = commitment_wire_set.contains(&i);
 
         // K(i) = β·A(i) + α·B(i) + C(i)
@@ -280,17 +281,17 @@ pub fn setup(
 ///
 /// Ported from gnark's `setupABC()`.
 fn evaluate_abc_at_t(
-    r1cs: &R1CSMatrices,
+    r1cs: &R1CS,
     domain: &Radix2EvaluationDomain<Fr>,
     toxic: &ToxicWaste,
 ) -> Result<(Vec<Fr>, Vec<Fr>, Vec<Fr>)> {
-    let nb_wires = r1cs.nb_wires();
+    let nb_wires = r1cs.num_witnesses();
     let mut a = vec![Fr::zero(); nb_wires];
     let mut b = vec![Fr::zero(); nb_wires];
     let mut c = vec![Fr::zero(); nb_wires];
 
     let w = domain.group_gen();
-    let n = r1cs.nb_constraints;
+    let n = r1cs.num_constraints();
 
     // Precompute [τ - ω^i] and their inverses
     let mut t_minus_wi = Vec::with_capacity(n + 1);
@@ -310,26 +311,20 @@ fn evaluate_abc_at_t(
     let n_inv = Fr::from(domain.size() as u64).inverse().expect("n nonzero");
     let mut lagrange = (t_n - Fr::one()) * t_minus_wi_inv[0] * n_inv;
 
-    // Accumulate: for each constraint, add coeff * Lⱼ(τ) to the appropriate wire
-    let accumulate = |res: &mut Fr, term: &crate::Term, l_val: &Fr, coeffs: &[Fr]| {
-        match term.coeff_id {
-            cid if cid == COEFF_ID_ZERO => {}
-            cid if cid == COEFF_ID_ONE => *res += l_val,
-            cid if cid == COEFF_ID_MINUS_ONE => *res -= l_val,
-            cid if cid == COEFF_ID_TWO => *res += *l_val + *l_val,
-            cid => *res += coeffs[cid] * l_val,
+    // Accumulate: for each constraint row, add coeff * Lⱼ(τ) to the appropriate wire.
+    // Iterates directly over SparseMatrix rows instead of gnark's Term lists.
+    for j in 0..n {
+        for (col, interned) in r1cs.a.iter_row(j) {
+            let coeff = r1cs.interner.get(interned).expect("interned value missing");
+            a[col] += coeff * lagrange;
         }
-    };
-
-    for (j, constraint) in r1cs.constraints.iter().enumerate() {
-        for term in &constraint.l {
-            accumulate(&mut a[term.wire_id], term, &lagrange, &r1cs.coefficients);
+        for (col, interned) in r1cs.b.iter_row(j) {
+            let coeff = r1cs.interner.get(interned).expect("interned value missing");
+            b[col] += coeff * lagrange;
         }
-        for term in &constraint.r {
-            accumulate(&mut b[term.wire_id], term, &lagrange, &r1cs.coefficients);
-        }
-        for term in &constraint.o {
-            accumulate(&mut c[term.wire_id], term, &lagrange, &r1cs.coefficients);
+        for (col, interned) in r1cs.c.iter_row(j) {
+            let coeff = r1cs.interner.get(interned).expect("interned value missing");
+            c[col] += coeff * lagrange;
         }
 
         // Lⱼ₊₁(τ) = ω · Lⱼ(τ) · (τ - ω^j) / (τ - ω^(j+1))
@@ -371,26 +366,25 @@ fn bit_reverse_permutation<T: Copy>(a: &mut [T]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use provekit_common::FieldElement;
 
     /// Simple test: setup with a trivial R1CS should not panic.
     #[test]
     fn test_setup_trivial() {
-        let r1cs = R1CSMatrices {
-            nb_public_variables: 2, // constant 1 + one public input
-            nb_secret_variables: 1,
-            nb_internal_variables: 0,
-            nb_constraints: 1,
-            constraints: vec![crate::R1CConstraint {
-                // x * x = y (where x is secret, y is public)
-                l: vec![crate::Term { wire_id: 2, coeff_id: COEFF_ID_ONE }],
-                r: vec![crate::Term { wire_id: 2, coeff_id: COEFF_ID_ONE }],
-                o: vec![crate::Term { wire_id: 1, coeff_id: COEFF_ID_ONE }],
-            }],
-            commitment_info: vec![],
-            coefficients: vec![Fr::zero(), Fr::one(), -Fr::one(), Fr::from(2u64)],
-        };
+        // x * x = y (where wire 0=constant, wire 1=public output y, wire 2=secret x)
+        let mut r1cs = R1CS::new();
+        r1cs.num_public_inputs = 1; // one public input (y), excludes constant wire
+        r1cs.add_witnesses(3); // wire 0 (const), wire 1 (y), wire 2 (x)
 
-        let (pk, vk) = setup(&r1cs).unwrap();
+        let one = FieldElement::from(1u64);
+        // A: x (wire 2), B: x (wire 2), C: y (wire 1)
+        r1cs.add_constraint(
+            &[(one, 2)], // A: 1·x
+            &[(one, 2)], // B: 1·x
+            &[(one, 1)], // C: 1·y
+        );
+
+        let (pk, vk) = setup(&r1cs, &[]).unwrap();
         assert!(!pk.g1_a.is_empty());
         assert!(!vk.g1_k.is_empty());
     }

@@ -39,6 +39,7 @@ impl MaybeHashAware for Prover {
         match self {
             Prover::Noir(p) => Some(p.hash_config),
             Prover::Mavros(p) => Some(p.hash_config),
+            Prover::Groth16(_) => None,
         }
     }
 }

@@ -122,6 +122,72 @@ pub struct VerifyingKey {
     pub public_and_commitment_committed: Vec<Vec<usize>>,
 }
 
+impl CanonicalSerialize for VerifyingKey {
+    fn serialize_with_mode<W: std::io::Write>(
+        &self,
+        writer: W,
+        compress: ark_serialize::Compress,
+    ) -> Result<(), ark_serialize::SerializationError> {
+        let mut w = writer;
+        self.g1_alpha.serialize_with_mode(&mut w, compress)?;
+        self.g1_k.serialize_with_mode(&mut w, compress)?;
+        self.g2_beta.serialize_with_mode(&mut w, compress)?;
+        self.g2_delta.serialize_with_mode(&mut w, compress)?;
+        self.g2_gamma.serialize_with_mode(&mut w, compress)?;
+        self.commitment_keys.serialize_with_mode(&mut w, compress)?;
+        self.public_and_commitment_committed.serialize_with_mode(&mut w, compress)?;
+        Ok(())
+    }
+
+    fn serialized_size(&self, compress: ark_serialize::Compress) -> usize {
+        self.g1_alpha.serialized_size(compress)
+            + self.g1_k.serialized_size(compress)
+            + self.g2_beta.serialized_size(compress)
+            + self.g2_delta.serialized_size(compress)
+            + self.g2_gamma.serialized_size(compress)
+            + self.commitment_keys.serialized_size(compress)
+            + self.public_and_commitment_committed.serialized_size(compress)
+    }
+}
+
+impl ark_serialize::Valid for VerifyingKey {
+    fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        Ok(())
+    }
+}
+
+impl CanonicalDeserialize for VerifyingKey {
+    fn deserialize_with_mode<R: std::io::Read>(
+        reader: R,
+        compress: ark_serialize::Compress,
+        validate: ark_serialize::Validate,
+    ) -> Result<Self, ark_serialize::SerializationError> {
+        let mut r = reader;
+        let g1_alpha = G1Affine::deserialize_with_mode(&mut r, compress, validate)?;
+        let g1_k = Vec::<G1Affine>::deserialize_with_mode(&mut r, compress, validate)?;
+        let g2_beta = G2Affine::deserialize_with_mode(&mut r, compress, validate)?;
+        let g2_delta = G2Affine::deserialize_with_mode(&mut r, compress, validate)?;
+        let g2_gamma = G2Affine::deserialize_with_mode(&mut r, compress, validate)?;
+        let commitment_keys =
+            Vec::<pedersen::VerifyingKey>::deserialize_with_mode(&mut r, compress, validate)?;
+        let public_and_commitment_committed =
+            Vec::<Vec<usize>>::deserialize_with_mode(&mut r, compress, validate)?;
+
+        Ok(Self {
+            g1_alpha,
+            g1_k,
+            g2_beta,
+            g2_delta,
+            g2_gamma,
+            g2_delta_neg: G2Affine::zero(),
+            g2_gamma_neg: G2Affine::zero(),
+            e_alpha_beta: ark_ff::AdditiveGroup::ZERO,
+            commitment_keys,
+            public_and_commitment_committed,
+        })
+    }
+}
+
 impl VerifyingKey {
     /// Precompute cached values: e(α,β), -δ₂, -γ₂.
     /// Must be called after deserialization.

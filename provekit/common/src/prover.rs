@@ -20,6 +20,17 @@ pub struct NoirProver {
     pub whir_for_witness:       WhirR1CSScheme,
 }
 
+/// Groth16 prover: holds R1CS, witness builders, and the serialized proving key.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Groth16Prover {
+    pub program:                Program<NoirElement>,
+    pub r1cs:                   R1CS,
+    pub split_witness_builders: SplitWitnessBuilders,
+    pub witness_generator:      NoirWitnessGenerator,
+    /// CanonicalSerialize'd `provekit_groth16::ProvingKey`.
+    pub groth16_pk:             Vec<u8>,
+}
+
 // INVARIANT: Variant order is wire-format-critical (postcard uses positional
 // discriminants). Do not reorder, cfg-gate, or insert variants without
 // verifying cross-target deserialization (native <-> WASM).
@@ -27,6 +38,7 @@ pub struct NoirProver {
 pub enum Prover {
     Noir(NoirProver),
     Mavros(MavrosProver),
+    Groth16(Groth16Prover),
 }
 
 impl Prover {
@@ -58,6 +70,7 @@ impl Prover {
         match self {
             Prover::Noir(p) => p.witness_generator.abi(),
             Prover::Mavros(p) => &p.abi,
+            Prover::Groth16(p) => p.witness_generator.abi(),
         }
     }
 
@@ -68,6 +81,7 @@ impl Prover {
                 p.constraints_layout.algebraic_size,
                 p.witness_layout.algebraic_size,
             ),
+            Prover::Groth16(p) => (p.r1cs.num_constraints(), p.r1cs.num_witnesses()),
         }
     }
 
@@ -75,6 +89,7 @@ impl Prover {
         match self {
             Prover::Noir(p) => &p.whir_for_witness,
             Prover::Mavros(p) => &p.whir_for_witness,
+            Prover::Groth16(_) => panic!("Groth16 prover does not use WHIR"),
         }
     }
 }

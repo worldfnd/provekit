@@ -261,6 +261,7 @@ fn prove_circuit<T: serde::Serialize>(
     let abi = match &prover {
         provekit_common::Prover::Noir(p) => p.witness_generator.abi(),
         provekit_common::Prover::Mavros(p) => &p.abi,
+        provekit_common::Prover::Groth16(p) => p.witness_generator.abi(),
     };
     let input_map = Format::Json
         .parse(&json, abi)

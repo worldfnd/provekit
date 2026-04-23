@@ -14,6 +14,9 @@ pub struct Verifier {
     pub whir_for_witness: Option<WhirR1CSScheme>,
     #[serde(with = "serde_jsonify")]
     pub abi:              Abi,
+    /// CanonicalSerialize'd `provekit_groth16::VerifyingKey` (None for WHIR proofs).
+    #[serde(default)]
+    pub groth16_vk:       Option<Vec<u8>>,
 }
 
 impl Verifier {
@@ -24,12 +27,14 @@ impl Verifier {
                 whir_for_witness: Some(d.whir_for_witness),
                 abi:              d.witness_generator.abi.clone(),
                 hash_config:      d.hash_config,
+                groth16_vk:       None,
             },
             NoirProofScheme::Mavros(d) => Self {
                 r1cs:             d.r1cs,
                 whir_for_witness: Some(d.whir_for_witness),
                 abi:              d.abi.clone(),
                 hash_config:      d.hash_config,
+                groth16_vk:       None,
             },
         }
     }

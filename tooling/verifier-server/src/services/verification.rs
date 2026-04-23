@@ -89,13 +89,13 @@ impl VerificationService {
 
         write_gnark_parameters_to_file(
             &whir_scheme.whir_witness.blinded_commitment,
-            &proof.whir_r1cs_proof,
+            proof.whir_r1cs_proof(),
             whir_scheme.m_0,
             whir_scheme.m,
             whir_scheme.a_num_terms,
             whir_scheme.num_challenges,
             whir_scheme.w1_size,
-            &proof.public_inputs,
+            proof.public_inputs(),
             gnark_params_path,
         );
 
