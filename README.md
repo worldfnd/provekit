@@ -1,10 +1,14 @@
-# ProveKit
+<div align="center">
+
+<img src="./assets/banner.png" alt="ProveKit" width="100%" />
 
 [![CI](https://img.shields.io/badge/build-passing-2ea44f?style=flat-square&logo=github)](https://github.com/worldfnd/provekit/actions)
 [![Rust](https://img.shields.io/badge/rust-nightly-e32828?style=flat-square&logo=rust)](https://rustup.rs/)
 [![License](https://img.shields.io/badge/license-MIT%20%2F%20Apache_2.0-blue?style=flat-square)](./License.md)
 
 [Getting Started](#getting-started) · [Examples](./noir-examples/) · [Contributing](./CONTRIBUTING.md) · [Issues](https://github.com/worldfnd/provekit/issues)
+
+</div>
 
 ProveKit compiles Noir circuits to R1CS and generates WHIR proofs. It targets mobile and constrained environments — with a custom BN254 hash engine ([Skyscraper](skyscraper/)), swap-to-disk memory management, and C FFI bindings for iOS and Android. A gnark-based recursive verifier wraps WHIR proofs in Groth16 for on-chain verification.
 
