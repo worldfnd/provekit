@@ -3,7 +3,7 @@
 //! Sponge parameters: width=4, rate=3, capacity=1 over BN254's scalar field.
 
 use {
-    crate::permutation::poseidon2_permutation,
+    crate::permutation::poseidon2_permute_in_place,
     ark_bn254::Fr,
     ark_ff::{BigInt, PrimeField},
     ark_std::Zero,
@@ -35,7 +35,7 @@ pub fn poseidon2_hash(inputs: &[Fr]) -> Fr {
             }
             cache = [zero; RATE];
             cache_size = 0;
-            state = poseidon2_permutation(&state);
+            poseidon2_permute_in_place(&mut state);
         }
         cache[cache_size] = input;
         cache_size += 1;
@@ -45,7 +45,7 @@ pub fn poseidon2_hash(inputs: &[Fr]) -> Fr {
     for i in 0..cache_size {
         state[i] += cache[i];
     }
-    state = poseidon2_permutation(&state);
+    poseidon2_permute_in_place(&mut state);
 
     state[0]
 }
@@ -88,7 +88,7 @@ pub fn poseidon2_hash_bytes(msg: &[u8], num_fes: usize) -> [u8; 32] {
             let fe_bytes = &msg[(absorbed + j) * 32..(absorbed + j + 1) * 32];
             state[j] += decode_canonical_fr(fe_bytes);
         }
-        state = poseidon2_permutation(&state);
+        poseidon2_permute_in_place(&mut state);
         absorbed += batch;
     }
 
