@@ -174,9 +174,9 @@ mod tests {
     /// Order matters.
     #[test]
     fn order_sensitive() {
-        let ab = poseidon2_hash(&[Fr::from(1u64), Fr::from(2u64)]);
-        let ba = poseidon2_hash(&[Fr::from(2u64), Fr::from(1u64)]);
-        assert_ne!(ab, ba);
+        let forward = poseidon2_hash(&[Fr::from(1u64), Fr::from(2u64)]);
+        let reversed = poseidon2_hash(&[Fr::from(2u64), Fr::from(1u64)]);
+        assert_ne!(forward, reversed);
     }
 
     /// Byte-oriented variant must match the field-oriented variant for all
