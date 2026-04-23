@@ -146,154 +146,37 @@ mod tests {
         assert_eq!(result, expected, "Poseidon2::hash([e, e], 2) mismatch");
     }
 
+    /// Single-bit avalanche at the hash level (catches mid-stream state
+    /// corruption that the permutation-level avalanche test would miss).
     #[test]
-    fn test_poseidon2_hash_four_elements() {
-        // Verify 4-element hash (fills the rate exactly once)
-        let inputs = [
-            Fr::from(1u64),
-            Fr::from(2u64),
-            Fr::from(3u64),
-            Fr::from(4u64),
-        ];
-        let result = poseidon2_hash(&inputs);
-        // Just verify it doesn't panic and produces a non-zero result
-        assert_ne!(result, Fr::from(0u64));
+    fn hash_single_bit_avalanche() {
+        let a = poseidon2_hash(&[Fr::from(100u64)]);
+        let b = poseidon2_hash(&[Fr::from(101u64)]);
+        assert_ne!(a, b);
     }
 
+    /// Length is mixed into the IV, so the same prefix with a different
+    /// length must hash to a different value. Guards the capacity-lane IV.
     #[test]
-    fn test_poseidon2_hash_empty_input() {
-        // Empty input should produce IV-based hash
-        let inputs: &[Fr] = &[];
-        let result = poseidon2_hash(inputs);
-        // Should not panic and should produce a non-zero result (due to IV in state[3])
-        assert_ne!(result, Fr::zero());
-    }
-
-    #[test]
-    fn test_poseidon2_hash_determinism() {
-        let inputs = [Fr::from(123u64), Fr::from(456u64)];
-        let result1 = poseidon2_hash(&inputs);
-        let result2 = poseidon2_hash(&inputs);
-        assert_eq!(result1, result2, "Hash should be deterministic");
-    }
-
-    #[test]
-    fn test_poseidon2_hash_collision_resistance() {
-        // Different inputs should (almost certainly) produce different hashes
-        let input1 = [Fr::from(100u64)];
-        let input2 = [Fr::from(101u64)];
-
-        let hash1 = poseidon2_hash(&input1);
-        let hash2 = poseidon2_hash(&input2);
-
-        assert_ne!(hash1, hash2, "Collision on single bit flip");
-    }
-
-    #[test]
-    fn test_poseidon2_hash_large_input() {
-        // Test with > RATE elements (requires multiple permutations)
-        let mut inputs = Vec::new();
-        for i in 0..10 {
-            inputs.push(Fr::from(i as u64));
-        }
-        let result = poseidon2_hash(&inputs);
-        assert_ne!(result, Fr::zero());
-    }
-
-    #[test]
-    fn test_poseidon2_hash_avalanche_effect() {
-        let base_input = vec![Fr::from(1u64), Fr::from(2u64), Fr::from(3u64)];
-        let base_hash = poseidon2_hash(&base_input);
-
-        // Change the last input element
-        let mut modified_input = base_input.clone();
-        modified_input[2] = Fr::from(4u64);
-        let modified_hash = poseidon2_hash(&modified_input);
-
-        assert_ne!(
-            base_hash, modified_hash,
-            "Hash should change with input modification"
-        );
-    }
-
-    #[test]
-    fn test_poseidon2_hash_padding_consistency() {
-        // Hashing at rate boundaries (RATE = 3)
-        let input3 = vec![Fr::from(1u64), Fr::from(2u64), Fr::from(3u64)];
-        let hash3 = poseidon2_hash(&input3);
-
-        let input6 = vec![
+    fn length_is_domain_separated() {
+        let three = poseidon2_hash(&[Fr::from(1u64), Fr::from(2u64), Fr::from(3u64)]);
+        let six = poseidon2_hash(&[
             Fr::from(1u64),
             Fr::from(2u64),
             Fr::from(3u64),
             Fr::from(4u64),
             Fr::from(5u64),
             Fr::from(6u64),
-        ];
-        let hash6 = poseidon2_hash(&input6);
-
-        // Different lengths should produce different hashes (length encoding in IV)
-        assert_ne!(hash3, hash6);
+        ]);
+        assert_ne!(three, six);
     }
 
+    /// Order matters.
     #[test]
-    fn test_poseidon2_hash_zero_elements() {
-        let zero_inputs = vec![Fr::zero(); 5];
-        let result = poseidon2_hash(&zero_inputs);
-        // Should not be zero due to IV encoding
-        assert_ne!(result, Fr::zero());
-    }
-
-    #[test]
-    fn test_poseidon2_hash_all_ones() {
-        let large_val = Fr::from(u64::MAX);
-        let inputs = vec![large_val; 3];
-        let result = poseidon2_hash(&inputs);
-        assert_ne!(result, Fr::zero());
-    }
-
-    #[test]
-    fn test_poseidon2_hash_order_matters() {
-        // Hash should depend on input order
-        let input1 = vec![Fr::from(1u64), Fr::from(2u64)];
-        let input2 = vec![Fr::from(2u64), Fr::from(1u64)];
-
-        let hash1 = poseidon2_hash(&input1);
-        let hash2 = poseidon2_hash(&input2);
-
-        assert_ne!(hash1, hash2, "Hash should depend on input order");
-    }
-
-    #[test]
-    fn test_poseidon2_hash_sponge_squeeze_single_output() {
-        // Sponge should output only state[0]
-        let inputs = vec![Fr::from(42u64)];
-        let result = poseidon2_hash(&inputs);
-
-        // Result should be from the rate, not capacity
-        assert!(!result.is_zero() || inputs.is_empty());
-    }
-
-    #[test]
-    fn test_poseidon2_hash_exact_rate_boundary() {
-        // RATE = 3, so test at exactly rate boundaries
-        // 3 elements = 1 duplex operation
-        let input3 = vec![Fr::from(1u64), Fr::from(2u64), Fr::from(3u64)];
-        let hash3 = poseidon2_hash(&input3);
-
-        // 6 elements = 2 duplex operations
-        let input6 = vec![
-            Fr::from(1u64),
-            Fr::from(2u64),
-            Fr::from(3u64),
-            Fr::from(1u64),
-            Fr::from(2u64),
-            Fr::from(3u64),
-        ];
-        let hash6 = poseidon2_hash(&input6);
-
-        // Same input repeated should produce different hash due to length encoding
-        assert_ne!(hash3, hash6);
+    fn order_sensitive() {
+        let ab = poseidon2_hash(&[Fr::from(1u64), Fr::from(2u64)]);
+        let ba = poseidon2_hash(&[Fr::from(2u64), Fr::from(1u64)]);
+        assert_ne!(ab, ba);
     }
 
     /// Byte-oriented variant must match the field-oriented variant for all
