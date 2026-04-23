@@ -68,6 +68,16 @@ pub fn poseidon2_hash(inputs: &[Fr]) -> Fr {
 /// Merkle inputs are always engine outputs or canonical field encodings, so
 /// this holds in practice — but nothing in the type system enforces it.
 pub fn poseidon2_hash_bytes(msg: &[u8], num_fes: usize) -> [u8; 32] {
+    let expected_len = num_fes
+        .checked_mul(32)
+        .expect("poseidon2_hash_bytes: num_fes overflow");
+    assert_eq!(
+        msg.len(),
+        expected_len,
+        "poseidon2_hash_bytes: msg length {} != num_fes {num_fes} * 32",
+        msg.len()
+    );
+
     let iv = Fr::from(num_fes as u64) * *TWO_POW_64;
     let mut state = [Fr::zero(), Fr::zero(), Fr::zero(), iv];
 

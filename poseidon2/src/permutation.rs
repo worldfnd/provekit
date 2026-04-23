@@ -73,6 +73,12 @@ pub struct Poseidon2<'a> {
     config: &'a Poseidon2Config,
 }
 
+impl<'a> Default for Poseidon2<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'a> Poseidon2<'a> {
     /// Creates a new Poseidon2 instance using the global BN254 configuration.
     pub fn new() -> Self {

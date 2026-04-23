@@ -42,10 +42,6 @@ impl HashEngine for Poseidon2HashEngine {
         size > 0 && size % 32 == 0
     }
 
-    fn preferred_batch_size(&self) -> usize {
-        4
-    }
-
     fn hash_many(&self, size: usize, input: &[u8], output: &mut [Hash]) {
         assert!(
             self.supports_size(size),
