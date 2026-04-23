@@ -11,8 +11,11 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+provekit-groth16.workspace = true
 
 # Cryptography and proof systems
+ark-bn254 = { version = "0.5.0", default-features = false, features = ["curve"] }
+ark-serialize.workspace = true
 ark-std.workspace = true
 whir.workspace = true
 

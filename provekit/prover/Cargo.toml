@@ -16,13 +16,17 @@ parallel = ["provekit-common/parallel"]
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+provekit-groth16.workspace = true
 
 # Noir language
 acir.workspace = true
 noirc_abi.workspace = true
 
 # Cryptography and proof systems
+ark-bn254 = { version = "0.5.0", default-features = false, features = ["curve"] }
 ark-ff.workspace = true
+ark-poly.workspace = true
+ark-serialize.workspace = true
 ark-std.workspace = true
 whir.workspace = true
 

@@ -3,7 +3,7 @@ pub use file::binary_format;
 pub mod hash_config;
 mod interner;
 mod mavros;
-mod noir_proof_scheme;
+pub mod noir_proof_scheme;
 pub mod ntt;
 pub mod optimize;
 pub mod poseidon2;
@@ -30,7 +30,7 @@ pub use {
     mavros::{MavrosProver, MavrosSchemeData},
     noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
-    prover::{NoirProver, Prover},
+    prover::{Groth16Prover, NoirProver, Prover},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
     verifier::Verifier,

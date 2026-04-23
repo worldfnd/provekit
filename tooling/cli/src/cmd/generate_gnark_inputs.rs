@@ -54,13 +54,13 @@ impl Command for Args {
 
         write_gnark_parameters_to_file(
             &wfw.whir_witness.blinded_commitment,
-            &proof.whir_r1cs_proof,
+            proof.whir_r1cs_proof(),
             wfw.m_0,
             wfw.m,
             wfw.a_num_terms,
             wfw.num_challenges,
             wfw.w1_size,
-            &proof.public_inputs,
+            proof.public_inputs(),
             &self.params_for_recursive_verifier,
         );
 

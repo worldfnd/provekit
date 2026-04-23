@@ -283,7 +283,7 @@ fn test_public_input_binding_exploit() {
 
     // Tamper: the committed polynomial encodes result=16 at position 1, but we
     // claim result=42. The verifier should reject this.
-    proof.public_inputs = PublicInputs::from_vec(vec![FieldElement::from(42u64)]);
+    *proof.public_inputs_mut() = PublicInputs::from_vec(vec![FieldElement::from(42u64)]);
 
     let result = verifier.verify(&proof);
     assert!(
