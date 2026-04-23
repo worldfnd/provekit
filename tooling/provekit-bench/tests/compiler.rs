@@ -275,7 +275,14 @@ fn test_public_input_binding_exploit() {
 fn test_hash_config_does_not_leak_between_operations() {
     let test_case_path = Path::new("../../noir-examples/basic-4");
 
-    for config in [HashConfig::Sha256, HashConfig::Keccak, HashConfig::Sha256] {
+    for config in [
+        HashConfig::Skyscraper,
+        HashConfig::Sha256,
+        HashConfig::Keccak,
+        HashConfig::Blake3,
+        HashConfig::Poseidon2,
+        HashConfig::Sha256,
+    ] {
         test_noir_compiler_with_hash_config(test_case_path, "Prover.toml", config);
     }
 }

@@ -6,10 +6,10 @@
 //! - public-input instance binding ([`HashConfig::hash_field_elements`])
 
 use {
-    crate::FieldElement,
-    ark_ff::{BigInt, BigInteger, PrimeField},
+    crate::{utils::field_to_bytes_le, FieldElement},
+    ark_ff::{BigInt, PrimeField},
     serde::{Deserialize, Serialize},
-    std::fmt,
+    std::{fmt, sync::LazyLock},
 };
 
 /// Hash algorithm configuration that can be selected at runtime.
@@ -32,15 +32,19 @@ pub enum HashConfig {
 
     #[serde(alias = "blake-3", alias = "b3")]
     Blake3,
+
+    #[serde(alias = "pos2", alias = "p2")]
+    Poseidon2,
 }
 
 /// Domain-separation tag for public-input instance binding.
 ///
 /// **Protocol-visible constant.** This string is absorbed into the SHA-256,
-/// Keccak, and BLAKE3 hashes used for public-input commitments; changing it
-/// invalidates every proof generated under those configurations. The `V1`
-/// suffix reserves an unambiguous upgrade path (`_V2`, …) for any future
-/// construction change.
+/// Keccak, and BLAKE3 hashes used for public-input commitments; for Poseidon2
+/// it is reduced to a [`FieldElement`] via [`PUBLIC_INPUTS_DST_FE`] and
+/// prepended to the hash input. Changing it invalidates every proof generated
+/// under those configurations. The `V1` suffix reserves an unambiguous
+/// upgrade path (`_V2`, …) for any future construction change.
 ///
 /// [`HashConfig::Skyscraper`] intentionally omits the tag — its
 /// empty-input-returns-0 output is part of the stable Skyscraper proof
@@ -50,6 +54,10 @@ pub enum HashConfig {
 /// Regression trip-wires: the KATs in `witness::tests` freeze the
 /// byte-exact output of each variant under this constant.
 const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V1";
+static PUBLIC_INPUTS_DST_FE: LazyLock<FieldElement> = LazyLock::new(|| {
+    use sha2::{Digest, Sha256};
+    FieldElement::from_le_bytes_mod_order(&Sha256::digest(PUBLIC_INPUTS_DST))
+});
 
 impl HashConfig {
     /// Returns the canonical name of this hash configuration.
@@ -60,6 +68,7 @@ impl HashConfig {
             Self::Sha256 => "sha256",
             Self::Keccak => "keccak",
             Self::Blake3 => "blake3",
+            Self::Poseidon2 => "poseidon2",
         }
     }
 
@@ -71,6 +80,7 @@ impl HashConfig {
             Self::Sha256 => whir::hash::SHA2,
             Self::Keccak => whir::hash::KECCAK,
             Self::Blake3 => whir::hash::BLAKE3,
+            Self::Poseidon2 => crate::poseidon2::POSEIDON2,
         }
     }
 
@@ -82,6 +92,7 @@ impl HashConfig {
             Self::Sha256 => 1,
             Self::Keccak => 2,
             Self::Blake3 => 3,
+            Self::Poseidon2 => 4,
         }
     }
 
@@ -93,6 +104,7 @@ impl HashConfig {
             1 => Some(Self::Sha256),
             2 => Some(Self::Keccak),
             3 => Some(Self::Blake3),
+            4 => Some(Self::Poseidon2),
             _ => None,
         }
     }
@@ -106,6 +118,7 @@ impl HashConfig {
             "sha256" | "sha" | "sha-256" => Some(Self::Sha256),
             "keccak" | "keccak-256" | "shake" => Some(Self::Keccak),
             "blake3" | "blake-3" | "b3" => Some(Self::Blake3),
+            "poseidon2" | "pos2" | "p2" => Some(Self::Poseidon2),
             _ => None,
         }
     }
@@ -133,6 +146,7 @@ impl HashConfig {
             Self::Sha256 => hash_digest::<sha2::Sha256>(PUBLIC_INPUTS_DST, elements),
             Self::Keccak => hash_digest::<sha3::Keccak256>(PUBLIC_INPUTS_DST, elements),
             Self::Blake3 => hash_blake3(PUBLIC_INPUTS_DST, elements),
+            Self::Poseidon2 => hash_poseidon2(elements),
         }
     }
 }
@@ -150,25 +164,11 @@ impl std::str::FromStr for HashConfig {
         Self::parse(s).ok_or_else(|| {
             format!(
                 "Invalid hash configuration: '{}'. Valid options: skyscraper, sha256, keccak, \
-                 blake3",
+                 blake3, poseidon2",
                 s
             )
         })
     }
-}
-
-/// Serializes a BN254 field element to its canonical 32-byte little-endian
-/// representation.
-#[inline]
-pub(crate) fn fe_to_bytes_le(fe: &FieldElement) -> [u8; 32] {
-    let bytes = fe.into_bigint().to_bytes_le();
-    debug_assert!(
-        bytes.len() <= 32,
-        "field element serialized to more than 32 bytes"
-    );
-    let mut result = [0u8; 32];
-    result[..bytes.len()].copy_from_slice(&bytes);
-    result
 }
 
 /// Pairwise Skyscraper compression; empty input hashes to 0. Not
@@ -203,9 +203,25 @@ where
     let mut hasher = D::new();
     hasher.update(dst);
     for fe in elements {
-        hasher.update(fe_to_bytes_le(fe));
+        hasher.update(field_to_bytes_le(*fe));
     }
     FieldElement::from_le_bytes_mod_order(&hasher.finalize())
+}
+
+/// Poseidon2 one-shot hash over `elements` (including empty input).
+///
+/// Prepends [`PUBLIC_INPUTS_DST_FE`] as the first absorbed field element
+/// to provide **role** domain-separation (distinct from Merkle/FS usages of
+/// the same Poseidon2 permutation). The capacity-lane IV inside
+/// [`poseidon2::poseidon2_hash`] separately provides **length** domain-
+/// separation, so the two combined mirror what SHA/Keccak/BLAKE3 get via
+/// the raw [`PUBLIC_INPUTS_DST`] byte prefix.
+#[inline]
+fn hash_poseidon2(elements: &[FieldElement]) -> FieldElement {
+    let mut tagged = Vec::with_capacity(elements.len() + 1);
+    tagged.push(*PUBLIC_INPUTS_DST_FE);
+    tagged.extend_from_slice(elements);
+    poseidon2::poseidon2_hash(&tagged)
 }
 
 /// BLAKE3 analogue of [`hash_digest`]. BLAKE3 does not implement
@@ -216,7 +232,7 @@ fn hash_blake3(dst: &[u8], elements: &[FieldElement]) -> FieldElement {
     let mut hasher = blake3::Hasher::new();
     hasher.update(dst);
     for fe in elements {
-        hasher.update(&fe_to_bytes_le(fe));
+        hasher.update(&field_to_bytes_le(*fe));
     }
     FieldElement::from_le_bytes_mod_order(hasher.finalize().as_bytes())
 }
@@ -233,6 +249,7 @@ mod tests {
         HashConfig::Sha256,
         HashConfig::Keccak,
         HashConfig::Blake3,
+        HashConfig::Poseidon2,
     ];
 
     #[test]

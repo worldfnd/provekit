@@ -4634,6 +4634,7 @@ dependencies = [
  "mavros-vm",
  "noirc_abi",
  "ntt",
+ "poseidon2",
  "postcard",
  "proptest",
  "rayon",

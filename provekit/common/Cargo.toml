@@ -16,6 +16,7 @@ provekit_ntt = []
 [dependencies]
 # Workspace crates
 ntt.workspace = true
+poseidon2.workspace = true
 skyscraper.workspace = true
 
 # Noir language
