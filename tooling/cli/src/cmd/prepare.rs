@@ -128,9 +128,56 @@ impl Command for Args {
                 let program = d.program;
                 let split_witness_builders = d.split_witness_builders;
                 let witness_generator = d.witness_generator;
+                let w1_size = d.whir_for_witness.w1_size;
+                let challenge_offsets = d.whir_for_witness.challenge_offsets.clone();
+                let num_public = 1 + r1cs.num_public_inputs; // constant-1 + public inputs
 
-                info!("Running Groth16 trusted setup...");
-                let (pk, vk) = provekit_groth16::setup::setup(&r1cs, &[])
+                // Build BSB22 commitment info for circuits with challenges.
+                //
+                // ProveKit's challenges (LogUp, range checks, RAM/ROM) need a
+                // commit-then-challenge flow. In WHIR this uses polynomial commitment
+                // + Fiat-Shamir. For Groth16 we use Pedersen commitment + hashing:
+                //   1. Commit all private w1 wires via Pedersen → C
+                //   2. Hash(C || public_values) → challenge per wire
+                //
+                // One CommitmentInfo per challenge wire, all sharing the same
+                // committed private wires but targeting different challenge wire indices.
+                let commitment_info: Vec<provekit_common::Groth16CommitmentInfo> =
+                    if !challenge_offsets.is_empty() && w1_size > num_public {
+                        let private_committed: Vec<usize> = (num_public..w1_size).collect();
+                        let public_committed: Vec<usize> = (1..num_public).collect();
+
+                        challenge_offsets
+                            .iter()
+                            .map(|&offset| provekit_common::Groth16CommitmentInfo {
+                                public_and_commitment_committed: public_committed.clone(),
+                                private_committed: private_committed.clone(),
+                                commitment_index: w1_size + offset,
+                                nb_public_committed: public_committed.len(),
+                            })
+                            .collect()
+                    } else {
+                        vec![]
+                    };
+
+                // Convert to groth16 CommitmentInfo for setup
+                let groth16_ci: Vec<provekit_groth16::CommitmentInfo> = commitment_info
+                    .iter()
+                    .map(|ci| provekit_groth16::CommitmentInfo {
+                        public_and_commitment_committed: ci.public_and_commitment_committed.clone(),
+                        private_committed: ci.private_committed.clone(),
+                        commitment_index: ci.commitment_index,
+                        nb_public_committed: ci.nb_public_committed,
+                    })
+                    .collect();
+
+                info!(
+                    num_commitments = commitment_info.len(),
+                    w1_size,
+                    num_challenges = challenge_offsets.len(),
+                    "Running Groth16 trusted setup..."
+                );
+                let (pk, vk) = provekit_groth16::setup::setup(&r1cs, &groth16_ci)
                     .context("while running Groth16 trusted setup")?;
 
                 // Serialize proving key and verifying key
@@ -154,6 +201,7 @@ impl Command for Args {
                     split_witness_builders,
                     witness_generator,
                     groth16_pk: pk_bytes,
+                    commitment_info,
                 });
 
                 let verifier = Verifier {
