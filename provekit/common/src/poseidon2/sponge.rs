@@ -14,11 +14,13 @@
 //! **byte-injective** when every absorbed lane is already < p. spongefish
 //! writes raw bytes straight into `permutation_state` (see
 //! `duplex_sponge.rs:197-213`), and the domain separator absorbs arbitrary
-//! `as_bytes()`, so the sponge layer cannot enforce canonicality on its
-//! own. We rely on the protocol to only ever absorb canonical encodings —
-//! currently true (all absorbs are either field elements round-tripped
-//! through [`crate::utils::field_to_bytes_le`], engine outputs, or ASCII
-//! DS bytes — all < p in any 32-byte lane), but nothing enforces it.
+//! byte strings (`protocol_id`, `session_id`, and instance bytes), so the
+//! sponge layer cannot enforce canonicality on its own. In particular, the
+//! transcript domain separator includes 32/64-byte hash outputs that are not
+//! guaranteed to be canonical field encodings, so this adapter is lossy for
+//! part of the transcript state today. Prover and verifier still agree
+//! because they apply the same reduction, but issue #419 tracks replacing
+//! this with an injective byte-to-field transcript adapter.
 //! [`crate::skyscraper::SkyscraperSponge`] shares the same adapter
 //! (`bytes_to_field` / `field_to_bytes_le`) and inherits the same
 //! invariant.

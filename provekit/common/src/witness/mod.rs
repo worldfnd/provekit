@@ -8,8 +8,7 @@ mod witness_generator;
 
 use {
     crate::{
-        hash_config::fe_to_bytes_le,
-        utils::{serde_ark, serde_ark_vec},
+        utils::{field_to_bytes_le, serde_ark, serde_ark_vec},
         FieldElement, HashConfig,
     },
     ark_ff::One,
@@ -102,7 +101,7 @@ impl PublicInputs {
     #[inline]
     #[must_use]
     pub fn hash_bytes(&self, config: HashConfig) -> [u8; 32] {
-        fe_to_bytes_le(&self.hash(config))
+        field_to_bytes_le(self.hash(config))
     }
 }
 
@@ -164,7 +163,7 @@ mod tests {
         for config in ALL_CONFIGS {
             assert_eq!(
                 inputs.hash_bytes(config),
-                fe_to_bytes_le(&inputs.hash(config)),
+                field_to_bytes_le(inputs.hash(config)),
                 "{config:?}: hash_bytes must equal LE(hash())"
             );
         }

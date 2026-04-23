@@ -19,6 +19,10 @@ pub fn bytes_to_field(bytes: &[u8]) -> FieldElement {
 #[inline]
 pub fn field_to_bytes_le(fe: FieldElement) -> [u8; 32] {
     let raw = fe.into_bigint().to_bytes_le();
+    debug_assert!(
+        raw.len() <= 32,
+        "field element serialized to more than 32 bytes"
+    );
     let mut out = [0u8; 32];
     out[..raw.len()].copy_from_slice(&raw);
     out

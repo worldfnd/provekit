@@ -276,6 +276,7 @@ fn test_hash_config_does_not_leak_between_operations() {
     let test_case_path = Path::new("../../noir-examples/basic-4");
 
     for config in [
+        HashConfig::Skyscraper,
         HashConfig::Sha256,
         HashConfig::Keccak,
         HashConfig::Blake3,

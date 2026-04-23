@@ -6,8 +6,8 @@
 //! - public-input instance binding ([`HashConfig::hash_field_elements`])
 
 use {
-    crate::FieldElement,
-    ark_ff::{BigInt, BigInteger, PrimeField},
+    crate::{utils::field_to_bytes_le, FieldElement},
+    ark_ff::{BigInt, PrimeField},
     serde::{Deserialize, Serialize},
     std::{fmt, sync::LazyLock},
 };
@@ -171,20 +171,6 @@ impl std::str::FromStr for HashConfig {
     }
 }
 
-/// Serializes a BN254 field element to its canonical 32-byte little-endian
-/// representation.
-#[inline]
-pub(crate) fn fe_to_bytes_le(fe: &FieldElement) -> [u8; 32] {
-    let bytes = fe.into_bigint().to_bytes_le();
-    debug_assert!(
-        bytes.len() <= 32,
-        "field element serialized to more than 32 bytes"
-    );
-    let mut result = [0u8; 32];
-    result[..bytes.len()].copy_from_slice(&bytes);
-    result
-}
-
 /// Pairwise Skyscraper compression; empty input hashes to 0. Not
 /// domain-separated (see [`PUBLIC_INPUTS_DST`]).
 #[inline]
@@ -217,7 +203,7 @@ where
     let mut hasher = D::new();
     hasher.update(dst);
     for fe in elements {
-        hasher.update(fe_to_bytes_le(fe));
+        hasher.update(field_to_bytes_le(*fe));
     }
     FieldElement::from_le_bytes_mod_order(&hasher.finalize())
 }
@@ -246,7 +232,7 @@ fn hash_blake3(dst: &[u8], elements: &[FieldElement]) -> FieldElement {
     let mut hasher = blake3::Hasher::new();
     hasher.update(dst);
     for fe in elements {
-        hasher.update(&fe_to_bytes_le(fe));
+        hasher.update(&field_to_bytes_le(*fe));
     }
     FieldElement::from_le_bytes_mod_order(hasher.finalize().as_bytes())
 }
