@@ -6,7 +6,7 @@ use {
             limbs::Limbs,
             ram::SpiceWitnesses,
             scheduling::{
-                LayerScheduler, LayeredWitnessBuilders, SplitError,
+                DependencyInfo, LayerScheduler, LayeredWitnessBuilders, SplitError,
                 SplitWitnessBuilders, WitnessIndexRemapper, WitnessSplitter,
             },
             ConstantOrR1CSWitness,
