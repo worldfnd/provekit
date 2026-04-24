@@ -1,5 +1,5 @@
-use poseidon2::bn254::hash_8;
+use poseidon::poseidon2::Poseidon2;
 
 fn main(inputs: [Field; 8]) -> pub Field {
-    hash_8(inputs)
+    Poseidon2::hash(inputs, 8)
 }
