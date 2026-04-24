@@ -1,5 +1,8 @@
-// Keccak-256
-// Uses 32-bit operations
+// Keccak-256 sponge used by the Ethproofs CSP benchmark fixtures.
+//
+// Kept as explicit Noir code instead of std::hash::keccakf1600 because
+// ProveKit does not lower the Keccak blackbox to R1CS in this change.
+// Uses 32-bit operations.
 
 // 64-bit lane split into two u32 halves (little-endian)
 struct Lane {

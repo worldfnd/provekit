@@ -1,11 +1,19 @@
 # Ethproofs client-side proving benchmark circuits
 
-Noir versions of the benchmark targets listed on [Ethproofs CSP benchmarks](https://ethproofs.org/csp-benchmarks): SHA-256, Keccak, Poseidon, Poseidon2, and ECDSA.
+Noir examples for the hash and signature targets listed on
+[Ethproofs CSP benchmarks](https://ethproofs.org/csp-benchmarks). The
+sizes mirror the benchmark metadata in
+[`privacy-ethereum/csp-benchmarks`](https://github.com/privacy-ethereum/csp-benchmarks).
 
-Benchmark target sizes mirror [`privacy-ethereum/csp-benchmarks`](https://github.com/privacy-ethereum/csp-benchmarks) metadata:
+| Target | Cases | Implementation note |
+| --- | --- | --- |
+| SHA-256 | 128, 256, 512, 1024, 2048 bytes | Uses `noir-lang/sha256::sha256_var`, which lowers compression through Noir's SHA-256 blackbox. |
+| Keccak-256 | 128, 256, 512, 1024, 2048 bytes | Uses the Ethproofs Noir Keccak circuit because this repo does not lower Noir's Keccak blackbox to R1CS. |
+| Poseidon | 2, 4, 8, 12, 16 field elements | Uses `noir-lang/poseidon` BN254 helpers. |
+| Poseidon2 | 2, 4, 8, 12, 16 field elements | Uses the stdlib Poseidon2 blackbox for the 4-field state and `TaceoLabs/noir-poseidon` for the other benchmark arities. |
+| ECDSA | secp256r1 over a 32-byte digest | Uses `noir_bigcurve` P-256 verification logic. |
 
-- SHA-256 / Keccak byte inputs: 128, 256, 512, 1024, 2048 bytes
-- Poseidon / Poseidon2 field inputs: 2, 4, 8, 12, 16 field elements
-- ECDSA: secp256r1 verification over a 32-byte digest
-
-The SHA-256 wrappers use the `noir-lang/sha256` package, which routes compression through Noir's SHA-256 blackbox. The `poseidon2_4` wrapper uses `std::hash::poseidon2_permutation` so ProveKit exercises its Poseidon2 blackbox path where Noir's current blackbox solver supports it; the other Poseidon2 arities use the `TaceoLabs/noir-poseidon` hash helpers. The Keccak implementation remains vendored from the Ethproofs CSP benchmark circuit because ProveKit does not currently lower Noir's Keccak blackbox into R1CS.
+The 4-field Poseidon2 fixture is the only stdlib blackbox Poseidon2 case here
+because Noir's current blackbox solver accepts 4-field Poseidon2 states. The
+other CSP Poseidon2 arities remain explicit Noir hash circuits so the full
+Ethproofs target matrix is still covered by ProveKit tests.
