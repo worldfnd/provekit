@@ -7,8 +7,8 @@ use {
 
 /// Return the name of the Nargo package enclosing `dir`.
 fn enclosing_package_name(dir: &Path) -> Result<String> {
-    let dir = std::fs::canonicalize(dir)
-        .with_context(|| format!("canonicalizing {}", dir.display()))?;
+    let dir =
+        std::fs::canonicalize(dir).with_context(|| format!("canonicalizing {}", dir.display()))?;
     let package_dir = find_root(&dir, false)?;
     let workspace = resolve_workspace_from_toml(
         &get_package_manifest(&package_dir)?,
