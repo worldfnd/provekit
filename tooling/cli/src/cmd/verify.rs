@@ -12,7 +12,7 @@ use {
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "verify")]
 pub struct Args {
-    /// path to the verifier key (default: <circuit>.pkv)
+    /// path to the verifier key (default: `<circuit>.pkv`)
     #[argh(option, long = "verifier", short = 'v')]
     verifier_path: Option<PathBuf>,
 
