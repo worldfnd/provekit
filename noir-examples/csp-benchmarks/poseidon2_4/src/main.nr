@@ -1,5 +1,5 @@
-use poseidon2::bn254::hash_4;
+use std::hash::poseidon2_permutation;
 
 fn main(inputs: [Field; 4]) -> pub Field {
-    hash_4(inputs)
+    poseidon2_permutation(inputs, 4)[0]
 }
