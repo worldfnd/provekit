@@ -1,0 +1,3 @@
+[package]
+name = "csp_keccak_lib"
+type = "lib"

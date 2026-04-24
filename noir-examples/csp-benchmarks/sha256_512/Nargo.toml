@@ -1,0 +1,7 @@
+[package]
+name = "csp_sha256_512"
+type = "bin"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+noir_native_sha256 = { path = "../../noir-native-sha256" }
