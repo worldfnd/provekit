@@ -10,8 +10,9 @@ use {
         utils::{serde_ark, serde_ark_vec},
         FieldElement,
     },
-    ark_ff::{BigInt, BigInteger, One, PrimeField},
+    ark_ff::{BigInteger, One, PrimeField},
     serde::{Deserialize, Serialize},
+    sha2::{Digest, Sha256},
 };
 pub use {
     binops::{BINOP_ATOMIC_BITS, BINOP_BITS, NUM_DIGITS},
@@ -80,16 +81,11 @@ impl PublicInputs {
 
     #[must_use]
     pub fn hash(&self) -> FieldElement {
-        fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
-            let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);
-            FieldElement::new(BigInt(out))
+        let mut hasher = Sha256::new();
+        for elem in &self.0 {
+            hasher.update(elem.into_bigint().to_bytes_le());
         }
-
-        match self.0.len() {
-            0 => FieldElement::from(0u64),
-            1 => compress(self.0[0], FieldElement::from(0u64)),
-            _ => self.0.iter().copied().reduce(compress).unwrap(),
-        }
+        FieldElement::from_le_bytes_mod_order(&hasher.finalize())
     }
 
     #[must_use]

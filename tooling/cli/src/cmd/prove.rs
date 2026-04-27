@@ -1,5 +1,5 @@
 use {
-    super::Command,
+    super::{util::resolve_key_path, Command},
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{
@@ -13,24 +13,19 @@ use {
 #[cfg(test)]
 use {provekit_common::Verifier, provekit_verifier::Verify};
 
-/// Prove a prepared Noir program
+/// Prove a prepared Noir program.
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prove")]
 pub struct Args {
-    /// path to the prepared proof scheme
-    #[argh(positional)]
-    prover_path: PathBuf,
+    /// path to the prover key (default: `<circuit>.pkp`)
+    #[argh(option, long = "prover", short = 'p')]
+    prover_path: Option<PathBuf>,
 
-    #[cfg(test)]
-    /// path to the verifier
-    #[argh(positional)]
-    verifier_path: PathBuf,
+    /// path to the input values (default: ./Prover.toml)
+    #[argh(option, long = "input", short = 'i')]
+    input_path: Option<PathBuf>,
 
-    /// path to the input values
-    #[argh(positional)]
-    input_path: PathBuf,
-
-    /// path to store proof file
+    /// path to store the proof file
     #[argh(
         option,
         long = "out",
@@ -38,29 +33,38 @@ pub struct Args {
         default = "PathBuf::from(\"./proof.np\")"
     )]
     proof_path: PathBuf,
+
+    #[cfg(test)]
+    /// path to the verifier key (default: `<circuit>.pkv`)
+    #[argh(option, long = "verifier")]
+    verifier_path: Option<PathBuf>,
 }
 
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        // Read the scheme
-        let prover: Prover = read(&self.prover_path).context("while reading Provekit Prover")?;
+        let prover_path = resolve_key_path(self.prover_path.as_deref(), "pkp")?;
+        let input_path = self
+            .input_path
+            .clone()
+            .unwrap_or_else(|| PathBuf::from("./Prover.toml"));
+
+        let prover: Prover = read(&prover_path).context("while reading Provekit Prover")?;
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
-        // Generate the proof
         let proof = prover
-            .prove_with_toml(&self.input_path)
+            .prove_with_toml(&input_path)
             .context("While proving Noir program statement")?;
 
-        // Store the proof to file
         write(&proof, &self.proof_path).context("while writing proof")?;
 
-        // Verify the proof (test-only; runs after write so we can move `proof`)
+        // Test-only round-trip: verify the proof we just wrote.
         #[cfg(test)]
         {
+            let verifier_path = resolve_key_path(self.verifier_path.as_deref(), "pkv")?;
             let mut verifier: Verifier =
-                read(&self.verifier_path).context("while reading Provekit Verifier")?;
+                read(&verifier_path).context("while reading Provekit Verifier")?;
             verifier
                 .verify(&proof)
                 .context("While verifying Noir proof")?;

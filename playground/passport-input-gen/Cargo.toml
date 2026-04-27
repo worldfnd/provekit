@@ -1,8 +1,10 @@
 [package]
-name = "passport-input-gen"
+name = "provekit-passport-input-gen"
 version = "0.1.0"
 edition = "2021"
-description = "Passport input generator"
+description = "Passport input generator for ProveKit"
+license = "MIT"
+repository = "https://github.com/worldfnd/ProveKit"
 
 [dependencies]
 rsa = { version = "0.9.8", features = ["sha2"] }
@@ -20,4 +22,3 @@ noir-bignum-paramgen = "0.1.5"
 thiserror = "2.0.16"
 signature = "2.2"
 lazy_static = "1.5.0"
-

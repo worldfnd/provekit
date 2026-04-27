@@ -339,12 +339,17 @@ impl NoirToR1CSCompiler {
                 let ConstantOrR1CSWitness::Constant(lhs_fe) = lhs_c else {
                     unreachable!()
                 };
-                // Decompose lhs constant into bytes
+                // Decompose lhs constant into bytes.
+                //
+                // v1's binop pipeline is hardcoded to 32-bit operands (see the
+                // `(value as u32).to_le_bytes()` decomposition below), so any
+                // constant wider than 32 bits would be silently truncated.
+                // Reject up front rather than producing a wrong proof.
                 let lhs_bigint = lhs_fe.into_bigint();
                 assert!(
                     lhs_bigint.0[1..].iter().all(|&limb| limb == 0)
                         && lhs_bigint.0[0] <= u32::MAX as u64,
-                    "AND/XOR constant lhs exceeds 32 bits: {lhs_fe}"
+                    "AND/XOR constant lhs exceeds the 32-bit binop limit: {lhs_fe}"
                 );
                 let lhs_bytes: [u8; 4] = (lhs_bigint.0[0] as u32).to_le_bytes();
 
@@ -359,11 +364,12 @@ impl NoirToR1CSCompiler {
                         let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c else {
                             unreachable!()
                         };
+                        // See lhs comment above: 32-bit binop limit.
                         let rhs_bigint = rhs_fe.into_bigint();
                         assert!(
                             rhs_bigint.0[1..].iter().all(|&limb| limb == 0)
                                 && rhs_bigint.0[0] <= u32::MAX as u64,
-                            "AND/XOR constant rhs exceeds 32 bits: {rhs_fe}"
+                            "AND/XOR constant rhs exceeds the 32-bit binop limit: {rhs_fe}"
                         );
                         let rhs_bytes: [u8; 4] = (rhs_bigint.0[0] as u32).to_le_bytes();
 
@@ -410,11 +416,12 @@ impl NoirToR1CSCompiler {
                 let dd = add_digital_decomposition(self, log_bases, vec![lhs_witness, out_idx]);
                 // Decompose rhs constant into bytes
                 let rhs_bytes: [u8; 4] = if let ConstantOrR1CSWitness::Constant(rhs_fe) = rhs_c {
+                    // See lhs comment above: 32-bit binop limit.
                     let rhs_bigint = rhs_fe.into_bigint();
                     assert!(
                         rhs_bigint.0[1..].iter().all(|&limb| limb == 0)
                             && rhs_bigint.0[0] <= u32::MAX as u64,
-                        "AND/XOR constant rhs exceeds 32 bits: {rhs_fe}"
+                        "AND/XOR constant rhs exceeds the 32-bit binop limit: {rhs_fe}"
                     );
                     (rhs_bigint.0[0] as u32).to_le_bytes()
                 } else {

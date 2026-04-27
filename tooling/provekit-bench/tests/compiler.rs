@@ -4,7 +4,7 @@ use {
     nargo_cli::cli::compile_cmd::compile_workspace_full,
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
     noirc_driver::CompileOptions,
-    provekit_common::{NoirProofScheme, Prover, Verifier},
+    provekit_common::{Format, NoirProofScheme, Prover, Verifier},
     provekit_prover::Prove,
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
     provekit_verifier::Verify,
@@ -112,6 +112,73 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
 #[test_case("../../noir-examples/noir-passport-monolithic/complete_age_check"; "complete_age_check")]
 fn case(path: &str) {
     test_compiler(path);
+}
+
+/// Verify that `prove_with_inputs` produces a valid proof for both explicit
+/// `Format::Json` and `Format::Toml` variants.
+#[test]
+fn test_prove_with_inputs_json_and_toml() {
+    let test_case_path = Path::new("../../noir-examples/basic-4");
+
+    compile_workspace_once(test_case_path);
+
+    let nargo_toml_path = test_case_path.join("Nargo.toml");
+    let nargo_toml = std::fs::read_to_string(&nargo_toml_path).expect("Reading Nargo.toml");
+    let nargo_toml: NargoToml = toml::from_str(&nargo_toml).expect("Deserializing Nargo.toml");
+    let package_name = nargo_toml.package.name;
+
+    let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
+    let schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
+
+    let json_inputs = r#"{"a": "5", "b": "3"}"#;
+    let json_proof = Prover::from_noir_proof_scheme(schema.clone())
+        .prove_with_inputs(json_inputs, Format::Json)
+        .expect("Proving from JSON inputs");
+    Verifier::from_noir_proof_scheme(schema.clone())
+        .verify(&json_proof)
+        .expect("Verifying JSON-sourced proof");
+
+    let toml_inputs = "a = \"5\"\nb = \"3\"\n";
+    let toml_proof = Prover::from_noir_proof_scheme(schema.clone())
+        .prove_with_inputs(toml_inputs, Format::Toml)
+        .expect("Proving from TOML inputs");
+    Verifier::from_noir_proof_scheme(schema)
+        .verify(&toml_proof)
+        .expect("Verifying TOML-sourced proof");
+}
+
+/// Verify that `NoirProof::encode` / `decode` roundtrips losslessly.
+#[test]
+fn test_noir_proof_encode_decode_roundtrip() {
+    let test_case_path = Path::new("../../noir-examples/basic-4");
+
+    compile_workspace_once(test_case_path);
+
+    let nargo_toml_path = test_case_path.join("Nargo.toml");
+    let nargo_toml = std::fs::read_to_string(&nargo_toml_path).expect("Reading Nargo.toml");
+    let nargo_toml: NargoToml = toml::from_str(&nargo_toml).expect("Deserializing Nargo.toml");
+    let package_name = nargo_toml.package.name;
+
+    let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
+    let schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
+
+    let proof = Prover::from_noir_proof_scheme(schema)
+        .prove_with_inputs(r#"{"a": "5", "b": "3"}"#, Format::Json)
+        .expect("Proving");
+
+    let encoded = proof.encode().expect("encode");
+    let decoded = provekit_common::NoirProof::decode(&encoded).expect("decode");
+
+    // Re-encoding the decoded proof must be byte-identical to the first
+    // encoding — this proves the wire form roundtrips. (We can't assert
+    // structural equality because `WhirR1CSProof::pattern` is `skip_serializing`,
+    // and we can't re-verify the decoded proof in debug builds because the
+    // whir verifier asserts `!pattern.is_empty()`.)
+    let reencoded = decoded.encode().expect("re-encode");
+    assert_eq!(
+        encoded, reencoded,
+        "encoded form must be stable under roundtrip"
+    );
 }
 
 /// Verify that the verifier rejects a proof whose public inputs have been
