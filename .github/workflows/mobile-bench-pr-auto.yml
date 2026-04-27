@@ -1,0 +1,100 @@
+name: Mobile Bench PR Auto
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_run:
+    workflows: ["Cargo Build & Test"]
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+  checks: read
+
+jobs:
+  resolve:
+    name: Check compile gate and resolve context
+    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'pull_request' && github.event.action == 'labeled') ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    outputs:
+      should_run: ${{ steps.pr.outputs.should_run }}
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      requested_by: ${{ steps.pr.outputs.requested_by }}
+    steps:
+      - name: Resolve PR context
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER_EVENT: ${{ github.event.pull_request.number }}
+          HEAD_SHA_PR: ${{ github.event.pull_request.head.sha }}
+          BASE_REF_PR: ${{ github.event.pull_request.base.ref }}
+          HEAD_SHA_WR: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            PR_NUMBER="$PR_NUMBER_EVENT"
+            HEAD_SHA="$HEAD_SHA_PR"
+            REQUESTED_BY="auto:pull_request"
+          else
+            pr_json=$(gh api "repos/${REPO}/pulls?state=open&sort=updated&direction=desc&per_page=50" \
+              --jq ".[] | select(.head.sha == \"${HEAD_SHA_WR}\") | {number, base_ref: .base.ref}" \
+              | head -1)
+            if [ -z "$pr_json" ]; then
+              echo "::notice::No open PR found for SHA ${HEAD_SHA_WR}, skipping"
+              echo "should_run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            PR_NUMBER=$(jq -r '.number' <<<"$pr_json")
+            HEAD_SHA="$HEAD_SHA_WR"
+            REQUESTED_BY="auto:workflow_run"
+          fi
+
+          has_label=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/labels" \
+            --jq '.[].name' | grep -qx 'bench' && echo "true" || echo "false")
+          if [ "$has_label" != "true" ]; then
+            echo "::notice::PR #${PR_NUMBER} does not have 'bench' label, skipping"
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gate_status=$(gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
+            --jq '.check_runs[] | select(.name == "Cargo Build & Test" or (.app.name == "GitHub Actions" and .name == "Cargo Build & Test")) | .conclusion' \
+            | head -1)
+          if [ "$gate_status" != "success" ]; then
+            echo "::notice::Compile gate 'Cargo Build & Test' not yet passed for ${HEAD_SHA} (status: ${gate_status:-pending})"
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "requested_by=${REQUESTED_BY}" >> "$GITHUB_OUTPUT"
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
+
+  browserstack:
+    name: Run BrowserStack benchmarks
+    needs: resolve
+    if: needs.resolve.outputs.should_run == 'true'
+    uses: ./.github/workflows/mobile-bench-reusable.yml
+    secrets: inherit
+    with:
+      crate_path: ./bench-mobile
+      functions: '["bench_mobile::bench_passport_complete_age_check_prove"]'
+      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove"]'
+      functions_android: '["bench_mobile::bench_passport_complete_age_check_prove"]'
+      platform: both
+      device_profile: smoke
+      iterations: "2"
+      warmup: "1"
+      pr_number: ${{ needs.resolve.outputs.pr_number }}
+      requested_by: ${{ needs.resolve.outputs.requested_by }}
+      head_sha: ${{ needs.resolve.outputs.head_sha }}
