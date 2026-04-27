@@ -1,0 +1,7 @@
+[package]
+name = "csp_keccak_1024"
+type = "bin"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+csp_keccak_lib = { path = "../keccak_lib" }

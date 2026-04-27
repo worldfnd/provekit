@@ -1,0 +1,9 @@
+[package]
+name = "csp_ecdsa_p256"
+type = "bin"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+bignum = { tag = "v0.9.2-1", git = "https://github.com/zkpassport/noir-bignum" }
+bigcurve = { tag = "v0.13.2-1", git = "https://github.com/zkpassport/noir_bigcurve" }
+noir_ecdsa = { tag = "v0.3.0", git = "https://github.com/zkpassport/noir-ecdsa" }
