@@ -60,12 +60,12 @@ on:
         description: "Mobench version to install"
         required: false
         type: string
-        default: "0.1.35"
+        default: ""
       mobench_ref:
         description: "Optional Git ref for mobile-bench-rs to override the released mobench install"
         required: false
         type: string
-        default: ""
+        default: "1bc898f238584f591f3ba4594fdd75f1b081c1ac"
       pr_number:
         description: "PR number for reporting"
         required: false
