@@ -60,7 +60,7 @@ on:
         description: "Optional mobile-bench-rs Git ref to install instead of a released version"
         required: false
         type: string
-        default: "1bc898f238584f591f3ba4594fdd75f1b081c1ac"
+        default: "ad8ccef32fae55a54b1a3faa124edc7fd2b95be1"
       pr_number:
         description: "PR number for reporting"
         required: false
