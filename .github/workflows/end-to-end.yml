@@ -101,8 +101,7 @@ jobs:
               ./benchmark-inputs/tbs_720/$circuit.toml \
               -o ./benchmark-inputs/$circuit-proof.np \
               --socket /tmp/spark.sock \
-              --circuit $circuit \
-              --spark-out ./benchmark-inputs/$circuit-spark-proof.sp
+              --circuit $circuit
             echo "Proved $circuit"
           done
 

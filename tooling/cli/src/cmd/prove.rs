@@ -10,10 +10,7 @@ use {
         Prover,
     },
     provekit_prover::Prove,
-    std::{
-        os::unix::net::UnixStream,
-        path::{Path, PathBuf},
-    },
+    std::{os::unix::net::UnixStream, path::PathBuf},
     tracing::{info, instrument},
 };
 #[cfg(test)]
@@ -52,14 +49,6 @@ pub struct Args {
     /// circuit name on the server (required with --socket)
     #[argh(option)]
     circuit: Option<String>,
-
-    /// output path for SPARK proof (default: spark_proof.sp)
-    #[argh(
-        option,
-        long = "spark-out",
-        default = "PathBuf::from(\"spark_proof.sp\")"
-    )]
-    spark_proof_path: PathBuf,
 }
 
 impl Command for Args {
@@ -99,19 +88,17 @@ impl Command for Args {
             let mut stream =
                 UnixStream::connect(socket).with_context(|| format!("connecting to {socket:?}"))?;
 
-            for (i, spark_query) in spark_queries.into_iter().enumerate() {
-                let output = spark_output_path(&self.spark_proof_path, i);
+            for spark_query in spark_queries {
                 let request = SparkRequest {
                     circuit: circuit.clone(),
                     spark_query,
-                    output: output.clone(),
                 };
 
                 spark_protocol::write_message(&mut stream, &request)?;
                 let response: SparkResponse = spark_protocol::read_message(&mut stream)?;
 
                 if response.ok {
-                    info!("SPARK proof written to {output:?}");
+                    info!("SPARK proof dispatched");
                 } else {
                     bail!(
                         "SPARK server error: {}",
@@ -123,14 +110,4 @@ impl Command for Args {
 
         Ok(())
     }
-}
-
-/// Insert the index before the file extension: `spark_proof.sp` ->
-/// `spark_proof_0.sp`.
-fn spark_output_path(base: &Path, i: usize) -> PathBuf {
-    let stem = base.file_stem().unwrap_or_default().to_string_lossy();
-    let ext = base
-        .extension()
-        .map_or(String::new(), |e| format!(".{}", e.to_string_lossy()));
-    base.with_file_name(format!("{stem}_{i}{ext}"))
 }

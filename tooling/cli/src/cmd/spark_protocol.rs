@@ -2,10 +2,7 @@ use {
     anyhow::{ensure, Context, Result},
     provekit_common::spark::R1CSSparkQuery,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
-    std::{
-        io::{Read, Write},
-        path::PathBuf,
-    },
+    std::io::{Read, Write},
 };
 
 /// row/col vectors hold ~60 BN254 field elements at most.
@@ -15,7 +12,6 @@ const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 pub struct SparkRequest {
     pub circuit:     String,
     pub spark_query: R1CSSparkQuery,
-    pub output:      PathBuf,
 }
 
 #[derive(Serialize, Deserialize)]

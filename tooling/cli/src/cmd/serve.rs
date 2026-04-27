@@ -97,15 +97,19 @@ impl Command for Args {
             circuits.len()
         );
 
+        let mut next_index: usize = 0;
         for stream in listener.incoming() {
             let mut stream = stream.context("accepting connection")?;
 
             let request: SparkRequest = spark_protocol::read_message(&mut stream)?;
-            let response = match handle_prove(&circuits, &request) {
-                Ok(()) => SparkResponse {
-                    ok:    true,
-                    error: None,
-                },
+            let response = match handle_prove(&circuits, &request, next_index) {
+                Ok(()) => {
+                    next_index += 1;
+                    SparkResponse {
+                        ok:    true,
+                        error: None,
+                    }
+                }
                 Err(e) => SparkResponse {
                     ok:    false,
                     error: Some(format!("{e:?}")),
@@ -217,6 +221,7 @@ fn write_artifacts(scheme: NoirProofScheme, pkp_path: &Path, pkv_path: &Path) ->
 fn handle_prove(
     circuits: &HashMap<String, SparkPreparedData>,
     request: &SparkRequest,
+    index: usize,
 ) -> Result<()> {
     let spark_data = circuits
         .get(&request.circuit)
@@ -232,8 +237,10 @@ fn handle_prove(
         .prove(spark_data, &request.spark_query)
         .context("generating SPARK proof")?;
 
-    info!("Writing proof to {:?}", request.output);
-    write(&proof, &request.output).context("writing spark proof")?;
+    std::fs::create_dir_all("./spark_proofs").context("creating ./spark_proofs")?;
+    let output_path = Path::new("./spark_proofs").join(format!("spark_proof_{index}.sp"));
+    info!("Writing proof to {output_path:?}");
+    write(&proof, &output_path).context("writing spark proof")?;
 
     info!("Done");
     Ok(())

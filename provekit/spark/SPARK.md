@@ -66,8 +66,10 @@ cargo run --release --bin provekit-cli -- serve --socket /tmp/spark.sock --outpu
 # 2. Wait for server readiness
 while [ ! -S /tmp/spark.sock ]; do sleep 1; done
 
-# 3. Prove (generates Noir proof + one SPARK proof per SPARK query)
-cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/power.pkp ./Prover.toml -o ./benchmark-inputs/power-proof.np --socket /tmp/spark.sock --circuit power --spark-out ./benchmark-inputs/power-spark-proof.sp
+# 3. Prove (generates Noir proof + one SPARK proof per SPARK query).
+#    SPARK proofs are written by the server to `./spark_proofs/spark_proof_<i>`,
+#    where `<i>` is a server-side counter incremented for every request.
+cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/power.pkp ./Prover.toml -o ./benchmark-inputs/power-proof.np --socket /tmp/spark.sock --circuit power
 
 # 4. Natively verify the Noir proof. Native verification evaluates MLE directly. Spark proofs are useful only in the recursive verifier.
 cargo run --release --bin provekit-cli -- verify ./benchmark-inputs/power.pkv ./benchmark-inputs/power-proof.np
