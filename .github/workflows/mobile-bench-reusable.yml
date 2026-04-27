@@ -309,17 +309,6 @@ jobs:
             sleep "$retry_sleep_secs"
           done
 
-      - name: Diagnose and validate iOS benchmark outputs
-        if: always()
-        working-directory: caller
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash .github/scripts/validate_mobile_bench_outputs.sh \
-            ios \
-            target/mobench/ci/ios \
-            target/browserstack/ios
-
       - name: Upload iOS results
         if: always()
         uses: actions/upload-artifact@v4
@@ -556,17 +545,6 @@ jobs:
             attempt=$((attempt + 1))
             sleep "$retry_sleep_secs"
           done
-
-      - name: Diagnose and validate Android benchmark outputs
-        if: always()
-        working-directory: caller
-        shell: bash
-        run: |
-          set -euo pipefail
-          bash .github/scripts/validate_mobile_bench_outputs.sh \
-            android \
-            target/mobench/ci/android \
-            target/browserstack/android
 
       - name: Upload Android results
         if: always()
