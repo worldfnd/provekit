@@ -1,5 +1,5 @@
 use {
-    anyhow::{Context, Result},
+    anyhow::{ensure, Context, Result},
     provekit_common::spark::R1CSSparkQuery,
     serde::{de::DeserializeOwned, Deserialize, Serialize},
     std::{
@@ -7,6 +7,9 @@ use {
         path::PathBuf,
     },
 };
+
+/// row/col vectors hold ~60 BN254 field elements at most.
+const MAX_MESSAGE_BYTES: usize = 64 * 1024;
 
 #[derive(Serialize, Deserialize)]
 pub struct SparkRequest {
@@ -38,6 +41,10 @@ pub fn read_message<T: DeserializeOwned>(stream: &mut impl Read) -> Result<T> {
         .read_exact(&mut len_buf)
         .context("reading message length")?;
     let len = u32::from_le_bytes(len_buf) as usize;
+    ensure!(
+        len <= MAX_MESSAGE_BYTES,
+        "SPARK protocol message length {len} exceeds cap of {MAX_MESSAGE_BYTES} bytes"
+    );
 
     let mut buf = vec![0u8; len];
     stream
