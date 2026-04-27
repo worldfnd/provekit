@@ -194,7 +194,9 @@ pub fn run_benchmark(spec: BenchSpec) -> Result<BenchReport, BenchError> {
                         .samples
                         .iter()
                         .filter(|sample| {
-                            sample.cpu_time_ms.is_some() || sample.peak_memory_kb.is_some()
+                            sample.cpu_time_ms.is_some()
+                                || sample.peak_memory_kb.is_some()
+                                || sample.process_peak_memory_kb.is_some()
                         })
                         .count(),
                 }),
