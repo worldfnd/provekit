@@ -71,7 +71,7 @@ fn test_noir_compiler(test_case_path: impl AsRef<Path>, witness_file: &str) {
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
-    let proof = prover
+    let (proof, _) = prover
         .prove_with_toml(&witness_file_path)
         .expect("While proving Noir program statement");
 
@@ -208,7 +208,7 @@ fn test_public_input_binding_exploit() {
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
     // Prove honestly (a=5, b=3 → result = (5+3)*(5-3) = 16)
-    let mut proof = prover
+    let (mut proof, _) = prover
         .prove_with_toml(&witness_file_path)
         .expect("While proving Noir program statement");
 

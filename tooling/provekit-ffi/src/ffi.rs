@@ -554,7 +554,7 @@ pub unsafe extern "C" fn pk_prove_toml(
             // Clone is required: Prove::prove consumes self.
             // SAFETY: prover is guaranteed non-null and valid by caller contract.
             let fresh_prover = (*prover).prover.clone();
-            let proof = fresh_prover
+            let (proof, _) = fresh_prover
                 .prove_with_toml(Path::new(&toml_path))
                 .map_err(|e| {
                     set_last_error(format!("{e:#}"));
@@ -623,7 +623,7 @@ pub unsafe extern "C" fn pk_prove_json(
 
             // Clone is required: Prove::prove consumes self.
             let fresh_prover = (*prover).prover.clone();
-            let proof = fresh_prover.prove(input_map).map_err(|e| {
+            let (proof, _) = fresh_prover.prove(input_map).map_err(|e| {
                 set_last_error(format!("{e:#}"));
                 PKStatus::ProofError
             })?;

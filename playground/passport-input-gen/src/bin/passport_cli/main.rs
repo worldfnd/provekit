@@ -267,7 +267,7 @@ fn prove_circuit<T: serde::Serialize>(
         .map_err(|e| anyhow::anyhow!("ABI parse error for {circuit_name}: {e}"))?;
 
     tee_println!("  [{circuit_name}] Generating proof...");
-    let proof = prover
+    let (proof, _) = prover
         .prove(input_map)
         .with_context(|| format!("Proving {circuit_name}"))?;
 

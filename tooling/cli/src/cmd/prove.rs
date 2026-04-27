@@ -71,7 +71,7 @@ impl Command for Args {
         info!(constraints, witnesses, "Read Noir proof scheme");
 
         // Generate the proof
-        let proof = prover
+        let (proof, spark_queries) = prover
             .prove_with_toml(&self.input_path)
             .context("While proving Noir program statement")?;
 
@@ -88,7 +88,7 @@ impl Command for Args {
                 .context("While verifying Noir proof")?;
         }
 
-        // If a socket is provided, send the proof to the SPARK server
+        // If a socket is provided, send each SPARK query to the server.
         if let Some(socket) = &self.socket {
             let circuit = self
                 .circuit
@@ -99,7 +99,7 @@ impl Command for Args {
             let mut stream =
                 UnixStream::connect(socket).with_context(|| format!("connecting to {socket:?}"))?;
 
-            for (i, spark_query) in proof.r1cs_spark_queries.into_iter().enumerate() {
+            for (i, spark_query) in spark_queries.into_iter().enumerate() {
                 let output = spark_output_path(&self.spark_proof_path, i);
                 let request = SparkRequest {
                     circuit: circuit.clone(),
