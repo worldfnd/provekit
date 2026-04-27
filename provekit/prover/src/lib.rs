@@ -237,7 +237,7 @@ impl Prove for NoirProver {
             .map(|(i, w)| w.ok_or_else(|| anyhow::anyhow!("Witness {i} unsolved after solving")))
             .collect::<Result<Vec<_>>>()?;
 
-        let (whir_r1cs_proof, r1cs_spark_query) = self
+        let (whir_r1cs_proof, r1cs_spark_queries) = self
             .whir_for_witness
             .prove_noir(merlin, r1cs, commitments, full_witness, &public_inputs)
             .context("While proving R1CS instance")?;
@@ -245,7 +245,7 @@ impl Prove for NoirProver {
         Ok(NoirProof {
             public_inputs,
             whir_r1cs_proof,
-            r1cs_spark_query,
+            r1cs_spark_queries,
         })
     }
 }
@@ -324,7 +324,7 @@ impl Prove for MavrosProver {
             vec![commitment_1]
         };
 
-        let (whir_r1cs_proof, r1cs_spark_query) = self
+        let (whir_r1cs_proof, r1cs_spark_queries) = self
             .whir_for_witness
             .prove_mavros(
                 merlin,
@@ -340,7 +340,7 @@ impl Prove for MavrosProver {
         Ok(NoirProof {
             public_inputs,
             whir_r1cs_proof,
-            r1cs_spark_query,
+            r1cs_spark_queries,
         })
     }
 

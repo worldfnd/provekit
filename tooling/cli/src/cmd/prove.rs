@@ -10,7 +10,10 @@ use {
         Prover,
     },
     provekit_prover::Prove,
-    std::{os::unix::net::UnixStream, path::PathBuf},
+    std::{
+        os::unix::net::UnixStream,
+        path::{Path, PathBuf},
+    },
     tracing::{info, instrument},
 };
 #[cfg(test)]
@@ -96,25 +99,38 @@ impl Command for Args {
             let mut stream =
                 UnixStream::connect(socket).with_context(|| format!("connecting to {socket:?}"))?;
 
-            let request = SparkRequest {
-                circuit:     circuit.clone(),
-                spark_query: proof.r1cs_spark_query,
-                output:      self.spark_proof_path.clone(),
-            };
+            for (i, spark_query) in proof.r1cs_spark_queries.into_iter().enumerate() {
+                let output = spark_output_path(&self.spark_proof_path, i);
+                let request = SparkRequest {
+                    circuit: circuit.clone(),
+                    spark_query,
+                    output: output.clone(),
+                };
 
-            spark_protocol::write_message(&mut stream, &request)?;
-            let response: SparkResponse = spark_protocol::read_message(&mut stream)?;
+                spark_protocol::write_message(&mut stream, &request)?;
+                let response: SparkResponse = spark_protocol::read_message(&mut stream)?;
 
-            if response.ok {
-                info!("SPARK proof written to {:?}", self.spark_proof_path);
-            } else {
-                bail!(
-                    "SPARK server error: {}",
-                    response.error.unwrap_or_else(|| "unknown".to_string())
-                );
+                if response.ok {
+                    info!("SPARK proof written to {output:?}");
+                } else {
+                    bail!(
+                        "SPARK server error: {}",
+                        response.error.unwrap_or_else(|| "unknown".to_string())
+                    );
+                }
             }
         }
 
         Ok(())
     }
+}
+
+/// Insert the index before the file extension: `spark_proof.sp` ->
+/// `spark_proof_0.sp`.
+fn spark_output_path(base: &Path, i: usize) -> PathBuf {
+    let stem = base.file_stem().unwrap_or_default().to_string_lossy();
+    let ext = base
+        .extension()
+        .map_or(String::new(), |e| format!(".{}", e.to_string_lossy()));
+    base.with_file_name(format!("{stem}_{i}{ext}"))
 }

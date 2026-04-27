@@ -30,9 +30,9 @@ pub enum NoirProofScheme {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NoirProof {
-    pub public_inputs:    PublicInputs,
-    pub whir_r1cs_proof:  WhirR1CSProof,
-    pub r1cs_spark_query: R1CSSparkQuery,
+    pub public_inputs:      PublicInputs,
+    pub whir_r1cs_proof:    WhirR1CSProof,
+    pub r1cs_spark_queries: Vec<R1CSSparkQuery>,
 }
 
 impl NoirProofScheme {

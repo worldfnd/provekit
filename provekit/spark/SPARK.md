@@ -45,12 +45,11 @@ One matrix, one commitment, one opening.
 | `num_terms_2batched` e-values are committed and opened together. Opened once in sumcheck and once in rs_ws GPA
 | `num_terms_4batched` | Address/timestamp values for row-wise and col-wise memory checks are committed and opened together
 
-### Temporary Sumcheck for split witness
-The current ZK WHIR doesn't support batching which would enable easier handling of split witness commitment. The repo currently uses an additional sumcheck proposed by Marcin until batch ZK commitment is supported https://gist.github.com/kustosz/c7c3f756aaae77f37e035c30c4961ea3.
+### Split witness: two SPARK queries 
+The current ZK WHIR doesn't support batching which would enable easier handling of split witness commitment. 
 
-**The  trick:**
-
-**Collapsing two claims into one:** With claims on $A(r,0,q_1)$ and $A(r,1,q_2)$. Draw random $\beta$ and note their RLC is just another sum over $A(r,\cdot)$, so run a **Sumcheck #2** to reduce to a single claim $A(r, \gamma)$.
+The current implementation emits **two SPARK
+queries** for the dual-commitment path — one per split half.
 
 
 ## Full workflow for a Noir passport circuit:
@@ -67,9 +66,11 @@ cargo run --release --bin provekit-cli -- serve --socket /tmp/spark.sock --outpu
 # 2. Wait for server readiness
 while [ ! -S /tmp/spark.sock ]; do sleep 1; done
 
-# 3. Prove (generates Noir proof + SPARK proof)
-cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/power.pkp ./Prover.toml -o ./benchmark-inputs/power-proof.np --socket /tmp/spark.sock --circuit power  --spark-out ./benchmark-inputs/power-spark-proof.sp
+# 3. Prove (generates Noir proof + one SPARK proof per SPARK query)
+cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/power.pkp ./Prover.toml -o ./benchmark-inputs/power-proof.np --socket /tmp/spark.sock --circuit power --spark-out ./benchmark-inputs/power-spark-proof.sp
 
-# 4. Verify Noir + SPARK proof
-cargo run --release --bin provekit-cli -- verify ./benchmark-inputs/power.pkv ./benchmark-inputs/power-proof.np --spark-proof ./benchmark-inputs/power-spark-proof.sp
+# 4. Natively verify the Noir proof. Native verification evaluates MLE directly. Spark proofs are useful only in the recursive verifier.
+cargo run --release --bin provekit-cli -- verify ./benchmark-inputs/power.pkv ./benchmark-inputs/power-proof.np
+
+# TODO: 5. Recursively verify the Noir proof and SPARK.
 ```
