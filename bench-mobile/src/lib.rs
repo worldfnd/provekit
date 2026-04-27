@@ -21,9 +21,10 @@ pub struct BenchSpec {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
 pub struct BenchSample {
-    pub duration_ns:    u64,
-    pub cpu_time_ms:    Option<u64>,
-    pub peak_memory_kb: Option<u64>,
+    pub duration_ns:            u64,
+    pub cpu_time_ms:            Option<u64>,
+    pub peak_memory_kb:         Option<u64>,
+    pub process_peak_memory_kb: Option<u64>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
@@ -84,9 +85,10 @@ impl From<BenchSpec> for mobench_sdk::BenchSpec {
 impl From<mobench_sdk::BenchSample> for BenchSample {
     fn from(sample: mobench_sdk::BenchSample) -> Self {
         Self {
-            duration_ns:    sample.duration_ns,
-            cpu_time_ms:    sample.cpu_time_ms,
-            peak_memory_kb: sample.peak_memory_kb,
+            duration_ns:            sample.duration_ns,
+            cpu_time_ms:            sample.cpu_time_ms,
+            peak_memory_kb:         sample.peak_memory_kb,
+            process_peak_memory_kb: sample.process_peak_memory_kb,
         }
     }
 }
@@ -322,9 +324,10 @@ mod tests {
                 warmup:     0,
             },
             samples:  vec![mobench_sdk::BenchSample {
-                duration_ns:    123,
-                cpu_time_ms:    Some(7),
-                peak_memory_kb: Some(48),
+                duration_ns:            123,
+                cpu_time_ms:            Some(7),
+                peak_memory_kb:         Some(48),
+                process_peak_memory_kb: Some(1024),
             }],
             phases:   vec![],
             timeline: vec![],
@@ -335,6 +338,7 @@ mod tests {
 
         assert_eq!(value["samples"][0]["cpu_time_ms"], 7);
         assert_eq!(value["samples"][0]["peak_memory_kb"], 48);
+        assert_eq!(value["samples"][0]["process_peak_memory_kb"], 1024);
     }
 
     #[test]
@@ -346,9 +350,10 @@ mod tests {
                 warmup:     0,
             },
             samples:  vec![mobench_sdk::BenchSample {
-                duration_ns:    321,
-                cpu_time_ms:    None,
-                peak_memory_kb: None,
+                duration_ns:            321,
+                cpu_time_ms:            None,
+                peak_memory_kb:         None,
+                process_peak_memory_kb: None,
             }],
             phases:   vec![],
             timeline: vec![mobench_sdk::HarnessTimelineSpan {
