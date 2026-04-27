@@ -3,7 +3,7 @@
 //! # Example
 //!
 //! ```sh
-//! cargo run --release --bin provekit-cli circuit_stats ./target/basic.json
+//! cargo run --release --bin provekit-cli circuit-stats ./target/basic.json
 //! ```
 
 mod display;
@@ -28,7 +28,7 @@ use {
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(
     subcommand,
-    name = "circuit_stats",
+    name = "circuit-stats",
     description = "analyze ACIR circuit statistics and R1CS complexity"
 )]
 pub struct Args {

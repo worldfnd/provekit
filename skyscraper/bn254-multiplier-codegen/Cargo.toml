@@ -1,12 +1,16 @@
 [package]
-name = "bn254-multiplier-codegen"
+name = "provekit-bn254-multiplier-codegen"
 version = "0.1.0"
+description = "Code generation for BN254 field multiplication"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 homepage.workspace = true
 repository.workspace = true
+
+[lib]
+name = "bn254_multiplier_codegen"
 
 [dependencies]
 # Workspace crates

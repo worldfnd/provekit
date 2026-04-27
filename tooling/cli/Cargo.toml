@@ -1,6 +1,7 @@
 [package]
 name = "provekit-cli"
-version = "0.1.0"
+version = "0.1.5"
+description = "ProveKit CLI for generating and verifying zero-knowledge proofs"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -18,7 +19,11 @@ provekit-verifier.workspace = true
 
 # Noir language
 acir.workspace = true
+nargo.workspace = true
+nargo_toml.workspace = true
+noir_artifact_cli.workspace = true
 noirc_abi.workspace = true
+noirc_driver.workspace = true
 
 # Cryptography and proof systems
 ark-ff.workspace = true
