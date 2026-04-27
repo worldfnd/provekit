@@ -116,7 +116,7 @@ divan = "0.1.21"
 hex = "0.4.3"
 itertools = "0.14.0"
 inventory = "0.3"
-mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs", rev = "ad8ccef32fae55a54b1a3faa124edc7fd2b95be1", package = "mobench-sdk" }
+mobench-sdk = "0.1.37"
 paste = "1.0.15"
 postcard = { version = "1.1.1", features = ["use-std"] }
 primitive-types = "0.13.1"
