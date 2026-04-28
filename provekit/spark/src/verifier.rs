@@ -6,7 +6,7 @@ use {
         types::{MatrixDimensions, SPARKProof, SPARKWHIRConfigs},
     },
     anyhow::{ensure, Context, Result},
-    ark_ff::Field,
+    ark_ff::{Field, Zero},
     provekit_common::{
         spark::R1CSSparkQuery,
         utils::{next_power_of_two, sumcheck::calculate_eq},
@@ -40,6 +40,11 @@ impl SPARKScheme {
 impl SPARKVerifier for SPARKScheme {
     #[instrument(skip_all)]
     fn verify(&self, proof: SPARKProof, request: &R1CSSparkQuery) -> Result<()> {
+        ensure!(
+            !(FieldElement::ONE + request.matrix_batching_randomness).is_zero(),
+            "matrix_batching_randomness must not equal -1 (would zero the SPARK denominator)"
+        );
+
         let ds = DomainSeparator::protocol(&self.whir_configs).instance(&Empty);
         let whir_proof = Proof {
             narg_string: proof.narg_string,

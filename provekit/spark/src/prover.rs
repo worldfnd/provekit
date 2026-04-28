@@ -9,8 +9,8 @@ use {
         },
         utils::calculate_memory,
     },
-    anyhow::Result,
-    ark_ff::Field,
+    anyhow::{ensure, Result},
+    ark_ff::{Field, Zero},
     provekit_common::{
         spark::R1CSSparkQuery, utils::next_power_of_two, FieldElement, TranscriptSponge, WhirConfig,
     },
@@ -96,6 +96,11 @@ impl SPARKProver for SPARKScheme {
         spark_data: &SparkPreparedData,
         request: &R1CSSparkQuery,
     ) -> Result<SPARKProof> {
+        ensure!(
+            !(FieldElement::ONE + request.matrix_batching_randomness).is_zero(),
+            "matrix_batching_randomness must not equal -1 (would zero the SPARK denominator)"
+        );
+
         let padded_num_entries = spark_data.matrix.coo.val.len();
 
         let ds = DomainSeparator::protocol(&self.whir_configs).instance(&Empty);
