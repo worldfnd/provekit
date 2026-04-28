@@ -2,6 +2,8 @@ name: CSP Benchmarks
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       bench_runs:
@@ -13,6 +15,9 @@ permissions:
   contents: read
   pull-requests: write
   issues: write
+  # Needed to read artifacts from previous successful main runs so we can
+  # render percentage deltas in the PR comment.
+  actions: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -26,7 +31,8 @@ concurrency:
 jobs:
   csp-benchmarks:
     # Block fork PRs from running our heavy bench script on the runner.
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
+    # Push to main always runs so the artifact becomes a baseline for PRs.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository }}
     name: CSP benchmarks (avg over ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.bench_runs != '' && github.event.inputs.bench_runs || '3') || '3' }} runs)
     runs-on: ubuntu-24.04-arm
 
@@ -63,12 +69,43 @@ jobs:
           path: csp-bench-logs/
           retention-days: 7
 
+      - name: Fetch baseline from latest successful main run
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -e
+          BASELINE_RUN_ID="$(gh run list \
+            --workflow csp-benchmarks.yml \
+            --branch main \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId // empty')"
+          if [[ -z "${BASELINE_RUN_ID}" ]]; then
+            echo "No successful main run found yet; deltas will not be shown."
+            exit 0
+          fi
+          echo "Baseline run id: ${BASELINE_RUN_ID}"
+          mkdir -p csp-bench-logs/baseline
+          if gh run download "${BASELINE_RUN_ID}" \
+              --name "csp-bench-logs-${BASELINE_RUN_ID}" \
+              --dir csp-bench-logs/baseline; then
+            echo "BASELINE_RUN_ID=${BASELINE_RUN_ID}" >> "$GITHUB_ENV"
+          else
+            echo "Baseline artifact not retrievable; deltas will not be shown."
+          fi
+
       - name: Build sticky PR comment body
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
         run: |
           python3 .github/scripts/build_csp_pr_comment.py \
             --results-csv "csp-bench-logs/results.csv" \
+            --baseline-csv "csp-bench-logs/baseline/results.csv" \
+            --baseline-run-id "${BASELINE_RUN_ID:-}" \
             --output "csp-bench-logs/pr_comment.md" \
             --run-id "${{ github.run_id }}" \
             --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
