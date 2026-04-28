@@ -86,7 +86,7 @@ def parse_peak_heap_bytes(stderr_path: Path) -> int:
 def parse_time_file(time_path: Path) -> tuple[float, int]:
     """Read `/usr/bin/time -f '%e %M'` output: (wall_seconds, max_rss_kb).
 
-    Returns (0.0, 0) if the file is missing or unparseable.
+    Returns (0.0, 0) if the file is missing or unparsable.
     """
     if not time_path.is_file():
         return 0.0, 0

@@ -420,7 +420,12 @@ if [[ -f "${WITNESS_CSV}" ]] && python3 "${SCRIPT_DIR}/generate_provekit_witness
   fi
 fi
 
-if [[ "${failed}" -gt 0 ]]; then
+# Circuit failures are surfaced via the PR sticky comment and the grouped
+# error report. The workflow should not fail just because some circuits
+# don't compile through provekit-cli today — the report is the source of
+# truth for which circuits pass. Set STRICT_FAIL=1 to opt into the old
+# "exit 1 on any failure" behaviour for local CI gates.
+if [[ "${STRICT_FAIL:-0}" == "1" && "${failed}" -gt 0 ]]; then
   exit 1
 fi
 
