@@ -66,6 +66,11 @@ on:
         required: false
         type: string
         default: ""
+      report_repository:
+        description: "owner/repo to receive the sticky benchmark comment; defaults to this repository"
+        required: false
+        type: string
+        default: ""
       head_sha:
         description: "Exact commit SHA to benchmark"
         required: false
@@ -125,5 +130,6 @@ jobs:
       mobench_version: ${{ inputs.mobench_version }}
       mobench_ref: ${{ inputs.mobench_ref }}
       pr_number: ${{ inputs.pr_number }}
+      report_repository: ${{ inputs.report_repository }}
       head_sha: ${{ inputs.head_sha }}
       requested_by: ${{ inputs.requested_by }}
