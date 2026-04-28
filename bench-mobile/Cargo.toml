@@ -10,6 +10,9 @@ repository.workspace = true
 publish = false
 description = "Mobile benchmarks for ProveKit Noir passport proving"
 
+[package.metadata.cargo-machete]
+ignored = ["inventory"]
+
 [lib]
 crate-type = ["lib", "cdylib", "staticlib"]
 
