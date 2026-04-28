@@ -15,8 +15,9 @@
 #   MAX_TESTS        Cap on circuits (0 = unlimited)
 #
 # Output: BENCH_DIR/results.csv with one row per circuit:
-#   circuit,prover_time_ms,prover_peak_rss_kb,prover_heap_peak_bytes,
-#     verifier_time_ms,proof_size_bytes,pkp_size_bytes,runs
+#   circuit,num_constraints,num_witnesses,prover_time_ms,prover_peak_rss_kb,
+#     prover_heap_peak_bytes,verifier_time_ms,proof_size_bytes,pkp_size_bytes,
+#     runs
 
 set -euo pipefail
 
@@ -72,7 +73,7 @@ fi
 
 mkdir -p "${BENCH_DIR}/per_circuit"
 RESULTS_CSV="${BENCH_DIR}/results.csv"
-echo "circuit,prover_time_ms,prover_peak_rss_kb,prover_heap_peak_bytes,verifier_time_ms,proof_size_bytes,pkp_size_bytes,runs" > "${RESULTS_CSV}"
+echo "circuit,num_constraints,num_witnesses,prover_time_ms,prover_peak_rss_kb,prover_heap_peak_bytes,verifier_time_ms,proof_size_bytes,pkp_size_bytes,runs" > "${RESULTS_CSV}"
 
 shopt -s nullglob
 

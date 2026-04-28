@@ -18,6 +18,8 @@ MAX_COMMENT_CHARS = 62000
 
 # Metric columns we render with a delta. Order matches the table header.
 METRIC_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("num_constraints", "int"),
+    ("num_witnesses", "int"),
     ("prover_time_ms", "ms"),
     ("prover_peak_rss_kb", "kb"),
     ("prover_heap_peak_bytes", "bytes"),
@@ -52,11 +54,19 @@ def fmt_ms(ms: float) -> str:
     return f"{ms / 1000.0:.2f} s"
 
 
+def fmt_int(value: float) -> str:
+    if value <= 0:
+        return "—"
+    return f"{int(round(value)):,}"
+
+
 def fmt_value(unit: str, value: float) -> str:
     if unit == "ms":
         return fmt_ms(value)
     if unit == "kb":
         return fmt_kb_to_bytes(value)
+    if unit == "int":
+        return fmt_int(value)
     return fmt_bytes(value)
 
 
@@ -127,10 +137,10 @@ def render_table(
         return "_No benchmark results were produced._"
 
     header = (
-        "| Circuit | Prover time | Peak RSS | Peak heap | Verifier time | "
-        "Proof size | PKP size |"
+        "| Circuit | Constraints | Witnesses | Prover time | Peak RSS | "
+        "Peak heap | Verifier time | Proof size | PKP size |"
     )
-    sep = "|---|---:|---:|---:|---:|---:|---:|"
+    sep = "|---|---:|---:|---:|---:|---:|---:|---:|---:|"
     lines = [header, sep]
 
     for row in sorted(rows, key=lambda r: r.get("circuit", "")):

@@ -45,6 +45,11 @@ PEAK_MEMORY_RE = re.compile(
     rf"([0-9]+(?:\.[0-9]+)?)[{NARROW_NBSP} ]?([qryzafpnμmkMGTPEZYRQ])?B"
     r"\s+peak\s+memory",
 )
+# Matches the `info!(constraints, witnesses, "Read Noir proof scheme")` line
+# emitted by `tooling/cli/src/cmd/prove.rs` on every prove invocation.
+SCHEME_SIZE_RE = re.compile(
+    r"Read Noir proof scheme\b.*?\bconstraints=(\d+)\b.*?\bwitnesses=(\d+)\b"
+)
 
 
 def human_to_bytes(value: str) -> int:
@@ -81,6 +86,17 @@ def parse_peak_heap_bytes(stderr_path: Path) -> int:
         bytes_value = int(number * 10 ** ((SI_SUFFIXES.index(suffix) - SI_BASE_INDEX) * 3))
         peak = max(peak, bytes_value)
     return peak
+
+
+def parse_scheme_sizes(stderr_path: Path) -> tuple[int, int]:
+    """Return (num_constraints, num_witnesses) from a prove stderr; (0, 0) if absent."""
+    if not stderr_path.is_file():
+        return 0, 0
+    text = ANSI_RE.sub("", stderr_path.read_text(encoding="utf-8", errors="replace"))
+    match = SCHEME_SIZE_RE.search(text)
+    if not match:
+        return 0, 0
+    return int(match.group(1)), int(match.group(2))
 
 
 def parse_time_file(time_path: Path) -> tuple[float, int]:
@@ -130,6 +146,10 @@ def parse_runs(bench_dir: Path, circuit: str) -> str:
         prove_runs.append((wall, rss_kb, heap_bytes))
         i += 1
 
+    # Constraint and witness counts are deterministic per circuit, so reading
+    # them from the first prove run is sufficient.
+    num_constraints, num_witnesses = parse_scheme_sizes(circuit_dir / "prove_1.stderr")
+
     j = 1
     while True:
         time_path = circuit_dir / f"verify_{j}.time"
@@ -153,6 +173,8 @@ def parse_runs(bench_dir: Path, circuit: str) -> str:
     return ",".join(
         [
             circuit,
+            str(num_constraints),
+            str(num_witnesses),
             f"{prove_time_ms:.1f}",
             f"{prover_rss_kb:.0f}",
             f"{prover_heap_bytes:.0f}",
