@@ -8,7 +8,7 @@ pub(crate) mod merkle_proof;
 
 use constants::{MAX_DEPTH, NUM_KEYS};
 use nullifier::oprf_nullifier;
-use types::{OprfNullifierInputs, OprfNullifierOutputs, PublicKey};
+use types::{OprfNullifierInputs, PublicKey};
 
 pub fn main(
     cred_pk: pub PublicKey,
@@ -18,11 +18,11 @@ pub fn main(
     rp_id: pub Field,
     action: pub Field,
     oprf_pk: pub PublicKey,
-    nonce: pub Field,
-    signal_hash: pub Field,
+    nonce: Field,
+    signal_hash: Field,
     inputs: OprfNullifierInputs<MAX_DEPTH, NUM_KEYS>,
-) -> pub OprfNullifierOutputs {
-    oprf_nullifier(
+) {
+    let _outputs = oprf_nullifier(
         cred_pk,
         current_time_stamp,
         root,
@@ -33,5 +33,5 @@ pub fn main(
         nonce,
         signal_hash,
         inputs,
-    )
+    );
 }

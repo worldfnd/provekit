@@ -5,11 +5,13 @@ use {
         prove_complete_age_check_fixture, verify_complete_age_check_fixture,
         PreparedCompleteAgeCheckFixture, VerifiedCompleteAgeCheckFixture,
     },
+    examples::{MobileBenchFixture, PreparedCircuitFixture, VerifiedCircuitFixture},
     mobench_sdk::{benchmark, profile_phase},
     serde_json::json,
     std::{cell::RefCell, hint::black_box},
 };
 
+pub mod examples;
 pub mod passport;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
@@ -226,6 +228,14 @@ thread_local! {
         const { RefCell::new(None) };
     static VERIFIED_COMPLETE_AGE_CHECK: RefCell<Option<VerifiedCompleteAgeCheckFixture>> =
         const { RefCell::new(None) };
+    static PREPARED_OPRF: RefCell<Option<PreparedCircuitFixture>> =
+        const { RefCell::new(None) };
+    static VERIFIED_OPRF: RefCell<Option<VerifiedCircuitFixture>> =
+        const { RefCell::new(None) };
+    static PREPARED_P256_BIGCURVE: RefCell<Option<PreparedCircuitFixture>> =
+        const { RefCell::new(None) };
+    static VERIFIED_P256_BIGCURVE: RefCell<Option<VerifiedCircuitFixture>> =
+        const { RefCell::new(None) };
 }
 
 fn with_prepared_complete_age_check<T>(f: impl FnOnce(&PreparedCompleteAgeCheckFixture) -> T) -> T {
@@ -257,6 +267,65 @@ fn with_verified_complete_age_check<T>(f: impl FnOnce(&VerifiedCompleteAgeCheckF
         let verified = cache_ref
             .as_ref()
             .expect("verified complete_age_check fixture");
+        f(verified)
+    })
+}
+
+fn with_prepared_oprf<T>(f: impl FnOnce(&PreparedCircuitFixture) -> T) -> T {
+    PREPARED_OPRF.with(|cache| {
+        if cache.borrow().is_none() {
+            *cache.borrow_mut() = Some(
+                examples::prepare_fixture(MobileBenchFixture::Oprf).expect("prepare oprf fixture"),
+            );
+        }
+
+        let cache_ref = cache.borrow();
+        let prepared = cache_ref.as_ref().expect("prepared oprf fixture");
+        f(prepared)
+    })
+}
+
+fn with_verified_oprf<T>(f: impl FnOnce(&VerifiedCircuitFixture) -> T) -> T {
+    VERIFIED_OPRF.with(|cache| {
+        if cache.borrow().is_none() {
+            let prepared =
+                examples::prepare_fixture(MobileBenchFixture::Oprf).expect("prepare oprf fixture");
+            let verified = examples::prove_fixture(prepared).expect("prove oprf fixture");
+            *cache.borrow_mut() = Some(verified);
+        }
+
+        let cache_ref = cache.borrow();
+        let verified = cache_ref.as_ref().expect("verified oprf fixture");
+        f(verified)
+    })
+}
+
+fn with_prepared_p256_bigcurve<T>(f: impl FnOnce(&PreparedCircuitFixture) -> T) -> T {
+    PREPARED_P256_BIGCURVE.with(|cache| {
+        if cache.borrow().is_none() {
+            *cache.borrow_mut() = Some(
+                examples::prepare_fixture(MobileBenchFixture::P256Bigcurve)
+                    .expect("prepare p256_bigcurve fixture"),
+            );
+        }
+
+        let cache_ref = cache.borrow();
+        let prepared = cache_ref.as_ref().expect("prepared p256_bigcurve fixture");
+        f(prepared)
+    })
+}
+
+fn with_verified_p256_bigcurve<T>(f: impl FnOnce(&VerifiedCircuitFixture) -> T) -> T {
+    VERIFIED_P256_BIGCURVE.with(|cache| {
+        if cache.borrow().is_none() {
+            let prepared = examples::prepare_fixture(MobileBenchFixture::P256Bigcurve)
+                .expect("prepare p256_bigcurve fixture");
+            let verified = examples::prove_fixture(prepared).expect("prove p256_bigcurve fixture");
+            *cache.borrow_mut() = Some(verified);
+        }
+
+        let cache_ref = cache.borrow();
+        let verified = cache_ref.as_ref().expect("verified p256_bigcurve fixture");
         f(verified)
     })
 }
@@ -308,6 +377,108 @@ pub fn bench_passport_complete_age_check_e2e() {
     });
     let verified = profile_phase("verify", || {
         verify_complete_age_check_fixture(verified).expect("verify complete_age_check fixture")
+    });
+
+    black_box(verified);
+}
+
+#[benchmark]
+pub fn bench_oprf_prepare() {
+    let prepared = profile_phase("prepare", || {
+        examples::prepare_fixture(MobileBenchFixture::Oprf).expect("prepare oprf fixture")
+    });
+
+    black_box((
+        prepared.prover.size(),
+        prepared.verifier.r1cs.num_constraints(),
+        prepared.input_map.len(),
+    ));
+}
+
+#[benchmark]
+pub fn bench_oprf_prove() {
+    with_prepared_oprf(|prepared| {
+        let verified = profile_phase("prove", || {
+            examples::prove_fixture(prepared.clone()).expect("prove oprf fixture")
+        });
+
+        black_box(verified);
+    });
+}
+
+#[benchmark]
+pub fn bench_oprf_verify() {
+    with_verified_oprf(|verified| {
+        let verified = profile_phase("verify", || {
+            examples::verify_fixture(verified.clone()).expect("verify oprf fixture")
+        });
+
+        black_box(verified);
+    });
+}
+
+#[benchmark]
+pub fn bench_oprf_e2e() {
+    let prepared = profile_phase("prepare", || {
+        examples::prepare_fixture(MobileBenchFixture::Oprf).expect("prepare oprf fixture")
+    });
+    let verified = profile_phase("prove", || {
+        examples::prove_fixture(prepared).expect("prove oprf fixture")
+    });
+    let verified = profile_phase("verify", || {
+        examples::verify_fixture(verified).expect("verify oprf fixture")
+    });
+
+    black_box(verified);
+}
+
+#[benchmark]
+pub fn bench_p256_bigcurve_prepare() {
+    let prepared = profile_phase("prepare", || {
+        examples::prepare_fixture(MobileBenchFixture::P256Bigcurve)
+            .expect("prepare p256_bigcurve fixture")
+    });
+
+    black_box((
+        prepared.prover.size(),
+        prepared.verifier.r1cs.num_constraints(),
+        prepared.input_map.len(),
+    ));
+}
+
+#[benchmark]
+pub fn bench_p256_bigcurve_prove() {
+    with_prepared_p256_bigcurve(|prepared| {
+        let verified = profile_phase("prove", || {
+            examples::prove_fixture(prepared.clone()).expect("prove p256_bigcurve fixture")
+        });
+
+        black_box(verified);
+    });
+}
+
+#[benchmark]
+pub fn bench_p256_bigcurve_verify() {
+    with_verified_p256_bigcurve(|verified| {
+        let verified = profile_phase("verify", || {
+            examples::verify_fixture(verified.clone()).expect("verify p256_bigcurve fixture")
+        });
+
+        black_box(verified);
+    });
+}
+
+#[benchmark]
+pub fn bench_p256_bigcurve_e2e() {
+    let prepared = profile_phase("prepare", || {
+        examples::prepare_fixture(MobileBenchFixture::P256Bigcurve)
+            .expect("prepare p256_bigcurve fixture")
+    });
+    let verified = profile_phase("prove", || {
+        examples::prove_fixture(prepared).expect("prove p256_bigcurve fixture")
+    });
+    let verified = profile_phase("verify", || {
+        examples::verify_fixture(verified).expect("verify p256_bigcurve fixture")
     });
 
     black_box(verified);
