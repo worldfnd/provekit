@@ -219,8 +219,6 @@ def compose_comment(
         "",
         "</details>",
         "",
-        "_This comment is automatically updated by the CSP Benchmarks workflow._",
-        "",
     ]
     return "\n".join(lines)
 

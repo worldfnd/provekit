@@ -9,7 +9,6 @@ from pathlib import Path
 
 MARKER = "<!-- noir-execution-success-report -->"
 MAX_COMMENT_CHARS = 62000
-MIN_SECTION_CHARS = 1500
 
 
 def read_report(path: Path, display_name: str) -> str:
@@ -71,13 +70,8 @@ def status_with_icon(status: str) -> str:
     return f"{labels.get(normalized, '[INFO]')} {normalized}"
 
 
-def sanitize_code_fence(text: str) -> str:
-    return text.replace("```", "``\\`")
-
-
 def compose_comment(
     grouped_report_text: str,
-    grouped_truncated: bool,
     run_id: str,
     run_url: str,
     sha: str,
@@ -86,12 +80,6 @@ def compose_comment(
 ) -> str:
     counts = parse_grouped_counts(grouped_report_text)
     short_sha = sha[:12] if sha else "unknown"
-
-    grouped_truncated_note = (
-        "\n_Grouped report truncated to fit GitHub comment size limits._\n"
-        if grouped_truncated
-        else ""
-    )
 
     failing_circuits = parse_failing_circuits(grouped_report_text)
     if failing_circuits:
@@ -122,81 +110,9 @@ def compose_comment(
         "",
         "</details>",
         "",
-        "<details>",
-        "<summary><code>grouped_error_report.txt</code></summary>",
-        "",
-        "```text",
-        sanitize_code_fence(grouped_report_text),
-        "```",
-        grouped_truncated_note,
-        "</details>",
-        "",
-        "_This comment is automatically updated by the Noir Execution Success workflow._",
-        "",
     ]
 
     return "\n".join(lines)
-
-
-def clip_tail(text: str, min_chars: int, excess: int, label: str) -> tuple[str, bool]:
-    if len(text) <= min_chars or excess <= 0:
-        return text, False
-
-    reduction = min(len(text) - min_chars, excess + 1024)
-    kept = text[: len(text) - reduction].rstrip()
-    omitted = len(text) - len(kept)
-    clipped = f"{kept}\n\n[... truncated {omitted} characters from {label} ...]"
-    return clipped, True
-
-
-def build_with_truncation(
-    grouped_report_text: str,
-    run_id: str,
-    run_url: str,
-    sha: str,
-    noir_ref: str,
-    status: str,
-) -> str:
-    grouped_work = grouped_report_text
-    grouped_truncated = False
-
-    for _ in range(128):
-        comment = compose_comment(
-            grouped_work,
-            grouped_truncated=grouped_truncated,
-            run_id=run_id,
-            run_url=run_url,
-            sha=sha,
-            noir_ref=noir_ref,
-            status=status,
-        )
-        if len(comment) <= MAX_COMMENT_CHARS:
-            return comment
-
-        excess = len(comment) - MAX_COMMENT_CHARS
-        grouped_work, grouped_changed = clip_tail(
-            grouped_work, MIN_SECTION_CHARS, excess, "grouped_error_report.txt"
-        )
-        grouped_truncated = grouped_truncated or grouped_changed
-        if grouped_changed:
-            continue
-
-        break
-
-    fallback = compose_comment(
-        grouped_work,
-        grouped_truncated=True,
-        run_id=run_id,
-        run_url=run_url,
-        sha=sha,
-        noir_ref=noir_ref,
-        status=status,
-    )
-    if len(fallback) <= MAX_COMMENT_CHARS:
-        return fallback
-
-    hard_cut = fallback[: MAX_COMMENT_CHARS - 120].rstrip()
-    return f"{hard_cut}\n\n_Comment truncated due to GitHub size limits._\n"
 
 
 def parse_args() -> argparse.Namespace:
@@ -216,7 +132,7 @@ def main() -> None:
 
     grouped_report_text = read_report(args.grouped_report, "grouped_error_report.txt")
 
-    body = build_with_truncation(
+    body = compose_comment(
         grouped_report_text=grouped_report_text,
         run_id=args.run_id,
         run_url=args.run_url,
@@ -224,6 +140,10 @@ def main() -> None:
         noir_ref=args.noir_ref,
         status=args.status,
     )
+
+    if len(body) > MAX_COMMENT_CHARS:
+        cut = body[: MAX_COMMENT_CHARS - 80].rstrip()
+        body = f"{cut}\n\n_Comment truncated due to GitHub size limits._\n"
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(body, encoding="utf-8")
