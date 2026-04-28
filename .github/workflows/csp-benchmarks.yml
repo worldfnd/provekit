@@ -1,0 +1,131 @@
+name: CSP Benchmarks
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      bench_runs:
+        description: "Iterations per circuit (default: 3)"
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BENCH_RUNS: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.bench_runs != '' && github.event.inputs.bench_runs || '3') || '3' }}
+  REQUIRED_NARGO_VERSION: "1.0.0-beta.19"
+
+concurrency:
+  group: csp-benchmarks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  csp-benchmarks:
+    # Block fork PRs from running our heavy bench script on the runner.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
+    name: CSP benchmarks (avg over ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.bench_runs != '' && github.event.inputs.bench_runs || '3') || '3' }} runs)
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+
+      - name: Build provekit-cli (release)
+        run: cargo build --release --bin provekit-cli
+
+      - name: Setup Noir toolchain
+        uses: noir-lang/noirup@v0.1.2
+        with:
+          toolchain: ${{ env.REQUIRED_NARGO_VERSION }}
+
+      - name: Run CSP benchmarks
+        env:
+          PROVEKIT_BIN: ${{ github.workspace }}/target/release/provekit-cli
+          BENCH_DIR: ${{ github.workspace }}/csp-bench-logs
+          BENCH_RUNS: ${{ env.BENCH_RUNS }}
+        run: |
+          bash scripts/run_csp_benchmarks.sh
+
+      - name: Upload bench artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csp-bench-logs-${{ github.run_id }}
+          path: csp-bench-logs/
+          retention-days: 7
+
+      - name: Build sticky PR comment body
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        run: |
+          python3 .github/scripts/build_csp_pr_comment.py \
+            --results-csv "csp-bench-logs/results.csv" \
+            --output "csp-bench-logs/pr_comment.md" \
+            --run-id "${{ github.run_id }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --sha "${{ github.sha }}" \
+            --status "${{ job.status }}" \
+            --runs-per-circuit "${{ env.BENCH_RUNS }}"
+
+      - name: Upsert sticky CSP benchmarks comment
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- csp-benchmarks-report -->';
+            const bodyPath = 'csp-bench-logs/pr_comment.md';
+            const fallbackBody = [
+              marker,
+              '## CSP benchmarks',
+              '',
+              'Unable to generate the detailed report body for this run.',
+              '',
+              'Run: [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})',
+            ].join('\n');
+            const body = fs.existsSync(bodyPath) ? fs.readFileSync(bodyPath, 'utf8') : fallbackBody;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.user &&
+              comment.user.login === 'github-actions[bot]' &&
+              comment.body &&
+              comment.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated existing CSP benchmarks comment (id=${existing.id}).`);
+            } else {
+              const created = await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+              core.info(`Created new CSP benchmarks comment (id=${created.data.id}).`);
+            }
