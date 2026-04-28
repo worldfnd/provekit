@@ -70,6 +70,11 @@ on:
         description: "PR number for reporting"
         required: false
         type: string
+      report_repository:
+        description: "owner/repo to receive the sticky benchmark comment; defaults to the workflow repository"
+        required: false
+        type: string
+        default: ""
       requested_by:
         description: "Who triggered the run"
         required: false
@@ -772,8 +777,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ inputs.pr_number }}
-          REPO: ${{ github.repository }}
+          REPO: ${{ inputs.report_repository != '' && inputs.report_repository || github.repository }}
         run: |
+          set -euo pipefail
           MARKER="<!-- mobench-summary -->"
           BODY="${MARKER}
           ## Mobench Benchmark Results
@@ -794,17 +800,21 @@ jobs:
           ---
           *Posted by [mobench](https://github.com/worldcoin/mobile-bench-rs) at $(date -u '+%Y-%m-%d %H:%M UTC')*"
 
-          EXISTING_COMMENT_ID=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-            --jq ".[] | select(.body | contains(\"${MARKER}\")) | .id" \
-            2>/dev/null | head -1)
+          comments_json="$(mktemp)"
+          if gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" > "${comments_json}"; then
+            EXISTING_COMMENT_ID=$(jq -r --arg marker "${MARKER}" '.[] | select(.body | contains($marker)) | .id' "${comments_json}" | head -1)
+          else
+            echo "::warning::Unable to list comments for ${REPO}#${PR_NUMBER}; skipping sticky benchmark comment."
+            exit 0
+          fi
 
           if [ -n "$EXISTING_COMMENT_ID" ]; then
             gh api "repos/${REPO}/issues/comments/${EXISTING_COMMENT_ID}" \
               -X PATCH \
               -f body="${BODY}" \
-              --silent
+              --silent || echo "::warning::Unable to update sticky benchmark comment ${EXISTING_COMMENT_ID} in ${REPO}."
           else
             gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
               -f body="${BODY}" \
-              --silent
+              --silent || echo "::warning::Unable to create sticky benchmark comment in ${REPO}#${PR_NUMBER}."
           fi
