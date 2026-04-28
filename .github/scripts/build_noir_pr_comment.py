@@ -1,0 +1,154 @@
+#!/usr/bin/env python3
+"""Build a sticky PR comment for noir execution_success workflow runs."""
+
+from __future__ import annotations
+
+import argparse
+import re
+from pathlib import Path
+
+MARKER = "<!-- noir-execution-success-report -->"
+MAX_COMMENT_CHARS = 62000
+
+
+def read_report(path: Path, display_name: str) -> str:
+    if not path.is_file():
+        return f"(missing: {display_name})"
+
+    text = path.read_text(encoding="utf-8", errors="replace").strip()
+    if not text:
+        return f"(empty: {display_name})"
+    return text
+
+
+def parse_grouped_counts(grouped_report_text: str) -> dict[str, str]:
+    counts: dict[str, str] = {}
+    for key in ("PASS", "FAIL", "SKIP"):
+        match = re.search(rf"^{key}=(\d+)$", grouped_report_text, flags=re.MULTILINE)
+        counts[key] = match.group(1) if match else "n/a"
+    return counts
+
+
+def parse_failing_circuits(grouped_report_text: str) -> list[str]:
+    """Extract the flat sorted list of failing circuits from the [stages] section.
+
+    The grouped report's [stages] section only contains failing tests (skipped
+    tests are routed to [grouped] instead). Each line looks like:
+        <stage>\\t<count>\\t<name1>, <name2>, ...
+    """
+    match = re.search(
+        r"^\[stages\]\n(.*?)(?:\n\[|\Z)",
+        grouped_report_text,
+        flags=re.DOTALL | re.MULTILINE,
+    )
+    if not match:
+        return []
+
+    names: set[str] = set()
+    for line in match.group(1).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split("\t")
+        if len(parts) < 3:
+            continue
+        for raw in parts[2].split(","):
+            name = raw.strip()
+            if name:
+                names.add(name)
+    return sorted(names)
+
+
+def status_with_icon(status: str) -> str:
+    normalized = (status or "unknown").strip().lower()
+    labels = {
+        "success": "[PASS]",
+        "failure": "[FAIL]",
+        "cancelled": "[CANCELLED]",
+        "skipped": "[SKIPPED]",
+    }
+    return f"{labels.get(normalized, '[INFO]')} {normalized}"
+
+
+def compose_comment(
+    grouped_report_text: str,
+    run_id: str,
+    run_url: str,
+    sha: str,
+    noir_ref: str,
+    status: str,
+) -> str:
+    counts = parse_grouped_counts(grouped_report_text)
+    short_sha = sha[:12] if sha else "unknown"
+
+    failing_circuits = parse_failing_circuits(grouped_report_text)
+    if failing_circuits:
+        failing_body = "\n".join(f"- `{name}`" for name in failing_circuits)
+        failing_summary = f"Failing circuits ({len(failing_circuits)})"
+    else:
+        failing_body = "_No failing circuits._"
+        failing_summary = "Failing circuits (0)"
+
+    lines = [
+        MARKER,
+        "## Noir execution_success report",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
+        f"| Workflow status | {status_with_icon(status)} |",
+        f"| Noir ref | `{noir_ref}` |",
+        f"| Commit | `{short_sha}` |",
+        f"| Run | [#{run_id}]({run_url}) |",
+        f"| PASS | {counts['PASS']} |",
+        f"| FAIL | {counts['FAIL']} |",
+        f"| SKIP | {counts['SKIP']} |",
+        "",
+        "<details>",
+        f"<summary>{failing_summary}</summary>",
+        "",
+        failing_body,
+        "",
+        "</details>",
+        "",
+    ]
+
+    return "\n".join(lines)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--grouped-report", required=True, type=Path)
+    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--run-url", required=True)
+    parser.add_argument("--sha", required=True)
+    parser.add_argument("--noir-ref", required=True)
+    parser.add_argument("--status", required=True)
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+
+    grouped_report_text = read_report(args.grouped_report, "grouped_error_report.txt")
+
+    body = compose_comment(
+        grouped_report_text=grouped_report_text,
+        run_id=args.run_id,
+        run_url=args.run_url,
+        sha=args.sha,
+        noir_ref=args.noir_ref,
+        status=args.status,
+    )
+
+    if len(body) > MAX_COMMENT_CHARS:
+        cut = body[: MAX_COMMENT_CHARS - 80].rstrip()
+        body = f"{cut}\n\n_Comment truncated due to GitHub size limits._\n"
+
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(body, encoding="utf-8")
+    print(f"Wrote PR comment body to {args.output} ({len(body)} chars)")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,160 @@
+name: Noir Execution Success Tests
+
+# Provide a noir_ref to test against any Noir release.
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      noir_ref:
+        description: "noir-lang/noir release tag (e.g. v1.0.0-beta.19)"
+        required: false
+        default: "v1.0.0-beta.19"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+env:
+  CARGO_TERM_COLOR: always
+  NOIR_REF: ${{ github.event.inputs.noir_ref || 'v1.0.0-beta.19' }}
+
+# Cancel any in-progress run on the same branch when a new one is triggered.
+concurrency:
+  group: noir-exec-success-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  noir-execution-success:
+    # Block fork PRs from executing arbitrary build scripts on the self-hosted runner.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
+    name: Noir execution_success suite (${{ env.NOIR_REF }})
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+
+      - name: Build provekit-cli
+        run: cargo build --release --bin provekit-cli
+
+      - name: Setup Noir toolchain
+        uses: noir-lang/noirup@v0.1.2
+        with:
+          toolchain: ${{ env.NOIR_REF }}
+
+      # Sparse checkout — only fetch test_programs/, not the full noir repo.
+      - name: Fetch noir test programs (sparse checkout)
+        run: |
+          tmpdir=$(mktemp -d)
+          # Export the parent so the cleanup step can remove it entirely.
+          echo "NOIR_TMPDIR=${tmpdir}" >> "$GITHUB_ENV"
+          echo "NOIR_REPO_DIR=${tmpdir}/noir" >> "$GITHUB_ENV"
+          git clone \
+            --depth 1 \
+            --filter=blob:none \
+            --sparse \
+            --branch "$NOIR_REF" \
+            https://github.com/noir-lang/noir.git "${tmpdir}/noir"
+          git -C "${tmpdir}/noir" sparse-checkout set \
+            test_programs/execution_success \
+            test_programs/test_libraries
+          echo "Cloned noir @ $(git -C "${tmpdir}/noir" rev-parse HEAD)"
+
+      - name: Run execution_success suite
+        env:
+          PROVEKIT_BIN: ${{ github.workspace }}/target/release/provekit-cli
+          LOG_DIR: ${{ github.workspace }}/noir-execution-logs
+          # NOIR_REPO_DIR is set by the previous step via $GITHUB_ENV
+        run: |
+          bash scripts/run_noir_execution_success.sh
+
+      # Upload logs on every run (pass or fail) for 7 days.
+      - name: Upload test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: noir-execution-logs-${{ github.run_id }}
+          path: noir-execution-logs/
+          retention-days: 7
+
+      - name: Build sticky PR comment body
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        run: |
+          python3 .github/scripts/build_noir_pr_comment.py \
+            --grouped-report "noir-execution-logs/grouped_error_report.txt" \
+            --output "noir-execution-logs/pr_comment.md" \
+            --run-id "${{ github.run_id }}" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --sha "${{ github.sha }}" \
+            --noir-ref "${{ env.NOIR_REF }}" \
+            --status "${{ job.status }}"
+
+      - name: Upsert sticky PR report comment
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- noir-execution-success-report -->';
+            const bodyPath = 'noir-execution-logs/pr_comment.md';
+            const fallbackBody = [
+              marker,
+              '## Noir execution_success report',
+              '',
+              'Unable to generate the detailed report body for this run.',
+              '',
+              'Run: [#${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})',
+            ].join('\n');
+            const body = fs.existsSync(bodyPath) ? fs.readFileSync(bodyPath, 'utf8') : fallbackBody;
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find((comment) =>
+              comment.user &&
+              comment.user.login === 'github-actions[bot]' &&
+              comment.body &&
+              comment.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated existing noir sticky comment (id=${existing.id}).`);
+            } else {
+              const created = await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+              core.info(`Created new noir sticky comment (id=${created.data.id}).`);
+            }
+
+      # Always clean up the temp clone, even if the test step failed.
+      - name: Cleanup noir clone
+        if: always()
+        run: |
+          if [[ -n "${NOIR_TMPDIR:-}" && -d "${NOIR_TMPDIR}" ]]; then
+            rm -rf "${NOIR_TMPDIR}"
+            echo "Cleaned up ${NOIR_TMPDIR}"
+          fi

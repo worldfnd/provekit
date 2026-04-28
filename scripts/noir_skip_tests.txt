@@ -1,0 +1,38 @@
+# Tests that use blackbox functions not yet supported by provekit.
+# Counted as SKIP (not FAIL) by scripts/run_noir_execution_success.sh
+# and excluded from scripts/generate_provekit_witness_report.py.
+# Remove entries here once the corresponding blackbox is supported.
+#
+# Format: one bare test name per line. Blank lines and `#` comments are ignored.
+
+# BLAKE3
+a_6
+array_dynamic_blackbox_input
+array_dynamic_nested_blackbox_input
+blake3
+conditional_1
+conditional_regression_short_circuit
+regression_4449
+
+# ECDSA_SECP256K1
+bench_ecdsa_secp256k1
+ecdsa_secp256k1
+ecdsa_secp256k1_invalid_inputs
+ecdsa_secp256k1_invalid_pub_key_in_inactive_branch
+
+# ECDSA_SECP256R1
+ecdsa_secp256r1
+ecdsa_secp256r1_3x
+ecdsa_secp256r1_invalid_pub_key_in_inactive_branch
+ecdsa_secp256r1_msg_equals_order
+
+# EMBEDDED_CURVE_ADD
+embedded_curve_ops
+regression_5045
+regression_7744
+
+# AES128_ENCRYPT
+aes128_encrypt
+
+# BLAKE2S
+a_7
