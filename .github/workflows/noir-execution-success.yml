@@ -17,7 +17,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  NOIR_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.noir_ref != '' && github.event.inputs.noir_ref || 'v1.0.0-beta.19') || 'v1.0.0-beta.19' }}
+  NOIR_REF: ${{ github.event.inputs.noir_ref || 'v1.0.0-beta.19' }}
 
 # Cancel any in-progress run on the same branch when a new one is triggered.
 concurrency:
@@ -28,7 +28,7 @@ jobs:
   noir-execution-success:
     # Block fork PRs from executing arbitrary build scripts on the self-hosted runner.
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository }}
-    name: Noir execution_success suite (${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.noir_ref != '' && github.event.inputs.noir_ref || 'v1.0.0-beta.19') || 'v1.0.0-beta.19' }})
+    name: Noir execution_success suite (${{ env.NOIR_REF }})
     runs-on: ubuntu-24.04-arm
 
     steps:

@@ -360,7 +360,9 @@ for test_name in "${test_dirs[@]}"; do
   rm -f "${test_log}"
 done
 
-attempted=$((passed + failed + skipped))
+# Blackbox skips bump `skipped` without bumping `total` (see the skip block
+# above), so summing passed+failed+skipped would double-count them.
+attempted=${total}
 
 echo ""
 echo "----- execution_success summary -----"
