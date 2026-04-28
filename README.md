@@ -10,7 +10,7 @@
 
 </div>
 
-ProveKit takes a Noir circuit, lowers it to R1CS, and proves it with WHIR. Built for mobile and constrained environments — ships with a custom BN254 hash engine ([Skyscraper](skyscraper/)), swap-to-disk memory management, and C FFI for iOS and Android. There's also a gnark recursive verifier that wraps WHIR proofs in Groth16 for on-chain verification.
+ProveKit lets you take a Noir circuit, compile it to R1CS, and generate a WHIR proof. It's built for mobile and constrained environments and ships with a custom BN254 hash engine ([Skyscraper](skyscraper/)), swap-to-disk memory management, and C FFI for iOS and Android. If you need on-chain verification, there's a gnark recursive verifier that wraps proofs in Groth16.
 
 ---
 
@@ -49,7 +49,7 @@ graph TD
 
 | Layer | Crate | Description |
 | :--- | :--- | :--- |
-| CLI | `tooling/cli/` | `provekit-cli` — prepare, prove, verify, inspect |
+| CLI | `tooling/cli/` | `provekit-cli`: prepare, prove, verify, inspect |
 | Prover / Verifier | `provekit/prover/`<br>`provekit/verifier/` | WHIR sumcheck, witness solving, commitment |
 | Compiler | `provekit/r1cs-compiler/` | Noir ACIR → R1CS with constraint optimizations |
 | Hash engine | `skyscraper/` | Custom BN254 hash with SIMD-accelerated field arithmetic |
@@ -60,7 +60,7 @@ graph TD
 
 ## Example
 
-Prove knowledge of inputs `(a, b)` satisfying `(a + b) * (a - b) == result` — a circuit from [`noir-examples/basic-4`](./noir-examples/basic-4/):
+Here's [`noir-examples/basic-4`](./noir-examples/basic-4/), which proves knowledge of inputs `(a, b)` satisfying `(a + b) * (a - b) == result`:
 
 ```rust
 fn main(a: Field, b: Field) -> pub Field {
@@ -95,7 +95,7 @@ noirup --version v1.0.0-beta.11
 <details>
 <summary><strong>2. Compile a circuit</strong></summary><br>
 
-Using `poseidon-rounds` as the example:
+The steps below use `poseidon-rounds` as the example circuit.
 
 ```sh
 cd noir-examples/poseidon-rounds
@@ -156,7 +156,7 @@ cargo test -p provekit-bench --bench bench
 | [Samply](https://github.com/mstange/samply) | CPU flamegraphs | `samply record -r 10000 -- ./target/release/provekit-cli prove ...` |
 | [Instruments](https://crates.io/crates/cargo-instruments) | Allocations (macOS only) | `cargo instruments --template Allocations --release --bin provekit-cli prove ...` |
 
-To inspect without running a proof:
+If you want to inspect without running a proof:
 ```sh
 provekit-cli circuit_stats ./target/basic.json      # constraint count and R1CS structure
 provekit-cli analyze-pkp ./prover.pkp               # proving key size breakdown
@@ -167,10 +167,10 @@ provekit-cli show-inputs ./verifier.pkv ./proof.np  # public input names and val
 
 ## Acknowledgements
 
-- [**WHIR**](https://github.com/WizardOfMenlo/whir) — the polynomial commitment scheme and sumcheck protocol the proof system is built on. `WhirR1CSScheme` wraps it for R1CS satisfiability over BN254.
+- [**WHIR**](https://github.com/WizardOfMenlo/whir): the polynomial commitment scheme and sumcheck protocol the proof system is built on. `WhirR1CSScheme` wraps it for R1CS satisfiability over BN254.
 
-- [**Spongefish**](https://github.com/arkworks-rs/spongefish) — Fiat-Shamir library from arkworks. All transcript construction and challenge derivation goes through its `DuplexSponge` API.
+- [**Spongefish**](https://github.com/arkworks-rs/spongefish): Fiat-Shamir library from arkworks. All transcript construction and challenge derivation goes through its `DuplexSponge` API.
 
-- [**gnark-skyscraper**](https://github.com/reilabs/gnark-skyscraper) — Go implementation of the Skyscraper hash. The recursive verifier needs it to reproduce the same Merkle commitments as the Rust prover.
+- [**gnark-skyscraper**](https://github.com/reilabs/gnark-skyscraper): Go implementation of the Skyscraper hash. The recursive verifier needs it to reproduce the same Merkle commitments as the Rust prover.
 
-- [**Noir**](https://github.com/noir-lang/noir) — the ZK DSL we compile from. Write your circuit in Noir, run nargo to get ACIR, and ProveKit handles the rest.
+- [**Noir**](https://github.com/noir-lang/noir): the ZK DSL we compile from. Write your circuit in Noir, run nargo to get ACIR, and ProveKit handles the rest.
