@@ -6,24 +6,37 @@ ProveKit proving workloads behind the interface expected by
 can be built into Android and iOS runners, executed on real devices, and
 reported through the CI workflow.
 
-The current scope is the monolithic passport circuit:
+The current scope covers three Noir examples:
 
-- source circuit:
+- source circuits:
   `noir-examples/noir-passport-monolithic/complete_age_check`
+  `noir-examples/oprf`
+  `noir-examples/p256_bigcurve`
 - embedded benchmark fixtures:
   `bench-mobile/fixtures/complete_age_check/`
+  `bench-mobile/fixtures/oprf/`
+  `bench-mobile/fixtures/p256_bigcurve/`
 
 ## What ProveKit uses mobench for
 
 ProveKit uses `mobench` to answer one question: how expensive are our proving
 steps on real mobile hardware?
 
-This crate exposes four benchmark functions:
+This crate exposes prepare, prove, verify, and end-to-end benchmark functions
+for each embedded fixture:
 
 - `bench_mobile::bench_passport_complete_age_check_prepare`
 - `bench_mobile::bench_passport_complete_age_check_prove`
 - `bench_mobile::bench_passport_complete_age_check_verify`
 - `bench_mobile::bench_passport_complete_age_check_e2e`
+- `bench_mobile::bench_oprf_prepare`
+- `bench_mobile::bench_oprf_prove`
+- `bench_mobile::bench_oprf_verify`
+- `bench_mobile::bench_oprf_e2e`
+- `bench_mobile::bench_p256_bigcurve_prepare`
+- `bench_mobile::bench_p256_bigcurve_prove`
+- `bench_mobile::bench_p256_bigcurve_verify`
+- `bench_mobile::bench_p256_bigcurve_e2e`
 
 They let us measure different slices of the passport proving pipeline:
 
@@ -82,10 +95,17 @@ bench-mobile/
 ├── README.md
 ├── build.rs
 ├── fixtures/
-│   └── complete_age_check/
-│       ├── complete_age_check.json
+│   ├── complete_age_check/
+│   │   ├── complete_age_check.json
+│   │   └── Prover.toml
+│   ├── oprf/
+│   │   ├── oprf.json
+│   │   └── Prover.toml
+│   └── p256_bigcurve/
+│       ├── p256.json
 │       └── Prover.toml
 ├── src/
+│   ├── examples.rs
 │   ├── lib.rs
 │   ├── passport.rs
 │   └── bin/
@@ -134,6 +154,11 @@ It also contains the benchmark-specific execution policy:
   verification, not proof generation
 - `e2e` measures the full path in one run
 
+### `src/examples.rs`
+
+Contains shared fixture loading, proving, and verification code for the
+embedded Noir examples used by mobile benchmarks.
+
 ### `src/passport.rs`
 
 Contains the ProveKit-specific benchmark fixture logic:
@@ -146,13 +171,13 @@ Contains the ProveKit-specific benchmark fixture logic:
 This file is where the mobile benchmark stays tied to real ProveKit proving
 code instead of synthetic stand-ins.
 
-### `fixtures/complete_age_check/complete_age_check.json`
+### `fixtures/*/*.json`
 
-Checked-in compiled Noir artifact for the benchmarked passport circuit.
+Checked-in compiled Noir artifacts for the benchmarked circuits.
 
-### `fixtures/complete_age_check/Prover.toml`
+### `fixtures/*/Prover.toml`
 
-Checked-in witness inputs for the same circuit.
+Checked-in witness inputs for the same circuits.
 
 Together, these fixtures make the benchmark reproducible without running `nargo`
 on the device.
@@ -166,6 +191,11 @@ Host-side smoke tests for the embedded fixture:
 
 These are not mobile performance tests. They are correctness checks that keep
 the benchmark fixture from silently drifting out of shape.
+
+### `tests/examples_smoke.rs`
+
+Host-side smoke tests for the shared fixture loader and the OPRF/p256 fixtures.
+They verify that the embedded examples prepare, prove, and verify successfully.
 
 ## Benchmark behavior and measurement boundaries
 
@@ -195,6 +225,14 @@ Refresh the checked-in Noir artifact fixture:
 cd noir-examples/noir-passport-monolithic/complete_age_check
 nargo compile --skip-brillig-constraints-check --force
 cp target/complete_age_check.json ../../../bench-mobile/fixtures/complete_age_check/complete_age_check.json
+
+cd ../../oprf
+nargo compile --skip-brillig-constraints-check --force
+cp target/oprf.json ../../bench-mobile/fixtures/oprf/oprf.json
+
+cd ../p256_bigcurve
+nargo compile --skip-brillig-constraints-check --force
+cp target/p256.json ../../bench-mobile/fixtures/p256_bigcurve/p256.json
 ```
 
 If the circuit or its ABI changes, refresh the fixture in the same change so
