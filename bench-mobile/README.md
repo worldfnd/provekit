@@ -265,26 +265,26 @@ the resulting reports back into `target/mobench/ci/...`.
 
 ## BrowserStack device profiles used in this repo
 
-PR benchmarks run the smoke profile by default:
+PR benchmarks run the low-end smoke profile by default:
 
-- Android: `Google Pixel 7-13.0`
-- iOS: `iPhone 16 Pro-18`
+- Android: `Vivo Y21-11.0`
+- iOS: `iPhone 7-10`
 
 Manual workflow dispatches can still select the triad profile:
 
 - Android:
-  - `Motorola Moto G9 Play-10.0`
+  - `Vivo Y21-11.0`
   - `Google Pixel 7-13.0`
   - `Samsung Galaxy S24-14.0`
 - iOS:
-  - `iPhone SE 2020-16`
+  - `iPhone 7-10`
   - `iPhone 15-17`
   - `iPhone 16 Pro-18`
 
 The low-spec pair used for worst-case checks is:
 
-- Android: `Motorola Moto G9 Play-10.0`
-- iOS: `iPhone SE 2020-16`
+- Android: `Vivo Y21-11.0`
+- iOS: `iPhone 7-10`
 
 The sticky PR comment is updated in place using the `<!-- mobench-summary -->`
 marker so each rerun replaces the previous report.
