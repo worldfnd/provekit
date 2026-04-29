@@ -16,7 +16,7 @@ use {
     tracing::instrument,
     whir::{
         algebra::linear_form::MultilinearExtension,
-        transcript::{codecs::Empty, DomainSeparator, Proof, VerifierMessage, VerifierState},
+        transcript::{DomainSeparator, Proof, VerifierMessage, VerifierState},
     },
 };
 
@@ -46,16 +46,19 @@ impl SPARKVerifier for SPARKScheme {
 
         let precomputed_commitments = setup.extract_commitments()?;
 
-        let ds = DomainSeparator::protocol(&setup.whir_params)
-            .session(&setup.transcript.narg_string)
-            .instance(&Empty);
         let whir_proof = Proof {
             narg_string: proof.0.narg_string,
             hints: proof.0.hints,
             #[cfg(debug_assertions)]
             pattern: proof.0.pattern,
         };
-        let mut arthur = VerifierState::new(&ds, &whir_proof, TranscriptSponge::default());
+        let mut arthur = VerifierState::new(
+            &DomainSeparator::protocol(&setup.whir_params)
+                .session(&setup.transcript.narg_string)
+                .instance(&request.hash_bytes()),
+            &whir_proof,
+            TranscriptSponge::default(),
+        );
 
         let claimed_value = (request.claimed_value
             / (FieldElement::ONE + request.matrix_batching_randomness))

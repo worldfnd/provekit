@@ -1,6 +1,7 @@
 use {
     crate::{utils::serde_ark, FieldElement},
     serde::{Deserialize, Serialize},
+    sha3::{Digest, Sha3_256},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -18,4 +19,11 @@ pub struct R1CSSparkQuery {
     pub matrix_batching_randomness: FieldElement,
     #[serde(with = "serde_ark")]
     pub claimed_value:              FieldElement,
+}
+
+impl R1CSSparkQuery {
+    pub fn hash_bytes(&self) -> [u8; 32] {
+        let bytes = postcard::to_allocvec(self).expect("serializing R1CSSparkQuery");
+        Sha3_256::digest(&bytes).into()
+    }
 }

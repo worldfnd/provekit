@@ -20,7 +20,7 @@ use {
     whir::{
         algebra::multilinear_extend,
         parameters::ProtocolParameters,
-        transcript::{codecs::Empty, DomainSeparator, ProverState, VerifierMessage},
+        transcript::{DomainSeparator, ProverState, VerifierMessage},
     },
 };
 
@@ -104,10 +104,12 @@ impl SPARKProver for SPARKScheme {
 
         let padded_num_entries = spark_data.matrix.coo.val.len();
 
-        let ds = DomainSeparator::protocol(&self.whir_configs)
-            .session(&spark_data.setup.transcript.narg_string)
-            .instance(&Empty);
-        let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
+        let mut merlin = ProverState::new(
+            &DomainSeparator::protocol(&self.whir_configs)
+                .session(&spark_data.setup.transcript.narg_string)
+                .instance(&request.hash_bytes()),
+            TranscriptSponge::default(),
+        );
 
         let (memory, e_values) = compute_spark_data(request, spark_data, padded_num_entries);
 
