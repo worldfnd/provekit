@@ -2,10 +2,9 @@
 ///
 /// Ported from gnark's `backend/groth16/bn254/setup.go` and `prove.go`.
 /// Notation follows Figure 4 in the DIZK paper.
-use ark_bn254::{Bn254, Fr, G1Affine, G1Projective, G2Affine, G2Projective};
+use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, G2Projective};
 use ark_ec::pairing::Pairing;
 use ark_ec::AffineRepr;
-use ark_ff::{Field, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 use crate::pedersen;
@@ -29,12 +28,39 @@ pub struct Proof {
 }
 
 impl Proof {
-    /// Checks that proof elements are in the correct subgroup.
+    /// Checks that proof elements are on the curve and in the correct subgroup.
     pub fn is_valid(&self) -> bool {
-        use ark_ec::CurveGroup;
-        // For BN254 with cofactor 1, all points on the curve are in the subgroup.
-        // We just check they're on the curve (not the point at infinity for Ar, Bs).
-        self.ar != G1Affine::zero() && self.bs != G2Affine::zero()
+        // Ar must be a non-zero G1 point on the curve.
+        // G1 has cofactor 1 on BN254, so on-curve implies in-subgroup.
+        if !self.ar.is_on_curve() || self.ar.is_zero() {
+            return false;
+        }
+
+        // Bs is a G2 point. BN254 G2 has a non-trivial cofactor, so
+        // on-curve does NOT imply in-subgroup. Explicit check required.
+        if !self.bs.is_on_curve()
+            || self.bs.is_zero()
+            || !self.bs.is_in_correct_subgroup_assuming_on_curve()
+        {
+            return false;
+        }
+
+        // Krs must be on the curve (zero is technically valid but suspicious).
+        if !self.krs.is_on_curve() {
+            return false;
+        }
+
+        // Commitment points (G1) must be on the curve.
+        for c in &self.commitments {
+            if !c.is_on_curve() {
+                return false;
+            }
+        }
+        if !self.commitment_pok.is_on_curve() {
+            return false;
+        }
+
+        true
     }
 }
 
@@ -120,6 +146,10 @@ pub struct VerifyingKey {
     pub commitment_keys: Vec<pedersen::VerifyingKey>,
     /// For each commitment, the indices of public/commitment-committed wires.
     pub public_and_commitment_committed: Vec<Vec<usize>>,
+    /// Number of challenges derived from each commitment.
+    /// Single-challenge: all 1s. Multi-challenge: [N] for one commitment
+    /// producing N challenges.
+    pub num_challenges_per_commitment: Vec<usize>,
 }
 
 impl CanonicalSerialize for VerifyingKey {
@@ -136,6 +166,7 @@ impl CanonicalSerialize for VerifyingKey {
         self.g2_gamma.serialize_with_mode(&mut w, compress)?;
         self.commitment_keys.serialize_with_mode(&mut w, compress)?;
         self.public_and_commitment_committed.serialize_with_mode(&mut w, compress)?;
+        self.num_challenges_per_commitment.serialize_with_mode(&mut w, compress)?;
         Ok(())
     }
 
@@ -147,11 +178,28 @@ impl CanonicalSerialize for VerifyingKey {
             + self.g2_gamma.serialized_size(compress)
             + self.commitment_keys.serialized_size(compress)
             + self.public_and_commitment_committed.serialized_size(compress)
+            + self.num_challenges_per_commitment.serialized_size(compress)
     }
 }
 
 impl ark_serialize::Valid for VerifyingKey {
     fn check(&self) -> Result<(), ark_serialize::SerializationError> {
+        self.g1_alpha.check()?;
+        for pt in &self.g1_k {
+            pt.check()?;
+        }
+        self.g2_beta.check()?;
+        self.g2_delta.check()?;
+        self.g2_gamma.check()?;
+        for ck in &self.commitment_keys {
+            ck.check()?;
+        }
+        if self.commitment_keys.len() != self.public_and_commitment_committed.len() {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
+        if self.num_challenges_per_commitment.len() != self.commitment_keys.len() {
+            return Err(ark_serialize::SerializationError::InvalidData);
+        }
         Ok(())
     }
 }
@@ -172,6 +220,8 @@ impl CanonicalDeserialize for VerifyingKey {
             Vec::<pedersen::VerifyingKey>::deserialize_with_mode(&mut r, compress, validate)?;
         let public_and_commitment_committed =
             Vec::<Vec<usize>>::deserialize_with_mode(&mut r, compress, validate)?;
+        let num_challenges_per_commitment =
+            Vec::<usize>::deserialize_with_mode(&mut r, compress, validate)?;
 
         Ok(Self {
             g1_alpha,
@@ -184,6 +234,7 @@ impl CanonicalDeserialize for VerifyingKey {
             e_alpha_beta: ark_ff::AdditiveGroup::ZERO,
             commitment_keys,
             public_and_commitment_committed,
+            num_challenges_per_commitment,
         })
     }
 }
@@ -196,18 +247,9 @@ impl VerifyingKey {
         self.e_alpha_beta =
             Bn254::pairing(self.g1_alpha, self.g2_beta).0;
 
-        self.g2_delta_neg = {
-            let mut neg = self.g2_delta;
-            use ark_ec::AffineRepr;
-            neg = (-G2Projective::from(neg)).into();
-            neg
-        };
+        self.g2_delta_neg = (-G2Projective::from(self.g2_delta)).into();
 
-        self.g2_gamma_neg = {
-            let mut neg = self.g2_gamma;
-            neg = (-G2Projective::from(neg)).into();
-            neg
-        };
+        self.g2_gamma_neg = (-G2Projective::from(self.g2_gamma)).into();
 
         Ok(())
     }

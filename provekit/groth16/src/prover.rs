@@ -11,9 +11,11 @@
 use anyhow::{ensure, Result};
 use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::{BigInteger, Field, One, PrimeField, UniformRand, Zero};
+use ark_ff::{FftField, Field, One, PrimeField, UniformRand, Zero};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
+use rayon;
 use rayon::prelude::*;
+use tracing::{info_span, instrument};
 
 use crate::types::{Proof, ProvingKey};
 use crate::{pedersen, CommitmentInfo, BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES};
@@ -31,6 +33,9 @@ use crate::{pedersen, CommitmentInfo, BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES};
 /// The caller is responsible for the BSB22 witness-splitting flow:
 /// solving w1, computing Pedersen commitments, deriving challenges, then solving w2.
 /// This function takes the completed witness and commitments.
+/// `challenge_wire_indices` lists ALL wire indices holding challenge values.
+/// These are excluded from private wires in the Krs computation (they're public).
+#[instrument(skip_all)]
 pub fn prove(
     pk: &ProvingKey,
     r1cs_nb_public: usize,
@@ -39,140 +44,158 @@ pub fn prove(
     commitment_info: &[CommitmentInfo],
     committed_values: &[Vec<Fr>],
     commitments: &[G1Affine],
+    challenge_wire_indices: &[usize],
 ) -> Result<Proof> {
-    let nb_wires = wire_values.len();
-    let mut rng = ark_std::test_rng();
+    let mut rng = ark_std::rand::thread_rng();
 
     // --- BSB22: Proofs of Knowledge ---
-    let poks: Vec<G1Affine> = pk
-        .commitment_keys
-        .iter()
-        .zip(committed_values.iter())
-        .map(|(ck, vals)| ck.prove_knowledge(vals))
-        .collect::<Result<Vec<_>>>()?;
+    let commitment_pok = {
+        let _s = info_span!("bsb22_pok").entered();
+        let poks: Vec<G1Affine> = pk
+            .commitment_keys
+            .iter()
+            .zip(committed_values.iter())
+            .map(|(ck, vals)| ck.prove_knowledge(vals))
+            .collect::<Result<Vec<_>>>()?;
 
-    // Fold all PoKs into one
-    let commitment_pok = if !poks.is_empty() {
-        // Serialize commitment wire values for hashing
-        let mut commitments_serialized = vec![0u8; FR_BYTES * commitment_info.len()];
-        for (i, info) in commitment_info.iter().enumerate() {
-            let wire_val = wire_values[info.commitment_index];
-            let bytes = fr_to_bytes(&wire_val);
-            commitments_serialized[FR_BYTES * i..FR_BYTES * (i + 1)].copy_from_slice(&bytes);
+        if !poks.is_empty() {
+            let mut commitments_serialized =
+                vec![0u8; FR_BYTES * challenge_wire_indices.len()];
+            for (j, &wire_idx) in challenge_wire_indices.iter().enumerate() {
+                let bytes = fr_to_bytes(&wire_values[wire_idx]);
+                commitments_serialized[FR_BYTES * j..FR_BYTES * (j + 1)]
+                    .copy_from_slice(&bytes);
+            }
+
+            let challenge = hash_to_fr(&commitments_serialized, BSB22_FOLD_DST)?;
+            pedersen::fold(&poks, challenge)?
+        } else {
+            G1Affine::zero()
         }
-
-        let challenge = hash_to_fr(&commitments_serialized, BSB22_FOLD_DST)?;
-        pedersen::fold(&poks, challenge)?
-    } else {
-        G1Affine::zero()
     };
 
-    // --- Filter wire values for infinity points ---
-    let wire_values_a: Vec<Fr> = wire_values
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !pk.infinity_a[*i])
-        .map(|(_, v)| *v)
-        .collect();
+    // --- Filter wire values for infinity points (parallel) ---
+    let (wire_values_a, wire_values_b, private_wire_values) = {
+        let _s = info_span!("filter_wires").entered();
+        let (wa, wb) = rayon::join(
+            || {
+                wire_values
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| !pk.infinity_a[*i])
+                    .map(|(_, v)| *v)
+                    .collect::<Vec<Fr>>()
+            },
+            || {
+                wire_values
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| !pk.infinity_b[*i])
+                    .map(|(_, v)| *v)
+                    .collect::<Vec<Fr>>()
+            },
+        );
 
-    let wire_values_b: Vec<Fr> = wire_values
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !pk.infinity_b[*i])
-        .map(|(_, v)| *v)
-        .collect();
+        // Filter private wire values for Krs using sorted-index removal
+        let private_wire_values: Vec<Fr> = {
+            let mut to_remove: Vec<usize> = Vec::new();
+            for ci in commitment_info {
+                to_remove.extend_from_slice(&ci.private_committed);
+            }
+            to_remove.extend_from_slice(challenge_wire_indices);
+            to_remove.sort_unstable();
+            to_remove.dedup();
+
+            filter_by_sorted_indices(&wire_values[r1cs_nb_public..], &to_remove, r1cs_nb_public)
+        };
+
+        (wa, wb, private_wire_values)
+    };
+
+    ensure!(
+        private_wire_values.len() == pk.g1_k.len(),
+        "private wire count mismatch: got {}, expected {}",
+        private_wire_values.len(),
+        pk.g1_k.len()
+    );
 
     // --- Sample random r, s for zero-knowledge ---
     let r_scalar = Fr::rand(&mut rng);
     let s_scalar = Fr::rand(&mut rng);
     let kr_scalar = -(r_scalar * s_scalar);
 
-    // r·[δ]₁, s·[δ]₁, -rs·[δ]₁
+    // Batch delta scalar multiplications
     let r_delta = (G1Projective::from(pk.g1_delta) * r_scalar).into_affine();
     let s_delta = (G1Projective::from(pk.g1_delta) * s_scalar).into_affine();
     let kr_delta = (G1Projective::from(pk.g1_delta) * kr_scalar).into_affine();
 
-    // --- Compute Ar = Σ wᵢ·[Aᵢ(τ)]₁ + [α]₁ + r·[δ]₁ ---
-    let ar = {
-        let msm = G1Projective::msm(&pk.g1_a, &wire_values_a).map_err(crate::msm_err)?;
-        let mut result = msm;
-        result += G1Projective::from(pk.g1_alpha);
-        result += G1Projective::from(r_delta);
-        result.into_affine()
-    };
-
-    // --- Compute Bs (G2) = Σ wᵢ·[Bᵢ(τ)]₂ + [β]₂ + s·[δ]₂ ---
-    let bs = {
-        let msm = <G2Projective as VariableBaseMSM>::msm(&pk.g2_b, &wire_values_b).map_err(crate::msm_err)?;
-        let mut result = msm;
-        result += G2Projective::from(pk.g2_beta);
-        let s_delta_g2 = G2Projective::from(pk.g2_delta) * s_scalar;
-        result += s_delta_g2;
-        result.into_affine()
-    };
-
-    // --- Compute Bs1 (G1) = Σ wᵢ·[Bᵢ(τ)]₁ + [β]₁ + s·[δ]₁ ---
-    let bs1 = {
-        let msm = G1Projective::msm(&pk.g1_b, &wire_values_b).map_err(crate::msm_err)?;
-        let mut result = msm;
-        result += G1Projective::from(pk.g1_beta);
-        result += G1Projective::from(s_delta);
-        result
+    // --- Compute Ar, Bs, Bs1 in parallel ---
+    let (ar, bs, bs1) = {
+        let _s = info_span!("msm_ar_bs").entered();
+        let (ar_result, (bs_result, bs1_result)) = rayon::join(
+            // Ar = Σ wᵢ·[Aᵢ(τ)]₁ + [α]₁ + r·[δ]₁
+            || -> Result<G1Affine> {
+                let msm = G1Projective::msm(&pk.g1_a, &wire_values_a).map_err(crate::msm_err)?;
+                let mut result = msm;
+                result += G1Projective::from(pk.g1_alpha);
+                result += G1Projective::from(r_delta);
+                Ok(result.into_affine())
+            },
+            || {
+                rayon::join(
+                    // Bs (G2) = Σ wᵢ·[Bᵢ(τ)]₂ + [β]₂ + s·[δ]₂
+                    || -> Result<G2Affine> {
+                        let msm = <G2Projective as VariableBaseMSM>::msm(&pk.g2_b, &wire_values_b)
+                            .map_err(crate::msm_err)?;
+                        let mut result = msm;
+                        result += G2Projective::from(pk.g2_beta);
+                        result += G2Projective::from(pk.g2_delta) * s_scalar;
+                        Ok(result.into_affine())
+                    },
+                    // Bs1 (G1) = Σ wᵢ·[Bᵢ(τ)]₁ + [β]₁ + s·[δ]₁
+                    || -> Result<G1Projective> {
+                        let msm = G1Projective::msm(&pk.g1_b, &wire_values_b)
+                            .map_err(crate::msm_err)?;
+                        let mut result = msm;
+                        result += G1Projective::from(pk.g1_beta);
+                        result += G1Projective::from(s_delta);
+                        Ok(result)
+                    },
+                )
+            },
+        );
+        (ar_result?, bs_result?, bs1_result?)
     };
 
     // --- Compute Krs = Σ wᵢ·[Kᵢ(τ)]₁ + Σ hⱼ·[Zⱼ(τ)]₁ + s·Ar + r·Bs1 - rs·[δ]₁ ---
     let krs = {
-        // Filter private wire values: exclude public, committed, and commitment wires
-        let private_committed_set: std::collections::HashSet<usize> = commitment_info
-            .iter()
-            .flat_map(|c| c.private_committed.iter().copied())
-            .collect();
-        let commitment_index_set: std::collections::HashSet<usize> = commitment_info
-            .iter()
-            .map(|c| c.commitment_index)
-            .collect();
+        let _s = info_span!("msm_krs").entered();
+        let size_h = pk.domain_size as usize - 1;
 
-        let private_wire_values: Vec<Fr> = wire_values[r1cs_nb_public..]
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| {
-                let abs_idx = i + r1cs_nb_public;
-                !private_committed_set.contains(&abs_idx)
-                    && !commitment_index_set.contains(&abs_idx)
-            })
-            .map(|(_, v)| *v)
-            .collect();
-
-        ensure!(
-            private_wire_values.len() == pk.g1_k.len(),
-            "private wire count mismatch: got {}, expected {}",
-            private_wire_values.len(),
-            pk.g1_k.len()
+        let (krs1_result, krs2_result) = rayon::join(
+            || G1Projective::msm(&pk.g1_k, &private_wire_values).map_err(crate::msm_err),
+            || {
+                if !h.is_empty() && !pk.g1_z.is_empty() {
+                    let h_slice = &h[..size_h.min(h.len())];
+                    let z_slice = &pk.g1_z[..size_h.min(pk.g1_z.len())];
+                    let min_len = h_slice.len().min(z_slice.len());
+                    G1Projective::msm(&z_slice[..min_len], &h_slice[..min_len])
+                        .map_err(crate::msm_err)
+                } else {
+                    Ok(G1Projective::zero())
+                }
+            },
         );
 
-        // Krs part 1: Σ wᵢ·[Kᵢ(τ)]₁
-        let krs1 = G1Projective::msm(&pk.g1_k, &private_wire_values).map_err(crate::msm_err)?;
-
-        // Krs part 2: Σ hⱼ·[Zⱼ(τ)]₁
-        let size_h = pk.domain_size as usize - 1;
-        let krs2 = if !h.is_empty() && !pk.g1_z.is_empty() {
-            let h_slice = &h[..size_h.min(h.len())];
-            let z_slice = &pk.g1_z[..size_h.min(pk.g1_z.len())];
-            let min_len = h_slice.len().min(z_slice.len());
-            G1Projective::msm(&z_slice[..min_len], &h_slice[..min_len]).map_err(crate::msm_err)?
-        } else {
-            G1Projective::zero()
-        };
-
-        let mut result = krs1 + krs2;
+        let mut result = krs1_result? + krs2_result?;
         result += G1Projective::from(kr_delta);
 
-        // s·Ar
-        let s_ar = G1Projective::from(ar) * s_scalar;
+        // Cross-terms: s·Ar + r·Bs1
+        let (s_ar, r_bs1) = rayon::join(
+            || G1Projective::from(ar) * s_scalar,
+            || bs1 * r_scalar,
+        );
         result += s_ar;
-
-        // r·Bs1
-        let r_bs1 = bs1 * r_scalar;
         result += r_bs1;
 
         result.into_affine()
@@ -187,10 +210,40 @@ pub fn prove(
     })
 }
 
+/// Filter a slice by removing elements at sorted absolute indices.
+///
+/// `slice` starts at absolute index `base_offset`. `sorted_indices` contains
+/// absolute indices to remove (must be sorted and deduplicated).
+/// Returns a new Vec with the matching elements removed.
+///
+/// Uses a merge-scan which is O(n + k) for pre-sorted indices.
+fn filter_by_sorted_indices(slice: &[Fr], sorted_indices: &[usize], base_offset: usize) -> Vec<Fr> {
+    if sorted_indices.is_empty() {
+        return slice.to_vec();
+    }
+    let mut result = Vec::with_capacity(slice.len());
+    let mut remove_idx = 0;
+    for (i, val) in slice.iter().enumerate() {
+        let abs_idx = i + base_offset;
+        // Advance past any indices below current position
+        while remove_idx < sorted_indices.len() && sorted_indices[remove_idx] < abs_idx {
+            remove_idx += 1;
+        }
+        // Skip this element if it's in the removal list
+        if remove_idx < sorted_indices.len() && sorted_indices[remove_idx] == abs_idx {
+            remove_idx += 1;
+            continue;
+        }
+        result.push(*val);
+    }
+    result
+}
+
 /// Compute quotient polynomial H from the R1CS solution vectors.
 ///
 /// Given the wire-level evaluations of A·w, B·w, C·w for each constraint,
 /// compute H such that A·B - C = H·Z where Z is the vanishing polynomial.
+#[instrument(skip_all)]
 pub fn compute_h(
     a_evals: &mut Vec<Fr>,
     b_evals: &mut Vec<Fr>,
@@ -204,36 +257,48 @@ pub fn compute_h(
     b_evals.resize(n, Fr::zero());
     c_evals.resize(n, Fr::zero());
 
-    // IFFT: evaluation form → coefficient form
-    domain.ifft_in_place(a_evals);
-    domain.ifft_in_place(b_evals);
-    domain.ifft_in_place(c_evals);
-
-    // FFT on coset: coefficient form → evaluation on coset
-    let coset_domain = domain.get_coset(domain.coset_offset())
+    // IFFT → coset FFT for each buffer. The three pipelines are independent
+    // (separate buffers, immutable domain refs), so run them in parallel.
+    let coset_domain = domain.get_coset(Fr::GENERATOR)
         .expect("coset domain");
-    coset_domain.fft_in_place(a_evals);
-    coset_domain.fft_in_place(b_evals);
-    coset_domain.fft_in_place(c_evals);
+    rayon::join(
+        || {
+            domain.ifft_in_place(a_evals);
+            coset_domain.fft_in_place(a_evals);
+        },
+        || rayon::join(
+            || {
+                domain.ifft_in_place(b_evals);
+                coset_domain.fft_in_place(b_evals);
+            },
+            || {
+                domain.ifft_in_place(c_evals);
+                coset_domain.fft_in_place(c_evals);
+            },
+        ),
+    );
 
-    // Pointwise: h = (a ⊙ b - c) / Z(coset)
+    // Pointwise: a[i] = (a[i] * b[i] - c[i]) / Z(coset), computed in parallel.
+    // Reuses a_evals in-place to avoid an extra domain-sized allocation.
+    // Z(g·ωⁱ) = (g·ωⁱ)^N - 1 = g^N - 1 (constant on coset)
     let z_inv = {
-        let gen_n = domain.coset_offset().pow([n as u64]);
+        let gen_n = Fr::GENERATOR.pow([n as u64]);
         (gen_n - Fr::one()).inverse().expect("Z(coset) nonzero")
     };
 
-    let h: Vec<Fr> = a_evals
-        .iter()
-        .zip(b_evals.iter())
-        .zip(c_evals.iter())
-        .map(|((a, b), c)| (*a * b - c) * z_inv)
-        .collect();
+    a_evals
+        .par_iter_mut()
+        .zip(b_evals.par_iter())
+        .zip(c_evals.par_iter())
+        .for_each(|((a, b), c)| {
+            *a = (*a * b - c) * z_inv;
+        });
 
     // IFFT on coset: evaluation on coset → coefficient form
-    let mut h = h;
-    coset_domain.ifft_in_place(&mut h);
+    coset_domain.ifft_in_place(a_evals);
 
-    h
+    // Return the reused buffer (now contains H coefficients)
+    std::mem::take(a_evals)
 }
 
 /// Convert a field element to big-endian bytes.

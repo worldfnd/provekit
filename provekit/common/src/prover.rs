@@ -10,22 +10,18 @@ use {
     serde::{Deserialize, Serialize},
 };
 
-/// Information about a single BSB22 commitment within the R1CS.
+/// BSB22 commitment info for ProveKit's Groth16 backend.
 ///
-/// This is the serde-serializable version stored in `Groth16Prover`.
-/// Mirrors `provekit_groth16::CommitmentInfo` (which has the same fields).
+/// One Pedersen commitment over all private w1 wires,
+/// producing multiple challenges via `hash_to_fr_multi`.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Groth16CommitmentInfo {
-    /// Indices of public wires and other commitment wires hashed with this
-    /// commitment.
-    pub public_and_commitment_committed: Vec<usize>,
-    /// Indices of private/internal wires committed to.
+    /// Indices of public wires hashed with the commitment.
+    pub public_committed: Vec<usize>,
+    /// Indices of private/internal wires committed to via Pedersen.
     pub private_committed: Vec<usize>,
-    /// Wire index where the commitment challenge value is stored.
-    pub commitment_index: usize,
-    /// Number of entries in `public_and_commitment_committed` that are public
-    /// (as opposed to other commitment indices).
-    pub nb_public_committed: usize,
+    /// Wire indices where the derived challenge values are stored.
+    pub challenge_indices: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

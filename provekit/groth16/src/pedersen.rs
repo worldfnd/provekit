@@ -8,7 +8,7 @@
 use anyhow::{ensure, Result};
 use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
 use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::{Field, One, UniformRand, Zero};
+use ark_ff::{One, UniformRand, Zero};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 /// Pedersen proving key: bases for commitment and PoK generation.
@@ -39,7 +39,7 @@ pub fn setup(
     bases_per_commitment: &[&[G1Affine]],
     g2_point: Option<G2Affine>,
 ) -> Result<(Vec<ProvingKey>, VerifyingKey)> {
-    let mut rng = ark_std::test_rng();
+    let mut rng = ark_std::rand::thread_rng();
 
     // Choose G2 generator
     let g = g2_point.unwrap_or_else(|| G2Projective::rand(&mut rng).into_affine());
