@@ -159,5 +159,5 @@ mod tests {
     use super::*;
 
     // Integration tests would go here, requiring a full setup → prove → verify cycle.
-    // See the setup and prover modules for building test fixtures.
+   
 }
