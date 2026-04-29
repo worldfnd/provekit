@@ -2,12 +2,13 @@
 ///
 /// Ported from gnark's `backend/groth16/bn254/setup.go`.
 /// Notation follows DIZK paper Figure 4.
-use anyhow::{ensure, Result};
+use anyhow::Result;
 use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::{BigInteger, Field, One, PrimeField, UniformRand, Zero};
+use ark_ec::{AffineRepr, CurveGroup};
+use ark_ff::{Field, One, UniformRand, Zero};
 use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
 use ark_std::rand::Rng;
+use rayon::prelude::*;
 
 use provekit_common::R1CS;
 
@@ -26,7 +27,7 @@ struct ToxicWaste {
 
 impl ToxicWaste {
     fn sample<R: Rng>(rng: &mut R) -> Result<Self> {
-        let mut sample_nonzero = |rng: &mut R| -> Fr {
+        let sample_nonzero = |rng: &mut R| -> Fr {
             loop {
                 let v = Fr::rand(rng);
                 if !v.is_zero() {
@@ -57,27 +58,31 @@ impl ToxicWaste {
 ///
 /// Generates a ProvingKey and VerifyingKey from the given R1CS.
 /// The toxic waste is sampled internally and dropped at the end of this function.
-///
 /// For production use, this should be replaced by an MPC ceremony.
+///
+/// `challenge_wire_indices` lists ALL wire indices that hold challenge values
+/// (treated as public).
 pub fn setup(
     r1cs: &R1CS,
     commitment_info: &[CommitmentInfo],
+    num_challenges_per_commitment: &[usize],
+    challenge_wire_indices: &[usize],
 ) -> Result<(crate::ProvingKey, crate::VerifyingKey)> {
-    let mut rng = ark_std::test_rng();
+    let mut rng = ark_std::rand::thread_rng();
     let toxic = ToxicWaste::sample(&mut rng)?;
 
     let nb_wires = r1cs.num_witnesses();
     // nb_public_variables includes constant-1 wire
     let nb_public_variables = 1 + r1cs.num_public_inputs;
-    let commitment_wires: Vec<usize> = commitment_info.iter().map(|c| c.commitment_index).collect();
     let private_committed: Vec<Vec<usize>> = commitment_info.iter().map(|c| c.private_committed.clone()).collect();
     let nb_private_committed: usize = private_committed.iter().map(|v| v.len()).sum();
+    let total_challenge_wires = challenge_wire_indices.len();
 
-    // Commitments are treated as public wires on the Groth16 level.
-    let nb_public = nb_public_variables + commitment_info.len();
+    // All challenge wire indices are treated as public on the Groth16 level.
+    let nb_public = nb_public_variables + total_challenge_wires;
     let nb_private = nb_wires - nb_public_variables
         - nb_private_committed
-        - commitment_info.len();
+        - total_challenge_wires;
 
     // FFT domain
     let domain = Radix2EvaluationDomain::<Fr>::new(r1cs.num_constraints())
@@ -101,12 +106,9 @@ pub fn setup(
     }
 
     let mut commitment_wire_set: std::collections::HashSet<usize> = std::collections::HashSet::new();
-    for &w in &commitment_wires {
+    for &w in challenge_wire_indices {
         commitment_wire_set.insert(w);
     }
-
-    let mut vi = 0usize; // public wires seen
-    let mut nb_committed_seen = 0usize;
 
     for i in 0..nb_wires {
         let is_public = i < nb_public_variables;
@@ -118,14 +120,9 @@ pub fn setup(
         if is_public || is_commitment {
             // Public/commitment wire → divide by γ
             vk_k.push(k_val * toxic.gamma_inv);
-            vi += 1;
-            if is_commitment {
-                nb_committed_seen += 1;
-            }
         } else if let Some(&ci) = committed_map.get(&i) {
             // Private committed wire → goes to commitment bases, divide by γ
             ck_k[ci].push(k_val * toxic.gamma_inv);
-            nb_committed_seen += 1;
         } else {
             // Private non-committed wire → divide by δ
             pk_k.push(k_val * toxic.delta_inv);
@@ -166,52 +163,50 @@ pub fn setup(
     let nb_infinity_a = infinity_a.iter().filter(|&&x| x).count() as u64;
     let nb_infinity_b = infinity_b.iter().filter(|&&x| x).count() as u64;
 
-    // Batch scalar multiplication for G1 points
+    // Scalar multiplication for G1 points — parallelized via rayon
     let g1_gen = G1Affine::generator();
 
-    // Compute all G1 points via individual scalar multiplications
-    // (In production, use batch scalar multiplication for performance)
     let g1_alpha = scalar_mul_g1(&g1_gen, &toxic.alpha);
     let g1_beta = scalar_mul_g1(&g1_gen, &toxic.beta);
     let g1_delta = scalar_mul_g1(&g1_gen, &toxic.delta);
 
     let g1_a: Vec<G1Affine> = a_scalars_filtered
-        .iter()
+        .par_iter()
         .map(|s| scalar_mul_g1(&g1_gen, s))
         .collect();
 
     let g1_b: Vec<G1Affine> = b_scalars_filtered
-        .iter()
+        .par_iter()
         .map(|s| scalar_mul_g1(&g1_gen, s))
         .collect();
 
     let mut g1_z: Vec<G1Affine> = z_scalars
-        .iter()
+        .par_iter()
         .map(|s| scalar_mul_g1(&g1_gen, s))
         .collect();
-    // Bit-reverse permutation
-    bit_reverse_permutation(&mut g1_z);
+    // No bit-reverse permutation: arkworks' IFFT outputs H in natural order,
+    // so Z points must also be in natural order for the MSM Σ h[i]·Z[i].
     // deg(H) = (n-1)+(n-1)-n = n-2, so we need n-1 Z points
     let size_z = domain_size as usize - 1;
     g1_z.truncate(size_z);
 
-    let g1_vk_k: Vec<G1Affine> = vk_k.iter().map(|s| scalar_mul_g1(&g1_gen, s)).collect();
-    let g1_pk_k: Vec<G1Affine> = pk_k.iter().map(|s| scalar_mul_g1(&g1_gen, s)).collect();
+    let g1_vk_k: Vec<G1Affine> = vk_k.par_iter().map(|s| scalar_mul_g1(&g1_gen, s)).collect();
+    let g1_pk_k: Vec<G1Affine> = pk_k.par_iter().map(|s| scalar_mul_g1(&g1_gen, s)).collect();
 
     // Commitment bases in G1
     let g1_ck_k: Vec<Vec<G1Affine>> = ck_k
         .iter()
-        .map(|ck| ck.iter().map(|s| scalar_mul_g1(&g1_gen, s)).collect())
+        .map(|ck| ck.par_iter().map(|s| scalar_mul_g1(&g1_gen, s)).collect())
         .collect();
 
-    // G2 points
+    // Scalar multiplication for G2 points — parallelized via rayon
     let g2_gen = G2Affine::generator();
     let g2_beta = scalar_mul_g2(&g2_gen, &toxic.beta);
     let g2_delta = scalar_mul_g2(&g2_gen, &toxic.delta);
     let g2_gamma = scalar_mul_g2(&g2_gen, &toxic.gamma);
 
     let g2_b: Vec<G2Affine> = b_scalars_filtered
-        .iter()
+        .par_iter()
         .map(|s| scalar_mul_g2(&g2_gen, s))
         .collect();
 
@@ -247,6 +242,7 @@ pub fn setup(
         e_alpha_beta: ark_ff::AdditiveGroup::ZERO,
         commitment_keys: vk_commitment_keys,
         public_and_commitment_committed,
+        num_challenges_per_commitment: num_challenges_per_commitment.to_vec(),
     };
     vk.precompute()?;
 
@@ -384,7 +380,7 @@ mod tests {
             &[(one, 1)], // C: 1·y
         );
 
-        let (pk, vk) = setup(&r1cs, &[]).unwrap();
+        let (pk, vk) = setup(&r1cs, &[], &[], &[]).unwrap();
         assert!(!pk.g1_a.is_empty());
         assert!(!vk.g1_k.is_empty());
     }

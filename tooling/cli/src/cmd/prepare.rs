@@ -10,7 +10,7 @@ use {
     nargo_toml::{find_root, get_package_manifest, resolve_workspace_from_toml, PackageSelection},
     noir_artifact_cli::fs::artifact::save_program_to_file,
     noirc_driver::{CompilationResult, CompileOptions, CrateName, NOIR_ARTIFACT_VERSION_STRING},
-    provekit_common::{file::write, Groth16Prover, HashConfig, Prover, Verifier},
+    provekit_common::{file::write, Groth16CommitmentInfo, Groth16Prover, HashConfig, Prover, Verifier},
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     rayon::prelude::*,
     std::{
@@ -171,76 +171,107 @@ impl Command for Args {
                 };
 
                 let abi = d.witness_generator.abi.clone();
-                let r1cs = d.r1cs;
+                let mut r1cs = d.r1cs;
                 let program = d.program;
                 let split_witness_builders = d.split_witness_builders;
                 let witness_generator = d.witness_generator;
                 let w1_size = d.whir_for_witness.w1_size;
                 let challenge_offsets = d.whir_for_witness.challenge_offsets.clone();
-                let num_public = 1 + r1cs.num_public_inputs; // constant-1 + public inputs
 
-                // Build BSB22 commitment info for circuits with challenges.
-                //
-                // ProveKit's challenges (LogUp, range checks, RAM/ROM) need a
-                // commit-then-challenge flow. In WHIR this uses polynomial commitment
-                // + Fiat-Shamir. For Groth16 we use Pedersen commitment + hashing:
-                //   1. Commit all private w1 wires via Pedersen → C
-                //   2. Hash(C || public_values) → challenge per wire
-                //
-                // One CommitmentInfo per challenge wire, all sharing the same
-                // committed private wires but targeting different challenge wire indices.
-                let commitment_info: Vec<provekit_common::Groth16CommitmentInfo> =
-                    if !challenge_offsets.is_empty() && w1_size > num_public {
-                        let private_committed: Vec<usize> = (num_public..w1_size).collect();
-                        let public_committed: Vec<usize> = (1..num_public).collect();
+                // The Noir compiler doesn't set num_public_inputs on the R1CS
+                // (WHIR handles public inputs separately). For Groth16, we need
+                // it to classify wires as public vs private. Compute from ABI.
+                {
+                    use noirc_abi::AbiVisibility;
+                    let mut n_public: usize = abi
+                        .parameters
+                        .iter()
+                        .filter(|p| p.is_public())
+                        .map(|p| p.typ.field_count() as usize)
+                        .sum();
+                    if let Some(ret) = &abi.return_type {
+                        if matches!(ret.visibility, AbiVisibility::Public) {
+                            n_public += ret.abi_type.field_count() as usize;
+                        }
+                    }
+                    r1cs.num_public_inputs = n_public;
+                }
+                let num_public = 1 + r1cs.num_public_inputs;
 
-                        challenge_offsets
+                // Build BSB22 commitment info: WHIR-style, one Pedersen commitment
+                // over all private w1 wires, producing N challenges via hash_to_fr_multi.
+                let num_challenges = challenge_offsets.len();
+                let private_w1_wires: Vec<usize> = (num_public..w1_size).collect();
+                let public_committed: Vec<usize> = (1..num_public).collect();
+
+                let (commitment_info, groth16_ci, num_challenges_per_commitment) =
+                    if num_challenges > 0 && !private_w1_wires.is_empty() {
+                        // Sort challenge wire indices so they match the order
+                        // in vk.g1_k (which is wire-index order from the setup loop).
+                        let mut sorted_challenge_indices: Vec<usize> = challenge_offsets
                             .iter()
-                            .map(|&offset| provekit_common::Groth16CommitmentInfo {
-                                public_and_commitment_committed: public_committed.clone(),
-                                private_committed: private_committed.clone(),
-                                commitment_index: w1_size + offset,
-                                nb_public_committed: public_committed.len(),
-                            })
-                            .collect()
+                            .map(|&offset| w1_size + offset)
+                            .collect();
+                        sorted_challenge_indices.sort_unstable();
+
+                        let ci = Groth16CommitmentInfo {
+                            public_committed: public_committed.clone(),
+                            private_committed: private_w1_wires.clone(),
+                            challenge_indices: sorted_challenge_indices.clone(),
+                        };
+                        // For setup, use first sorted challenge wire as commitment_index
+                        let g16_ci = vec![provekit_groth16::CommitmentInfo {
+                            public_and_commitment_committed: public_committed,
+                            private_committed: private_w1_wires.clone(),
+                            commitment_index: sorted_challenge_indices[0],
+                            nb_public_committed: r1cs.num_public_inputs,
+                        }];
+                        let ncpc = vec![num_challenges];
+                        (vec![ci], g16_ci, ncpc)
                     } else {
-                        vec![]
+                        (vec![], vec![], vec![])
                     };
 
-                // Convert to groth16 CommitmentInfo for setup
-                let groth16_ci: Vec<provekit_groth16::CommitmentInfo> = commitment_info
-                    .iter()
-                    .map(|ci| provekit_groth16::CommitmentInfo {
-                        public_and_commitment_committed: ci.public_and_commitment_committed.clone(),
-                        private_committed: ci.private_committed.clone(),
-                        commitment_index: ci.commitment_index,
-                        nb_public_committed: ci.nb_public_committed,
-                    })
-                    .collect();
-
                 info!(
-                    num_commitments = commitment_info.len(),
+                    num_challenges,
+                    num_private_committed = private_w1_wires.len(),
+                    num_public_inputs = r1cs.num_public_inputs,
                     w1_size,
-                    num_challenges = challenge_offsets.len(),
                     "Running Groth16 trusted setup..."
                 );
-                let (pk, vk) = provekit_groth16::setup::setup(&r1cs, &groth16_ci)
-                    .context("while running Groth16 trusted setup")?;
+                // All challenge wire indices for setup (sorted to match vk.g1_k order)
+                let mut challenge_wire_indices: Vec<usize> = challenge_offsets
+                    .iter()
+                    .map(|&offset| w1_size + offset)
+                    .collect();
+                challenge_wire_indices.sort_unstable();
+
+                let (pk, vk) = provekit_groth16::setup::setup(
+                    &r1cs,
+                    &groth16_ci,
+                    &num_challenges_per_commitment,
+                    &challenge_wire_indices,
+                )
+                .context("while running Groth16 trusted setup")?;
 
                 // Serialize proving key and verifying key
                 let mut pk_bytes = Vec::new();
-                pk.serialize_compressed(&mut pk_bytes)
+                pk.serialize_uncompressed(&mut pk_bytes)
                     .context("while serializing Groth16 proving key")?;
 
                 let mut vk_bytes = Vec::new();
-                vk.serialize_compressed(&mut vk_bytes)
+                vk.serialize_uncompressed(&mut vk_bytes)
                     .context("while serializing Groth16 verifying key")?;
 
                 info!(
                     pk_size = pk_bytes.len(),
                     vk_size = vk_bytes.len(),
+                    vk_g1_k_len = vk.g1_k.len(),
+                    vk_commitment_keys_len = vk.commitment_keys.len(),
+                    vk_public_and_commitment_committed_len = vk.public_and_commitment_committed.len(),
                     "Groth16 setup complete"
                 );
+
 
                 let prover = Prover::Groth16(Groth16Prover {
                     program,

@@ -4720,6 +4720,7 @@ dependencies = [
  "rayon",
  "serde",
  "sha2",
+ "tracing",
 ]
 
 [[package]]
