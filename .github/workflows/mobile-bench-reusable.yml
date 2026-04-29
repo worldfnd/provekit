@@ -107,13 +107,13 @@ jobs:
     env:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
-      IPHONEOS_DEPLOYMENT_TARGET: "13.0"
-      CFLAGS_aarch64_apple_ios: "-miphoneos-version-min=13.0"
-      CFLAGS_aarch64_apple_ios_sim: "-mios-simulator-version-min=13.0"
-      CFLAGS_x86_64_apple_ios: "-mios-simulator-version-min=13.0"
-      CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS: "-C link-arg=-miphoneos-version-min=13.0"
-      CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS: "-C link-arg=-mios-simulator-version-min=13.0"
-      CARGO_TARGET_X86_64_APPLE_IOS_RUSTFLAGS: "-C link-arg=-mios-simulator-version-min=13.0"
+      IPHONEOS_DEPLOYMENT_TARGET: "10.0"
+      CFLAGS_aarch64_apple_ios: "-miphoneos-version-min=10.0"
+      CFLAGS_aarch64_apple_ios_sim: "-mios-simulator-version-min=10.0"
+      CFLAGS_x86_64_apple_ios: "-mios-simulator-version-min=10.0"
+      CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS: "-C link-arg=-miphoneos-version-min=10.0"
+      CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS: "-C link-arg=-mios-simulator-version-min=10.0"
+      CARGO_TARGET_X86_64_APPLE_IOS_RUSTFLAGS: "-C link-arg=-mios-simulator-version-min=10.0"
     steps:
       - name: Checkout caller repo
         uses: actions/checkout@v4
@@ -129,15 +129,15 @@ jobs:
           set -euo pipefail
           case "${DEVICE_PROFILE}" in
             smoke)
-              device_specs="iPhone 16 Pro-18"
-              fetch_timeout_secs="1200"
+              device_specs="iPhone 7-10"
+              fetch_timeout_secs="1800"
               ;;
             worst)
-              device_specs="iPhone SE 2020-16"
+              device_specs="iPhone 7-10"
               fetch_timeout_secs="1800"
               ;;
             triad)
-              device_specs="iPhone SE 2020-16,iPhone 15-17,iPhone 16 Pro-18"
+              device_specs="iPhone 7-10,iPhone 15-17,iPhone 16 Pro-18"
               fetch_timeout_secs="2400"
               ;;
             *)
@@ -347,15 +347,15 @@ jobs:
           set -euo pipefail
           case "${DEVICE_PROFILE}" in
             smoke)
-              device_specs="Google Pixel 7-13.0"
-              fetch_timeout_secs="1200"
+              device_specs="Vivo Y21-11.0"
+              fetch_timeout_secs="1800"
               ;;
             worst)
-              device_specs="Motorola Moto G9 Play-10.0"
+              device_specs="Vivo Y21-11.0"
               fetch_timeout_secs="1800"
               ;;
             triad)
-              device_specs="Motorola Moto G9 Play-10.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
+              device_specs="Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
               fetch_timeout_secs="2400"
               ;;
             *)
