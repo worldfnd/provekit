@@ -10,7 +10,7 @@ abis = ["arm64-v8a"]
 
 [ios]
 bundle_id = "dev.world.benchmobile"
-deployment_target = "13.0"
+deployment_target = "10.0"
 
 [browserstack]
 ios_completion_timeout_secs = 1200
