@@ -22,7 +22,7 @@ base64.workspace = true
 hex.workspace = true
 noirc_abi.workspace = true
 provekit-common.workspace = true
-provekit-prover.workspace = true
+provekit-prover = { workspace = true, features = ["witness-generation"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2 = { workspace = true, features = ["compress"] }
@@ -33,7 +33,7 @@ tracing-subscriber = { workspace = true, features = ["fmt"] }
 chrono = { version = "0.4", features = ["serde"] }
 argh.workspace = true
 lazy_static = "1.5.0"
-noir-bignum-paramgen = "0.1.5"
+noir-bignum-paramgen = { git = "https://github.com/noir-lang/noir-bignum-paramgen", rev = "e5cfb26ce4330bd95557b962440fbb20aec763e5" }
 rasn = "0.15"
 rasn-cms = "0.15"
 rasn-pkix = "0.15"

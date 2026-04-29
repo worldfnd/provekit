@@ -259,8 +259,12 @@ fn prove_from_alphas(
     commitments: Vec<WhirR1CSCommitment>,
     public_inputs: &PublicInputs,
 ) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)> {
+    let public_inputs_hash = public_inputs.hash(scheme.hash_config);
+    let public_inputs_len = public_inputs.len();
+
     let is_single = commitments.len() == 1;
-    let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, scheme.m);
+    let (x, public_weight) =
+        get_public_weights(public_inputs_hash, public_inputs_len, &mut merlin, scheme.m);
 
     let domain_size = 1usize << scheme.m;
 
@@ -277,7 +281,7 @@ fn prove_from_alphas(
             merlin.prover_message(eval);
         }
 
-        if !public_inputs.is_empty() {
+        if public_inputs_len > 0 {
             let public_eval = compute_public_weight_evaluation(
                 &mut weights,
                 &commitment.polynomial,
@@ -372,8 +376,8 @@ fn prove_from_alphas(
             merlin.prover_message(eval);
         }
 
-        let public_1 = if !public_inputs.is_empty() {
-            let p1 = compute_public_eval(x, public_inputs.len(), &c1.polynomial);
+        let public_1 = if public_inputs_len > 0 {
+            let p1 = compute_public_eval(x, public_inputs_len, &c1.polynomial);
             merlin.prover_message(&p1);
             Some(p1)
         } else {
@@ -402,7 +406,7 @@ fn prove_from_alphas(
             let mut weights = build_prefix_covectors(scheme.m, alphas_1.clone());
             let mut evaluations: Vec<FieldElement> = Vec::new();
             if let Some(pe) = public_1 {
-                weights.insert(0, make_public_weight(x, public_inputs.len(), scheme.m));
+                weights.insert(0, make_public_weight(x, public_inputs_len, scheme.m));
                 evaluations.push(pe);
             }
             evaluations.extend_from_slice(&evals_1);
@@ -772,14 +776,14 @@ fn compute_public_weight_evaluation(
 }
 
 fn get_public_weights(
-    public_inputs: &PublicInputs,
+    public_inputs_hash: FieldElement,
+    public_inputs_len: usize,
     merlin: &mut ProverState<TranscriptSponge>,
     m: usize,
 ) -> (FieldElement, PrefixCovector) {
-    let public_inputs_hash = public_inputs.hash();
     merlin.prover_message(&public_inputs_hash);
 
     let x: FieldElement = merlin.verifier_message();
 
-    (x, make_public_weight(x, public_inputs.len(), m))
+    (x, make_public_weight(x, public_inputs_len, m))
 }

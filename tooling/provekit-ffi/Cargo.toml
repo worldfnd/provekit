@@ -9,7 +9,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [lib]
-crate-type = ["staticlib"]
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 # Workspace crates
@@ -25,6 +25,12 @@ parking_lot.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[dev-dependencies]
+nargo_cli = { workspace = true }
+nargo_toml = { workspace = true }
+noirc_driver = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

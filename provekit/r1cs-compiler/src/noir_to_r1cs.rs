@@ -1,6 +1,7 @@
 use {
     crate::{
         binops::add_combined_binop_constraints,
+        constraint_helpers::{compute_boolean_or, constrain_boolean, constrain_to_constant},
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
         msm::{add_msm_with_curve, MsmLimbedOutputs},
@@ -11,16 +12,14 @@ use {
     },
     acir::{
         circuit::{
-            opcodes::{
-                BlackBoxFuncCall, BlockType, ConstantOrWitnessEnum as ConstantOrACIRWitness,
-            },
+            opcodes::{BlackBoxFuncCall, BlockType, FunctionInput as ConstantOrACIRWitness},
             Circuit, Opcode,
         },
         native_types::{Expression, Witness as NoirWitness},
     },
     anyhow::{bail, ensure, Result},
-    ark_ff::PrimeField,
-    ark_std::One,
+    ark_ff::{BigInteger, PrimeField},
+    ark_std::{One, Zero},
     provekit_common::{
         utils::noir_to_native,
         witness::{
@@ -112,6 +111,19 @@ pub struct NoirToR1CSCompiler {
 
     /// The ACIR witness indices of the initial values of the memory blocks
     pub initial_memories: BTreeMap<usize, Vec<usize>>,
+}
+
+pub(crate) fn ensure_field_element_fits_num_bits(
+    fe: &FieldElement,
+    num_bits: u32,
+    context: &str,
+) -> Result<()> {
+    let actual = fe.into_bigint().num_bits();
+    ensure!(
+        actual <= num_bits,
+        "{context} exceeds {num_bits} bits: {fe} (needs {actual})"
+    );
+    Ok(())
 }
 
 /// Compile a Noir circuit to an R1CS relation.
@@ -334,7 +346,7 @@ impl NoirToR1CSCompiler {
         output: NoirWitness,
         num_bits: u32,
         target_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
-    ) {
+    ) -> Result<()> {
         debug_assert_eq!(
             BINOP_ATOMIC_BITS, 8,
             "process_binop_opcode assumes 8-bit digits"
@@ -356,6 +368,8 @@ impl NoirToR1CSCompiler {
             (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Constant(rhs_c)) => {
                 let lhs_fe = noir_to_native(lhs_c);
                 let rhs_fe = noir_to_native(rhs_c);
+                ensure_field_element_fits_num_bits(&lhs_fe, num_bits, "AND/XOR lhs constant")?;
+                ensure_field_element_fits_num_bits(&rhs_fe, num_bits, "AND/XOR rhs constant")?;
 
                 let dd = add_digital_decomposition(self, log_bases, vec![out_idx]);
                 for byte_idx in 0..num_digits {
@@ -372,6 +386,7 @@ impl NoirToR1CSCompiler {
             // lhs constant, rhs witness
             (ConstantOrACIRWitness::Constant(lhs_c), ConstantOrACIRWitness::Witness(rhs_w)) => {
                 let lhs_fe = noir_to_native(lhs_c);
+                ensure_field_element_fits_num_bits(&lhs_fe, num_bits, "AND/XOR lhs constant")?;
                 let rhs_witness = self.fetch_r1cs_witness_index(rhs_w);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![rhs_witness, out_idx]);
@@ -388,6 +403,7 @@ impl NoirToR1CSCompiler {
             // lhs witness, rhs constant
             (ConstantOrACIRWitness::Witness(lhs_w), ConstantOrACIRWitness::Constant(rhs_c)) => {
                 let rhs_fe = noir_to_native(rhs_c);
+                ensure_field_element_fits_num_bits(&rhs_fe, num_bits, "AND/XOR rhs constant")?;
                 let lhs_witness = self.fetch_r1cs_witness_index(lhs_w);
 
                 let dd = add_digital_decomposition(self, log_bases, vec![lhs_witness, out_idx]);
@@ -421,6 +437,8 @@ impl NoirToR1CSCompiler {
                 }
             }
         }
+
+        Ok(())
     }
 
     fn add_circuit(&mut self, circuit: &Circuit<NoirElement>) -> Result<()> {
@@ -483,19 +501,8 @@ impl NoirToR1CSCompiler {
                     });
                     memory_blocks.insert(block_id, block);
                 }
-                Opcode::MemoryOp {
-                    block_id,
-                    op,
-                    predicate,
-                } => {
-                    // Panic if the predicate is set (according to Noir developers, predicate is
-                    // always None and will soon be removed).
-                    assert!(
-                        predicate.is_none(),
-                        "MemoryOp has unexpected predicate: {:?}",
-                        predicate
-                    );
-
+                Opcode::MemoryOp { block_id, op } => {
+                    // Note: predicate field was removed from MemoryOp in ACIR beta.19.
                     let block_id = block_id.0 as usize;
                     assert!(
                         memory_blocks.contains_key(&block_id),
@@ -540,10 +547,9 @@ impl NoirToR1CSCompiler {
                 Opcode::BlackBoxFuncCall(black_box_func_call) => match black_box_func_call {
                     BlackBoxFuncCall::RANGE {
                         input: function_input,
+                        num_bits,
                     } => {
-                        let input = function_input.input();
-                        let num_bits = function_input.num_bits();
-                        let input_witness = match input {
+                        let input_witness = match *function_input {
                             ConstantOrACIRWitness::Constant(_) => {
                                 panic!(
                                     "We should never be range-checking a constant value, as this \
@@ -555,7 +561,7 @@ impl NoirToR1CSCompiler {
                             }
                         };
                         range_checks
-                            .entry(num_bits)
+                            .entry(*num_bits)
                             .or_default()
                             .push(input_witness);
                     }
@@ -564,52 +570,31 @@ impl NoirToR1CSCompiler {
                     // The inputs and outputs will have already been solved for by the ACIR solver.
                     // We decompose into bytes using the actual bit width from the ACIR opcode
                     // and add byte-level ops to leverage the combined byte-level lookup table.
-                    BlackBoxFuncCall::AND { lhs, rhs, output } => {
-                        ensure!(
-                            lhs.num_bits() > 0,
-                            "AND operands must have nonzero bit width"
-                        );
-                        ensure!(
-                            lhs.num_bits() == rhs.num_bits(),
-                            "AND operands must have the same bit width, got {} and {}",
-                            lhs.num_bits(),
-                            rhs.num_bits()
-                        );
-                        self.process_binop_opcode(
-                            lhs.input(),
-                            rhs.input(),
-                            *output,
-                            lhs.num_bits(),
-                            &mut and_ops,
-                        );
-                    }
-                    BlackBoxFuncCall::XOR { lhs, rhs, output } => {
-                        ensure!(
-                            lhs.num_bits() > 0,
-                            "XOR operands must have nonzero bit width"
-                        );
-                        ensure!(
-                            lhs.num_bits() == rhs.num_bits(),
-                            "XOR operands must have the same bit width, got {} and {}",
-                            lhs.num_bits(),
-                            rhs.num_bits()
-                        );
-                        self.process_binop_opcode(
-                            lhs.input(),
-                            rhs.input(),
-                            *output,
-                            lhs.num_bits(),
-                            &mut xor_ops,
-                        );
-                    }
-                    BlackBoxFuncCall::Poseidon2Permutation {
-                        inputs,
-                        outputs,
-                        len,
+                    BlackBoxFuncCall::AND {
+                        lhs,
+                        rhs,
+                        output,
+                        num_bits,
                     } => {
-                        assert_eq!(inputs.len() as u32, *len, "Poseidon2: inputs.len != len");
-                        assert_eq!(outputs.len() as u32, *len, "Poseidon2: outputs.len != len");
-                        let t = *len;
+                        ensure!(*num_bits > 0, "AND operands must have nonzero bit width");
+                        self.process_binop_opcode(*lhs, *rhs, *output, *num_bits, &mut and_ops)?;
+                    }
+                    BlackBoxFuncCall::XOR {
+                        lhs,
+                        rhs,
+                        output,
+                        num_bits,
+                    } => {
+                        ensure!(*num_bits > 0, "XOR operands must have nonzero bit width");
+                        self.process_binop_opcode(*lhs, *rhs, *output, *num_bits, &mut xor_ops)?;
+                    }
+                    BlackBoxFuncCall::Poseidon2Permutation { inputs, outputs } => {
+                        assert_eq!(
+                            inputs.len(),
+                            outputs.len(),
+                            "Poseidon2: inputs.len != outputs.len"
+                        );
+                        let t = inputs.len() as u32;
 
                         // Only these widths are allowed for Poseidon2
                         assert!(
@@ -620,7 +605,7 @@ impl NoirToR1CSCompiler {
                         // Convert ACIR inputs to (Constant | Witness)
                         let in_wits: Vec<ConstantOrR1CSWitness> = inputs
                             .iter()
-                            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
+                            .map(|inp| self.fetch_constant_or_r1cs_witness(*inp))
                             .collect();
                         let out_wits: Vec<usize> = outputs
                             .iter()
@@ -635,11 +620,11 @@ impl NoirToR1CSCompiler {
                     } => {
                         let input_witnesses: Vec<ConstantOrR1CSWitness> = inputs
                             .iter()
-                            .map(|input| self.fetch_constant_or_r1cs_witness(input.input()))
+                            .map(|input| self.fetch_constant_or_r1cs_witness(*input))
                             .collect();
                         let hash_witnesses: Vec<ConstantOrR1CSWitness> = hash_values
                             .iter()
-                            .map(|hv| self.fetch_constant_or_r1cs_witness(hv.input()))
+                            .map(|hv| self.fetch_constant_or_r1cs_witness(*hv))
                             .collect();
                         let output_witnesses: Vec<usize> = outputs
                             .iter()
@@ -654,19 +639,115 @@ impl NoirToR1CSCompiler {
                     BlackBoxFuncCall::MultiScalarMul {
                         points,
                         scalars,
+                        predicate,
                         outputs,
                     } => {
-                        let point_wits: Vec<ConstantOrR1CSWitness> = points
+                        let mut point_wits: Vec<ConstantOrR1CSWitness> = points
                             .iter()
-                            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
+                            .map(|inp| self.fetch_constant_or_r1cs_witness(*inp))
                             .collect();
                         let scalar_wits: Vec<ConstantOrR1CSWitness> = scalars
                             .iter()
-                            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
+                            .map(|inp| self.fetch_constant_or_r1cs_witness(*inp))
                             .collect();
-                        let out_x = self.fetch_r1cs_witness_index(outputs.0);
-                        let out_y = self.fetch_r1cs_witness_index(outputs.1);
-                        let out_inf = self.fetch_r1cs_witness_index(outputs.2);
+                        ensure!(
+                            point_wits.len() % 3 == 0,
+                            "MSM points must be encoded as [x, y, is_infinite] triples, got {} \
+                             elements",
+                            point_wits.len()
+                        );
+                        // ## Conditional MSM: predicate field handling
+                        //
+                        // Noir's `flatten_cfg` pass lowers `if cond { multi_scalar_mul(...) }`
+                        // into a single unconditional ACIR `MultiScalarMul` opcode with a
+                        // `predicate` witness. For nested conditions the predicate is the product
+                        // of all enclosing branch conditions: `predicate = c1 * c2 * ...`.
+                        //
+                        // ACVM semantics: when predicate=0, the opcode must output the Grumpkin
+                        // identity point (0, 0, is_infinite=1) regardless of the point/scalar
+                        // inputs. When predicate=1 the MSM runs normally.
+                        //
+                        // ### Case 1: constant predicate=0 (statically dead branch)
+                        //
+                        // The output is fully determined at compile time as the Grumpkin identity
+                        // `(0, 0, 1)`, so the MSM pipeline is skipped entirely.
+                        // `constrain_to_constant` pins each output witness
+                        // to its identity value — 3 constraints total.
+                        //
+                        // ### Case 2: witness predicate (runtime conditional)
+                        //
+                        // We hook into the existing `all_skipped` short-circuit already present
+                        // in the MSM pipeline (msm/pipeline.rs). That mechanism tracks whether
+                        // every input point has `is_skip = is_infinite OR scalar_is_zero`. When
+                        // `all_skipped=1` the pipeline constrains the output to (0, 0, 1) and
+                        // the EC addition chain still produces a valid (trivial) witness.
+                        //
+                        // To activate it we rewrite each point's `is_infinite` flag before
+                        // passing points to the pipeline:
+                        //
+                        //   new_is_infinite[i] = old_is_infinite[i] OR (NOT predicate)
+                        //
+                        // When predicate=0: every `new_is_infinite[i]` = 1, so `all_skipped=1`
+                        //   and output is constrained to identity. Correct.
+                        // When predicate=1: `NOT predicate` = 0, so `new_is_infinite[i]` =
+                        //   `old_is_infinite[i]`. The MSM runs normally. Correct.
+                        //
+                        // The full MSM constraint set is always generated — GLV decomposition,
+                        // signed-bit decomposition, on-curve checks, and the EC addition chain.
+                        // R1CS is a static constraint system: every row of A·B=C is fixed at
+                        // compile time and must be satisfied for every valid witness. Unlike
+                        // plonkish systems (e.g. Barretenberg/UltraPlonk), which have gate
+                        // selectors that multiply a gate's contribution by 0 when inactive, R1CS
+                        // has no such mechanism. This is an inherent cost of R1CS for runtime
+                        // conditional operations.
+                        let predicate = self.fetch_constant_or_r1cs_witness(*predicate);
+                        let (out_x, out_y, out_inf) = (
+                            self.fetch_r1cs_witness_index(outputs.0),
+                            self.fetch_r1cs_witness_index(outputs.1),
+                            self.fetch_r1cs_witness_index(outputs.2),
+                        );
+                        match predicate {
+                            ConstantOrR1CSWitness::Constant(c) => {
+                                if c.is_zero() {
+                                    constrain_to_constant(self, out_x, FieldElement::zero());
+                                    constrain_to_constant(self, out_y, FieldElement::zero());
+                                    constrain_to_constant(self, out_inf, FieldElement::one());
+                                    continue;
+                                } else if !c.is_one() {
+                                    bail!("MSM predicate constant must be 0 or 1, got {c:?}");
+                                }
+                            }
+                            ConstantOrR1CSWitness::Witness(predicate_wit) => {
+                                constrain_boolean(self, predicate_wit);
+                                let not_predicate = self.add_sum(vec![
+                                    SumTerm(Some(FieldElement::one()), self.witness_one()),
+                                    SumTerm(Some(-FieldElement::one()), predicate_wit),
+                                ]);
+                                for i in (2..point_wits.len()).step_by(3) {
+                                    point_wits[i] = match point_wits[i] {
+                                        ConstantOrR1CSWitness::Constant(c) if c.is_one() => {
+                                            ConstantOrR1CSWitness::Constant(FieldElement::one())
+                                        }
+                                        ConstantOrR1CSWitness::Constant(c) if c.is_zero() => {
+                                            ConstantOrR1CSWitness::Witness(not_predicate)
+                                        }
+                                        ConstantOrR1CSWitness::Constant(c) => {
+                                            bail!(
+                                                "MSM is_infinite input must be boolean (0 or 1), \
+                                                 got {c:?}"
+                                            );
+                                        }
+                                        ConstantOrR1CSWitness::Witness(inf_wit) => {
+                                            ConstantOrR1CSWitness::Witness(compute_boolean_or(
+                                                self,
+                                                inf_wit,
+                                                not_predicate,
+                                            ))
+                                        }
+                                    };
+                                }
+                            }
+                        }
                         msm_ops.push((point_wits, scalar_wits, (out_x, out_y, out_inf)));
                     }
                     _ => {
@@ -729,7 +810,7 @@ impl NoirToR1CSCompiler {
             None
         };
         let sha256_range_checks = if let Some(w) = spread_w {
-            add_sha256_compression(self, sha256_compression_ops, w)
+            add_sha256_compression(self, sha256_compression_ops, w)?
         } else {
             BTreeMap::new()
         };
@@ -804,7 +885,10 @@ impl NoirToR1CSCompiler {
 mod tests {
     use {
         super::*,
-        acir::circuit::PublicInputs as AcirPublicInputs,
+        acir::circuit::{
+            opcodes::{BlackBoxFuncCall, FunctionInput},
+            PublicInputs as AcirPublicInputs,
+        },
         provekit_common::witness::WitnessBuilder,
         std::collections::{BTreeSet, HashSet},
     };
@@ -831,5 +915,59 @@ mod tests {
             acir_public_inputs,
         )
         .expect("split_and_prepare_layers should not fail with NoBuilderForPublicInput");
+    }
+
+    #[test]
+    fn malformed_and_constant_is_rejected_with_operand_context() {
+        let oversized = NoirElement::from_repr(FieldElement::from(1u64 << 40));
+        let circuit: Circuit<NoirElement> = Circuit {
+            current_witness_index: 3,
+            opcodes: vec![Opcode::BlackBoxFuncCall(BlackBoxFuncCall::AND {
+                lhs:      FunctionInput::Witness(NoirWitness(1)),
+                rhs:      FunctionInput::Constant(oversized),
+                output:   NoirWitness(3),
+                num_bits: 32,
+            })],
+            private_parameters: BTreeSet::from([NoirWitness(1)]),
+            ..Default::default()
+        };
+
+        let err = noir_to_r1cs(&circuit).expect_err("oversized AND constant should fail");
+        assert!(err
+            .to_string()
+            .contains("AND/XOR rhs constant exceeds 32 bits"));
+    }
+
+    #[test]
+    fn malformed_sha256_hash_constant_is_rejected() {
+        let oversized = NoirElement::from_repr(FieldElement::from(1u64 << 40));
+        let inputs = Box::new(std::array::from_fn(|i| {
+            FunctionInput::Witness(NoirWitness((i as u32) + 1))
+        }));
+        let hash_values = Box::new(std::array::from_fn::<_, 8, _>(|i| {
+            if i == 0 {
+                FunctionInput::Constant(oversized)
+            } else {
+                FunctionInput::Witness(NoirWitness((i as u32) + 17))
+            }
+        }));
+        let outputs = Box::new(std::array::from_fn(|i| NoirWitness((i as u32) + 25)));
+        let circuit: Circuit<NoirElement> = Circuit {
+            current_witness_index: 32,
+            opcodes: vec![Opcode::BlackBoxFuncCall(
+                BlackBoxFuncCall::Sha256Compression {
+                    inputs,
+                    hash_values,
+                    outputs,
+                },
+            )],
+            private_parameters: BTreeSet::from_iter((1..=24).map(NoirWitness)),
+            ..Default::default()
+        };
+
+        let err = noir_to_r1cs(&circuit).expect_err("oversized SHA256 hash constant should fail");
+        assert!(err
+            .to_string()
+            .contains("SHA256 hash constant exceeds 32 bits"));
     }
 }

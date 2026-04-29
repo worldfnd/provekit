@@ -52,4 +52,4 @@ workspace = true
 default = ["profiling-allocator"]
 profiling-allocator = []
 jemalloc = ["profiling-allocator", "dep:tikv-jemallocator"]
-tracy = ["dep:tracing-tracy"]
+tracy = ["profiling-allocator", "dep:tracing-tracy"]
