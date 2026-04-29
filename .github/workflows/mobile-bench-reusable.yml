@@ -209,6 +209,12 @@ jobs:
             --target ios \
             $RELEASE_FLAG \
             --crate-path "$CRATE_PATH"
+          find target/mobench/ios/BenchRunner -type f \( -name project.yml -o -name project.pbxproj \) -print0 \
+            | xargs -0 perl -0pi -e 's/deploymentTarget: "15\.0"/deploymentTarget: "10.0"/g; s/IPHONEOS_DEPLOYMENT_TARGET = 15\.0;/IPHONEOS_DEPLOYMENT_TARGET = 10.0;/g'
+          rg -n 'deploymentTarget: "15\.0"|IPHONEOS_DEPLOYMENT_TARGET = 15\.0' target/mobench/ios/BenchRunner && {
+            echo "::error::Generated iOS project still requires iOS 15.0"
+            exit 1
+          } || true
           cargo-mobench package-ipa --method adhoc --crate-path "$CRATE_PATH"
           cargo-mobench package-xcuitest --crate-path "$CRATE_PATH"
           test -f target/mobench/ios/BenchRunner.ipa
