@@ -74,5 +74,8 @@ cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/power.pkp ./P
 # 4. Natively verify the Noir proof. Native verification evaluates MLE directly. Spark proofs are useful only in the recursive verifier.
 cargo run --release --bin provekit-cli -- verify ./benchmark-inputs/power.pkv ./benchmark-inputs/power-proof.np
 
-# TODO: 5. Recursively verify the Noir proof and SPARK.
+# 5. Verify a standalone SPARK proof against its saved query.
+cargo run --release --bin provekit-cli -- verify-spark ./spark_proofs/spark_proof_0.sp ./spark_proofs/spark_query_0.json
+
+# TODO: 6. Recursively verify the Noir proof and SPARK.
 ```

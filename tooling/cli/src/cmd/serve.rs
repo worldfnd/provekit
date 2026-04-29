@@ -247,6 +247,13 @@ fn handle_prove(
     info!("Writing proof to {output_path:?}");
     write(&proof, &output_path).context("writing spark proof")?;
 
+    let query_path = Path::new("./spark_proofs").join(format!("spark_query_{index}.json"));
+    let query_file = std::fs::File::create(&query_path)
+        .with_context(|| format!("creating {query_path:?}"))?;
+    serde_json::to_writer_pretty(query_file, &request.spark_query)
+        .context("writing spark query")?;
+    info!("Wrote query to {query_path:?}");
+
     info!("Done");
     Ok(())
 }

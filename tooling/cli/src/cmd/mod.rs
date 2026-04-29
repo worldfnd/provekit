@@ -7,6 +7,7 @@ mod serve;
 mod show_inputs;
 mod spark_protocol;
 mod verify;
+mod verify_spark;
 
 use {anyhow::Result, argh::FromArgs};
 
@@ -46,6 +47,7 @@ enum Commands {
     Serve(serve::Args),
     CircuitStats(circuit_stats::Args),
     Verify(verify::Args),
+    VerifySpark(verify_spark::Args),
     GenerateGnarkInputs(generate_gnark_inputs::Args),
     ShowInputs(show_inputs::Args),
 }
@@ -65,6 +67,7 @@ impl Command for Commands {
             Self::Serve(args) => args.run(),
             Self::CircuitStats(args) => args.run(),
             Self::Verify(args) => args.run(),
+            Self::VerifySpark(args) => args.run(),
             Self::GenerateGnarkInputs(args) => args.run(),
             Self::ShowInputs(args) => args.run(),
         }
