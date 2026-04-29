@@ -4,8 +4,9 @@ use {
             HEADER_SIZE, MAGIC_BYTES, PROVER_FORMAT, PROVER_VERSION, VERIFIER_FORMAT,
             VERIFIER_VERSION, XZ_MAGIC, ZSTD_MAGIC,
         },
-        Prover, Verifier,
+        Verifier,
     },
+    provekit_prover::Prover,
     wasm_bindgen::prelude::*,
 };
 

@@ -4701,6 +4701,7 @@ dependencies = [
  "ark-std 0.5.0",
  "provekit-common",
  "rayon",
+ "serde",
  "sha2 0.10.9",
  "tracing",
 ]
@@ -4712,11 +4713,13 @@ dependencies = [
  "acir",
  "anyhow",
  "ark-bn254",
+ "ark-ec",
  "ark-ff 0.5.0",
  "ark-poly",
  "ark-serialize 0.5.0",
  "ark-std 0.5.0",
  "bn254_blackbox_solver",
+ "bytes",
  "mavros-artifacts",
  "mavros-vm",
  "nargo",
@@ -4726,8 +4729,12 @@ dependencies = [
  "postcard",
  "provekit-common",
  "provekit-groth16",
+ "rayon",
+ "serde",
  "tracing",
  "whir",
+ "xz2",
+ "zstd",
 ]
 
 [[package]]

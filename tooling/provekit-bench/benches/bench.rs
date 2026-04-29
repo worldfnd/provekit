@@ -3,8 +3,8 @@ use {
     anyhow::Context,
     core::hint::black_box,
     divan::Bencher,
-    provekit_common::{file::read, NoirProof, Prover, Verifier},
-    provekit_prover::Prove,
+    provekit_common::{file::read, NoirProof, Verifier},
+    provekit_prover::{read_pkp, Prove, Prover},
     provekit_verifier::Verify,
     std::path::Path,
 };
@@ -13,7 +13,7 @@ use {
 fn read_poseidon_1000(bencher: Bencher) {
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
     let proof_prover_path = crate_dir.join("noir-provekit-prover.pkp");
-    bencher.bench(|| read::<Prover>(&proof_prover_path));
+    bencher.bench(|| read_pkp(&proof_prover_path));
 }
 
 #[divan::bench]
@@ -21,7 +21,7 @@ fn prove_poseidon_1000(bencher: Bencher) {
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
     let proof_prover_path = crate_dir.join("noir-provekit-prover.pkp");
 
-    let prover: Prover = read(&proof_prover_path)
+    let prover: Prover = read_pkp(&proof_prover_path)
         .with_context(|| format!("Reading {}", proof_prover_path.display()))
         .expect("Reading prover");
 
@@ -42,7 +42,7 @@ fn prove_poseidon_1000_with_io(bencher: Bencher) {
     let witness_path = crate_dir.join("Prover.toml");
 
     bencher.bench(|| {
-        let prover: Prover = read(&proof_prover_path)
+        let prover: Prover = read_pkp(&proof_prover_path)
             .with_context(|| {
                 format!(
                     "Failed to read scheme from path: {} (working dir: {:?})",

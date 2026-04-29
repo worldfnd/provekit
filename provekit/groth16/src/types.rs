@@ -6,7 +6,9 @@ use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, G2Projective};
 use {
     crate::pedersen,
     ark_ec::{pairing::Pairing, AffineRepr},
+    ark_ff::Zero,
     ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
+    serde::{Deserialize, Deserializer, Serialize, Serializer},
 };
 
 /// A Groth16+BSB22 proof.
@@ -261,5 +263,60 @@ impl VerifyingKey {
     /// wire).
     pub fn nb_public_witness(&self) -> usize {
         self.g1_k.len() - 1
+    }
+}
+
+// Serde adapters for ProvingKey.
+//
+// The proving key is large (hundreds of MB) and arkworks-serialized bytes are
+// best read/written outside postcard's wire format to avoid materializing the
+// full byte stream in memory. The .pkp file layout treats the PK as an
+// out-of-band section appended after the postcard-encoded `Prover` (see
+// `provekit_prover::pkp_io`), so the serde impls here are no-ops:
+//   * `Serialize` writes `()` (postcard emits zero bytes).
+//   * `Deserialize` ignores the input and yields `ProvingKey::empty()`.
+//
+// In practice these impls only run for `Groth16Prover` round-trips; the file
+// I/O layer fills in the real PK after postcard returns.
+impl Serialize for ProvingKey {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        // Emit a unit value: postcard encodes `()` as zero bytes, leaving the
+        // PK out of the postcard stream entirely.
+        serializer.serialize_unit()
+    }
+}
+
+impl<'de> Deserialize<'de> for ProvingKey {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let _: () = Deserialize::deserialize(deserializer)?;
+        Ok(ProvingKey::empty())
+    }
+}
+
+impl ProvingKey {
+    /// A zero-state placeholder used while a `Groth16Prover` is being
+    /// reconstituted out of band. The actual proving key is loaded separately
+    /// by the .pkp I/O path and replaces this placeholder before any
+    /// cryptographic operations occur.
+    pub fn empty() -> Self {
+        ProvingKey {
+            domain_size:     0,
+            domain_gen:      Fr::zero(),
+            g1_alpha:        G1Affine::zero(),
+            g1_beta:         G1Affine::zero(),
+            g1_delta:        G1Affine::zero(),
+            g1_a:            Vec::new(),
+            g1_b:            Vec::new(),
+            g1_k:            Vec::new(),
+            g1_z:            Vec::new(),
+            g2_beta:         G2Affine::zero(),
+            g2_delta:        G2Affine::zero(),
+            g2_b:            Vec::new(),
+            infinity_a:      Vec::new(),
+            infinity_b:      Vec::new(),
+            nb_infinity_a:   0,
+            nb_infinity_b:   0,
+            commitment_keys: Vec::new(),
+        }
     }
 }
