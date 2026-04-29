@@ -9,9 +9,9 @@ use {
     base64::{engine::general_purpose::STANDARD as BASE64, Engine as _},
     provekit_common::{
         binary_format::{HEADER_SIZE, MAGIC_BYTES},
-        NoirElement, NoirProof, Prover as ProverCore,
+        NoirElement, NoirProof,
     },
-    provekit_prover::Prove,
+    provekit_prover::{Prove, Prover as ProverCore},
     std::{cell::RefCell, collections::BTreeMap},
     wasm_bindgen::prelude::*,
 };

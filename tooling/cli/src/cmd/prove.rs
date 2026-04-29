@@ -2,11 +2,8 @@ use {
     super::{util::resolve_key_path, Command},
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{
-        file::{read, write},
-        Prover,
-    },
-    provekit_prover::Prove,
+    provekit_common::file::{read, write},
+    provekit_prover::{read_pkp, Prove, Prover},
     std::path::PathBuf,
     tracing::{info, instrument},
 };
@@ -49,7 +46,8 @@ impl Command for Args {
             .clone()
             .unwrap_or_else(|| PathBuf::from("./Prover.toml"));
 
-        let prover: Prover = read(&prover_path).context("while reading Provekit Prover")?;
+        let prover: Prover =
+            read_pkp(&prover_path).context("while reading Provekit Prover")?;
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 

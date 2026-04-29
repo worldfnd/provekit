@@ -16,6 +16,7 @@ ark-std = { version = "0.5", features = ["std"] }
 rayon = { workspace = true }
 anyhow = { workspace = true }
 sha2 = { workspace = true }
+serde = { workspace = true }
 tracing = { workspace = true }
 provekit-common = { workspace = true }
 

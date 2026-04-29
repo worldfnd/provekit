@@ -75,6 +75,25 @@ pub fn setup(
     Ok((pks, vk))
 }
 
+/// Chunk size for Pedersen MSMs. arkworks' `VariableBaseMSM` keeps a
+/// projective copy of every base plus per-thread bucket state, so a single
+/// 1M-element call holds hundreds of MB of transient memory. Splitting into
+/// 100k-element chunks caps that to ~tens of MB at the cost of ~10% wall
+/// clock.
+const PEDERSEN_MSM_CHUNK: usize = 100_000;
+
+fn chunked_g1_msm(bases: &[G1Affine], values: &[Fr]) -> Result<G1Projective> {
+    debug_assert_eq!(bases.len(), values.len());
+    let mut acc = G1Projective::zero();
+    for (b_chunk, v_chunk) in bases
+        .chunks(PEDERSEN_MSM_CHUNK)
+        .zip(values.chunks(PEDERSEN_MSM_CHUNK))
+    {
+        acc += G1Projective::msm(b_chunk, v_chunk).map_err(crate::msm_err)?;
+    }
+    Ok(acc)
+}
+
 impl ProvingKey {
     /// Compute Pedersen commitment: C = Σ vᵢ · Basis[i].
     ///
@@ -91,7 +110,7 @@ impl ProvingKey {
             return Ok(G1Affine::zero());
         }
 
-        let commitment = G1Projective::msm(&self.basis, values).map_err(crate::msm_err)?;
+        let commitment = chunked_g1_msm(&self.basis, values)?;
         Ok(commitment.into_affine())
     }
 
@@ -113,7 +132,7 @@ impl ProvingKey {
             return Ok(G1Affine::zero());
         }
 
-        let pok = G1Projective::msm(&self.basis_exp_sigma, values).map_err(crate::msm_err)?;
+        let pok = chunked_g1_msm(&self.basis_exp_sigma, values)?;
         Ok(pok.into_affine())
     }
 }

@@ -39,169 +39,273 @@ use {
 /// The caller is responsible for the BSB22 witness-splitting flow:
 /// solving w1, computing Pedersen commitments, deriving challenges, then
 /// solving w2. This function takes the completed witness and commitments.
-/// `challenge_wire_indices` lists ALL wire indices holding challenge values.
-/// These are excluded from private wires in the Krs computation (they're
-/// public).
+/// BSB22 batched proof of knowledge over all commitments, folded into a
+/// single G1 element. Independent of `H`, so callers can run this in
+/// parallel with `compute_h`.
+#[instrument(skip_all)]
+pub fn bsb22_pok(
+    commitment_keys: &[pedersen::ProvingKey],
+    committed_values: &[Vec<Fr>],
+    challenge_wire_indices: &[usize],
+    wire_values: &[Fr],
+) -> Result<G1Affine> {
+    let poks: Vec<G1Affine> = commitment_keys
+        .iter()
+        .zip(committed_values.iter())
+        .map(|(ck, vals)| ck.prove_knowledge(vals))
+        .collect::<Result<Vec<_>>>()?;
+
+    if poks.is_empty() {
+        return Ok(G1Affine::zero());
+    }
+
+    let mut commitments_serialized = vec![0u8; FR_BYTES * challenge_wire_indices.len()];
+    for (j, &wire_idx) in challenge_wire_indices.iter().enumerate() {
+        let bytes = fr_to_bytes(&wire_values[wire_idx]);
+        commitments_serialized[FR_BYTES * j..FR_BYTES * (j + 1)].copy_from_slice(&bytes);
+    }
+
+    let challenge = hash_to_fr(&commitments_serialized, BSB22_FOLD_DST)?;
+    pedersen::fold(&poks, challenge)
+}
+
+/// Compute `A_r`, `B_s`, and `Bs1` (the G1 form of `B_s` needed later in the
+/// `Krs` cross-term). Independent of `H`, so callers can run this in
+/// parallel with `compute_h`.
+#[allow(clippy::too_many_arguments)]
+#[instrument(skip_all)]
+pub fn prove_ar_bs_bs1(
+    g1_a: &[G1Affine],
+    g1_b: &[G1Affine],
+    g2_b: &[G2Affine],
+    infinity_a: &[bool],
+    infinity_b: &[bool],
+    wire_values: &[Fr],
+    g1_alpha: G1Affine,
+    g1_beta: G1Affine,
+    g2_beta: G2Affine,
+    g2_delta: G2Affine,
+    r_delta: G1Affine,
+    s_delta: G1Affine,
+    s_scalar: Fr,
+) -> Result<(G1Affine, G2Affine, G1Projective)> {
+    let (wire_values_a, wire_values_b) = {
+        let _s = info_span!("filter_wires_ab").entered();
+        rayon::join(
+            || {
+                wire_values
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| !infinity_a[*i])
+                    .map(|(_, v)| *v)
+                    .collect::<Vec<Fr>>()
+            },
+            || {
+                wire_values
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| !infinity_b[*i])
+                    .map(|(_, v)| *v)
+                    .collect::<Vec<Fr>>()
+            },
+        )
+    };
+
+    let _s = info_span!("msm_ar_bs").entered();
+    // Sequential, not nested-rayon::join: arkworks' MSM is already rayon-
+    // parallel internally, so concurrent MSMs would just stack bucket
+    // allocators (~3×) without speeding up wall-clock. Sequential keeps one
+    // bucket set alive at a time — important when this whole function runs
+    // in parallel with `compute_h`.
+    let ar = {
+        let msm = G1Projective::msm(g1_a, &wire_values_a).map_err(crate::msm_err)?;
+        let mut result = msm;
+        result += G1Projective::from(g1_alpha);
+        result += G1Projective::from(r_delta);
+        result.into_affine()
+    };
+    let bs = {
+        let msm = <G2Projective as VariableBaseMSM>::msm(g2_b, &wire_values_b)
+            .map_err(crate::msm_err)?;
+        let mut result = msm;
+        result += G2Projective::from(g2_beta);
+        result += G2Projective::from(g2_delta) * s_scalar;
+        result.into_affine()
+    };
+    let bs1 = {
+        let msm = G1Projective::msm(g1_b, &wire_values_b).map_err(crate::msm_err)?;
+        let mut result = msm;
+        result += G1Projective::from(g1_beta);
+        result += G1Projective::from(s_delta);
+        result
+    };
+    Ok((ar, bs, bs1))
+}
+
+/// Compute `Krs`, the final Groth16 group element. Depends on the quotient
+/// polynomial `H` and the `(A_r, Bs1)` outputs of [`prove_ar_bs_bs1`].
+#[allow(clippy::too_many_arguments)]
+#[instrument(skip_all)]
+pub fn prove_krs(
+    g1_k: &[G1Affine],
+    g1_z: &[G1Affine],
+    h: &[Fr],
+    wire_values: &[Fr],
+    r1cs_nb_public: usize,
+    commitment_info: &[CommitmentInfo],
+    challenge_wire_indices: &[usize],
+    domain_size: u64,
+    ar: G1Affine,
+    bs1: G1Projective,
+    kr_delta: G1Affine,
+    r_scalar: Fr,
+    s_scalar: Fr,
+) -> Result<G1Affine> {
+    let private_wire_values: Vec<Fr> = {
+        let _s = info_span!("filter_private_wires").entered();
+        let mut to_remove: Vec<usize> = Vec::new();
+        for ci in commitment_info {
+            to_remove.extend_from_slice(&ci.private_committed);
+        }
+        to_remove.extend_from_slice(challenge_wire_indices);
+        to_remove.sort_unstable();
+        to_remove.dedup();
+        filter_by_sorted_indices(&wire_values[r1cs_nb_public..], &to_remove, r1cs_nb_public)
+    };
+
+    ensure!(
+        private_wire_values.len() == g1_k.len(),
+        "private wire count mismatch: got {}, expected {}",
+        private_wire_values.len(),
+        g1_k.len()
+    );
+
+    let _s = info_span!("msm_krs").entered();
+    let size_h = domain_size as usize - 1;
+
+    let (krs1_result, krs2_result) = rayon::join(
+        || G1Projective::msm(g1_k, &private_wire_values).map_err(crate::msm_err),
+        || {
+            if !h.is_empty() && !g1_z.is_empty() {
+                let h_slice = &h[..size_h.min(h.len())];
+                let z_slice = &g1_z[..size_h.min(g1_z.len())];
+                let min_len = h_slice.len().min(z_slice.len());
+                G1Projective::msm(&z_slice[..min_len], &h_slice[..min_len])
+                    .map_err(crate::msm_err)
+            } else {
+                Ok(G1Projective::zero())
+            }
+        },
+    );
+
+    let mut result = krs1_result? + krs2_result?;
+    result += G1Projective::from(kr_delta);
+
+    // Cross-terms: s·Ar + r·Bs1
+    let (s_ar, r_bs1) = rayon::join(|| G1Projective::from(ar) * s_scalar, || bs1 * r_scalar);
+    result += s_ar;
+    result += r_bs1;
+
+    Ok(result.into_affine())
+}
+
+/// Convenience wrapper that runs all stages sequentially. Callers that want
+/// to overlap `compute_h` with the H-independent stages should call
+/// [`bsb22_pok`], [`prove_ar_bs_bs1`], and [`prove_krs`] directly.
+///
+/// `pk` and `committed_values` are taken by value so this function can drop
+/// each large field as soon as it's no longer needed (commitment_keys after
+/// `bsb22_pok`, `g1_a`/`g1_b`/`g2_b` after `msm_ar_bs`, `g1_k`/`g1_z` after
+/// `msm_krs`).
+#[allow(clippy::too_many_arguments)]
 #[instrument(skip_all)]
 pub fn prove(
-    pk: &ProvingKey,
+    pk: ProvingKey,
     r1cs_nb_public: usize,
     wire_values: &[Fr],
     h: &[Fr],
     commitment_info: &[CommitmentInfo],
-    committed_values: &[Vec<Fr>],
+    committed_values: Vec<Vec<Fr>>,
     commitments: &[G1Affine],
     challenge_wire_indices: &[usize],
 ) -> Result<Proof> {
+    let ProvingKey {
+        domain_size,
+        domain_gen: _,
+        g1_alpha,
+        g1_beta,
+        g1_delta,
+        g1_a,
+        g1_b,
+        g1_k,
+        g1_z,
+        g2_beta,
+        g2_delta,
+        g2_b,
+        infinity_a,
+        infinity_b,
+        nb_infinity_a: _,
+        nb_infinity_b: _,
+        commitment_keys,
+    } = pk;
+
     let mut rng = ark_std::rand::thread_rng();
 
-    // --- BSB22: Proofs of Knowledge ---
-    let commitment_pok = {
-        let _s = info_span!("bsb22_pok").entered();
-        let poks: Vec<G1Affine> = pk
-            .commitment_keys
-            .iter()
-            .zip(committed_values.iter())
-            .map(|(ck, vals)| ck.prove_knowledge(vals))
-            .collect::<Result<Vec<_>>>()?;
+    let commitment_pok = bsb22_pok(
+        &commitment_keys,
+        &committed_values,
+        challenge_wire_indices,
+        wire_values,
+    )?;
+    drop(commitment_keys);
+    drop(committed_values);
 
-        if !poks.is_empty() {
-            let mut commitments_serialized = vec![0u8; FR_BYTES * challenge_wire_indices.len()];
-            for (j, &wire_idx) in challenge_wire_indices.iter().enumerate() {
-                let bytes = fr_to_bytes(&wire_values[wire_idx]);
-                commitments_serialized[FR_BYTES * j..FR_BYTES * (j + 1)].copy_from_slice(&bytes);
-            }
-
-            let challenge = hash_to_fr(&commitments_serialized, BSB22_FOLD_DST)?;
-            pedersen::fold(&poks, challenge)?
-        } else {
-            G1Affine::zero()
-        }
-    };
-
-    // --- Filter wire values for infinity points (parallel) ---
-    let (wire_values_a, wire_values_b, private_wire_values) = {
-        let _s = info_span!("filter_wires").entered();
-        let (wa, wb) = rayon::join(
-            || {
-                wire_values
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| !pk.infinity_a[*i])
-                    .map(|(_, v)| *v)
-                    .collect::<Vec<Fr>>()
-            },
-            || {
-                wire_values
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| !pk.infinity_b[*i])
-                    .map(|(_, v)| *v)
-                    .collect::<Vec<Fr>>()
-            },
-        );
-
-        // Filter private wire values for Krs using sorted-index removal
-        let private_wire_values: Vec<Fr> = {
-            let mut to_remove: Vec<usize> = Vec::new();
-            for ci in commitment_info {
-                to_remove.extend_from_slice(&ci.private_committed);
-            }
-            to_remove.extend_from_slice(challenge_wire_indices);
-            to_remove.sort_unstable();
-            to_remove.dedup();
-
-            filter_by_sorted_indices(&wire_values[r1cs_nb_public..], &to_remove, r1cs_nb_public)
-        };
-
-        (wa, wb, private_wire_values)
-    };
-
-    ensure!(
-        private_wire_values.len() == pk.g1_k.len(),
-        "private wire count mismatch: got {}, expected {}",
-        private_wire_values.len(),
-        pk.g1_k.len()
-    );
-
-    // --- Sample random r, s for zero-knowledge ---
     let r_scalar = Fr::rand(&mut rng);
     let s_scalar = Fr::rand(&mut rng);
     let kr_scalar = -(r_scalar * s_scalar);
 
-    // Batch delta scalar multiplications
-    let r_delta = (G1Projective::from(pk.g1_delta) * r_scalar).into_affine();
-    let s_delta = (G1Projective::from(pk.g1_delta) * s_scalar).into_affine();
-    let kr_delta = (G1Projective::from(pk.g1_delta) * kr_scalar).into_affine();
+    let r_delta = (G1Projective::from(g1_delta) * r_scalar).into_affine();
+    let s_delta = (G1Projective::from(g1_delta) * s_scalar).into_affine();
+    let kr_delta = (G1Projective::from(g1_delta) * kr_scalar).into_affine();
 
-    // --- Compute Ar, Bs, Bs1 in parallel ---
-    let (ar, bs, bs1) = {
-        let _s = info_span!("msm_ar_bs").entered();
-        let (ar_result, (bs_result, bs1_result)) = rayon::join(
-            // Ar = Σ wᵢ·[Aᵢ(τ)]₁ + [α]₁ + r·[δ]₁
-            || -> Result<G1Affine> {
-                let msm = G1Projective::msm(&pk.g1_a, &wire_values_a).map_err(crate::msm_err)?;
-                let mut result = msm;
-                result += G1Projective::from(pk.g1_alpha);
-                result += G1Projective::from(r_delta);
-                Ok(result.into_affine())
-            },
-            || {
-                rayon::join(
-                    // Bs (G2) = Σ wᵢ·[Bᵢ(τ)]₂ + [β]₂ + s·[δ]₂
-                    || -> Result<G2Affine> {
-                        let msm = <G2Projective as VariableBaseMSM>::msm(&pk.g2_b, &wire_values_b)
-                            .map_err(crate::msm_err)?;
-                        let mut result = msm;
-                        result += G2Projective::from(pk.g2_beta);
-                        result += G2Projective::from(pk.g2_delta) * s_scalar;
-                        Ok(result.into_affine())
-                    },
-                    // Bs1 (G1) = Σ wᵢ·[Bᵢ(τ)]₁ + [β]₁ + s·[δ]₁
-                    || -> Result<G1Projective> {
-                        let msm =
-                            G1Projective::msm(&pk.g1_b, &wire_values_b).map_err(crate::msm_err)?;
-                        let mut result = msm;
-                        result += G1Projective::from(pk.g1_beta);
-                        result += G1Projective::from(s_delta);
-                        Ok(result)
-                    },
-                )
-            },
-        );
-        (ar_result?, bs_result?, bs1_result?)
-    };
+    let (ar, bs, bs1) = prove_ar_bs_bs1(
+        &g1_a,
+        &g1_b,
+        &g2_b,
+        &infinity_a,
+        &infinity_b,
+        wire_values,
+        g1_alpha,
+        g1_beta,
+        g2_beta,
+        g2_delta,
+        r_delta,
+        s_delta,
+        s_scalar,
+    )?;
+    drop(g1_a);
+    drop(g1_b);
+    drop(g2_b);
+    drop(infinity_a);
+    drop(infinity_b);
 
-    // --- Compute Krs = Σ wᵢ·[Kᵢ(τ)]₁ + Σ hⱼ·[Zⱼ(τ)]₁ + s·Ar + r·Bs1 - rs·[δ]₁ ---
-    let krs = {
-        let _s = info_span!("msm_krs").entered();
-        let size_h = pk.domain_size as usize - 1;
-
-        let (krs1_result, krs2_result) = rayon::join(
-            || G1Projective::msm(&pk.g1_k, &private_wire_values).map_err(crate::msm_err),
-            || {
-                if !h.is_empty() && !pk.g1_z.is_empty() {
-                    let h_slice = &h[..size_h.min(h.len())];
-                    let z_slice = &pk.g1_z[..size_h.min(pk.g1_z.len())];
-                    let min_len = h_slice.len().min(z_slice.len());
-                    G1Projective::msm(&z_slice[..min_len], &h_slice[..min_len])
-                        .map_err(crate::msm_err)
-                } else {
-                    Ok(G1Projective::zero())
-                }
-            },
-        );
-
-        let mut result = krs1_result? + krs2_result?;
-        result += G1Projective::from(kr_delta);
-
-        // Cross-terms: s·Ar + r·Bs1
-        let (s_ar, r_bs1) = rayon::join(|| G1Projective::from(ar) * s_scalar, || bs1 * r_scalar);
-        result += s_ar;
-        result += r_bs1;
-
-        result.into_affine()
-    };
+    let krs = prove_krs(
+        &g1_k,
+        &g1_z,
+        h,
+        wire_values,
+        r1cs_nb_public,
+        commitment_info,
+        challenge_wire_indices,
+        domain_size,
+        ar,
+        bs1,
+        kr_delta,
+        r_scalar,
+        s_scalar,
+    )?;
+    drop(g1_k);
+    drop(g1_z);
 
     Ok(Proof {
         ar,

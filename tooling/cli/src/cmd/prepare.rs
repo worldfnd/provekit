@@ -10,9 +10,8 @@ use {
     nargo_toml::{find_root, get_package_manifest, resolve_workspace_from_toml, PackageSelection},
     noir_artifact_cli::fs::artifact::save_program_to_file,
     noirc_driver::{CompilationResult, CompileOptions, CrateName, NOIR_ARTIFACT_VERSION_STRING},
-    provekit_common::{
-        file::write, Groth16CommitmentInfo, Groth16Prover, HashConfig, Prover, Verifier,
-    },
+    provekit_common::{file::write, HashConfig, Verifier},
+    provekit_prover::{write_pkp, Groth16CommitmentInfo, Groth16Prover, Prover},
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     rayon::prelude::*,
     std::{
@@ -160,7 +159,7 @@ impl Command for Args {
                 let prover = Prover::from_noir_proof_scheme(scheme.clone());
                 let verifier = Verifier::from_noir_proof_scheme(scheme);
 
-                write(&prover, &self.pkp_path).context("while writing Provekit Prover")?;
+                write_pkp(&prover, &self.pkp_path).context("while writing Provekit Prover")?;
                 write(&verifier, &self.pkv_path).context("while writing Provekit Verifier")?;
             }
             Backend::Groth16 => {
@@ -258,17 +257,16 @@ impl Command for Args {
                 )
                 .context("while running Groth16 trusted setup")?;
 
-                // Serialize proving key and verifying key
-                let mut pk_bytes = Vec::new();
-                pk.serialize_uncompressed(&mut pk_bytes)
-                    .context("while serializing Groth16 proving key")?;
-
+                // The PK is held in typed form (`provekit_groth16::ProvingKey`)
+                // and round-trips through arkworks bytes via the custom Serde
+                // adapter when the .pkp is written. Only the VK still
+                // serializes to bytes here, since `Verifier` keeps it as
+                // `Vec<u8>` for cross-language interop.
                 let mut vk_bytes = Vec::new();
                 vk.serialize_uncompressed(&mut vk_bytes)
                     .context("while serializing Groth16 verifying key")?;
 
                 info!(
-                    pk_size = pk_bytes.len(),
                     vk_size = vk_bytes.len(),
                     vk_g1_k_len = vk.g1_k.len(),
                     vk_commitment_keys_len = vk.commitment_keys.len(),
@@ -282,7 +280,7 @@ impl Command for Args {
                     r1cs: r1cs.clone(),
                     split_witness_builders,
                     witness_generator,
-                    groth16_pk: pk_bytes,
+                    groth16_pk: pk,
                     commitment_info,
                 });
 
@@ -294,7 +292,7 @@ impl Command for Args {
                     groth16_vk: Some(vk_bytes),
                 };
 
-                write(&prover, &self.pkp_path).context("while writing Provekit Prover")?;
+                write_pkp(&prover, &self.pkp_path).context("while writing Provekit Prover")?;
                 write(&verifier, &self.pkv_path).context("while writing Provekit Verifier")?;
             }
         }
