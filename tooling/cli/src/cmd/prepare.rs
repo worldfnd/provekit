@@ -4,24 +4,15 @@ use {
     argh::FromArgs,
     mavros_artifacts::R1CS as MavrosR1CS,
     provekit_common::{
-        file::write, utils::next_power_of_two, FieldElement, HashConfig, Prover, TranscriptSponge,
-        Verifier, WhirConfig, R1CS,
+        file::write, utils::next_power_of_two, FieldElement, HashConfig, Prover, Verifier, R1CS,
     },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    provekit_spark::{
-        prover::new_whir_config_for_size,
-        types::{COOMatrix, SerializableCommitment, SparkMatrix, TimeStamps},
-        SPARKWHIRConfigs, SparkCommitments, SparkWitnesses,
-    },
+    provekit_spark::types::{COOMatrix, SparkMatrix, TimeStamps},
     std::{
         path::{Path, PathBuf},
         str::FromStr,
     },
     tracing::instrument,
-    whir::{
-        hash::Hash,
-        transcript::{ProverState, VerifierMessage, VerifierState},
-    },
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -284,106 +275,3 @@ pub fn build_spark_matrix(
     }
 }
 
-pub struct SPARKCommitterScheme {
-    pub whir_configs: SPARKWHIRConfigs,
-}
-
-impl SPARKCommitterScheme {
-    pub fn new(num_rows: usize, num_cols: usize, nonzero_terms: usize) -> Self {
-        let padded_num_entries = 1 << next_power_of_two(nonzero_terms);
-
-        let row_config = new_whir_config_for_size(next_power_of_two(num_rows), 1);
-        let col_config = new_whir_config_for_size(next_power_of_two(num_cols), 1);
-        let num_terms_1batched_config =
-            new_whir_config_for_size(next_power_of_two(padded_num_entries), 1);
-        let num_terms_2batched_config =
-            new_whir_config_for_size(next_power_of_two(padded_num_entries), 2);
-        let num_terms_4batched_config =
-            new_whir_config_for_size(next_power_of_two(padded_num_entries), 4);
-
-        Self {
-            whir_configs: SPARKWHIRConfigs {
-                row:                row_config,
-                col:                col_config,
-                num_terms_1batched: num_terms_1batched_config,
-                num_terms_2batched: num_terms_2batched_config,
-                num_terms_4batched: num_terms_4batched_config,
-            },
-        }
-    }
-
-    pub fn commit(
-        &self,
-        merlin: &mut ProverState<TranscriptSponge>,
-        matrix: &SparkMatrix,
-    ) -> SparkWitnesses {
-        let vals_witness = self
-            .whir_configs
-            .num_terms_1batched
-            .commit(merlin, &[&matrix.coo.val]);
-
-        let rs_ws_witness = self.whir_configs.num_terms_4batched.commit(merlin, &[
-            &matrix.coo.row_field,
-            &matrix.timestamps.read_row,
-            &matrix.coo.col_field,
-            &matrix.timestamps.read_col,
-        ]);
-
-        let final_row_ts_witness = self
-            .whir_configs
-            .row
-            .commit(merlin, &[&matrix.timestamps.final_row]);
-
-        let final_col_ts_witness = self
-            .whir_configs
-            .col
-            .commit(merlin, &[&matrix.timestamps.final_col]);
-
-        SparkWitnesses {
-            vals_witness,
-            rs_ws_witness,
-            final_row_ts_witness,
-            final_col_ts_witness,
-        }
-    }
-}
-
-pub fn extract_single_commitment(
-    arthur: &mut VerifierState<'_, TranscriptSponge>,
-    config: &WhirConfig,
-) -> Result<SerializableCommitment> {
-    let ic = &config.initial_committer;
-    let merkle_root: Hash = arthur
-        .prover_message()
-        .map_err(|e| anyhow::anyhow!("Failed to read merkle root: {e}"))?;
-    let out_of_domain_points: Vec<FieldElement> =
-        arthur.verifier_message_vec(ic.out_domain_samples);
-    let out_of_domain_evals: Vec<FieldElement> = arthur
-        .prover_messages_vec(ic.out_domain_samples * ic.num_vectors)
-        .map_err(|e| anyhow::anyhow!("Failed to read OOD evaluations: {e}"))?;
-    Ok(SerializableCommitment {
-        merkle_root,
-        out_of_domain_points,
-        out_of_domain_evals,
-    })
-}
-
-pub fn extract_commitments(
-    arthur: &mut VerifierState<'_, TranscriptSponge>,
-    configs: &SPARKWHIRConfigs,
-) -> Result<SparkCommitments> {
-    let vals = extract_single_commitment(arthur, &configs.num_terms_1batched)
-        .context("while extracting vals commitment")?;
-    let rs_ws = extract_single_commitment(arthur, &configs.num_terms_4batched)
-        .context("while extracting rs_ws commitment")?;
-    let final_row_ts = extract_single_commitment(arthur, &configs.row)
-        .context("while extracting final_row_ts commitment")?;
-    let final_col_ts = extract_single_commitment(arthur, &configs.col)
-        .context("while extracting final_col_ts commitment")?;
-    Ok(SparkCommitments {
-        vals,
-        rs_ws,
-        final_row_ts,
-        final_col_ts,
-    })
-}

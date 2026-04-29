@@ -1,16 +1,14 @@
 use {
     super::{
-        prepare::{self, Compiler, SPARKCommitterScheme},
+        prepare::{self, Compiler},
         spark_protocol::{self, SparkRequest, SparkResponse},
         Command,
     },
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{
-        file::write, HashConfig, NoirProofScheme, Prover, TranscriptSponge, Verifier,
-    },
+    provekit_common::{file::write, HashConfig, NoirProofScheme, Prover, Verifier},
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    provekit_spark::{types::SparkMatrix, SPARKProver as _, SPARKProverScheme, SparkPreparedData},
+    provekit_spark::{types::SparkMatrix, SPARKProver as _, SPARKProverScheme, SparkProverContext},
     std::{
         collections::HashMap,
         os::unix::net::UnixListener,
@@ -18,7 +16,6 @@ use {
         str::FromStr,
     },
     tracing::{info, instrument},
-    whir::transcript::{codecs::Empty, DomainSeparator, ProverState, VerifierState},
 };
 
 /// Prepare circuits and serve SPARK proofs on a Unix socket
@@ -61,7 +58,7 @@ impl Command for Args {
         std::fs::create_dir_all(&self.output_dir)
             .with_context(|| format!("creating output directory {:?}", self.output_dir))?;
 
-        let mut circuits: HashMap<String, SparkPreparedData> = HashMap::new();
+        let mut circuits: HashMap<String, SparkProverContext> = HashMap::new();
 
         for spec in &self.circuit {
             let (name, path) = spec
@@ -133,14 +130,18 @@ fn prepare_circuit(
     pkp_path: &Path,
     pkv_path: &Path,
     spc_path: &Path,
-) -> Result<SparkPreparedData> {
+) -> Result<SparkProverContext> {
     let scheme = compile_scheme(program_path, compiler, r1cs_path, hash_config)?;
     let spark_r1cs = build_spark_matrix(&scheme, r1cs_path)?;
-    let spark_data = commit_spark(spark_r1cs)?;
-    write(&spark_data.commitments, spc_path)
-        .with_context(|| format!("writing SPARK commitments to {spc_path:?}"))?;
+    let (setup, witnesses) = provekit_spark::preprocess_spark(&spark_r1cs);
+    write(&setup, spc_path)
+        .with_context(|| format!("writing SPARK setup to {spc_path:?}"))?;
     write_artifacts(scheme, pkp_path, pkv_path)?;
-    Ok(spark_data)
+    Ok(SparkProverContext {
+        matrix: spark_r1cs,
+        witnesses,
+        setup,
+    })
 }
 
 #[instrument(skip_all)]
@@ -190,29 +191,6 @@ fn build_spark_matrix(scheme: &NoirProofScheme, r1cs_path: Option<&Path>) -> Res
 }
 
 #[instrument(skip_all)]
-fn commit_spark(spark_r1cs: SparkMatrix) -> Result<SparkPreparedData> {
-    let num_rows = spark_r1cs.timestamps.final_row.len();
-    let num_cols = spark_r1cs.timestamps.final_col.len();
-    let num_nz_vals = spark_r1cs.coo.val.len();
-
-    let spark_committer_scheme = SPARKCommitterScheme::new(num_rows, num_cols, num_nz_vals);
-    let ds = DomainSeparator::protocol(&spark_committer_scheme.whir_configs).instance(&Empty);
-    let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
-    let witnesses = spark_committer_scheme.commit(&mut merlin, &spark_r1cs);
-
-    let proof = merlin.proof();
-    let mut arthur = VerifierState::new(&ds, &proof, TranscriptSponge::default());
-    let commitments =
-        prepare::extract_commitments(&mut arthur, &spark_committer_scheme.whir_configs)?;
-
-    Ok(SparkPreparedData {
-        matrix: spark_r1cs,
-        witnesses,
-        commitments,
-    })
-}
-
-#[instrument(skip_all)]
 fn write_artifacts(scheme: NoirProofScheme, pkp_path: &Path, pkv_path: &Path) -> Result<()> {
     let prover = Prover::from_noir_proof_scheme(scheme.clone());
     let verifier = Verifier::from_noir_proof_scheme(scheme);
@@ -224,7 +202,7 @@ fn write_artifacts(scheme: NoirProofScheme, pkp_path: &Path, pkv_path: &Path) ->
 
 #[instrument(skip_all, fields(circuit = %request.circuit))]
 fn handle_prove(
-    circuits: &HashMap<String, SparkPreparedData>,
+    circuits: &HashMap<String, SparkProverContext>,
     request: &SparkRequest,
     index: usize,
 ) -> Result<()> {

@@ -3,7 +3,7 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{file::read, spark::R1CSSparkQuery},
-    provekit_spark::{SPARKProof, SPARKVerifier, SPARKVerifierScheme},
+    provekit_spark::{SPARKProof, SPARKSetup, SPARKVerifier, SPARKVerifierScheme},
     std::{fs::File, io::BufReader, path::PathBuf},
     tracing::instrument,
 };
@@ -16,6 +16,10 @@ pub struct Args {
     #[argh(positional)]
     proof_path: PathBuf,
 
+    /// path to the SPARK setup transcript (.spc) produced by `serve`
+    #[argh(positional)]
+    setup_path: PathBuf,
+
     /// path to the R1CSSparkQuery JSON file
     #[argh(positional)]
     query_path: PathBuf,
@@ -26,16 +30,21 @@ impl Command for Args {
     fn run(&self) -> Result<()> {
         provekit_common::register_ntt();
 
-        let (proof, query) = rayon::join(
+        let (proof, (setup, query)) = rayon::join(
             || read::<SPARKProof>(&self.proof_path).context("while reading SPARK proof"),
-            || read_query(&self.query_path).context("while reading SPARK query"),
+            || {
+                rayon::join(
+                    || read::<SPARKSetup>(&self.setup_path).context("while reading SPARK setup"),
+                    || read_query(&self.query_path).context("while reading SPARK query"),
+                )
+            },
         );
         let proof = proof?;
+        let setup = setup?;
         let query = query?;
 
-        let scheme = SPARKVerifierScheme::from_proof(&proof);
-        scheme
-            .verify(proof, &query)
+        SPARKVerifierScheme
+            .verify(proof, &setup, &query)
             .context("while verifying SPARK proof")?;
 
         Ok(())

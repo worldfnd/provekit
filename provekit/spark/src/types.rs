@@ -1,34 +1,42 @@
-#[cfg(debug_assertions)]
-use whir::transcript::Interaction;
 use {
     provekit_common::{
         file::{
             binary_format::{
-                SPARK_COMMITMENTS_FORMAT, SPARK_COMMITMENTS_VERSION, SPARK_PROOF_FORMAT,
-                SPARK_PROOF_VERSION,
+                SPARK_PROOF_FORMAT, SPARK_PROOF_VERSION, SPARK_SETUP_FORMAT, SPARK_SETUP_VERSION,
             },
             Compression, FileFormat, MaybeHashAware,
         },
-        utils::{serde_ark, serde_hex},
-        FieldElement, HashConfig, WhirConfig,
+        FieldElement, HashConfig, WhirConfig, WhirR1CSProof,
     },
     serde::{Deserialize, Serialize},
-    whir::{hash::Hash, protocols::irs_commit},
+    whir::protocols::irs_commit,
 };
 
 pub type WhirWitness = irs_commit::Witness<FieldElement, FieldElement>;
 
-#[derive(Serialize, Deserialize)]
-pub struct SPARKProof {
-    #[serde(with = "serde_hex")]
-    pub narg_string:       Vec<u8>,
-    #[serde(with = "serde_hex")]
-    pub hints:             Vec<u8>,
-    #[cfg(debug_assertions)]
-    pub pattern:           Vec<Interaction>,
+#[derive(Clone, Serialize, Deserialize)]
+pub struct SPARKSetup {
     pub whir_params:       SPARKWHIRConfigs,
     pub matrix_dimensions: MatrixDimensions,
+    pub transcript:        WhirR1CSProof,
 }
+
+impl FileFormat for SPARKSetup {
+    const FORMAT: [u8; 8] = SPARK_SETUP_FORMAT;
+    const EXTENSION: &'static str = "spc";
+    const VERSION: (u16, u16) = SPARK_SETUP_VERSION;
+    const COMPRESSION: Compression = Compression::Zstd;
+}
+
+impl MaybeHashAware for SPARKSetup {
+    fn maybe_hash_config(&self) -> Option<HashConfig> {
+        None
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SPARKProof(pub WhirR1CSProof);
 
 impl FileFormat for SPARKProof {
     const FORMAT: [u8; 8] = SPARK_PROOF_FORMAT;
@@ -37,7 +45,6 @@ impl FileFormat for SPARKProof {
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
-/// Impl for SPARKProof (no hash config).
 impl MaybeHashAware for SPARKProof {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         None
@@ -91,43 +98,11 @@ pub struct SparkWitnesses {
     pub final_col_ts_witness: WhirWitness,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct SerializableCommitment {
-    pub merkle_root:          Hash,
-    #[serde(with = "serde_ark")]
-    pub out_of_domain_points: Vec<FieldElement>,
-    #[serde(with = "serde_ark")]
-    pub out_of_domain_evals:  Vec<FieldElement>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct SparkCommitments {
-    pub vals:         SerializableCommitment,
-    pub rs_ws:        SerializableCommitment,
-    pub final_row_ts: SerializableCommitment,
-    pub final_col_ts: SerializableCommitment,
-}
-
-impl FileFormat for SparkCommitments {
-    const FORMAT: [u8; 8] = SPARK_COMMITMENTS_FORMAT;
-    const EXTENSION: &'static str = "spc";
-    const VERSION: (u16, u16) = SPARK_COMMITMENTS_VERSION;
-    const COMPRESSION: Compression = Compression::Zstd;
-}
-
-impl MaybeHashAware for SparkCommitments {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        None
-    }
-}
-
-/// All data needed for SPARK proving: the R1CS matrix, witnesses, and
-/// commitments.
 #[derive(Clone)]
-pub struct SparkPreparedData {
-    pub matrix:      SparkMatrix,
-    pub witnesses:   SparkWitnesses,
-    pub commitments: SparkCommitments,
+pub struct SparkProverContext {
+    pub matrix:    SparkMatrix,
+    pub witnesses: SparkWitnesses,
+    pub setup:     SPARKSetup,
 }
 
 #[derive(Debug, Clone)]

@@ -2,8 +2,9 @@ use {
     crate::{
         gpa::gpa_sumcheck_verifier4,
         memory::verify_axis,
+        setup::PrecomputedCommitments,
         sumcheck::run_sumcheck_verifier_spark,
-        types::{MatrixDimensions, SPARKProof, SPARKWHIRConfigs},
+        types::{MatrixDimensions, SPARKProof, SPARKSetup, SPARKWHIRConfigs},
     },
     anyhow::{ensure, Context, Result},
     ark_ff::{Field, Zero},
@@ -20,37 +21,39 @@ use {
 };
 
 pub trait SPARKVerifier {
-    fn verify(&self, proof: SPARKProof, request: &R1CSSparkQuery) -> Result<()>;
+    fn verify(
+        &self,
+        proof: SPARKProof,
+        setup: &SPARKSetup,
+        request: &R1CSSparkQuery,
+    ) -> Result<()>;
 }
 
-pub struct SPARKScheme {
-    pub whir_configs:      SPARKWHIRConfigs,
-    pub matrix_dimensions: MatrixDimensions,
-}
-
-impl SPARKScheme {
-    pub fn from_proof(proof: &SPARKProof) -> Self {
-        Self {
-            whir_configs:      proof.whir_params.clone(),
-            matrix_dimensions: proof.matrix_dimensions.clone(),
-        }
-    }
-}
+pub struct SPARKScheme;
 
 impl SPARKVerifier for SPARKScheme {
     #[instrument(skip_all)]
-    fn verify(&self, proof: SPARKProof, request: &R1CSSparkQuery) -> Result<()> {
+    fn verify(
+        &self,
+        proof: SPARKProof,
+        setup: &SPARKSetup,
+        request: &R1CSSparkQuery,
+    ) -> Result<()> {
         ensure!(
             !(FieldElement::ONE + request.matrix_batching_randomness).is_zero(),
             "matrix_batching_randomness must not equal -1 (would zero the SPARK denominator)"
         );
 
-        let ds = DomainSeparator::protocol(&self.whir_configs).instance(&Empty);
+        let precomputed_commitments = setup.extract_commitments()?;
+
+        let ds = DomainSeparator::protocol(&setup.whir_params)
+            .session(&setup.transcript.narg_string)
+            .instance(&Empty);
         let whir_proof = Proof {
-            narg_string: proof.narg_string,
-            hints: proof.hints,
+            narg_string: proof.0.narg_string,
+            hints: proof.0.hints,
             #[cfg(debug_assertions)]
-            pattern: proof.pattern,
+            pattern: proof.0.pattern,
         };
         let mut arthur = VerifierState::new(&ds, &whir_proof, TranscriptSponge::default());
 
@@ -69,9 +72,10 @@ impl SPARKVerifier for SPARKScheme {
             .collect();
 
         verify_spark_single_matrix(
-            &self.whir_configs,
-            self.matrix_dimensions.clone(),
+            &setup.whir_params,
+            setup.matrix_dimensions.clone(),
             &mut arthur,
+            &precomputed_commitments,
             &new_request,
             &claimed_value,
         )
@@ -83,25 +87,10 @@ pub(crate) fn verify_spark_single_matrix(
     whir_params: &SPARKWHIRConfigs,
     matrix_dimensions: MatrixDimensions,
     arthur: &mut VerifierState<'_, TranscriptSponge>,
+    precomputed_commitments: &PrecomputedCommitments,
     request: &R1CSSparkQuery,
     claimed_value: &FieldElement,
 ) -> Result<()> {
-    let val_commitment = whir_params
-        .num_terms_1batched
-        .receive_commitment(arthur)
-        .map_err(|e| anyhow::anyhow!("Failed to receive val commitment: {e}"))?;
-    let rsws_commitment = whir_params
-        .num_terms_4batched
-        .receive_commitment(arthur)
-        .map_err(|e| anyhow::anyhow!("Failed to receive rsws commitment: {e}"))?;
-    let a_row_finalts_commitment = whir_params
-        .row
-        .receive_commitment(arthur)
-        .map_err(|e| anyhow::anyhow!("Failed to receive row finalts commitment: {e}"))?;
-    let a_col_finalts_commitment = whir_params
-        .col
-        .receive_commitment(arthur)
-        .map_err(|e| anyhow::anyhow!("Failed to receive col finalts commitment: {e}"))?;
     let e_values_commitment = whir_params
         .num_terms_2batched
         .receive_commitment(arthur)
@@ -134,7 +123,7 @@ pub(crate) fn verify_spark_single_matrix(
 
     let val_claim = whir_params
         .num_terms_1batched
-        .verify(arthur, &[&val_commitment], &[sumcheck_hints[0]])
+        .verify(arthur, &[&precomputed_commitments.val], &[sumcheck_hints[0]])
         .map_err(|e| anyhow::anyhow!("WHIR verify failed for val: {e}"))?;
     val_claim
         .verify([&eval_weight as &dyn whir::algebra::linear_form::LinearForm<FieldElement>])
@@ -173,7 +162,7 @@ pub(crate) fn verify_spark_single_matrix(
 
     let rsws_claim = whir_params
         .num_terms_4batched
-        .verify(arthur, &[&rsws_commitment], &[
+        .verify(arthur, &[&precomputed_commitments.rsws], &[
             row_adr,
             row_timestamp,
             col_adr,
@@ -225,7 +214,7 @@ pub(crate) fn verify_spark_single_matrix(
         arthur,
         matrix_dimensions.num_rows,
         &whir_params.row,
-        a_row_finalts_commitment,
+        precomputed_commitments.a_row_finalts.clone(),
         |eval_rand| calculate_eq(&request.point_to_evaluate.row, eval_rand),
         &tau,
         &gamma,
@@ -237,7 +226,7 @@ pub(crate) fn verify_spark_single_matrix(
         arthur,
         matrix_dimensions.num_cols,
         &whir_params.col,
-        a_col_finalts_commitment,
+        precomputed_commitments.a_col_finalts.clone(),
         |eval_rand| calculate_eq(&request.point_to_evaluate.col, eval_rand),
         &tau,
         &gamma,
