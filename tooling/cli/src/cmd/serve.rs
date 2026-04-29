@@ -134,8 +134,7 @@ fn prepare_circuit(
     let scheme = compile_scheme(program_path, compiler, r1cs_path, hash_config)?;
     let spark_r1cs = build_spark_matrix(&scheme, r1cs_path)?;
     let (setup, witnesses) = provekit_spark::preprocess_spark(&spark_r1cs);
-    write(&setup, spc_path)
-        .with_context(|| format!("writing SPARK setup to {spc_path:?}"))?;
+    write(&setup, spc_path).with_context(|| format!("writing SPARK setup to {spc_path:?}"))?;
     write_artifacts(scheme, pkp_path, pkv_path)?;
     Ok(SparkProverContext {
         matrix: spark_r1cs,
@@ -226,8 +225,8 @@ fn handle_prove(
     write(&proof, &output_path).context("writing spark proof")?;
 
     let query_path = Path::new("./spark_proofs").join(format!("spark_query_{index}.json"));
-    let query_file = std::fs::File::create(&query_path)
-        .with_context(|| format!("creating {query_path:?}"))?;
+    let query_file =
+        std::fs::File::create(&query_path).with_context(|| format!("creating {query_path:?}"))?;
     serde_json::to_writer_pretty(query_file, &request.spark_query)
         .context("writing spark query")?;
     info!("Wrote query to {query_path:?}");

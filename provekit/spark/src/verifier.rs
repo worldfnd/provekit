@@ -21,12 +21,8 @@ use {
 };
 
 pub trait SPARKVerifier {
-    fn verify(
-        &self,
-        proof: SPARKProof,
-        setup: &SPARKSetup,
-        request: &R1CSSparkQuery,
-    ) -> Result<()>;
+    fn verify(&self, proof: SPARKProof, setup: &SPARKSetup, request: &R1CSSparkQuery)
+        -> Result<()>;
 }
 
 pub struct SPARKScheme;
@@ -126,7 +122,11 @@ pub(crate) fn verify_spark_single_matrix(
 
     let val_claim = whir_params
         .num_terms_1batched
-        .verify(arthur, &[&precomputed_commitments.val], &[sumcheck_hints[0]])
+        .verify(
+            arthur,
+            &[&precomputed_commitments.val],
+            &[sumcheck_hints[0]],
+        )
         .map_err(|e| anyhow::anyhow!("WHIR verify failed for val: {e}"))?;
     val_claim
         .verify([&eval_weight as &dyn whir::algebra::linear_form::LinearForm<FieldElement>])

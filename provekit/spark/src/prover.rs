@@ -12,8 +12,8 @@ use {
     anyhow::{ensure, Result},
     ark_ff::{Field, Zero},
     provekit_common::{
-        spark::R1CSSparkQuery, utils::next_power_of_two, FieldElement, WhirR1CSProof,
-        TranscriptSponge, WhirConfig,
+        spark::R1CSSparkQuery, utils::next_power_of_two, FieldElement, TranscriptSponge,
+        WhirConfig, WhirR1CSProof,
     },
     rayon::{join, prelude::*},
     tracing::instrument,
@@ -25,8 +25,11 @@ use {
 };
 
 pub trait SPARKProver {
-    fn prove(&self, spark_data: &SparkProverContext, request: &R1CSSparkQuery)
-        -> Result<SPARKProof>;
+    fn prove(
+        &self,
+        spark_data: &SparkProverContext,
+        request: &R1CSSparkQuery,
+    ) -> Result<SPARKProof>;
 }
 
 pub struct SPARKScheme {

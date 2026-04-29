@@ -33,12 +33,15 @@ pub fn preprocess_spark(matrix: &SparkMatrix) -> (SPARKSetup, SparkWitnesses) {
         .whir_configs
         .num_terms_1batched
         .commit(&mut merlin, &[&matrix.coo.val]);
-    let rs_ws_witness = scheme.whir_configs.num_terms_4batched.commit(&mut merlin, &[
-        &matrix.coo.row_field,
-        &matrix.timestamps.read_row,
-        &matrix.coo.col_field,
-        &matrix.timestamps.read_col,
-    ]);
+    let rs_ws_witness = scheme
+        .whir_configs
+        .num_terms_4batched
+        .commit(&mut merlin, &[
+            &matrix.coo.row_field,
+            &matrix.timestamps.read_row,
+            &matrix.coo.col_field,
+            &matrix.timestamps.read_col,
+        ]);
     let final_row_ts_witness = scheme
         .whir_configs
         .row
@@ -54,9 +57,9 @@ pub fn preprocess_spark(matrix: &SparkMatrix) -> (SPARKSetup, SparkWitnesses) {
         matrix_dimensions: scheme.matrix_dimensions,
         transcript:        WhirR1CSProof {
             narg_string: proof.narg_string,
-            hints:       proof.hints,
+            hints: proof.hints,
             #[cfg(debug_assertions)]
-            pattern:     proof.pattern,
+            pattern: proof.pattern,
         },
     };
     let witnesses = SparkWitnesses {
@@ -73,9 +76,9 @@ impl SPARKSetup {
         let setup_ds = DomainSeparator::protocol(&self.whir_params).instance(&Empty);
         let setup_proof = Proof {
             narg_string: self.transcript.narg_string.clone(),
-            hints:       self.transcript.hints.clone(),
+            hints: self.transcript.hints.clone(),
             #[cfg(debug_assertions)]
-            pattern:     self.transcript.pattern.clone(),
+            pattern: self.transcript.pattern.clone(),
         };
         let mut side = VerifierState::new(&setup_ds, &setup_proof, TranscriptSponge::default());
 

@@ -274,4 +274,3 @@ pub fn build_spark_matrix(
         },
     }
 }
-
