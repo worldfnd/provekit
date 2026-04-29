@@ -13,17 +13,11 @@ ark-ec = { version = "0.5", features = ["parallel"] }
 ark-poly = { workspace = true }
 ark-serialize = { workspace = true }
 ark-std = { version = "0.5", features = ["std"] }
-ark-relations = "0.5"
 rayon = { workspace = true }
 anyhow = { workspace = true }
-serde = { workspace = true }
-rand = { workspace = true }
 sha2 = { workspace = true }
 tracing = { workspace = true }
 provekit-common = { workspace = true }
-
-[dev-dependencies]
-rand = { workspace = true }
 
 [lints]
 workspace = true
