@@ -2,9 +2,9 @@ use {
     anyhow::{Context, Result},
     noirc_abi::{input_parser::Format, InputMap},
     noirc_artifacts::program::ProgramArtifact,
-    provekit_common::{NoirProof, NoirProofScheme, Prover, Verifier},
+    provekit_common::{HashConfig, NoirProof, Prover, Verifier},
     provekit_prover::Prove,
-    provekit_r1cs_compiler::NoirProofSchemeBuilder,
+    provekit_r1cs_compiler::NoirCompiler,
     provekit_verifier::Verify,
 };
 
@@ -71,10 +71,10 @@ fn load_program(fixture: MobileBenchFixture) -> Result<ProgramArtifact> {
 
 pub fn prepare_fixture(fixture: MobileBenchFixture) -> Result<PreparedCircuitFixture> {
     let program = load_program(fixture)?;
-    let scheme = NoirProofScheme::from_program(program)
+    let scheme = NoirCompiler::from_program(program, HashConfig::default())
         .with_context(|| format!("while preparing {} noir proof scheme", fixture.name()))?;
     let input_map: InputMap = Format::Toml
-        .parse(fixture.prover_toml(), &scheme.witness_generator.abi)
+        .parse(fixture.prover_toml(), scheme.abi())
         .with_context(|| format!("while parsing {} prover inputs", fixture.name()))?;
 
     Ok(PreparedCircuitFixture {
