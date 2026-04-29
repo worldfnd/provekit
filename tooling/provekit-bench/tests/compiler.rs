@@ -322,7 +322,7 @@ fn test_verifier_rejects_mismatched_hash_config() {
     let mut matching_verifier = Verifier::from_noir_proof_scheme(prover_schema);
     let mut mismatched_verifier = Verifier::from_noir_proof_scheme(verifier_schema);
 
-    let proof = prover
+    let (proof, _spark_queries) = prover
         .prove_with_toml(&witness_file_path)
         .expect("While proving Noir program statement");
 

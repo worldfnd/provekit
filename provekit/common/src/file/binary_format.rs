@@ -26,8 +26,8 @@ pub const NOIR_PROOF_SCHEME_VERSION: (u16, u16) = (1, 2);
 pub const NOIR_PROOF_FORMAT: [u8; 8] = *b"NPSProof";
 pub const NOIR_PROOF_VERSION: (u16, u16) = (1, 2);
 
-pub const SPARK_PROOF_FORMAT: [u8; 8] = *b"SprkProf";
+pub const SPARK_PROOF_FORMAT: [u8; 8] = *b"SparkPrf";
 pub const SPARK_PROOF_VERSION: (u16, u16) = (1, 0);
 
-pub const SPARK_SETUP_FORMAT: [u8; 8] = *b"SprkSetp";
+pub const SPARK_SETUP_FORMAT: [u8; 8] = *b"SparkStp";
 pub const SPARK_SETUP_VERSION: (u16, u16) = (1, 0);
