@@ -28,3 +28,6 @@ pub const NOIR_PROOF_VERSION: (u16, u16) = (1, 2);
 
 pub const SPARK_PROOF_FORMAT: [u8; 8] = *b"SprkProf";
 pub const SPARK_PROOF_VERSION: (u16, u16) = (1, 0);
+
+pub const SPARK_COMMITMENTS_FORMAT: [u8; 8] = *b"SprkComm";
+pub const SPARK_COMMITMENTS_VERSION: (u16, u16) = (1, 0);

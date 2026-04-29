@@ -3,10 +3,13 @@ use whir::transcript::Interaction;
 use {
     provekit_common::{
         file::{
-            binary_format::{SPARK_PROOF_FORMAT, SPARK_PROOF_VERSION},
+            binary_format::{
+                SPARK_COMMITMENTS_FORMAT, SPARK_COMMITMENTS_VERSION, SPARK_PROOF_FORMAT,
+                SPARK_PROOF_VERSION,
+            },
             Compression, FileFormat, MaybeHashAware,
         },
-        utils::serde_hex,
+        utils::{serde_ark, serde_hex},
         FieldElement, HashConfig, WhirConfig,
     },
     serde::{Deserialize, Serialize},
@@ -88,19 +91,34 @@ pub struct SparkWitnesses {
     pub final_col_ts_witness: WhirWitness,
 }
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SerializableCommitment {
     pub merkle_root:          Hash,
+    #[serde(with = "serde_ark")]
     pub out_of_domain_points: Vec<FieldElement>,
+    #[serde(with = "serde_ark")]
     pub out_of_domain_evals:  Vec<FieldElement>,
 }
 
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SparkCommitments {
     pub vals:         SerializableCommitment,
     pub rs_ws:        SerializableCommitment,
     pub final_row_ts: SerializableCommitment,
     pub final_col_ts: SerializableCommitment,
+}
+
+impl FileFormat for SparkCommitments {
+    const FORMAT: [u8; 8] = SPARK_COMMITMENTS_FORMAT;
+    const EXTENSION: &'static str = "spc";
+    const VERSION: (u16, u16) = SPARK_COMMITMENTS_VERSION;
+    const COMPRESSION: Compression = Compression::Zstd;
+}
+
+impl MaybeHashAware for SparkCommitments {
+    fn maybe_hash_config(&self) -> Option<HashConfig> {
+        None
+    }
 }
 
 /// All data needed for SPARK proving: the R1CS matrix, witnesses, and

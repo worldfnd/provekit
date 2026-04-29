@@ -71,6 +71,7 @@ impl Command for Args {
             info!("Preparing circuit '{name}' from {path:?}");
             let pkp_path = self.output_dir.join(format!("{name}.pkp"));
             let pkv_path = self.output_dir.join(format!("{name}.pkv"));
+            let spc_path = self.output_dir.join(format!("{name}.spc"));
 
             let spark_data = prepare_circuit(
                 Path::new(path),
@@ -79,6 +80,7 @@ impl Command for Args {
                 hash_config,
                 &pkp_path,
                 &pkv_path,
+                &spc_path,
             )?;
 
             circuits.insert(name.to_string(), spark_data);
@@ -130,10 +132,13 @@ fn prepare_circuit(
     hash_config: HashConfig,
     pkp_path: &Path,
     pkv_path: &Path,
+    spc_path: &Path,
 ) -> Result<SparkPreparedData> {
     let scheme = compile_scheme(program_path, compiler, r1cs_path, hash_config)?;
     let spark_r1cs = build_spark_matrix(&scheme, r1cs_path)?;
     let spark_data = commit_spark(spark_r1cs)?;
+    write(&spark_data.commitments, spc_path)
+        .with_context(|| format!("writing SPARK commitments to {spc_path:?}"))?;
     write_artifacts(scheme, pkp_path, pkv_path)?;
     Ok(spark_data)
 }
