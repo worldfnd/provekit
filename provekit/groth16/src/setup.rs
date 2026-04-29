@@ -344,21 +344,6 @@ fn scalar_mul_g2(base: &G2Affine, scalar: &Fr) -> G2Affine {
     (G2Projective::from(*base) * scalar).into_affine()
 }
 
-/// Bit-reverse permutation on a slice (same as FFT bit-reversal).
-fn bit_reverse_permutation<T: Copy>(a: &mut [T]) {
-    let n = a.len();
-    if n <= 1 {
-        return;
-    }
-    let log_n = (n as f64).log2() as u32;
-    for i in 0..n {
-        let j = (i as u32).reverse_bits() >> (32 - log_n);
-        if (j as usize) > i {
-            a.swap(i, j as usize);
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
