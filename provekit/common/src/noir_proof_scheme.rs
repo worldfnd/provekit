@@ -37,9 +37,9 @@ pub enum NoirProof {
         whir_r1cs_proof: WhirR1CSProof,
     },
     Groth16 {
-        public_inputs:  PublicInputs,
+        public_inputs: PublicInputs,
         /// CanonicalSerialize'd `provekit_groth16::Proof`.
-        groth16_proof:  Vec<u8>,
+        groth16_proof: Vec<u8>,
     },
 }
 
@@ -63,7 +63,9 @@ impl NoirProof {
     /// Access the WHIR proof, panics if this is a Groth16 proof.
     pub fn whir_r1cs_proof(&self) -> &WhirR1CSProof {
         match self {
-            NoirProof::Whir { whir_r1cs_proof, .. } => whir_r1cs_proof,
+            NoirProof::Whir {
+                whir_r1cs_proof, ..
+            } => whir_r1cs_proof,
             NoirProof::Groth16 { .. } => panic!("called whir_r1cs_proof() on a Groth16 proof"),
         }
     }

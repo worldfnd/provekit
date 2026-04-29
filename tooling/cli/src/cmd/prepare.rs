@@ -10,7 +10,9 @@ use {
     nargo_toml::{find_root, get_package_manifest, resolve_workspace_from_toml, PackageSelection},
     noir_artifact_cli::fs::artifact::save_program_to_file,
     noirc_driver::{CompilationResult, CompileOptions, CrateName, NOIR_ARTIFACT_VERSION_STRING},
-    provekit_common::{file::write, Groth16CommitmentInfo, Groth16Prover, HashConfig, Prover, Verifier},
+    provekit_common::{
+        file::write, Groth16CommitmentInfo, Groth16Prover, HashConfig, Prover, Verifier,
+    },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     rayon::prelude::*,
     std::{
@@ -162,8 +164,10 @@ impl Command for Args {
                 write(&verifier, &self.pkv_path).context("while writing Provekit Verifier")?;
             }
             Backend::Groth16 => {
-                use ark_serialize::CanonicalSerialize;
-                use provekit_common::noir_proof_scheme::NoirProofScheme;
+                use {
+                    ark_serialize::CanonicalSerialize,
+                    provekit_common::noir_proof_scheme::NoirProofScheme,
+                };
 
                 // Extract R1CS and witness builders from the compiled scheme
                 let NoirProofScheme::Noir(d) = scheme else {
@@ -215,16 +219,16 @@ impl Command for Args {
                         sorted_challenge_indices.sort_unstable();
 
                         let ci = Groth16CommitmentInfo {
-                            public_committed: public_committed.clone(),
+                            public_committed:  public_committed.clone(),
                             private_committed: private_w1_wires.clone(),
                             challenge_indices: sorted_challenge_indices.clone(),
                         };
                         // For setup, use first sorted challenge wire as commitment_index
                         let g16_ci = vec![provekit_groth16::CommitmentInfo {
                             public_and_commitment_committed: public_committed,
-                            private_committed: private_w1_wires.clone(),
-                            commitment_index: sorted_challenge_indices[0],
-                            nb_public_committed: r1cs.num_public_inputs,
+                            private_committed:               private_w1_wires.clone(),
+                            commitment_index:                sorted_challenge_indices[0],
+                            nb_public_committed:             r1cs.num_public_inputs,
                         }];
                         let ncpc = vec![num_challenges];
                         (vec![ci], g16_ci, ncpc)
@@ -268,10 +272,10 @@ impl Command for Args {
                     vk_size = vk_bytes.len(),
                     vk_g1_k_len = vk.g1_k.len(),
                     vk_commitment_keys_len = vk.commitment_keys.len(),
-                    vk_public_and_commitment_committed_len = vk.public_and_commitment_committed.len(),
+                    vk_public_and_commitment_committed_len =
+                        vk.public_and_commitment_committed.len(),
                     "Groth16 setup complete"
                 );
-
 
                 let prover = Prover::Groth16(Groth16Prover {
                     program,

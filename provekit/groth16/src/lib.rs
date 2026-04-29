@@ -29,12 +29,12 @@ pub struct CommitmentInfo {
     /// commitment.
     pub public_and_commitment_committed: Vec<usize>,
     /// Indices of private/internal wires committed to.
-    pub private_committed: Vec<usize>,
+    pub private_committed:               Vec<usize>,
     /// Wire index where the commitment challenge value is stored.
-    pub commitment_index: usize,
+    pub commitment_index:                usize,
     /// Number of entries in `public_and_commitment_committed` that are public
     /// (as opposed to other commitment indices).
-    pub nb_public_committed: usize,
+    pub nb_public_committed:             usize,
 }
 
 impl CommitmentInfo {
@@ -49,7 +49,8 @@ impl CommitmentInfo {
     }
 }
 
-/// Helper to convert arkworks MSM errors (which are just `usize`) into anyhow errors.
+/// Helper to convert arkworks MSM errors (which are just `usize`) into anyhow
+/// errors.
 pub(crate) fn msm_err(e: usize) -> anyhow::Error {
     anyhow::anyhow!("MSM error: bases/scalars length mismatch ({})", e)
 }

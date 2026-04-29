@@ -17,7 +17,7 @@ use {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Groth16CommitmentInfo {
     /// Indices of public wires hashed with the commitment.
-    pub public_committed: Vec<usize>,
+    pub public_committed:  Vec<usize>,
     /// Indices of private/internal wires committed to via Pedersen.
     pub private_committed: Vec<usize>,
     /// Wire indices where the derived challenge values are stored.
@@ -34,7 +34,8 @@ pub struct NoirProver {
     pub whir_for_witness:       WhirR1CSScheme,
 }
 
-/// Groth16 prover: holds R1CS, witness builders, and the serialized proving key.
+/// Groth16 prover: holds R1CS, witness builders, and the serialized proving
+/// key.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Groth16Prover {
     pub program:                Program<NoirElement>,

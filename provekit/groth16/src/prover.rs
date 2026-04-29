@@ -9,32 +9,39 @@
 /// 4. Compute proof elements Ar, Bs, Krs via MSM
 /// 5. (BSB22) Generate and fold proofs of knowledge
 use anyhow::{ensure, Result};
-use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::{FftField, Field, One, PrimeField, UniformRand, Zero};
-use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
-use rayon;
-use rayon::prelude::*;
-use tracing::{info_span, instrument};
-
-use crate::types::{Proof, ProvingKey};
-use crate::{pedersen, CommitmentInfo, BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES};
+use {
+    crate::{
+        pedersen,
+        types::{Proof, ProvingKey},
+        CommitmentInfo, BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES,
+    },
+    ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective},
+    ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM},
+    ark_ff::{FftField, Field, One, PrimeField, UniformRand, Zero},
+    ark_poly::{EvaluationDomain, Radix2EvaluationDomain},
+    rayon::{self, prelude::*},
+    tracing::{info_span, instrument},
+};
 
 /// Prove generates a Groth16+BSB22 proof.
 ///
 /// # Arguments
 /// * `pk` - Proving key from trusted setup.
 /// * `r1cs_nb_public` - Number of public variables in the R1CS.
-/// * `wire_values` - Full witness vector (all wires: constant, public, private).
+/// * `wire_values` - Full witness vector (all wires: constant, public,
+///   private).
 /// * `commitment_info` - BSB22 commitment metadata.
-/// * `committed_values` - For each commitment, the private values that were committed.
-/// * `commitments` - Pedersen commitment points (computed during witness solving).
+/// * `committed_values` - For each commitment, the private values that were
+///   committed.
+/// * `commitments` - Pedersen commitment points (computed during witness
+///   solving).
 ///
 /// The caller is responsible for the BSB22 witness-splitting flow:
-/// solving w1, computing Pedersen commitments, deriving challenges, then solving w2.
-/// This function takes the completed witness and commitments.
+/// solving w1, computing Pedersen commitments, deriving challenges, then
+/// solving w2. This function takes the completed witness and commitments.
 /// `challenge_wire_indices` lists ALL wire indices holding challenge values.
-/// These are excluded from private wires in the Krs computation (they're public).
+/// These are excluded from private wires in the Krs computation (they're
+/// public).
 #[instrument(skip_all)]
 pub fn prove(
     pk: &ProvingKey,
@@ -59,12 +66,10 @@ pub fn prove(
             .collect::<Result<Vec<_>>>()?;
 
         if !poks.is_empty() {
-            let mut commitments_serialized =
-                vec![0u8; FR_BYTES * challenge_wire_indices.len()];
+            let mut commitments_serialized = vec![0u8; FR_BYTES * challenge_wire_indices.len()];
             for (j, &wire_idx) in challenge_wire_indices.iter().enumerate() {
                 let bytes = fr_to_bytes(&wire_values[wire_idx]);
-                commitments_serialized[FR_BYTES * j..FR_BYTES * (j + 1)]
-                    .copy_from_slice(&bytes);
+                commitments_serialized[FR_BYTES * j..FR_BYTES * (j + 1)].copy_from_slice(&bytes);
             }
 
             let challenge = hash_to_fr(&commitments_serialized, BSB22_FOLD_DST)?;
@@ -154,8 +159,8 @@ pub fn prove(
                     },
                     // Bs1 (G1) = Σ wᵢ·[Bᵢ(τ)]₁ + [β]₁ + s·[δ]₁
                     || -> Result<G1Projective> {
-                        let msm = G1Projective::msm(&pk.g1_b, &wire_values_b)
-                            .map_err(crate::msm_err)?;
+                        let msm =
+                            G1Projective::msm(&pk.g1_b, &wire_values_b).map_err(crate::msm_err)?;
                         let mut result = msm;
                         result += G1Projective::from(pk.g1_beta);
                         result += G1Projective::from(s_delta);
@@ -191,10 +196,7 @@ pub fn prove(
         result += G1Projective::from(kr_delta);
 
         // Cross-terms: s·Ar + r·Bs1
-        let (s_ar, r_bs1) = rayon::join(
-            || G1Projective::from(ar) * s_scalar,
-            || bs1 * r_scalar,
-        );
+        let (s_ar, r_bs1) = rayon::join(|| G1Projective::from(ar) * s_scalar, || bs1 * r_scalar);
         result += s_ar;
         result += r_bs1;
 
@@ -259,23 +261,24 @@ pub fn compute_h(
 
     // IFFT → coset FFT for each buffer. The three pipelines are independent
     // (separate buffers, immutable domain refs), so run them in parallel.
-    let coset_domain = domain.get_coset(Fr::GENERATOR)
-        .expect("coset domain");
+    let coset_domain = domain.get_coset(Fr::GENERATOR).expect("coset domain");
     rayon::join(
         || {
             domain.ifft_in_place(a_evals);
             coset_domain.fft_in_place(a_evals);
         },
-        || rayon::join(
-            || {
-                domain.ifft_in_place(b_evals);
-                coset_domain.fft_in_place(b_evals);
-            },
-            || {
-                domain.ifft_in_place(c_evals);
-                coset_domain.fft_in_place(c_evals);
-            },
-        ),
+        || {
+            rayon::join(
+                || {
+                    domain.ifft_in_place(b_evals);
+                    coset_domain.fft_in_place(b_evals);
+                },
+                || {
+                    domain.ifft_in_place(c_evals);
+                    coset_domain.fft_in_place(c_evals);
+                },
+            )
+        },
     );
 
     // Pointwise: a[i] = (a[i] * b[i] - c[i]) / Z(coset), computed in parallel.
@@ -404,11 +407,9 @@ pub fn hash_to_fr_multi(msg: &[u8], dst: &[u8], count: usize) -> Result<Vec<Fr>>
 /// Hash a Pedersen commitment to derive a BSB22 challenge.
 ///
 /// Used during witness solving: Hash(C || public_values) → challenge.
-/// Matches gnark's commitment hashing with `hash_to_field.New("bsb22-commitment")`.
-pub fn derive_commitment_challenge(
-    commitment: &G1Affine,
-    public_values: &[Fr],
-) -> Result<Fr> {
+/// Matches gnark's commitment hashing with
+/// `hash_to_field.New("bsb22-commitment")`.
+pub fn derive_commitment_challenge(commitment: &G1Affine, public_values: &[Fr]) -> Result<Fr> {
     use ark_serialize::CanonicalSerialize;
 
     let mut data = Vec::new();

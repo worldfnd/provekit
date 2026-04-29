@@ -459,9 +459,8 @@ impl Prove for Groth16Prover {
         let pk: provekit_groth16::ProvingKey = {
             let _s = info_span!("deserialize_groth16_pk").entered();
             let pk_bytes = std::mem::take(&mut self.groth16_pk);
-            let result =
-                CanonicalDeserialize::deserialize_uncompressed_unchecked(&pk_bytes[..])
-                    .context("while deserializing Groth16 proving key")?;
+            let result = CanonicalDeserialize::deserialize_uncompressed_unchecked(&pk_bytes[..])
+                .context("while deserializing Groth16 proving key")?;
             drop(pk_bytes);
             result
         };
@@ -472,10 +471,11 @@ impl Prove for Groth16Prover {
         let mut witness: Vec<Option<FieldElement>> =
             vec![None; self.r1cs.num_witnesses_for_solving()];
 
-        // Create a dummy transcript — Groth16 doesn't use Fiat-Shamir during witness solving
+        // Create a dummy transcript — Groth16 doesn't use Fiat-Shamir during witness
+        // solving
         let dummy_instance: Vec<u8> = Vec::new();
-        let ds = whir::transcript::DomainSeparator::protocol(&"groth16-dummy")
-            .instance(&dummy_instance);
+        let ds =
+            whir::transcript::DomainSeparator::protocol(&"groth16-dummy").instance(&dummy_instance);
         let mut dummy_transcript = ProverState::new(&ds, TranscriptSponge::default());
 
         // --- Phase 1: Solve w1 witnesses (pre-commitment) ---
@@ -490,7 +490,8 @@ impl Prove for Groth16Prover {
             .context("While solving Groth16 w1 witnesses")?;
         }
 
-        // --- Phase 2: BSB22 Pedersen commitment (WHIR-style: one commit, N challenges) ---
+        // --- Phase 2: BSB22 Pedersen commitment (WHIR-style: one commit, N challenges)
+        // ---
         let mut pedersen_commitments: Vec<ark_bn254::G1Affine> = Vec::new();
         let mut committed_values: Vec<Vec<FieldElement>> = Vec::new();
         let mut groth16_ci: Vec<provekit_groth16::CommitmentInfo> = Vec::new();
@@ -561,9 +562,9 @@ impl Prove for Groth16Prover {
             // Uses the first challenge index as commitment_index
             groth16_ci.push(provekit_groth16::CommitmentInfo {
                 public_and_commitment_committed: ci.public_committed.clone(),
-                private_committed: ci.private_committed.clone(),
-                commitment_index: ci.challenge_indices[0],
-                nb_public_committed: ci.public_committed.len(),
+                private_committed:               ci.private_committed.clone(),
+                commitment_index:                ci.challenge_indices[0],
+                nb_public_committed:             ci.public_committed.len(),
             });
 
             pedersen_commitments.push(commitment);
@@ -617,12 +618,8 @@ impl Prove for Groth16Prover {
         let domain: ark_poly::Radix2EvaluationDomain<FieldElement> =
             ark_poly::EvaluationDomain::new(num_constraints)
                 .ok_or_else(|| anyhow::anyhow!("failed to create FFT domain"))?;
-        let h = provekit_groth16::prover::compute_h(
-            &mut a_evals,
-            &mut b_evals,
-            &mut c_evals,
-            &domain,
-        );
+        let h =
+            provekit_groth16::prover::compute_h(&mut a_evals, &mut b_evals, &mut c_evals, &domain);
         // Free eval buffers no longer needed after compute_h
         drop(a_evals);
         drop(b_evals);

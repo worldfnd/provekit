@@ -3,24 +3,24 @@
 /// Ported from gnark's `backend/groth16/bn254/setup.go`.
 /// Notation follows DIZK paper Figure 4.
 use anyhow::Result;
-use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::{AffineRepr, CurveGroup};
-use ark_ff::{Field, One, UniformRand, Zero};
-use ark_poly::{EvaluationDomain, Radix2EvaluationDomain};
-use ark_std::rand::Rng;
-use rayon::prelude::*;
-
-use provekit_common::R1CS;
-
-use crate::{pedersen, CommitmentInfo};
+use {
+    crate::{pedersen, CommitmentInfo},
+    ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective},
+    ark_ec::{AffineRepr, CurveGroup},
+    ark_ff::{Field, One, UniformRand, Zero},
+    ark_poly::{EvaluationDomain, Radix2EvaluationDomain},
+    ark_std::rand::Rng,
+    provekit_common::R1CS,
+    rayon::prelude::*,
+};
 
 /// Toxic waste: secret random values used during setup and then destroyed.
 struct ToxicWaste {
-    t: Fr,
-    alpha: Fr,
-    beta: Fr,
-    gamma: Fr,
-    delta: Fr,
+    t:         Fr,
+    alpha:     Fr,
+    beta:      Fr,
+    gamma:     Fr,
+    delta:     Fr,
     gamma_inv: Fr,
     delta_inv: Fr,
 }
@@ -57,8 +57,8 @@ impl ToxicWaste {
 /// Run the Groth16 trusted setup.
 ///
 /// Generates a ProvingKey and VerifyingKey from the given R1CS.
-/// The toxic waste is sampled internally and dropped at the end of this function.
-/// For production use, this should be replaced by an MPC ceremony.
+/// The toxic waste is sampled internally and dropped at the end of this
+/// function. For production use, this should be replaced by an MPC ceremony.
 ///
 /// `challenge_wire_indices` lists ALL wire indices that hold challenge values
 /// (treated as public).
@@ -74,15 +74,16 @@ pub fn setup(
     let nb_wires = r1cs.num_witnesses();
     // nb_public_variables includes constant-1 wire
     let nb_public_variables = 1 + r1cs.num_public_inputs;
-    let private_committed: Vec<Vec<usize>> = commitment_info.iter().map(|c| c.private_committed.clone()).collect();
+    let private_committed: Vec<Vec<usize>> = commitment_info
+        .iter()
+        .map(|c| c.private_committed.clone())
+        .collect();
     let nb_private_committed: usize = private_committed.iter().map(|v| v.len()).sum();
     let total_challenge_wires = challenge_wire_indices.len();
 
     // All challenge wire indices are treated as public on the Groth16 level.
     let nb_public = nb_public_variables + total_challenge_wires;
-    let nb_private = nb_wires - nb_public_variables
-        - nb_private_committed
-        - total_challenge_wires;
+    let nb_private = nb_wires - nb_public_variables - nb_private_committed - total_challenge_wires;
 
     // FFT domain
     let domain = Radix2EvaluationDomain::<Fr>::new(r1cs.num_constraints())
@@ -95,17 +96,22 @@ pub fn setup(
     // Compute K values: K(i) = (β·A(i) + α·B(i) + C(i)) / γ or / δ
     let mut pk_k = Vec::with_capacity(nb_private); // private wires → divided by δ
     let mut vk_k = Vec::with_capacity(nb_public); // public wires → divided by γ
-    let mut ck_k: Vec<Vec<Fr>> = commitment_info.iter().map(|c| Vec::with_capacity(c.private_committed.len())).collect();
+    let mut ck_k: Vec<Vec<Fr>> = commitment_info
+        .iter()
+        .map(|c| Vec::with_capacity(c.private_committed.len()))
+        .collect();
 
     // Track which wires are committed (using a merged iterator approach)
-    let mut committed_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+    let mut committed_map: std::collections::HashMap<usize, usize> =
+        std::collections::HashMap::new();
     for (ci, info) in commitment_info.iter().enumerate() {
         for &wire_id in &info.private_committed {
             committed_map.insert(wire_id, ci);
         }
     }
 
-    let mut commitment_wire_set: std::collections::HashSet<usize> = std::collections::HashSet::new();
+    let mut commitment_wire_set: std::collections::HashSet<usize> =
+        std::collections::HashSet::new();
     for &w in challenge_wire_indices {
         commitment_wire_set.insert(w);
     }
@@ -307,8 +313,9 @@ fn evaluate_abc_at_t(
     let n_inv = Fr::from(domain.size() as u64).inverse().expect("n nonzero");
     let mut lagrange = (t_n - Fr::one()) * t_minus_wi_inv[0] * n_inv;
 
-    // Accumulate: for each constraint row, add coeff * Lⱼ(τ) to the appropriate wire.
-    // Iterates directly over SparseMatrix rows instead of gnark's Term lists.
+    // Accumulate: for each constraint row, add coeff * Lⱼ(τ) to the appropriate
+    // wire. Iterates directly over SparseMatrix rows instead of gnark's Term
+    // lists.
     for j in 0..n {
         for (col, interned) in r1cs.a.iter_row(j) {
             let coeff = r1cs.interner.get(interned).expect("interned value missing");
@@ -346,8 +353,7 @@ fn scalar_mul_g2(base: &G2Affine, scalar: &Fr) -> G2Affine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use provekit_common::FieldElement;
+    use {super::*, provekit_common::FieldElement};
 
     /// Simple test: setup with a trivial R1CS should not panic.
     #[test]

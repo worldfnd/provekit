@@ -20,7 +20,8 @@ pub struct Verifier {
     pub whir_for_witness: Option<WhirR1CSScheme>,
     #[serde(with = "serde_jsonify")]
     pub abi:              Abi,
-    /// CanonicalSerialize'd `provekit_groth16::VerifyingKey` (None for WHIR proofs).
+    /// CanonicalSerialize'd `provekit_groth16::VerifyingKey` (None for WHIR
+    /// proofs).
     #[serde(default)]
     pub groth16_vk:       Option<Vec<u8>>,
 }

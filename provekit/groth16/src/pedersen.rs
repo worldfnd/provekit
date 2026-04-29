@@ -6,16 +6,18 @@
 /// using bases G₁..Gₖ from the trusted setup. The proof of knowledge (PoK)
 /// proves the prover knows the committed values without revealing them.
 use anyhow::{ensure, Result};
-use ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective};
-use ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM};
-use ark_ff::{One, UniformRand, Zero};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use {
+    ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective},
+    ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM},
+    ark_ff::{One, UniformRand, Zero},
+    ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
+};
 
 /// Pedersen proving key: bases for commitment and PoK generation.
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct ProvingKey {
     /// Original bases [G₁, G₂, ..., Gₖ] from trusted setup.
-    pub basis: Vec<G1Affine>,
+    pub basis:           Vec<G1Affine>,
     /// Bases raised to secret sigma: [G₁^σ, G₂^σ, ..., Gₖ^σ].
     pub basis_exp_sigma: Vec<G1Affine>,
 }
@@ -24,15 +26,16 @@ pub struct ProvingKey {
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct VerifyingKey {
     /// Random G2 generator chosen during setup.
-    pub g: G2Affine,
+    pub g:           G2Affine,
     /// G^(-σ) where σ is the secret from setup.
     pub g_sigma_neg: G2Affine,
 }
 
 /// Generate Pedersen commitment keys from bases.
 ///
-/// `bases_per_commitment` is a slice of slices — one set of bases per commitment.
-/// `g2_point` is an optional pre-chosen G2 point (if None, a random one is sampled).
+/// `bases_per_commitment` is a slice of slices — one set of bases per
+/// commitment. `g2_point` is an optional pre-chosen G2 point (if None, a random
+/// one is sampled).
 ///
 /// Ported from gnark-crypto `pedersen.Setup()`.
 pub fn setup(
@@ -154,8 +157,7 @@ pub fn batch_verify_multi_vk(
     folded_pok: G1Affine,
     folding_challenge: Fr,
 ) -> Result<()> {
-    use ark_bn254::Bn254;
-    use ark_ec::pairing::Pairing;
+    use {ark_bn254::Bn254, ark_ec::pairing::Pairing};
 
     ensure!(
         vks.len() == commitments.len(),
@@ -189,14 +191,14 @@ pub fn batch_verify_multi_vk(
     };
     let g_sigma_neg_folded: G2Affine = {
         use ark_ec::VariableBaseMSM;
-        <G2Projective as VariableBaseMSM>::msm(&g_sigma_negs, &fold_scalars).map_err(crate::msm_err)?.into_affine()
+        <G2Projective as VariableBaseMSM>::msm(&g_sigma_negs, &fold_scalars)
+            .map_err(crate::msm_err)?
+            .into_affine()
     };
 
-    // Pairing check: e(folded_commitment, g_sigma_neg_folded) · e(folded_pok, g) == 1
-    let result = Bn254::multi_pairing(
-        [folded_commitment, folded_pok],
-        [g_sigma_neg_folded, g],
-    );
+    // Pairing check: e(folded_commitment, g_sigma_neg_folded) · e(folded_pok, g) ==
+    // 1
+    let result = Bn254::multi_pairing([folded_commitment, folded_pok], [g_sigma_neg_folded, g]);
 
     ensure!(
         result.0.is_one(),
@@ -208,8 +210,7 @@ pub fn batch_verify_multi_vk(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use ark_ff::UniformRand;
+    use {super::*, ark_ff::UniformRand};
 
     #[test]
     fn test_commit_and_verify() {

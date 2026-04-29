@@ -3,11 +3,11 @@
 /// Ported from gnark's `backend/groth16/bn254/setup.go` and `prove.go`.
 /// Notation follows Figure 4 in the DIZK paper.
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, G2Projective};
-use ark_ec::pairing::Pairing;
-use ark_ec::AffineRepr;
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-
-use crate::pedersen;
+use {
+    crate::pedersen,
+    ark_ec::{pairing::Pairing, AffineRepr},
+    ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
+};
 
 /// A Groth16+BSB22 proof.
 ///
@@ -16,13 +16,13 @@ use crate::pedersen;
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof {
     /// [A]₁ = Σ wᵢ·[Aᵢ(τ)]₁ + [α]₁ + r·[δ]₁
-    pub ar: G1Affine,
+    pub ar:             G1Affine,
     /// [B]₂ = Σ wᵢ·[Bᵢ(τ)]₂ + [β]₂ + s·[δ]₂
-    pub bs: G2Affine,
+    pub bs:             G2Affine,
     /// [C]₁ = Σ wᵢ·[Kᵢ(τ)]₁ + Σ hⱼ·[Zⱼ(τ)]₁ + s·[A]₁ + r·[B]₁ - rs·[δ]₁
-    pub krs: G1Affine,
+    pub krs:            G1Affine,
     /// Pedersen commitments (BSB22 extension).
-    pub commitments: Vec<G1Affine>,
+    pub commitments:    Vec<G1Affine>,
     /// Batched proof of knowledge for all commitments.
     pub commitment_pok: G1Affine,
 }
@@ -73,37 +73,37 @@ pub struct ProvingKey {
     /// FFT domain cardinality (number of constraints rounded up to power of 2).
     pub domain_size: u64,
     /// Generator of the FFT domain.
-    pub domain_gen: Fr,
+    pub domain_gen:  Fr,
 
     // -- G1 elements --
     /// [α]₁
     pub g1_alpha: G1Affine,
     /// [β]₁
-    pub g1_beta: G1Affine,
+    pub g1_beta:  G1Affine,
     /// [δ]₁
     pub g1_delta: G1Affine,
     /// [Aᵢ(τ)]₁ for each wire (excluding infinity points).
-    pub g1_a: Vec<G1Affine>,
+    pub g1_a:     Vec<G1Affine>,
     /// [Bᵢ(τ)]₁ for each wire (excluding infinity points).
-    pub g1_b: Vec<G1Affine>,
+    pub g1_b:     Vec<G1Affine>,
     /// [Kᵢ(τ)]₁ for private wires only.
-    pub g1_k: Vec<G1Affine>,
+    pub g1_k:     Vec<G1Affine>,
     /// [τⁱ · Z(τ)/δ]₁ for i in 0..domain_size-1.
-    pub g1_z: Vec<G1Affine>,
+    pub g1_z:     Vec<G1Affine>,
 
     // -- G2 elements --
     /// [β]₂
-    pub g2_beta: G2Affine,
+    pub g2_beta:  G2Affine,
     /// [δ]₂
     pub g2_delta: G2Affine,
     /// [Bᵢ(τ)]₂ for each wire (excluding infinity points).
-    pub g2_b: Vec<G2Affine>,
+    pub g2_b:     Vec<G2Affine>,
 
     // -- Infinity tracking --
     /// infinity_a[i] == true means wire i has A(τ) == 0.
-    pub infinity_a: Vec<bool>,
+    pub infinity_a:    Vec<bool>,
     /// infinity_b[i] == true means wire i has B(τ) == 0.
-    pub infinity_b: Vec<bool>,
+    pub infinity_b:    Vec<bool>,
     /// Count of infinity points in A.
     pub nb_infinity_a: u64,
     /// Count of infinity points in B.
@@ -124,11 +124,11 @@ pub struct VerifyingKey {
     /// [α]₁
     pub g1_alpha: G1Affine,
     /// [Kᵢ(τ)]₁ for public wires (including commitment wires).
-    pub g1_k: Vec<G1Affine>,
+    pub g1_k:     Vec<G1Affine>,
 
     // -- G2 elements --
     /// [β]₂
-    pub g2_beta: G2Affine,
+    pub g2_beta:  G2Affine,
     /// [δ]₂
     pub g2_delta: G2Affine,
     /// [γ]₂
@@ -143,13 +143,13 @@ pub struct VerifyingKey {
     pub e_alpha_beta: <Bn254 as Pairing>::TargetField,
 
     /// Pedersen commitment verifying keys (one per BSB22 commitment).
-    pub commitment_keys: Vec<pedersen::VerifyingKey>,
+    pub commitment_keys:                 Vec<pedersen::VerifyingKey>,
     /// For each commitment, the indices of public/commitment-committed wires.
     pub public_and_commitment_committed: Vec<Vec<usize>>,
     /// Number of challenges derived from each commitment.
     /// Single-challenge: all 1s. Multi-challenge: [N] for one commitment
     /// producing N challenges.
-    pub num_challenges_per_commitment: Vec<usize>,
+    pub num_challenges_per_commitment:   Vec<usize>,
 }
 
 impl CanonicalSerialize for VerifyingKey {
@@ -165,8 +165,10 @@ impl CanonicalSerialize for VerifyingKey {
         self.g2_delta.serialize_with_mode(&mut w, compress)?;
         self.g2_gamma.serialize_with_mode(&mut w, compress)?;
         self.commitment_keys.serialize_with_mode(&mut w, compress)?;
-        self.public_and_commitment_committed.serialize_with_mode(&mut w, compress)?;
-        self.num_challenges_per_commitment.serialize_with_mode(&mut w, compress)?;
+        self.public_and_commitment_committed
+            .serialize_with_mode(&mut w, compress)?;
+        self.num_challenges_per_commitment
+            .serialize_with_mode(&mut w, compress)?;
         Ok(())
     }
 
@@ -177,7 +179,9 @@ impl CanonicalSerialize for VerifyingKey {
             + self.g2_delta.serialized_size(compress)
             + self.g2_gamma.serialized_size(compress)
             + self.commitment_keys.serialized_size(compress)
-            + self.public_and_commitment_committed.serialized_size(compress)
+            + self
+                .public_and_commitment_committed
+                .serialized_size(compress)
             + self.num_challenges_per_commitment.serialized_size(compress)
     }
 }
@@ -244,8 +248,7 @@ impl VerifyingKey {
     /// Must be called after deserialization.
     pub fn precompute(&mut self) -> anyhow::Result<()> {
         use ark_ec::pairing::Pairing;
-        self.e_alpha_beta =
-            Bn254::pairing(self.g1_alpha, self.g2_beta).0;
+        self.e_alpha_beta = Bn254::pairing(self.g1_alpha, self.g2_beta).0;
 
         self.g2_delta_neg = (-G2Projective::from(self.g2_delta)).into();
 
@@ -254,7 +257,8 @@ impl VerifyingKey {
         Ok(())
     }
 
-    /// Number of public witness elements expected (excluding the constant 1 wire).
+    /// Number of public witness elements expected (excluding the constant 1
+    /// wire).
     pub fn nb_public_witness(&self) -> usize {
         self.g1_k.len() - 1
     }

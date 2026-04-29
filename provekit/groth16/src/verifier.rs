@@ -9,13 +9,16 @@
 /// 4. Compute public input contribution via MSM
 /// 5. Check the Groth16 pairing equation
 use anyhow::{ensure, Context, Result};
-use ark_bn254::{Bn254, Fr, G1Projective};
-use ark_ec::pairing::Pairing;
-use ark_ec::{CurveGroup, VariableBaseMSM};
-
-use crate::prover::{derive_commitment_challenge, hash_to_fr, hash_to_fr_multi};
-use crate::types::{Proof, VerifyingKey};
-use crate::{pedersen, BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES};
+use {
+    crate::{
+        pedersen,
+        prover::{derive_commitment_challenge, hash_to_fr, hash_to_fr_multi},
+        types::{Proof, VerifyingKey},
+        BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES,
+    },
+    ark_bn254::{Bn254, Fr, G1Projective},
+    ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM},
+};
 
 /// Verify a Groth16+BSB22 proof.
 ///
@@ -67,9 +70,12 @@ pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result
         let public_vals: Vec<Fr> = committed_indices
             .iter()
             .map(|&idx| {
-                ensure!(idx > 0 && idx - 1 < extended_public.len(),
+                ensure!(
+                    idx > 0 && idx - 1 < extended_public.len(),
                     "commitment public index {} out of bounds (extended_public len = {})",
-                    idx, extended_public.len());
+                    idx,
+                    extended_public.len()
+                );
                 Ok(extended_public[idx - 1])
             })
             .collect::<Result<Vec<_>>>()?;
@@ -119,7 +125,8 @@ pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result
             &proof.commitments,
             proof.commitment_pok,
             folding_challenge,
-        ).context("Pedersen batch verification failed")?;
+        )
+        .context("Pedersen batch verification failed")?;
     }
 
     // Step 4: Compute public input contribution
@@ -128,8 +135,7 @@ pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result
 
         if !extended_public.is_empty() {
             let msm_bases = &vk.g1_k[1..1 + extended_public.len()];
-            let msm = G1Projective::msm(msm_bases, &extended_public)
-                .map_err(crate::msm_err)?;
+            let msm = G1Projective::msm(msm_bases, &extended_public).map_err(crate::msm_err)?;
             sum += msm;
         }
 
@@ -141,10 +147,11 @@ pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result
     };
 
     // Step 5: Pairing check
-    let left = Bn254::multi_pairing(
-        [proof.krs, proof.ar, k_sum],
-        [vk.g2_delta_neg, proof.bs, vk.g2_gamma_neg],
-    );
+    let left = Bn254::multi_pairing([proof.krs, proof.ar, k_sum], [
+        vk.g2_delta_neg,
+        proof.bs,
+        vk.g2_gamma_neg,
+    ]);
 
     ensure!(
         left.0 == vk.e_alpha_beta,
@@ -158,6 +165,6 @@ pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result
 mod tests {
     use super::*;
 
-    // Integration tests would go here, requiring a full setup → prove → verify cycle.
-   
+    // Integration tests would go here, requiring a full setup → prove → verify
+    // cycle.
 }
