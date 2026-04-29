@@ -129,16 +129,16 @@ jobs:
           set -euo pipefail
           case "${DEVICE_PROFILE}" in
             smoke)
-              device_specs="iPhone 7-10"
-              fetch_timeout_secs="1800"
+              device_specs="iPhone 7-15"
+              fetch_timeout_secs="3600"
               ;;
             worst)
-              device_specs="iPhone 7-10"
-              fetch_timeout_secs="1800"
+              device_specs="iPhone 7-15"
+              fetch_timeout_secs="3600"
               ;;
             triad)
-              device_specs="iPhone 7-10,iPhone 15-17,iPhone 16 Pro-18"
-              fetch_timeout_secs="2400"
+              device_specs="iPhone 7-15,iPhone 15-17,iPhone 16 Pro-18"
+              fetch_timeout_secs="3600"
               ;;
             *)
               echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad, worst."
@@ -348,15 +348,15 @@ jobs:
           case "${DEVICE_PROFILE}" in
             smoke)
               device_specs="Vivo Y21-11.0"
-              fetch_timeout_secs="1800"
+              fetch_timeout_secs="3600"
               ;;
             worst)
               device_specs="Vivo Y21-11.0"
-              fetch_timeout_secs="1800"
+              fetch_timeout_secs="3600"
               ;;
             triad)
               device_specs="Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
-              fetch_timeout_secs="2400"
+              fetch_timeout_secs="3600"
               ;;
             *)
               echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad, worst."
