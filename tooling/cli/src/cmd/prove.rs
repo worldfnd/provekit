@@ -1,16 +1,13 @@
 use {
-    super::{
-        spark_protocol::{self, SparkRequest, SparkResponse},
-        Command,
-    },
-    anyhow::{bail, Context, Result},
+    super::Command,
+    anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{
         file::{read, write},
         Prover,
     },
     provekit_prover::Prove,
-    std::{os::unix::net::UnixStream, path::PathBuf},
+    std::path::PathBuf,
     tracing::{info, instrument},
 };
 #[cfg(test)]
@@ -42,13 +39,13 @@ pub struct Args {
     )]
     proof_path: PathBuf,
 
-    /// unix socket path of a running serve instance (enables SPARK proving)
-    #[argh(option)]
-    socket: Option<PathBuf>,
-
-    /// circuit name on the server (required with --socket)
-    #[argh(option)]
-    circuit: Option<String>,
+    /// directory in which to write SPARK queries (default: ./spark_proofs)
+    #[argh(
+        option,
+        long = "spark-queries-dir",
+        default = "PathBuf::from(\"./spark_proofs\")"
+    )]
+    spark_queries_dir: PathBuf,
 }
 
 impl Command for Args {
@@ -77,34 +74,17 @@ impl Command for Args {
                 .context("While verifying Noir proof")?;
         }
 
-        // If a socket is provided, send each SPARK query to the server.
-        if let Some(socket) = &self.socket {
-            let circuit = self
-                .circuit
-                .as_ref()
-                .context("--circuit is required when --socket is provided")?;
-
-            info!("Connecting to SPARK server at {socket:?}");
-            let mut stream =
-                UnixStream::connect(socket).with_context(|| format!("connecting to {socket:?}"))?;
-
-            for spark_query in spark_queries {
-                let request = SparkRequest {
-                    circuit: circuit.clone(),
-                    spark_query,
-                };
-
-                spark_protocol::write_message(&mut stream, &request)?;
-                let response: SparkResponse = spark_protocol::read_message(&mut stream)?;
-
-                if response.ok {
-                    info!("SPARK proof dispatched");
-                } else {
-                    bail!(
-                        "SPARK server error: {}",
-                        response.error.unwrap_or_else(|| "unknown".to_string())
-                    );
-                }
+        if !spark_queries.is_empty() {
+            std::fs::create_dir_all(&self.spark_queries_dir)
+                .with_context(|| format!("creating {:?}", self.spark_queries_dir))?;
+            for (index, query) in spark_queries.iter().enumerate() {
+                let query_path = self
+                    .spark_queries_dir
+                    .join(format!("spark_query_{index}.json"));
+                let query_file = std::fs::File::create(&query_path)
+                    .with_context(|| format!("creating {query_path:?}"))?;
+                serde_json::to_writer_pretty(query_file, query).context("writing spark query")?;
+                info!("Wrote SPARK query to {query_path:?}");
             }
         }
 

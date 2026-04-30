@@ -5,19 +5,21 @@ Reference for this implementation
 - Stronger security analysis of SPARK: https://people.cs.georgetown.edu/jthaler/Lasso-paper.pdf
 
 ## Proposed prototype workflow
-1. Serve step 
-    - One time
-      - Starts the server
-      - Compiles the circuit
-      - Calculates the SPARK matrix data and commits to them
-    - Ongoing
-      - Listens to SPARK query requests and produces SPARK proofs using the pre-calculated commitments
+1. Provekit prepare step
+    - Compiles the circuit and writes the prover/verifier artifacts (`.pkp`, `.pkv`).
+    - With `--spark`, also runs SPARK preprocessing once and writes the SPARK
+      setup transcript (`.spc`).
 
 2. Provekit prove step
-    - Runs provekit prover and obtains a deferred evaluation
-    - Sends a deferred evaluation request to the server
+    - Runs the provekit prover and obtains the Noir proof plus the deferred
+      matrix evaluations (SPARK queries).
+    - Writes each query as `spark_query_<i>.json` to `--spark-queries-dir`.
 
-3. Provekit and SPARK verify step
+3. Provekit prove-spark step
+    - Reads queries from `--spark-dir` and produces a SPARK proof per query
+      (`spark_proof_<i>.sp` written back to the same directory).
+
+4. Provekit and SPARK verify step
     - Verifies Provekit and SPARK proofs
 
 ## Design decisions
@@ -60,22 +62,28 @@ cargo build --release --bin provekit-cli
 cd noir-examples/power
 nargo compile
 
-# 1. Start the server (compiles circuits and pre-commits)
-cargo run --release --bin provekit-cli -- serve --socket /tmp/spark.sock --output-dir ./benchmark-inputs --circuit power:./target/power.json
+# 1. Prepare the circuit (compiles and writes prover/verifier artifacts plus
+#    the SPARK setup transcript).
+cargo run --release --bin provekit-cli -- prepare ./target/power.json \
+  --pkp ./benchmark-inputs/power.pkp \
+  --pkv ./benchmark-inputs/power.pkv \
+  --spark \
+  --spc ./benchmark-inputs/power.spc
 
-# 2. Wait for server readiness
-while [ ! -S /tmp/spark.sock ]; do sleep 1; done
+# 2. Prove (generates Noir proof + writes SPARK queries to disk).
+cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/power.pkp ./Prover.toml \
+  -o ./benchmark-inputs/power-proof.np \
+  --spark-queries-dir ./spark_proofs
 
-# 3. Prove (generates Noir proof + one SPARK proof per SPARK query).
-#    SPARK proofs are written by the server to `./spark_proofs/spark_proof_<i>`,
-#    where `<i>` is a server-side counter incremented for every request.
-cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/power.pkp ./Prover.toml -o ./benchmark-inputs/power-proof.np --socket /tmp/spark.sock --circuit power
+# 3. Generate SPARK proofs for the queries written in step 2.
+cargo run --release --bin provekit-cli -- prove-spark ./benchmark-inputs/power.pkp \
+  --spark-dir ./spark_proofs
 
 # 4. Natively verify the Noir proof. Native verification evaluates MLE directly. Spark proofs are useful only in the recursive verifier.
 cargo run --release --bin provekit-cli -- verify ./benchmark-inputs/power.pkv ./benchmark-inputs/power-proof.np
 
 # 5. Verify a standalone SPARK proof. Needs the per-proof artifacts (.sp, .json)
-#    plus the per-circuit setup transcript (.spc) emitted by `serve` in step 1.
+#    plus the SPARK setup transcript (.spc) emitted by `prepare --spark`.
 cargo run --release --bin provekit-cli -- verify-spark ./spark_proofs/spark_proof_0.sp ./benchmark-inputs/power.spc ./spark_proofs/spark_query_0.json
 
 # TODO: 6. Recursively verify the Noir proof and SPARK.

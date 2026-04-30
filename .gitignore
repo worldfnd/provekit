@@ -15,6 +15,8 @@
 *.pkv
 *.np
 *.sp
+*.spc
+spark_proofs/
 params_for_recursive_verifier
 params
 artifacts/

@@ -4,7 +4,8 @@ use {
     argh::FromArgs,
     mavros_artifacts::R1CS as MavrosR1CS,
     provekit_common::{
-        file::write, utils::next_power_of_two, FieldElement, HashConfig, Prover, Verifier, R1CS,
+        file::write, utils::next_power_of_two, FieldElement, HashConfig, NoirProofScheme, Prover,
+        Verifier, R1CS,
     },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     provekit_spark::types::{COOMatrix, SparkMatrix, TimeStamps},
@@ -12,7 +13,7 @@ use {
         path::{Path, PathBuf},
         str::FromStr,
     },
-    tracing::instrument,
+    tracing::{info, instrument},
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -72,6 +73,18 @@ pub struct Args {
     /// blake3, poseidon2)
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
     hash: String,
+
+    /// also run SPARK preprocessing and write the SPARK setup transcript
+    #[argh(switch, long = "spark")]
+    spark: bool,
+
+    /// output path for the SPARK setup transcript (used with --spark)
+    #[argh(
+        option,
+        long = "spc",
+        default = "PathBuf::from(\"noir_proof_scheme.spc\")"
+    )]
+    spc_path: PathBuf,
 }
 
 impl Command for Args {
@@ -91,12 +104,51 @@ impl Command for Args {
             }
         };
 
+        if self.spark {
+            provekit_common::register_ntt();
+            let matrix = build_spark_matrix_for_scheme(&scheme, self.r1cs_path.as_deref())?;
+            let (setup, _witnesses) = provekit_spark::preprocess_spark(&matrix);
+            write(&setup, &self.spc_path)
+                .with_context(|| format!("writing SPARK setup to {:?}", self.spc_path))?;
+            info!("Wrote SPARK setup to {:?}", self.spc_path);
+        }
+
         let prover = Prover::from_noir_proof_scheme(scheme.clone());
         let verifier = Verifier::from_noir_proof_scheme(scheme);
 
         write(&prover, &self.pkp_path).context("while writing Provekit Prover")?;
         write(&verifier, &self.pkv_path).context("while writing Provekit Verifier")?;
         Ok(())
+    }
+}
+
+pub fn build_spark_matrix_for_scheme(
+    scheme: &NoirProofScheme,
+    r1cs_path: Option<&Path>,
+) -> Result<SparkMatrix> {
+    let whir = match scheme {
+        NoirProofScheme::Noir(s) => s.whir_for_witness.clone(),
+        NoirProofScheme::Mavros(s) => s.whir_for_witness.clone(),
+    };
+    match scheme {
+        NoirProofScheme::Noir(noir) => build_spark_r1cs_noir(
+            &noir.r1cs,
+            whir.m_0,
+            whir.m,
+            whir.w1_size,
+            whir.num_challenges,
+        ),
+        NoirProofScheme::Mavros(_) => {
+            let r1cs_path =
+                r1cs_path.context("--r1cs is required for SPARK with the mavros compiler")?;
+            build_spark_r1cs_mavros(
+                r1cs_path,
+                whir.m_0,
+                whir.m,
+                whir.w1_size,
+                whir.num_challenges,
+            )
+        }
     }
 }
 
