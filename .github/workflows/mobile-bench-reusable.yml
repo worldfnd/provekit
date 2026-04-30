@@ -367,15 +367,15 @@ jobs:
           case "${DEVICE_PROFILE}" in
             smoke)
               device_specs="Vivo Y21-11.0"
-              fetch_timeout_secs="7200"
+              fetch_timeout_secs="1800"
               ;;
             worst)
               device_specs="Vivo Y21-11.0"
-              fetch_timeout_secs="7200"
+              fetch_timeout_secs="1800"
               ;;
             triad)
               device_specs="Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
-              fetch_timeout_secs="7200"
+              fetch_timeout_secs="1800"
               ;;
             *)
               echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad, worst."
@@ -489,7 +489,7 @@ jobs:
           echo "Running Android benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
           echo "Android devices: ${ANDROID_DEVICE_SPECS}"
           echo "Android fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
-          max_attempts=2
+          max_attempts=1
           retry_sleep_secs=60
           log_dir="target/mobench/retry-logs/android"
           mkdir -p "$log_dir"

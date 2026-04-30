@@ -22,7 +22,7 @@ on:
         description: "Optional Android-specific benchmark functions"
         required: false
         type: string
-        default: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_oprf_prove","bench_mobile::bench_p256_bigcurve_prove"]'
+        default: '["bench_mobile::bench_oprf_prove","bench_mobile::bench_p256_bigcurve_prove","bench_mobile::bench_passport_complete_age_check_prove"]'
       platform:
         description: "android | ios | both"
         required: false
