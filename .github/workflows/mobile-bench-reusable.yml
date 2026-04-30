@@ -341,8 +341,9 @@ jobs:
             while true; do
               attempt_log="${log_dir}/${function_slug}-attempt-${attempt}.log"
               fetch_output_dir="target/browserstack/ios/${function_slug}"
+              result_output_dir="target/mobench/ci/ios/${function_slug}"
               rm -rf "${fetch_output_dir}"
-              mkdir -p "${fetch_output_dir}"
+              mkdir -p "${fetch_output_dir}" "${result_output_dir}"
               make_device_args "${effective_device_specs}"
 
               echo "mobench ios ${benchmark_function} attempt ${attempt}/${max_attempts} on ${effective_device_specs}"
@@ -358,7 +359,7 @@ jobs:
                 --fetch \
                 --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
                 --fetch-output-dir "${fetch_output_dir}" \
-                --output-dir target/mobench/ci/ios \
+                --output-dir "${result_output_dir}" \
                 2>&1 | tee "$attempt_log"
               status=${PIPESTATUS[0]}
               set -e
@@ -624,8 +625,9 @@ jobs:
             while true; do
               attempt_log="${log_dir}/${function_slug}-attempt-${attempt}.log"
               fetch_output_dir="target/browserstack/android/${function_slug}"
+              result_output_dir="target/mobench/ci/android/${function_slug}"
               rm -rf "${fetch_output_dir}"
-              mkdir -p "${fetch_output_dir}"
+              mkdir -p "${fetch_output_dir}" "${result_output_dir}"
               make_device_args
 
               echo "mobench android ${benchmark_function} attempt ${attempt}/${max_attempts}"
@@ -641,7 +643,7 @@ jobs:
                 --fetch \
                 --fetch-timeout-secs "${function_fetch_timeout_secs}" \
                 --fetch-output-dir "${fetch_output_dir}" \
-                --output-dir target/mobench/ci/android \
+                --output-dir "${result_output_dir}" \
                 2>&1 | tee "$attempt_log"
               status=${PIPESTATUS[0]}
               set -e
