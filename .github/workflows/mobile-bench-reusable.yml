@@ -472,6 +472,7 @@ jobs:
 
       - name: Run Android benchmarks
         id: run_android_benchmarks
+        timeout-minutes: 40
         working-directory: caller
         shell: bash
         env:
