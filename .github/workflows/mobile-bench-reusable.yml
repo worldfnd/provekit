@@ -617,7 +617,7 @@ jobs:
             if [[ "${benchmark_function}" == "bench_mobile::bench_passport_complete_age_check_prove" ]]; then
               function_iterations="1"
               function_warmup="0"
-              function_fetch_timeout_secs="5400"
+              function_fetch_timeout_secs="1800"
             fi
 
             function_slug="$(tr -c '[:alnum:]' '_' <<<"${benchmark_function}" | sed 's/_*$//')"
@@ -649,6 +649,26 @@ jobs:
               set -e
 
               if [ "$status" -eq 0 ]; then
+                break
+              fi
+
+              if [[ "${benchmark_function}" == "bench_mobile::bench_passport_complete_age_check_prove" ]] && grep -Fq "Timeout waiting for build" "$attempt_log"; then
+                echo "::warning::Android passport did not complete on ${ANDROID_DEVICE_SPECS} within ${function_fetch_timeout_secs}s; preserving partial fixture results"
+                {
+                  echo "### Android passport incomplete"
+                  echo ""
+                  echo "- Function: \`${benchmark_function}\`"
+                  echo "- Device: \`${ANDROID_DEVICE_SPECS}\`"
+                  echo "- Iterations/Warmup: \`${function_iterations} / ${function_warmup}\`"
+                  echo "- Reason: BrowserStack build did not complete within ${function_fetch_timeout_secs}s."
+                } > "${result_output_dir}/failure.md"
+                jq -n \
+                  --arg platform "android" \
+                  --arg function "${benchmark_function}" \
+                  --arg devices "${ANDROID_DEVICE_SPECS}" \
+                  --arg reason "BrowserStack build did not complete within ${function_fetch_timeout_secs}s." \
+                  '{platform: $platform, function: $function, devices: $devices, reason: $reason}' \
+                  > "${result_output_dir}/failure.json"
                 break
               fi
 
@@ -778,6 +798,13 @@ jobs:
               --results-dir "${results_dir}" \
               --output-format markdown \
               --output-file "rendered/${platform}/summary.md"
+
+            while IFS= read -r failure_md; do
+              {
+                echo ""
+                cat "${failure_md}"
+              } >> "rendered/${platform}/summary.md"
+            done < <(find "${results_dir}" -type f -name failure.md | sort)
           }
 
           for platform in ios android; do
