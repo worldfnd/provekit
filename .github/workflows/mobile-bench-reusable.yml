@@ -222,6 +222,8 @@ jobs:
             exit 1
           fi
           perl -0pi -e "s/deploymentTarget: \"15\\.0\"/deploymentTarget: \"${IOS_DEPLOYMENT_TARGET}\"/g" "$project_yml"
+          cp .github/mobench/ios10/BenchRunnerApp.swift target/mobench/ios/BenchRunner/BenchRunner/BenchRunnerApp.swift
+          cp .github/mobench/ios10/ContentView.swift target/mobench/ios/BenchRunner/BenchRunner/ContentView.swift
           (cd target/mobench/ios/BenchRunner && xcodegen generate)
           grep -n 'deploymentTarget' "$project_yml"
 
