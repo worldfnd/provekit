@@ -130,15 +130,15 @@ jobs:
           set -euo pipefail
           case "${DEVICE_PROFILE}" in
             smoke)
-              device_specs="iPhone 7-10"
+              device_specs="iPhone 7-15"
               fetch_timeout_secs="3600"
               ;;
             worst)
-              device_specs="iPhone 7-10"
+              device_specs="iPhone 7-15"
               fetch_timeout_secs="3600"
               ;;
             triad)
-              device_specs="iPhone 7-10,iPhone 15-17,iPhone 16 Pro-18"
+              device_specs="iPhone 7-15,iPhone 15-17,iPhone 16 Pro-18"
               fetch_timeout_secs="3600"
               ;;
             *)
