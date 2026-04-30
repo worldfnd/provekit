@@ -235,6 +235,7 @@ jobs:
 
       - name: Run iOS benchmarks
         id: run_ios_benchmarks
+        timeout-minutes: 45
         working-directory: caller
         shell: bash
         env:
