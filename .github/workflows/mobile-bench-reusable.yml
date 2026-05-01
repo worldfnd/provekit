@@ -567,7 +567,7 @@ jobs:
           echo "Running Android benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
           echo "Android devices: ${ANDROID_DEVICE_SPECS}"
           echo "Android fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
-          max_attempts=1
+          max_attempts=2
           retry_sleep_secs=60
           log_dir="target/mobench/retry-logs/android"
           mkdir -p "$log_dir"
@@ -577,7 +577,7 @@ jobs:
             local attempt_log="$1"
             local json_path
 
-            if grep -Eiq 'BrowserStack API .*status 5[0-9]{2}|This website is under heavy load|fetch did not recover any benchmark payloads|Timeout waiting for build .* to complete' "$attempt_log"; then
+            if grep -Eiq 'BrowserStack API .*status 5[0-9]{2}|This website is under heavy load|fetch did not recover any benchmark payloads|No benchmark results found|Timeout waiting for build .* to complete' "$attempt_log"; then
               return 0
             fi
 
@@ -614,10 +614,12 @@ jobs:
             function_iterations="${ITERATIONS}"
             function_warmup="${WARMUP}"
             function_fetch_timeout_secs="${MOBENCH_FETCH_TIMEOUT_SECS}"
+            function_max_attempts="${max_attempts}"
             if [[ "${benchmark_function}" == "bench_mobile::bench_passport_complete_age_check_prove" ]]; then
               function_iterations="1"
               function_warmup="0"
               function_fetch_timeout_secs="1800"
+              function_max_attempts="1"
             fi
 
             function_slug="$(tr -c '[:alnum:]' '_' <<<"${benchmark_function}" | sed 's/_*$//')"
@@ -630,7 +632,7 @@ jobs:
               mkdir -p "${fetch_output_dir}" "${result_output_dir}"
               make_device_args
 
-              echo "mobench android ${benchmark_function} attempt ${attempt}/${max_attempts}"
+              echo "mobench android ${benchmark_function} attempt ${attempt}/${function_max_attempts}"
               set +e
               cargo-mobench ci run \
                 --target android \
@@ -652,27 +654,27 @@ jobs:
                 break
               fi
 
-              if [[ "${benchmark_function}" == "bench_mobile::bench_passport_complete_age_check_prove" ]] && grep -Fq "Timeout waiting for build" "$attempt_log"; then
-                echo "::warning::Android passport did not complete on ${ANDROID_DEVICE_SPECS} within ${function_fetch_timeout_secs}s; preserving partial fixture results"
+              if [ "$attempt" -ge "$function_max_attempts" ] && grep -Eiq 'No benchmark results found|Timeout waiting for build' "$attempt_log"; then
+                echo "::warning::Android ${benchmark_function} did not return benchmark results on ${ANDROID_DEVICE_SPECS}; preserving partial fixture results"
                 {
-                  echo "### Android passport incomplete"
+                  echo "### Android fixture incomplete"
                   echo ""
                   echo "- Function: \`${benchmark_function}\`"
                   echo "- Device: \`${ANDROID_DEVICE_SPECS}\`"
                   echo "- Iterations/Warmup: \`${function_iterations} / ${function_warmup}\`"
-                  echo "- Reason: BrowserStack build did not complete within ${function_fetch_timeout_secs}s."
+                  echo "- Reason: BrowserStack did not return benchmark results after ${function_max_attempts} attempt(s)."
                 } > "${result_output_dir}/failure.md"
                 jq -n \
                   --arg platform "android" \
                   --arg function "${benchmark_function}" \
                   --arg devices "${ANDROID_DEVICE_SPECS}" \
-                  --arg reason "BrowserStack build did not complete within ${function_fetch_timeout_secs}s." \
+                  --arg reason "BrowserStack did not return benchmark results after ${function_max_attempts} attempt(s)." \
                   '{platform: $platform, function: $function, devices: $devices, reason: $reason}' \
                   > "${result_output_dir}/failure.json"
                 break
               fi
 
-              if [ "$attempt" -ge "$max_attempts" ] || ! is_transient_fetch_failure "$attempt_log"; then
+              if [ "$attempt" -ge "$function_max_attempts" ] || ! is_transient_fetch_failure "$attempt_log"; then
                 exit "$status"
               fi
 
