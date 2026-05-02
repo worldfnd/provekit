@@ -11,6 +11,9 @@ abis = ["arm64-v8a"]
 [ios]
 bundle_id = "dev.world.benchmobile"
 deployment_target = "10.0"
+runner = "uikit-legacy"
 
 [browserstack]
-ios_completion_timeout_secs = 1200
+ios_completion_timeout_secs = 7200
+android_benchmark_timeout_secs = 7200
+android_heartbeat_interval_secs = 10

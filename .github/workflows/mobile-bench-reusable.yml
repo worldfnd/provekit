@@ -60,7 +60,7 @@ on:
         description: "Mobench version to install"
         required: false
         type: string
-        default: "0.1.37"
+        default: "0.1.40"
       mobench_ref:
         description: "Optional Git ref for mobile-bench-rs to override the released mobench install"
         required: false
@@ -115,6 +115,7 @@ jobs:
       CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS: "-C link-arg=-miphoneos-version-min=10.0"
       CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS: "-C link-arg=-mios-simulator-version-min=10.0"
       CARGO_TARGET_X86_64_APPLE_IOS_RUSTFLAGS: "-C link-arg=-mios-simulator-version-min=10.0"
+      MOBENCH_ALLOW_UNSUPPORTED_IOS_DEPLOYMENT_TARGET: "1"
     steps:
       - name: Checkout caller repo
         uses: actions/checkout@v4
@@ -132,17 +133,17 @@ jobs:
             smoke)
               device_specs="iPhone 7-10"
               fallback_device_specs="iPhone 15-17"
-              fetch_timeout_secs="3600"
+              fetch_timeout_secs="7200"
               ;;
             worst)
               device_specs="iPhone 7-10"
               fallback_device_specs="iPhone 15-17"
-              fetch_timeout_secs="3600"
+              fetch_timeout_secs="7200"
               ;;
             triad)
               device_specs="iPhone 7-10,iPhone 15-17,iPhone 16 Pro-18"
               fallback_device_specs="iPhone 15-17"
-              fetch_timeout_secs="3600"
+              fetch_timeout_secs="7200"
               ;;
             *)
               echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad, worst."
@@ -214,24 +215,9 @@ jobs:
           cargo-mobench build \
             --target ios \
             $RELEASE_FLAG \
-            --crate-path "$CRATE_PATH"
-
-          project_yml="target/mobench/ios/BenchRunner/project.yml"
-          if [[ ! -f "$project_yml" ]]; then
-            echo "::error::Expected generated XcodeGen project at ${project_yml}"
-            exit 1
-          fi
-
-          if ! grep -q 'deploymentTarget: "15.0"' "$project_yml"; then
-            echo "::error::No deploymentTarget entries were rewritten in ${project_yml}"
-            exit 1
-          fi
-          perl -0pi -e "s/deploymentTarget: \"15\\.0\"/deploymentTarget: \"${IOS_DEPLOYMENT_TARGET}\"/g" "$project_yml"
-          cp .github/mobench/ios10/BenchRunnerApp.swift target/mobench/ios/BenchRunner/BenchRunner/BenchRunnerApp.swift
-          cp .github/mobench/ios10/ContentView.swift target/mobench/ios/BenchRunner/BenchRunner/ContentView.swift
-          perl -0pi -e 's/options: \[\.sortedKeys\]/options: []/g' target/mobench/ios/BenchRunner/BenchRunner/BenchRunnerFFI.swift
-          (cd target/mobench/ios/BenchRunner && xcodegen generate)
-          grep -n 'deploymentTarget' "$project_yml"
+            --crate-path "$CRATE_PATH" \
+            --ios-deployment-target "${IOS_DEPLOYMENT_TARGET}" \
+            --ios-runner uikit-legacy
 
           cargo-mobench package-ipa --method adhoc --crate-path "$CRATE_PATH"
           cargo-mobench package-xcuitest --crate-path "$CRATE_PATH"
@@ -240,7 +226,7 @@ jobs:
 
       - name: Run iOS benchmarks
         id: run_ios_benchmarks
-        timeout-minutes: 90
+        timeout-minutes: 180
         working-directory: caller
         shell: bash
         env:
@@ -348,15 +334,17 @@ jobs:
 
               echo "mobench ios ${benchmark_function} attempt ${attempt}/${max_attempts} on ${effective_device_specs}"
               set +e
-              cargo-mobench ci run \
-                --target ios \
-                --function "${benchmark_function}" \
+                cargo-mobench ci run \
+                  --target ios \
+                  --function "${benchmark_function}" \
                 --iterations "${function_iterations}" \
                 --warmup "${function_warmup}" \
                 "${device_args[@]}" \
-                --crate-path "$CRATE_PATH" \
-                $RELEASE_FLAG \
-                --fetch \
+                  --crate-path "$CRATE_PATH" \
+                  $RELEASE_FLAG \
+                  --ios-deployment-target "${IOS_DEPLOYMENT_TARGET}" \
+                  --ios-runner uikit-legacy \
+                  --fetch \
                 --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
                 --fetch-output-dir "${fetch_output_dir}" \
                 --output-dir "${result_output_dir}" \
@@ -425,15 +413,15 @@ jobs:
           case "${DEVICE_PROFILE}" in
             smoke)
               device_specs="Vivo Y21-11.0"
-              fetch_timeout_secs="1800"
+              fetch_timeout_secs="7200"
               ;;
             worst)
               device_specs="Vivo Y21-11.0"
-              fetch_timeout_secs="1800"
+              fetch_timeout_secs="7200"
               ;;
             triad)
               device_specs="Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
-              fetch_timeout_secs="1800"
+              fetch_timeout_secs="7200"
               ;;
             *)
               echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad, worst."
@@ -530,7 +518,7 @@ jobs:
 
       - name: Run Android benchmarks
         id: run_android_benchmarks
-        timeout-minutes: 120
+        timeout-minutes: 180
         working-directory: caller
         shell: bash
         env:
@@ -618,7 +606,6 @@ jobs:
             if [[ "${benchmark_function}" == "bench_mobile::bench_passport_complete_age_check_prove" ]]; then
               function_iterations="1"
               function_warmup="0"
-              function_fetch_timeout_secs="1800"
               function_max_attempts="1"
             fi
 
@@ -642,6 +629,8 @@ jobs:
                 "${device_args[@]}" \
                 --crate-path "$CRATE_PATH" \
                 $RELEASE_FLAG \
+                --android-benchmark-timeout-secs 7200 \
+                --android-heartbeat-interval-secs 10 \
                 --fetch \
                 --fetch-timeout-secs "${function_fetch_timeout_secs}" \
                 --fetch-output-dir "${fetch_output_dir}" \
