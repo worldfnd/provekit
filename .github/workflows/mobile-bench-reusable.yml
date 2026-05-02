@@ -60,7 +60,7 @@ on:
         description: "Mobench version to install"
         required: false
         type: string
-        default: "0.1.37"
+        default: "0.1.40"
       mobench_ref:
         description: "Optional Git ref for mobile-bench-rs to override the released mobench install"
         required: false
@@ -114,6 +114,7 @@ jobs:
       CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS: "-C link-arg=-miphoneos-version-min=10.0"
       CARGO_TARGET_AARCH64_APPLE_IOS_SIM_RUSTFLAGS: "-C link-arg=-mios-simulator-version-min=10.0"
       CARGO_TARGET_X86_64_APPLE_IOS_RUSTFLAGS: "-C link-arg=-mios-simulator-version-min=10.0"
+      MOBENCH_ALLOW_UNSUPPORTED_IOS_DEPLOYMENT_TARGET: "1"
     steps:
       - name: Checkout caller repo
         uses: actions/checkout@v4
@@ -130,15 +131,15 @@ jobs:
           case "${DEVICE_PROFILE}" in
             smoke)
               device_specs="iPhone 7-10"
-              fetch_timeout_secs="1800"
+              fetch_timeout_secs="7200"
               ;;
             worst)
               device_specs="iPhone 7-10"
-              fetch_timeout_secs="1800"
+              fetch_timeout_secs="7200"
               ;;
             triad)
               device_specs="iPhone 7-10,iPhone 15-17,iPhone 16 Pro-18"
-              fetch_timeout_secs="2400"
+              fetch_timeout_secs="7200"
               ;;
             *)
               echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad, worst."
@@ -208,13 +209,9 @@ jobs:
           cargo-mobench build \
             --target ios \
             $RELEASE_FLAG \
-            --crate-path "$CRATE_PATH"
-          find target/mobench/ios/BenchRunner -type f \( -name project.yml -o -name project.pbxproj \) -print0 \
-            | xargs -0 perl -0pi -e 's/deploymentTarget: "15\.0"/deploymentTarget: "10.0"/g; s/IPHONEOS_DEPLOYMENT_TARGET = 15\.0;/IPHONEOS_DEPLOYMENT_TARGET = 10.0;/g'
-          rg -n 'deploymentTarget: "15\.0"|IPHONEOS_DEPLOYMENT_TARGET = 15\.0' target/mobench/ios/BenchRunner && {
-            echo "::error::Generated iOS project still requires iOS 15.0"
-            exit 1
-          } || true
+            --crate-path "$CRATE_PATH" \
+            --ios-deployment-target "${IPHONEOS_DEPLOYMENT_TARGET}" \
+            --ios-runner uikit-legacy
           cargo-mobench package-ipa --method adhoc --crate-path "$CRATE_PATH"
           cargo-mobench package-xcuitest --crate-path "$CRATE_PATH"
           test -f target/mobench/ios/BenchRunner.ipa
@@ -222,6 +219,7 @@ jobs:
 
       - name: Run iOS benchmarks
         id: run_ios_benchmarks
+        timeout-minutes: 180
         working-directory: caller
         shell: bash
         env:
@@ -293,6 +291,8 @@ jobs:
               "${device_args[@]}" \
               --crate-path "$CRATE_PATH" \
               $RELEASE_FLAG \
+              --ios-deployment-target "${IPHONEOS_DEPLOYMENT_TARGET}" \
+              --ios-runner uikit-legacy \
               --fetch \
               --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
               --fetch-output-dir target/browserstack/ios \
@@ -354,15 +354,15 @@ jobs:
           case "${DEVICE_PROFILE}" in
             smoke)
               device_specs="Vivo Y21-11.0"
-              fetch_timeout_secs="1800"
+              fetch_timeout_secs="7200"
               ;;
             worst)
               device_specs="Vivo Y21-11.0"
-              fetch_timeout_secs="1800"
+              fetch_timeout_secs="7200"
               ;;
             triad)
               device_specs="Vivo Y21-11.0,Google Pixel 7-13.0,Samsung Galaxy S24-14.0"
-              fetch_timeout_secs="2400"
+              fetch_timeout_secs="7200"
               ;;
             *)
               echo "::error::Unsupported device_profile '${DEVICE_PROFILE}'. Supported values: smoke, triad, worst."
@@ -459,6 +459,7 @@ jobs:
 
       - name: Run Android benchmarks
         id: run_android_benchmarks
+        timeout-minutes: 180
         working-directory: caller
         shell: bash
         env:
@@ -530,6 +531,8 @@ jobs:
               "${device_args[@]}" \
               --crate-path "$CRATE_PATH" \
               $RELEASE_FLAG \
+              --android-benchmark-timeout-secs 7200 \
+              --android-heartbeat-interval-secs 10 \
               --fetch \
               --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
               --fetch-output-dir target/browserstack/android \
