@@ -65,7 +65,7 @@ on:
         description: "Optional Git ref for mobile-bench-rs to override the released mobench install"
         required: false
         type: string
-        default: ""
+        default: "provekit-mobench-v0.1.40-ios-readiness"
       pr_number:
         description: "PR number for reporting"
         required: false

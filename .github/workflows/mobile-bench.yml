@@ -60,7 +60,7 @@ on:
         description: "Optional mobile-bench-rs Git ref to install instead of a released version"
         required: false
         type: string
-        default: ""
+        default: "provekit-mobench-v0.1.40-ios-readiness"
       pr_number:
         description: "PR number for reporting"
         required: false
