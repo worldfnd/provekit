@@ -10,7 +10,7 @@ abis = ["arm64-v8a"]
 
 [ios]
 bundle_id = "dev.world.benchmobile"
-deployment_target = "12.0"
+deployment_target = "10.0"
 runner = "uikit-legacy"
 
 [browserstack]
