@@ -107,6 +107,7 @@ jobs:
     env:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+      IOS_DEPLOYMENT_TARGET: "10.0"
       IPHONEOS_DEPLOYMENT_TARGET: "10.0"
       CFLAGS_aarch64_apple_ios: "-miphoneos-version-min=10.0"
       CFLAGS_aarch64_apple_ios_sim: "-mios-simulator-version-min=10.0"
@@ -131,14 +132,17 @@ jobs:
           case "${DEVICE_PROFILE}" in
             smoke)
               device_specs="iPhone 7-10"
+              fallback_device_specs="iPhone 15-17"
               fetch_timeout_secs="7200"
               ;;
             worst)
               device_specs="iPhone 7-10"
+              fallback_device_specs="iPhone 15-17"
               fetch_timeout_secs="7200"
               ;;
             triad)
               device_specs="iPhone 7-10,iPhone 15-17,iPhone 16 Pro-18"
+              fallback_device_specs="iPhone 15-17"
               fetch_timeout_secs="7200"
               ;;
             *)
@@ -150,10 +154,12 @@ jobs:
           {
             echo "MOBENCH_DEVICE_PROFILE=${DEVICE_PROFILE}"
             echo "IOS_DEVICE_SPECS=${device_specs}"
+            echo "IOS_FALLBACK_DEVICE_SPECS=${fallback_device_specs}"
             echo "MOBENCH_FETCH_TIMEOUT_SECS=${fetch_timeout_secs}"
           } >> "$GITHUB_ENV"
 
           echo "Resolved iOS device profile '${DEVICE_PROFILE}' to ${device_specs}"
+          echo "Resolved iOS fallback devices to ${fallback_device_specs}"
           echo "Resolved iOS fetch timeout to ${fetch_timeout_secs}s"
 
       - name: Setup Rust
@@ -210,7 +216,7 @@ jobs:
             --target ios \
             $RELEASE_FLAG \
             --crate-path "$CRATE_PATH" \
-            --ios-deployment-target "${IPHONEOS_DEPLOYMENT_TARGET}" \
+            --ios-deployment-target "${IOS_DEPLOYMENT_TARGET}" \
             --ios-runner uikit-legacy
           cargo-mobench package-ipa --method adhoc --crate-path "$CRATE_PATH"
           cargo-mobench package-xcuitest --crate-path "$CRATE_PATH"
@@ -230,23 +236,43 @@ jobs:
           CRATE_PATH: ${{ inputs.crate_path }}
         run: |
           set -euo pipefail
-          functions_arg="${FUNCTIONS}"
+          benchmark_functions=()
           if [[ "${FUNCTIONS}" == \[* ]]; then
-            functions_arg=$(jq -r 'join(",")' <<<"${FUNCTIONS}")
+            while IFS= read -r function_name; do
+              if [[ -n "${function_name}" ]]; then
+                benchmark_functions+=("${function_name}")
+              fi
+            done < <(jq -r '.[]' <<<"${FUNCTIONS}")
+          else
+            IFS=',' read -r -a raw_functions <<<"${FUNCTIONS}"
+            for function_name in "${raw_functions[@]}"; do
+              function_name="$(echo "$function_name" | xargs)"
+              if [[ -n "${function_name}" ]]; then
+                benchmark_functions+=("${function_name}")
+              fi
+            done
           fi
+
+          if [ "${#benchmark_functions[@]}" -eq 0 ]; then
+            echo "::error::No iOS benchmark functions resolved from '${FUNCTIONS}'"
+            exit 1
+          fi
+
           echo "Running iOS benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
           echo "iOS devices: ${IOS_DEVICE_SPECS}"
+          echo "iOS fallback devices: ${IOS_FALLBACK_DEVICE_SPECS}"
           echo "iOS fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
           max_attempts=2
           retry_sleep_secs=60
           log_dir="target/mobench/retry-logs/ios"
           mkdir -p "$log_dir"
+          rm -rf target/mobench/ci/ios target/browserstack/ios
 
           is_transient_fetch_failure() {
             local attempt_log="$1"
             local json_path
 
-            if grep -Eiq 'BrowserStack API .*status 5[0-9]{2}|This website is under heavy load|fetch did not recover any benchmark payloads' "$attempt_log"; then
+            if grep -Eiq 'BrowserStack API .*status 5[0-9]{2}|This website is under heavy load|fetch did not recover any benchmark payloads|Timeout waiting for build .* to complete' "$attempt_log"; then
               return 0
             fi
 
@@ -267,57 +293,88 @@ jobs:
             return 1
           }
 
-          attempt=1
-          while true; do
-            attempt_log="${log_dir}/attempt-${attempt}.log"
-            rm -rf target/mobench/ci/ios target/browserstack/ios
+          is_ios_min_os_schedule_failure() {
+            local attempt_log="$1"
+            grep -Fq "os version lower than the minimum required os version required for app, test_suite" "$attempt_log"
+          }
 
+          make_device_args() {
+            local specs="$1"
             device_args=()
-            IFS=',' read -r -a device_specs <<<"${IOS_DEVICE_SPECS}"
+
+            IFS=',' read -r -a device_specs <<<"${specs}"
             for device in "${device_specs[@]}"; do
               device="$(echo "$device" | xargs)"
               if [[ -n "$device" ]]; then
                 device_args+=(--devices "$device")
               fi
             done
+          }
 
-            echo "mobench ios attempt ${attempt}/${max_attempts}"
-            set +e
-            cargo-mobench ci run \
-              --target ios \
-              --functions "${functions_arg}" \
-              --iterations "${ITERATIONS}" \
-              --warmup "${WARMUP}" \
-              "${device_args[@]}" \
-              --crate-path "$CRATE_PATH" \
-              $RELEASE_FLAG \
-              --ios-deployment-target "${IPHONEOS_DEPLOYMENT_TARGET}" \
-              --ios-runner uikit-legacy \
-              --fetch \
-              --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
-              --fetch-output-dir target/browserstack/ios \
-              --output-dir target/mobench/ci/ios \
-              2>&1 | tee "$attempt_log"
-            status=${PIPESTATUS[0]}
-            set -e
-
-            if [ "$status" -eq 0 ]; then
-              break
+          effective_device_specs="${IOS_DEVICE_SPECS}"
+          for benchmark_function in "${benchmark_functions[@]}"; do
+            function_iterations="${ITERATIONS}"
+            function_warmup="${WARMUP}"
+            if [[ "${benchmark_function}" == "bench_mobile::bench_passport_complete_age_check_prove" ]]; then
+              function_iterations="1"
+              function_warmup="0"
             fi
 
-            if [ "$attempt" -ge "$max_attempts" ] || ! is_transient_fetch_failure "$attempt_log"; then
-              exit "$status"
-            fi
+            function_slug="$(tr -c '[:alnum:]' '_' <<<"${benchmark_function}" | sed 's/_*$//')"
+            attempt=1
+            while true; do
+              attempt_log="${log_dir}/${function_slug}-attempt-${attempt}.log"
+              fetch_output_dir="target/browserstack/ios/${function_slug}"
+              result_output_dir="target/mobench/ci/ios/${function_slug}"
+              rm -rf "${fetch_output_dir}"
+              mkdir -p "${fetch_output_dir}" "${result_output_dir}"
+              make_device_args "${effective_device_specs}"
 
-            build_id="$(grep -Eo 'Build ID: [a-f0-9]+' "$attempt_log" | awk '{print $3}' | tail -1 || true)"
-            if [[ -n "$build_id" ]]; then
-              echo "::warning::Transient BrowserStack fetch failure for iOS build ${build_id}; retrying"
-            else
-              echo "::warning::Transient BrowserStack fetch failure for iOS; retrying"
-            fi
+              echo "mobench ios ${benchmark_function} attempt ${attempt}/${max_attempts} on ${effective_device_specs}"
+              set +e
+                cargo-mobench ci run \
+                  --target ios \
+                  --function "${benchmark_function}" \
+                --iterations "${function_iterations}" \
+                --warmup "${function_warmup}" \
+                "${device_args[@]}" \
+                  --crate-path "$CRATE_PATH" \
+                  $RELEASE_FLAG \
+                  --ios-deployment-target "${IOS_DEPLOYMENT_TARGET}" \
+                  --ios-runner uikit-legacy \
+                  --fetch \
+                --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
+                --fetch-output-dir "${fetch_output_dir}" \
+                --output-dir "${result_output_dir}" \
+                2>&1 | tee "$attempt_log"
+              status=${PIPESTATUS[0]}
+              set -e
 
-            attempt=$((attempt + 1))
-            sleep "$retry_sleep_secs"
+              if [ "$status" -eq 0 ]; then
+                break
+              fi
+
+              if is_ios_min_os_schedule_failure "$attempt_log" && [[ -n "${IOS_FALLBACK_DEVICE_SPECS}" ]] && [[ "${effective_device_specs}" != "${IOS_FALLBACK_DEVICE_SPECS}" ]]; then
+                echo "::warning::iOS devices ${effective_device_specs} require a newer app/test-suite target in BrowserStack; retrying ${benchmark_function} on ${IOS_FALLBACK_DEVICE_SPECS}"
+                effective_device_specs="${IOS_FALLBACK_DEVICE_SPECS}"
+                attempt=1
+                continue
+              fi
+
+              if [ "$attempt" -ge "$max_attempts" ] || ! is_transient_fetch_failure "$attempt_log"; then
+                exit "$status"
+              fi
+
+              build_id="$(grep -Eo 'Build ID: [a-f0-9]+' "$attempt_log" | awk '{print $3}' | tail -1 || true)"
+              if [[ -n "$build_id" ]]; then
+                echo "::warning::Transient BrowserStack fetch failure for iOS build ${build_id}; retrying ${benchmark_function}"
+              else
+                echo "::warning::Transient BrowserStack fetch failure for iOS; retrying ${benchmark_function}"
+              fi
+
+              attempt=$((attempt + 1))
+              sleep "$retry_sleep_secs"
+            done
           done
 
       - name: Upload iOS results
