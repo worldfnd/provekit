@@ -132,17 +132,17 @@ jobs:
           case "${DEVICE_PROFILE}" in
             smoke)
               device_specs="iPhone 7"
-              fallback_device_specs="iPhone 15-17"
+              fallback_device_specs="iPhone SE 2020-16"
               fetch_timeout_secs="7200"
               ;;
             worst)
               device_specs="iPhone 7"
-              fallback_device_specs="iPhone 15-17"
+              fallback_device_specs="iPhone SE 2020-16"
               fetch_timeout_secs="7200"
               ;;
             triad)
               device_specs="iPhone 7,iPhone 15-17,iPhone 16 Pro-18"
-              fallback_device_specs="iPhone 15-17"
+              fallback_device_specs="iPhone SE 2020-16"
               fetch_timeout_secs="7200"
               ;;
             *)
@@ -295,7 +295,7 @@ jobs:
 
           is_ios_min_os_schedule_failure() {
             local attempt_log="$1"
-            grep -Fq "os version lower than the minimum required os version required for app, test_suite" "$attempt_log"
+            grep -Eq 'os version lower than the minimum required os version required for app, test_suite|BROWSERSTACK_NO_DEVICE_FOUND_WITH_REQUESTED_CRITERIA' "$attempt_log"
           }
 
           make_device_args() {
