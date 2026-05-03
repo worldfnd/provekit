@@ -86,6 +86,7 @@ permissions:
   contents: write
   actions: read
   pull-requests: write
+  issues: write
 
 concurrency:
   group: mobench-${{ inputs.pr_number != '' && inputs.pr_number || github.run_id }}

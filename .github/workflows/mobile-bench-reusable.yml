@@ -93,6 +93,7 @@ permissions:
   actions: read
   contents: write
   pull-requests: write
+  issues: write
 
 env:
   CARGO_TERM_COLOR: always

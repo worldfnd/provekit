@@ -8,9 +8,10 @@ on:
     types: [completed]
 
 permissions:
-  contents: read
+  contents: write
   actions: write
-  pull-requests: read
+  pull-requests: write
+  issues: write
   checks: read
 
 jobs:
@@ -66,9 +67,13 @@ jobs:
             exit 0
           fi
 
-          gate_status=$(gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
-            --jq '.check_runs[] | select(.name == "Cargo Build & Test" or (.app.name == "GitHub Actions" and .name == "Cargo Build & Test")) | .conclusion' \
-            | head -1)
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            gate_status="success"
+          else
+            gate_status=$(gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs" \
+              --jq '.check_runs[] | select((.name == "Build & Test (all features)" or .name == "Build and test" or .name == "Cargo Build & Test") and .conclusion == "success") | .conclusion' \
+              | head -1)
+          fi
           if [ "$gate_status" != "success" ]; then
             echo "::notice::Compile gate 'Cargo Build & Test' not yet passed for ${HEAD_SHA} (status: ${gate_status:-pending})"
             echo "should_run=false" >> "$GITHUB_OUTPUT"
