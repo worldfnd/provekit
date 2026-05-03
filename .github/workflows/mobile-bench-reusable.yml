@@ -93,6 +93,7 @@ permissions:
   actions: read
   contents: write
   pull-requests: write
+  issues: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -527,10 +528,29 @@ jobs:
           CRATE_PATH: ${{ inputs.crate_path }}
         run: |
           set -euo pipefail
-          functions_arg="${FUNCTIONS}"
+
+          benchmark_functions=()
           if [[ "${FUNCTIONS}" == \[* ]]; then
-            functions_arg=$(jq -r 'join(",")' <<<"${FUNCTIONS}")
+            while IFS= read -r function_name; do
+              if [[ -n "${function_name}" ]]; then
+                benchmark_functions+=("${function_name}")
+              fi
+            done < <(jq -r '.[]' <<<"${FUNCTIONS}")
+          else
+            IFS=',' read -r -a raw_functions <<<"${FUNCTIONS}"
+            for function_name in "${raw_functions[@]}"; do
+              function_name="$(echo "$function_name" | xargs)"
+              if [[ -n "${function_name}" ]]; then
+                benchmark_functions+=("${function_name}")
+              fi
+            done
           fi
+
+          if [ "${#benchmark_functions[@]}" -eq 0 ]; then
+            echo "::error::No Android benchmark functions resolved from '${FUNCTIONS}'"
+            exit 1
+          fi
+
           echo "Running Android benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
           echo "Android devices: ${ANDROID_DEVICE_SPECS}"
           echo "Android fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
@@ -538,12 +558,13 @@ jobs:
           retry_sleep_secs=60
           log_dir="target/mobench/retry-logs/android"
           mkdir -p "$log_dir"
+          rm -rf target/mobench/ci/android target/browserstack/android
 
           is_transient_fetch_failure() {
             local attempt_log="$1"
             local json_path
 
-            if grep -Eiq 'BrowserStack API .*status 5[0-9]{2}|This website is under heavy load|fetch did not recover any benchmark payloads' "$attempt_log"; then
+            if grep -Eiq 'BrowserStack API .*status 5[0-9]{2}|This website is under heavy load|fetch did not recover any benchmark payloads|No benchmark results found|Timeout waiting for build .* to complete' "$attempt_log"; then
               return 0
             fi
 
@@ -564,12 +585,9 @@ jobs:
             return 1
           }
 
-          attempt=1
-          while true; do
-            attempt_log="${log_dir}/attempt-${attempt}.log"
-            rm -rf target/mobench/ci/android target/browserstack/android
-
+          make_device_args() {
             device_args=()
+
             IFS=',' read -r -a device_specs <<<"${ANDROID_DEVICE_SPECS}"
             for device in "${device_specs[@]}"; do
               device="$(echo "$device" | xargs)"
@@ -577,44 +595,87 @@ jobs:
                 device_args+=(--devices "$device")
               fi
             done
+          }
 
-            echo "mobench android attempt ${attempt}/${max_attempts}"
-            set +e
-            cargo-mobench ci run \
-              --target android \
-              --functions "${functions_arg}" \
-              --iterations "${ITERATIONS}" \
-              --warmup "${WARMUP}" \
-              "${device_args[@]}" \
-              --crate-path "$CRATE_PATH" \
-              $RELEASE_FLAG \
-              --android-benchmark-timeout-secs 7200 \
-              --android-heartbeat-interval-secs 10 \
-              --fetch \
-              --fetch-timeout-secs "${MOBENCH_FETCH_TIMEOUT_SECS}" \
-              --fetch-output-dir target/browserstack/android \
-              --output-dir target/mobench/ci/android \
-              2>&1 | tee "$attempt_log"
-            status=${PIPESTATUS[0]}
-            set -e
-
-            if [ "$status" -eq 0 ]; then
-              break
+          for benchmark_function in "${benchmark_functions[@]}"; do
+            function_iterations="${ITERATIONS}"
+            function_warmup="${WARMUP}"
+            function_fetch_timeout_secs="${MOBENCH_FETCH_TIMEOUT_SECS}"
+            function_max_attempts="${max_attempts}"
+            if [[ "${benchmark_function}" == "bench_mobile::bench_passport_complete_age_check_prove" ]]; then
+              function_iterations="1"
+              function_warmup="0"
+              function_max_attempts="1"
             fi
 
-            if [ "$attempt" -ge "$max_attempts" ] || ! is_transient_fetch_failure "$attempt_log"; then
-              exit "$status"
-            fi
+            function_slug="$(tr -c '[:alnum:]' '_' <<<"${benchmark_function}" | sed 's/_*$//')"
+            attempt=1
+            while true; do
+              attempt_log="${log_dir}/${function_slug}-attempt-${attempt}.log"
+              fetch_output_dir="target/browserstack/android/${function_slug}"
+              result_output_dir="target/mobench/ci/android/${function_slug}"
+              rm -rf "${fetch_output_dir}"
+              mkdir -p "${fetch_output_dir}" "${result_output_dir}"
+              make_device_args
 
-            build_id="$(grep -Eo 'Build ID: [a-f0-9]+' "$attempt_log" | awk '{print $3}' | tail -1 || true)"
-            if [[ -n "$build_id" ]]; then
-              echo "::warning::Transient BrowserStack fetch failure for Android build ${build_id}; retrying"
-            else
-              echo "::warning::Transient BrowserStack fetch failure for Android; retrying"
-            fi
+              echo "mobench android ${benchmark_function} attempt ${attempt}/${function_max_attempts}"
+              set +e
+              cargo-mobench ci run \
+                --target android \
+                --function "${benchmark_function}" \
+                --iterations "${function_iterations}" \
+                --warmup "${function_warmup}" \
+                "${device_args[@]}" \
+                --crate-path "$CRATE_PATH" \
+                $RELEASE_FLAG \
+                --android-benchmark-timeout-secs 7200 \
+                --android-heartbeat-interval-secs 10 \
+                --fetch \
+                --fetch-timeout-secs "${function_fetch_timeout_secs}" \
+                --fetch-output-dir "${fetch_output_dir}" \
+                --output-dir "${result_output_dir}" \
+                2>&1 | tee "$attempt_log"
+              status=${PIPESTATUS[0]}
+              set -e
 
-            attempt=$((attempt + 1))
-            sleep "$retry_sleep_secs"
+              if [ "$status" -eq 0 ]; then
+                break
+              fi
+
+              if [ "$attempt" -ge "$function_max_attempts" ] && grep -Eiq 'No benchmark results found|Timeout waiting for build' "$attempt_log"; then
+                echo "::warning::Android ${benchmark_function} did not return benchmark results on ${ANDROID_DEVICE_SPECS}; preserving partial fixture results"
+                {
+                  echo "### Android fixture incomplete"
+                  echo ""
+                  echo "- Function: \`${benchmark_function}\`"
+                  echo "- Device: \`${ANDROID_DEVICE_SPECS}\`"
+                  echo "- Iterations/Warmup: \`${function_iterations} / ${function_warmup}\`"
+                  echo "- Reason: BrowserStack did not return benchmark results after ${function_max_attempts} attempt(s)."
+                } > "${result_output_dir}/failure.md"
+                jq -n \
+                  --arg platform "android" \
+                  --arg function "${benchmark_function}" \
+                  --arg devices "${ANDROID_DEVICE_SPECS}" \
+                  --arg reason "BrowserStack did not return benchmark results after ${function_max_attempts} attempt(s)." \
+                  '{platform: $platform, function: $function, devices: $devices, reason: $reason}' \
+                  > "${result_output_dir}/failure.json"
+                break
+              fi
+
+              if [ "$attempt" -ge "$function_max_attempts" ] || ! is_transient_fetch_failure "$attempt_log"; then
+                exit "$status"
+              fi
+
+              build_id="$(grep -Eo 'Build ID: [a-f0-9]+' "$attempt_log" | awk '{print $3}' | tail -1 || true)"
+              if [[ -n "$build_id" ]]; then
+                echo "::warning::Transient BrowserStack fetch failure for Android build ${build_id}; retrying ${benchmark_function}"
+              else
+                echo "::warning::Transient BrowserStack fetch failure for Android; retrying ${benchmark_function}"
+              fi
+
+              attempt=$((attempt + 1))
+              sleep "$retry_sleep_secs"
+            done
           done
 
       - name: Upload Android results

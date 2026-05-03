@@ -5,10 +5,10 @@ on:
     types: [created]
 
 permissions:
-  contents: read
+  contents: write
   actions: write
-  pull-requests: read
-  issues: read
+  pull-requests: write
+  issues: write
 
 jobs:
   resolve:
