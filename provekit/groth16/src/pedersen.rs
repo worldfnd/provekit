@@ -100,7 +100,7 @@ fn chunked_g1_msm(bases: &[G1Affine], values: &[Fr]) -> Result<G1Projective> {
 }
 
 impl ProvingKey {
-    /// Compute Pedersen commitment: C = Σ vᵢ · Basis[i].
+    /// Compute Pedersen commitment: `C = Σ vᵢ · Basis[i]`.
     ///
     /// Ported from gnark-crypto `ProvingKey.Commit()`.
     pub fn commit(&self, values: &[Fr]) -> Result<G1Affine> {
@@ -119,7 +119,7 @@ impl ProvingKey {
         Ok(commitment.into_affine())
     }
 
-    /// Generate proof of knowledge: PoK = Σ vᵢ · BasisExpSigma[i].
+    /// Generate proof of knowledge: `PoK = Σ vᵢ · BasisExpSigma[i]`.
     ///
     /// Proves the prover knows the values inside the commitment without
     /// revealing them. The verifier checks e(C, G^(-σ)) · e(PoK, G) == 1.
@@ -144,7 +144,7 @@ impl ProvingKey {
 
 /// Fold multiple G1 points into one using a random linear combination.
 ///
-/// Returns: points[0] + coeff·points[1] + coeff²·points[2] + ...
+/// Returns: `points[0] + coeff·points[1] + coeff²·points[2] + ...`
 ///
 /// Ported from gnark-crypto `G1Affine.Fold()`.
 pub fn fold(points: &[G1Affine], coeff: Fr) -> Result<G1Affine> {
