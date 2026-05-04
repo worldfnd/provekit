@@ -13,8 +13,7 @@ use {
 };
 
 pub(crate) struct PrecomputedCommitments {
-    pub val:           Commitment<FieldElement>,
-    pub rsws:          Commitment<FieldElement>,
+    pub vals_rsws:     Commitment<FieldElement>,
     pub a_row_finalts: Commitment<FieldElement>,
     pub a_col_finalts: Commitment<FieldElement>,
 }
@@ -29,14 +28,11 @@ pub fn preprocess_spark(matrix: &SparkMatrix) -> (SPARKSetup, SparkWitnesses) {
     let ds = DomainSeparator::protocol(&scheme.whir_configs).instance(&Empty);
     let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
 
-    let vals_witness = scheme
+    let vals_rs_ws_witness = scheme
         .whir_configs
-        .num_terms_1batched
-        .commit(&mut merlin, &[&matrix.coo.val]);
-    let rs_ws_witness = scheme
-        .whir_configs
-        .num_terms_4batched
+        .num_terms_5batched
         .commit(&mut merlin, &[
+            &matrix.coo.val,
             &matrix.coo.row_field,
             &matrix.timestamps.read_row,
             &matrix.coo.col_field,
@@ -63,8 +59,7 @@ pub fn preprocess_spark(matrix: &SparkMatrix) -> (SPARKSetup, SparkWitnesses) {
         },
     };
     let witnesses = SparkWitnesses {
-        vals_witness,
-        rs_ws_witness,
+        vals_rs_ws_witness,
         final_row_ts_witness,
         final_col_ts_witness,
     };
@@ -82,16 +77,11 @@ impl SPARKSetup {
         };
         let mut side = VerifierState::new(&setup_ds, &setup_proof, TranscriptSponge::default());
 
-        let val = self
+        let vals_rsws = self
             .whir_params
-            .num_terms_1batched
+            .num_terms_5batched
             .receive_commitment(&mut side)
-            .map_err(|e| anyhow::anyhow!("Failed to reconstruct val commitment: {e}"))?;
-        let rsws = self
-            .whir_params
-            .num_terms_4batched
-            .receive_commitment(&mut side)
-            .map_err(|e| anyhow::anyhow!("Failed to reconstruct rsws commitment: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("Failed to reconstruct vals_rsws commitment: {e}"))?;
         let a_row_finalts = self
             .whir_params
             .row
@@ -104,8 +94,7 @@ impl SPARKSetup {
             .map_err(|e| anyhow::anyhow!("Failed to reconstruct col finalts commitment: {e}"))?;
 
         Ok(PrecomputedCommitments {
-            val,
-            rsws,
+            vals_rsws,
             a_row_finalts,
             a_col_finalts,
         })

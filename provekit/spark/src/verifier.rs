@@ -109,29 +109,6 @@ pub(crate) fn verify_spark_single_matrix(
 
     ensure!(last_sumcheck_value == sumcheck_hints[0] * sumcheck_hints[1] * sumcheck_hints[2]);
 
-    let e_values_claim = whir_params
-        .num_terms_2batched
-        .verify(arthur, &[&e_values_commitment], &[
-            sumcheck_hints[1],
-            sumcheck_hints[2],
-        ])
-        .map_err(|e| anyhow::anyhow!("WHIR verify failed for e_values (sumcheck): {e}"))?;
-    e_values_claim
-        .verify([&eval_weight as &dyn whir::algebra::linear_form::LinearForm<FieldElement>])
-        .map_err(|e| anyhow::anyhow!("FinalClaim check failed for e_values: {e}"))?;
-
-    let val_claim = whir_params
-        .num_terms_1batched
-        .verify(
-            arthur,
-            &[&precomputed_commitments.val],
-            &[sumcheck_hints[0]],
-        )
-        .map_err(|e| anyhow::anyhow!("WHIR verify failed for val: {e}"))?;
-    val_claim
-        .verify([&eval_weight as &dyn whir::algebra::linear_form::LinearForm<FieldElement>])
-        .map_err(|e| anyhow::anyhow!("FinalClaim check failed for val: {e}"))?;
-
     let tau: FieldElement = arthur.verifier_message();
     let gamma: FieldElement = arthur.verifier_message();
 
@@ -163,18 +140,48 @@ pub(crate) fn verify_spark_single_matrix(
     let gpa_eval_weight = MultilinearExtension::new(evaluation_randomness.to_vec());
     let gpa_eval_lf: &dyn whir::algebra::linear_form::LinearForm<FieldElement> = &gpa_eval_weight;
 
-    let rsws_claim = whir_params
-        .num_terms_4batched
-        .verify(arthur, &[&precomputed_commitments.rsws], &[
+    let row_field_at_fold: FieldElement = arthur
+        .prover_hint_ark()
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let read_row_at_fold: FieldElement = arthur
+        .prover_hint_ark()
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let col_field_at_fold: FieldElement = arthur
+        .prover_hint_ark()
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let read_col_at_fold: FieldElement = arthur
+        .prover_hint_ark()
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    let vals_at_eval: FieldElement = arthur
+        .prover_hint_ark()
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let fold_lf_for_vals_rs_ws = MultilinearExtension::new(eval_weight.point.clone());
+    let eval_lf_for_vals_rs_ws = MultilinearExtension::new(evaluation_randomness.to_vec());
+
+    let vals_rs_ws_claim = whir_params
+        .num_terms_5batched
+        .verify(arthur, &[&precomputed_commitments.vals_rsws], &[
+            // fold_lf
+            sumcheck_hints[0],
+            row_field_at_fold,
+            read_row_at_fold,
+            col_field_at_fold,
+            read_col_at_fold,
+            // eval_lf
+            vals_at_eval,
             row_adr,
             row_timestamp,
             col_adr,
             col_timestamp,
         ])
-        .map_err(|e| anyhow::anyhow!("WHIR verify failed for rsws: {e}"))?;
-    rsws_claim
-        .verify([gpa_eval_lf])
-        .map_err(|e| anyhow::anyhow!("FinalClaim check failed for rsws: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("WHIR verify failed for vals_rs_ws: {e}"))?;
+    vals_rs_ws_claim
+        .verify([
+            &fold_lf_for_vals_rs_ws as &dyn whir::algebra::linear_form::LinearForm<FieldElement>,
+            &eval_lf_for_vals_rs_ws as &dyn whir::algebra::linear_form::LinearForm<FieldElement>,
+        ])
+        .map_err(|e| anyhow::anyhow!("FinalClaim check failed for vals_rs_ws: {e}"))?;
 
     let row_mem: FieldElement = arthur
         .prover_hint_ark()
@@ -183,13 +190,21 @@ pub(crate) fn verify_spark_single_matrix(
         .prover_hint_ark()
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let e_values_gpa_claim = whir_params
+    let e_values_combined_claim = whir_params
         .num_terms_2batched
-        .verify(arthur, &[&e_values_commitment], &[row_mem, col_mem])
-        .map_err(|e| anyhow::anyhow!("WHIR verify failed for e_values (GPA): {e}"))?;
-    e_values_gpa_claim
-        .verify([gpa_eval_lf])
-        .map_err(|e| anyhow::anyhow!("FinalClaim check failed for e_values (GPA): {e}"))?;
+        .verify(arthur, &[&e_values_commitment], &[
+            sumcheck_hints[1],
+            sumcheck_hints[2],
+            row_mem,
+            col_mem,
+        ])
+        .map_err(|e| anyhow::anyhow!("WHIR verify failed for e_values (combined): {e}"))?;
+    e_values_combined_claim
+        .verify([
+            &eval_weight as &dyn whir::algebra::linear_form::LinearForm<FieldElement>,
+            gpa_eval_lf,
+        ])
+        .map_err(|e| anyhow::anyhow!("FinalClaim check failed for e_values (combined): {e}"))?;
 
     let gamma_sq = gamma * gamma;
 

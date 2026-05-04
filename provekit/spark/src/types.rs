@@ -62,9 +62,8 @@ pub struct MatrixDimensions {
 pub struct SPARKWHIRConfigs {
     pub row:                WhirConfig,
     pub col:                WhirConfig,
-    pub num_terms_1batched: WhirConfig,
     pub num_terms_2batched: WhirConfig,
-    pub num_terms_4batched: WhirConfig,
+    pub num_terms_5batched: WhirConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -92,8 +91,7 @@ pub struct TimeStamps {
 
 #[derive(Clone)]
 pub struct SparkWitnesses {
-    pub vals_witness:         WhirWitness,
-    pub rs_ws_witness:        WhirWitness,
+    pub vals_rs_ws_witness:   WhirWitness,
     pub final_row_ts_witness: WhirWitness,
     pub final_col_ts_witness: WhirWitness,
 }

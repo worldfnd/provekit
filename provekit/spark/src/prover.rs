@@ -1,7 +1,7 @@
 use {
     crate::{
         gpa::run_gpa4,
-        memory::{produce_whir_proof, prove_axis_init_final_product, AxisConfig},
+        memory::{prove_axis_init_final_product, AxisConfig},
         sumcheck::run_spark_sumcheck,
         types::{
             Challenges, EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
@@ -16,9 +16,10 @@ use {
         WhirConfig, WhirR1CSProof,
     },
     rayon::{join, prelude::*},
+    std::borrow::Cow,
     tracing::instrument,
     whir::{
-        algebra::multilinear_extend,
+        algebra::{linear_form::MultilinearExtension, multilinear_extend},
         parameters::ProtocolParameters,
         transcript::{DomainSeparator, ProverState, VerifierMessage},
     },
@@ -69,20 +70,17 @@ impl SPARKScheme {
 
         let row_config = new_whir_config_for_size(next_power_of_two(num_rows), 1);
         let col_config = new_whir_config_for_size(next_power_of_two(num_cols), 1);
-        let num_terms_1batched_config =
-            new_whir_config_for_size(next_power_of_two(padded_num_entries), 1);
         let num_terms_2batched_config =
             new_whir_config_for_size(next_power_of_two(padded_num_entries), 2);
-        let num_terms_4batched_config =
-            new_whir_config_for_size(next_power_of_two(padded_num_entries), 4);
+        let num_terms_5batched_config =
+            new_whir_config_for_size(next_power_of_two(padded_num_entries), 5);
 
         Self {
             whir_configs:      SPARKWHIRConfigs {
                 row:                row_config,
                 col:                col_config,
-                num_terms_1batched: num_terms_1batched_config,
                 num_terms_2batched: num_terms_2batched_config,
-                num_terms_4batched: num_terms_4batched_config,
+                num_terms_5batched: num_terms_5batched_config,
             },
             matrix_dimensions: MatrixDimensions {
                 num_rows,
@@ -194,15 +192,8 @@ fn prove_spark(
 ) -> Result<()> {
     let e_values_witness = commit_e_values(merlin, whir_configs, e_values);
 
-    sumcheck_and_its_proofs(
-        merlin,
-        &data.matrix,
-        e_values,
-        claimed_value,
-        &e_values_witness,
-        &data.witnesses.vals_witness,
-        whir_configs,
-    )?;
+    let (folding_randomness, sumcheck_final_folds) =
+        sumcheck_and_its_proofs(merlin, &data.matrix, e_values, claimed_value)?;
 
     memory_checking(
         merlin,
@@ -211,6 +202,8 @@ fn prove_spark(
         &e_values_witness,
         memory,
         whir_configs,
+        &folding_randomness,
+        sumcheck_final_folds,
     )?;
 
     Ok(())
@@ -224,6 +217,8 @@ fn memory_checking(
     e_values_witness: &WhirWitness,
     memory: &Memory,
     whir_configs: &SPARKWHIRConfigs,
+    folding_randomness: &[FieldElement],
+    sumcheck_final_folds: [FieldElement; 3],
 ) -> Result<()> {
     let tau: FieldElement = merlin.verifier_message();
     let gamma: FieldElement = merlin.verifier_message();
@@ -234,9 +229,11 @@ fn memory_checking(
         &data.matrix,
         e_values,
         e_values_witness,
-        &data.witnesses.rs_ws_witness,
+        &data.witnesses.vals_rs_ws_witness,
         whir_configs,
         &challenges,
+        folding_randomness,
+        sumcheck_final_folds,
     )?;
 
     prove_axis_init_final_product(
@@ -270,10 +267,7 @@ fn sumcheck_and_its_proofs(
     matrix: &SparkMatrix,
     e_values: &EValuesForMatrix,
     claimed_value: FieldElement,
-    e_values_witness: &WhirWitness,
-    vals_witness: &WhirWitness,
-    whir_configs: &SPARKWHIRConfigs,
-) -> Result<()> {
+) -> Result<(Vec<FieldElement>, [FieldElement; 3])> {
     let mles: [&[FieldElement]; 3] = [&matrix.coo.val, &e_values.e_rx, &e_values.e_ry];
     let (sumcheck_final_folds, folding_randomness) =
         run_spark_sumcheck(merlin, mles, claimed_value)?;
@@ -284,23 +278,11 @@ fn sumcheck_and_its_proofs(
         sumcheck_final_folds[2],
     ]);
 
-    produce_whir_proof(
-        merlin,
-        &folding_randomness,
-        &[&e_values.e_rx, &e_values.e_ry],
-        &whir_configs.num_terms_2batched,
-        e_values_witness,
-    )?;
-
-    produce_whir_proof(
-        merlin,
-        &folding_randomness,
-        &[&matrix.coo.val],
-        &whir_configs.num_terms_1batched,
-        vals_witness,
-    )?;
-
-    Ok(())
+    Ok((folding_randomness, [
+        sumcheck_final_folds[0],
+        sumcheck_final_folds[1],
+        sumcheck_final_folds[2],
+    ]))
 }
 
 #[instrument(skip_all)]
@@ -309,9 +291,11 @@ fn prove_combined_rs_ws_product(
     matrix: &SparkMatrix,
     e_values: &EValuesForMatrix,
     e_values_witness: &WhirWitness,
-    rs_ws_witness: &WhirWitness,
+    vals_rs_ws_witness: &WhirWitness,
     whir_configs: &SPARKWHIRConfigs,
     challenges: &Challenges,
+    folding_randomness: &[FieldElement],
+    sumcheck_final_folds: [FieldElement; 3],
 ) -> Result<()> {
     let gamma_sq = challenges.gamma * challenges.gamma;
     let one = FieldElement::from(1u64);
@@ -382,20 +366,78 @@ fn prove_combined_rs_ws_product(
     merlin.prover_hint_ark(&col_address_eval);
     merlin.prover_hint_ark(&col_timestamp_eval);
 
-    let rs_ws_vecs: [&[FieldElement]; 4] = [
-        &matrix.coo.row_field,
-        &matrix.timestamps.read_row,
-        &matrix.coo.col_field,
-        &matrix.timestamps.read_col,
-    ];
+    let (
+        (row_field_at_fold, read_row_at_fold),
+        ((col_field_at_fold, read_col_at_fold), vals_at_eval),
+    ) = tracing::info_span!("multilinear_extend_vals_rs_ws_cross").in_scope(|| {
+        join(
+            || {
+                join(
+                    || multilinear_extend(row_field, folding_randomness),
+                    || multilinear_extend(&matrix.timestamps.read_row, folding_randomness),
+                )
+            },
+            || {
+                join(
+                    || {
+                        join(
+                            || multilinear_extend(col_field, folding_randomness),
+                            || {
+                                multilinear_extend(
+                                    &matrix.timestamps.read_col,
+                                    folding_randomness,
+                                )
+                            },
+                        )
+                    },
+                    || multilinear_extend(&matrix.coo.val, evaluation_randomness),
+                )
+            },
+        )
+    });
 
-    produce_whir_proof(
+    merlin.prover_hint_ark(&row_field_at_fold);
+    merlin.prover_hint_ark(&read_row_at_fold);
+    merlin.prover_hint_ark(&col_field_at_fold);
+    merlin.prover_hint_ark(&read_col_at_fold);
+    merlin.prover_hint_ark(&vals_at_eval);
+
+    let fold_lf_for_vals_rs_ws = MultilinearExtension::new(folding_randomness.to_vec());
+    let eval_lf_for_vals_rs_ws = MultilinearExtension::new(evaluation_randomness.to_vec());
+    // Layout: linear_form-major, then poly. Polys: [vals, row_field, read_row, col_field,
+    // read_col].
+    let vals_rs_ws_evaluations = [
+        // fold_lf
+        sumcheck_final_folds[0],
+        row_field_at_fold,
+        read_row_at_fold,
+        col_field_at_fold,
+        read_col_at_fold,
+        // eval_lf
+        vals_at_eval,
+        row_address_eval,
+        row_timestamp_eval,
+        col_address_eval,
+        col_timestamp_eval,
+    ];
+    let _ = whir_configs.num_terms_5batched.prove(
         merlin,
-        evaluation_randomness,
-        &rs_ws_vecs,
-        &whir_configs.num_terms_4batched,
-        rs_ws_witness,
-    )?;
+        vec![
+            Cow::Borrowed(&matrix.coo.val),
+            Cow::Borrowed(row_field),
+            Cow::Borrowed(&matrix.timestamps.read_row),
+            Cow::Borrowed(col_field),
+            Cow::Borrowed(&matrix.timestamps.read_col),
+        ],
+        vec![Cow::Owned(vals_rs_ws_witness.clone())],
+        vec![
+            Box::new(fold_lf_for_vals_rs_ws)
+                as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
+            Box::new(eval_lf_for_vals_rs_ws)
+                as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
+        ],
+        Cow::Borrowed(&vals_rs_ws_evaluations),
+    );
 
     let (row_value_eval, col_value_eval) = tracing::info_span!("multilinear_extend_e_values")
         .in_scope(|| {
@@ -407,13 +449,26 @@ fn prove_combined_rs_ws_product(
     merlin.prover_hint_ark(&row_value_eval);
     merlin.prover_hint_ark(&col_value_eval);
 
-    produce_whir_proof(
+    let fold_lf = MultilinearExtension::new(folding_randomness.to_vec());
+    let eval_lf = MultilinearExtension::new(evaluation_randomness.to_vec());
+    let evaluations = [
+        sumcheck_final_folds[1],
+        sumcheck_final_folds[2],
+        row_value_eval,
+        col_value_eval,
+    ];
+    let _ = whir_configs.num_terms_2batched.prove(
         merlin,
-        evaluation_randomness,
-        &[&e_values.e_rx, &e_values.e_ry],
-        &whir_configs.num_terms_2batched,
-        e_values_witness,
-    )?;
+        vec![Cow::Borrowed(&e_values.e_rx), Cow::Borrowed(&e_values.e_ry)],
+        vec![Cow::Owned(e_values_witness.clone())],
+        vec![
+            Box::new(fold_lf)
+                as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
+            Box::new(eval_lf)
+                as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
+        ],
+        Cow::Borrowed(&evaluations),
+    );
 
     Ok(())
 }
