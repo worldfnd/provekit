@@ -303,7 +303,6 @@ fn prove_combined_rs_ws_product(
     let row_field = &matrix.coo.row_field;
     let col_field = &matrix.coo.col_field;
     let n = row_field.len();
-    debug_assert_eq!(col_field.len(), n, "row_field and col_field must have equal length");
 
     let gpa_leaves_flat = tracing::info_span!("build_rs_ws_pairs").in_scope(|| {
         let mut buf = vec![FieldElement::from(0u64); 4 * n];
@@ -311,34 +310,26 @@ fn prove_combined_rs_ws_product(
         let (row_rs, row_ws) = row_section.split_at_mut(n);
         let (col_rs, col_ws) = col_section.split_at_mut(n);
 
-        join(
-            || {
-                row_rs
-                    .par_iter_mut()
-                    .zip(row_ws.par_iter_mut())
-                    .zip(row_field.par_iter())
-                    .zip(e_values.e_rx.par_iter())
-                    .zip(matrix.timestamps.read_row.par_iter())
-                    .for_each(|((((rs, ws), &a), &v), &t)| {
-                        let base = a * gamma_sq + v * challenges.gamma + t - challenges.tau;
-                        *rs = base;
-                        *ws = base + one;
-                    });
-            },
-            || {
-                col_rs
-                    .par_iter_mut()
-                    .zip(col_ws.par_iter_mut())
-                    .zip(col_field.par_iter())
-                    .zip(e_values.e_ry.par_iter())
-                    .zip(matrix.timestamps.read_col.par_iter())
-                    .for_each(|((((rs, ws), &a), &v), &t)| {
-                        let base = a * gamma_sq + v * challenges.gamma + t - challenges.tau;
-                        *rs = base;
-                        *ws = base + one;
-                    });
-            },
-        );
+        row_rs
+            .par_iter_mut()
+            .zip(row_ws.par_iter_mut())
+            .zip(col_rs.par_iter_mut())
+            .zip(col_ws.par_iter_mut())
+            .enumerate()
+            .for_each(|(i, (((rs_r, ws_r), rs_c), ws_c))| {
+                let row_base = row_field[i] * gamma_sq
+                    + e_values.e_rx[i] * challenges.gamma
+                    + matrix.timestamps.read_row[i]
+                    - challenges.tau;
+                let col_base = col_field[i] * gamma_sq
+                    + e_values.e_ry[i] * challenges.gamma
+                    + matrix.timestamps.read_col[i]
+                    - challenges.tau;
+                *rs_r = row_base;
+                *ws_r = row_base + one;
+                *rs_c = col_base;
+                *ws_c = col_base + one;
+            });
         buf
     });
     let gpa_randomness = run_gpa4(merlin, gpa_leaves_flat)?;

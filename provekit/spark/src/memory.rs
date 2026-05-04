@@ -40,33 +40,24 @@ pub fn prove_axis_init_final_product(
         "eq_memory and final_timestamp must have equal length"
     );
 
+    // Per element:
+    //   init[i]  = i*gamma_sq + eq[i]*gamma - tau
+    //   final[i] = init[i] + final_ts[i]
     let gpa_leaves = tracing::info_span!("build_init_final_vecs").in_scope(|| {
         let mut buf = vec![FieldElement::from(0u64); 2 * n];
         let (init_section, final_section) = buf.split_at_mut(n);
 
-        rayon::join(
-            || {
-                init_section
-                    .par_iter_mut()
-                    .zip(config.eq_memory.par_iter())
-                    .enumerate()
-                    .for_each(|(i, (out, &v))| {
-                        let a = FieldElement::from(i as u64);
-                        *out = a * gamma_sq + v * gamma - tau;
-                    });
-            },
-            || {
-                final_section
-                    .par_iter_mut()
-                    .zip(config.eq_memory.par_iter())
-                    .zip(config.final_timestamp.par_iter())
-                    .enumerate()
-                    .for_each(|(i, ((out, &v), &t))| {
-                        let a = FieldElement::from(i as u64);
-                        *out = a * gamma_sq + v * gamma + t - tau;
-                    });
-            },
-        );
+        init_section
+            .par_iter_mut()
+            .zip(final_section.par_iter_mut())
+            .enumerate()
+            .for_each(|(i, (init_slot, final_slot))| {
+                let base = FieldElement::from(i as u64) * gamma_sq
+                    + config.eq_memory[i] * gamma
+                    - tau;
+                *init_slot = base;
+                *final_slot = base + config.final_timestamp[i];
+            });
         buf
     });
 
