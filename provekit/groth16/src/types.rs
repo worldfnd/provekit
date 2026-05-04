@@ -17,11 +17,11 @@ use {
 /// BSB22 Pedersen commitments and a batched proof of knowledge.
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Proof {
-    /// [A]₁ = Σ wᵢ·[Aᵢ(τ)]₁ + [α]₁ + r·[δ]₁
+    /// `[A]₁ = Σ wᵢ·[Aᵢ(τ)]₁ + [α]₁ + r·[δ]₁`
     pub ar:             G1Affine,
-    /// [B]₂ = Σ wᵢ·[Bᵢ(τ)]₂ + [β]₂ + s·[δ]₂
+    /// `[B]₂ = Σ wᵢ·[Bᵢ(τ)]₂ + [β]₂ + s·[δ]₂`
     pub bs:             G2Affine,
-    /// [C]₁ = Σ wᵢ·[Kᵢ(τ)]₁ + Σ hⱼ·[Zⱼ(τ)]₁ + s·[A]₁ + r·[B]₁ - rs·[δ]₁
+    /// `[C]₁ = Σ wᵢ·[Kᵢ(τ)]₁ + Σ hⱼ·[Zⱼ(τ)]₁ + s·[A]₁ + r·[B]₁ - rs·[δ]₁`
     pub krs:            G1Affine,
     /// Pedersen commitments (BSB22 extension).
     pub commitments:    Vec<G1Affine>,
@@ -78,33 +78,33 @@ pub struct ProvingKey {
     pub domain_gen:  Fr,
 
     // -- G1 elements --
-    /// [α]₁
+    /// `[α]₁`
     pub g1_alpha: G1Affine,
-    /// [β]₁
+    /// `[β]₁`
     pub g1_beta:  G1Affine,
-    /// [δ]₁
+    /// `[δ]₁`
     pub g1_delta: G1Affine,
-    /// [Aᵢ(τ)]₁ for each wire (excluding infinity points).
+    /// `[Aᵢ(τ)]₁` for each wire (excluding infinity points).
     pub g1_a:     Vec<G1Affine>,
-    /// [Bᵢ(τ)]₁ for each wire (excluding infinity points).
+    /// `[Bᵢ(τ)]₁` for each wire (excluding infinity points).
     pub g1_b:     Vec<G1Affine>,
-    /// [Kᵢ(τ)]₁ for private wires only.
+    /// `[Kᵢ(τ)]₁` for private wires only.
     pub g1_k:     Vec<G1Affine>,
-    /// [τⁱ · Z(τ)/δ]₁ for i in 0..domain_size-1.
+    /// `[τⁱ · Z(τ)/δ]₁` for i in `0..domain_size-1`.
     pub g1_z:     Vec<G1Affine>,
 
     // -- G2 elements --
-    /// [β]₂
+    /// `[β]₂`
     pub g2_beta:  G2Affine,
-    /// [δ]₂
+    /// `[δ]₂`
     pub g2_delta: G2Affine,
-    /// [Bᵢ(τ)]₂ for each wire (excluding infinity points).
+    /// `[Bᵢ(τ)]₂` for each wire (excluding infinity points).
     pub g2_b:     Vec<G2Affine>,
 
     // -- Infinity tracking --
-    /// infinity_a[i] == true means wire i has A(τ) == 0.
+    /// `infinity_a[i] == true` means wire `i` has `A(τ) == 0`.
     pub infinity_a:    Vec<bool>,
-    /// infinity_b[i] == true means wire i has B(τ) == 0.
+    /// `infinity_b[i] == true` means wire `i` has `B(τ) == 0`.
     pub infinity_b:    Vec<bool>,
     /// Count of infinity points in A.
     pub nb_infinity_a: u64,
@@ -123,25 +123,25 @@ pub struct ProvingKey {
 #[derive(Clone, Debug)]
 pub struct VerifyingKey {
     // -- G1 elements --
-    /// [α]₁
+    /// `[α]₁`
     pub g1_alpha: G1Affine,
-    /// [Kᵢ(τ)]₁ for public wires (including commitment wires).
+    /// `[Kᵢ(τ)]₁` for public wires (including commitment wires).
     pub g1_k:     Vec<G1Affine>,
 
     // -- G2 elements --
-    /// [β]₂
+    /// `[β]₂`
     pub g2_beta:  G2Affine,
-    /// [δ]₂
+    /// `[δ]₂`
     pub g2_delta: G2Affine,
-    /// [γ]₂
+    /// `[γ]₂`
     pub g2_gamma: G2Affine,
 
     // -- Precomputed (set by precompute(), not serialized) --
-    /// -[δ]₂
+    /// `-[δ]₂`
     pub g2_delta_neg: G2Affine,
-    /// -[γ]₂
+    /// `-[γ]₂`
     pub g2_gamma_neg: G2Affine,
-    /// e([α]₁, [β]₂)
+    /// `e([α]₁, [β]₂)`
     pub e_alpha_beta: <Bn254 as Pairing>::TargetField,
 
     /// Pedersen commitment verifying keys (one per BSB22 commitment).
@@ -149,7 +149,7 @@ pub struct VerifyingKey {
     /// For each commitment, the indices of public/commitment-committed wires.
     pub public_and_commitment_committed: Vec<Vec<usize>>,
     /// Number of challenges derived from each commitment.
-    /// Single-challenge: all 1s. Multi-challenge: [N] for one commitment
+    /// Single-challenge: all 1s. Multi-challenge: `[N]` for one commitment
     /// producing N challenges.
     pub num_challenges_per_commitment:   Vec<usize>,
 }
