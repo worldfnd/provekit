@@ -33,35 +33,44 @@ pub fn prove_axis_init_final_product(
     let tau = &challenges.tau;
     let gamma_sq = *gamma * *gamma;
 
-    let (init_vec, final_vec) = tracing::info_span!("build_init_final_vecs").in_scope(|| {
+    let n = config.eq_memory.len();
+    debug_assert_eq!(
+        config.final_timestamp.len(),
+        n,
+        "eq_memory and final_timestamp must have equal length"
+    );
+
+    let gpa_leaves = tracing::info_span!("build_init_final_vecs").in_scope(|| {
+        let mut buf = vec![FieldElement::from(0u64); 2 * n];
+        let (init_section, final_section) = buf.split_at_mut(n);
+
         rayon::join(
             || {
-                config
-                    .eq_memory
-                    .par_iter()
+                init_section
+                    .par_iter_mut()
+                    .zip(config.eq_memory.par_iter())
                     .enumerate()
-                    .map(|(i, &v)| {
+                    .for_each(|(i, (out, &v))| {
                         let a = FieldElement::from(i as u64);
-                        a * gamma_sq + v * gamma - tau
-                    })
-                    .collect::<Vec<_>>()
+                        *out = a * gamma_sq + v * gamma - tau;
+                    });
             },
             || {
-                config
-                    .eq_memory
-                    .par_iter()
+                final_section
+                    .par_iter_mut()
+                    .zip(config.eq_memory.par_iter())
                     .zip(config.final_timestamp.par_iter())
                     .enumerate()
-                    .map(|(i, (&v, &t))| {
+                    .for_each(|(i, ((out, &v), &t))| {
                         let a = FieldElement::from(i as u64);
-                        a * gamma_sq + v * gamma + t - tau
-                    })
-                    .collect::<Vec<_>>()
+                        *out = a * gamma_sq + v * gamma + t - tau;
+                    });
             },
-        )
+        );
+        buf
     });
 
-    let gpa_randomness = run_gpa2(merlin, &init_vec, &final_vec)?;
+    let gpa_randomness = run_gpa2(merlin, gpa_leaves)?;
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
 
     let final_ts_eval = multilinear_extend(config.final_timestamp, evaluation_randomness);

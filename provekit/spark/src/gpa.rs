@@ -18,12 +18,9 @@ use {
 #[instrument(skip_all)]
 pub fn run_gpa2(
     merlin: &mut ProverState<TranscriptSponge>,
-    left: &[FieldElement],
-    right: &[FieldElement],
+    leaves: Vec<FieldElement>,
 ) -> anyhow::Result<Vec<FieldElement>> {
-    let mut concatenated = left.to_vec();
-    concatenated.extend_from_slice(right);
-    let mut layers = calculate_binary_multiplication_tree(concatenated)?;
+    let mut layers = calculate_binary_multiplication_tree(leaves)?;
 
     let mut drain = layers.drain(1..);
 
