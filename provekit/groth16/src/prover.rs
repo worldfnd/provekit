@@ -10,14 +10,10 @@
 /// 5. (BSB22) Generate and fold proofs of knowledge
 use anyhow::{ensure, Result};
 use {
-    crate::{
-        pedersen,
-        types::{Proof, ProvingKey},
-        CommitmentInfo, BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES,
-    },
+    crate::{pedersen, CommitmentInfo, BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES},
     ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective},
     ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM},
-    ark_ff::{FftField, Field, One, PrimeField, UniformRand, Zero},
+    ark_ff::{FftField, Field, One, PrimeField, Zero},
     ark_poly::{EvaluationDomain, Radix2EvaluationDomain},
     rayon::{self, prelude::*},
     tracing::{info_span, instrument},
@@ -125,8 +121,8 @@ pub fn prove_ar_bs_bs1(
         result.into_affine()
     };
     let bs = {
-        let msm = <G2Projective as VariableBaseMSM>::msm(g2_b, &wire_values_b)
-            .map_err(crate::msm_err)?;
+        let msm =
+            <G2Projective as VariableBaseMSM>::msm(g2_b, &wire_values_b).map_err(crate::msm_err)?;
         let mut result = msm;
         result += G2Projective::from(g2_beta);
         result += G2Projective::from(g2_delta) * s_scalar;
@@ -190,8 +186,7 @@ pub fn prove_krs(
                 let h_slice = &h[..size_h.min(h.len())];
                 let z_slice = &g1_z[..size_h.min(g1_z.len())];
                 let min_len = h_slice.len().min(z_slice.len());
-                G1Projective::msm(&z_slice[..min_len], &h_slice[..min_len])
-                    .map_err(crate::msm_err)
+                G1Projective::msm(&z_slice[..min_len], &h_slice[..min_len]).map_err(crate::msm_err)
             } else {
                 Ok(G1Projective::zero())
             }
@@ -207,113 +202,6 @@ pub fn prove_krs(
     result += r_bs1;
 
     Ok(result.into_affine())
-}
-
-/// Convenience wrapper that runs all stages sequentially. Callers that want
-/// to overlap `compute_h` with the H-independent stages should call
-/// [`bsb22_pok`], [`prove_ar_bs_bs1`], and [`prove_krs`] directly.
-///
-/// `pk` and `committed_values` are taken by value so this function can drop
-/// each large field as soon as it's no longer needed (commitment_keys after
-/// `bsb22_pok`, `g1_a`/`g1_b`/`g2_b` after `msm_ar_bs`, `g1_k`/`g1_z` after
-/// `msm_krs`).
-#[allow(clippy::too_many_arguments)]
-#[instrument(skip_all)]
-pub fn prove(
-    pk: ProvingKey,
-    r1cs_nb_public: usize,
-    wire_values: &[Fr],
-    h: &[Fr],
-    commitment_info: &[CommitmentInfo],
-    committed_values: Vec<Vec<Fr>>,
-    commitments: &[G1Affine],
-    challenge_wire_indices: &[usize],
-) -> Result<Proof> {
-    let ProvingKey {
-        domain_size,
-        domain_gen: _,
-        g1_alpha,
-        g1_beta,
-        g1_delta,
-        g1_a,
-        g1_b,
-        g1_k,
-        g1_z,
-        g2_beta,
-        g2_delta,
-        g2_b,
-        infinity_a,
-        infinity_b,
-        nb_infinity_a: _,
-        nb_infinity_b: _,
-        commitment_keys,
-    } = pk;
-
-    let mut rng = ark_std::rand::thread_rng();
-
-    let commitment_pok = bsb22_pok(
-        &commitment_keys,
-        &committed_values,
-        challenge_wire_indices,
-        wire_values,
-    )?;
-    drop(commitment_keys);
-    drop(committed_values);
-
-    let r_scalar = Fr::rand(&mut rng);
-    let s_scalar = Fr::rand(&mut rng);
-    let kr_scalar = -(r_scalar * s_scalar);
-
-    let r_delta = (G1Projective::from(g1_delta) * r_scalar).into_affine();
-    let s_delta = (G1Projective::from(g1_delta) * s_scalar).into_affine();
-    let kr_delta = (G1Projective::from(g1_delta) * kr_scalar).into_affine();
-
-    let (ar, bs, bs1) = prove_ar_bs_bs1(
-        &g1_a,
-        &g1_b,
-        &g2_b,
-        &infinity_a,
-        &infinity_b,
-        wire_values,
-        g1_alpha,
-        g1_beta,
-        g2_beta,
-        g2_delta,
-        r_delta,
-        s_delta,
-        s_scalar,
-    )?;
-    drop(g1_a);
-    drop(g1_b);
-    drop(g2_b);
-    drop(infinity_a);
-    drop(infinity_b);
-
-    let krs = prove_krs(
-        &g1_k,
-        &g1_z,
-        h,
-        wire_values,
-        r1cs_nb_public,
-        commitment_info,
-        challenge_wire_indices,
-        domain_size,
-        ar,
-        bs1,
-        kr_delta,
-        r_scalar,
-        s_scalar,
-    )?;
-    drop(g1_k);
-    drop(g1_z);
-
-    Ok(Proof {
-        ar,
-        bs,
-        krs,
-        commitments: commitments.to_vec(),
-        commitment_pok,
-    })
 }
 
 /// Filter a slice by removing elements at sorted absolute indices.

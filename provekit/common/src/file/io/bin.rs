@@ -158,9 +158,7 @@ pub fn read_bin<T: for<'a> Deserialize<'a>>(
     let _hash_config_byte = header.get_u8();
 
     // Detect compression via magic bytes.
-    let peek = file
-        .fill_buf()
-        .context("while peeking compression magic")?;
+    let peek = file.fill_buf().context("while peeking compression magic")?;
     ensure!(
         peek.len() >= 6,
         "File too small to detect compression format"

@@ -3,6 +3,7 @@ mod buf_ext;
 mod counting_writer;
 mod json;
 
+pub use self::bin::Compression;
 use {
     self::{
         bin::{
@@ -19,8 +20,6 @@ use {
     std::{ffi::OsStr, path::Path},
     tracing::instrument,
 };
-
-pub use self::bin::Compression;
 
 /// Trait for structures that can be serialized to and deserialized from files.
 pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
