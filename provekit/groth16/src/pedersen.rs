@@ -83,7 +83,12 @@ pub fn setup(
 const PEDERSEN_MSM_CHUNK: usize = 100_000;
 
 fn chunked_g1_msm(bases: &[G1Affine], values: &[Fr]) -> Result<G1Projective> {
-    debug_assert_eq!(bases.len(), values.len());
+    ensure!(
+        bases.len() == values.len(),
+        "chunked_g1_msm length mismatch: {} bases vs {} values",
+        bases.len(),
+        values.len()
+    );
     let mut acc = G1Projective::zero();
     for (b_chunk, v_chunk) in bases
         .chunks(PEDERSEN_MSM_CHUNK)

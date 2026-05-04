@@ -50,9 +50,12 @@ const ZSTD_LEVEL: i32 = 3;
 #[instrument(skip(prover), fields(path = %path.display()))]
 pub fn write_pkp(prover: &Prover, path: &Path) -> Result<()> {
     let file = File::create(path).context("while creating output file")?;
-    let mut writer = write_pkp_to_writer(prover, std::io::BufWriter::with_capacity(ENCODER_BUF, file))?;
+    let mut writer =
+        write_pkp_to_writer(prover, std::io::BufWriter::with_capacity(ENCODER_BUF, file))?;
     writer.flush().context("while flushing writer")?;
-    let inner = writer.into_inner().context("while flushing buffered writer")?;
+    let inner = writer
+        .into_inner()
+        .context("while flushing buffered writer")?;
     inner.sync_all().context("while syncing output file")?;
 
     let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
@@ -81,8 +84,7 @@ fn write_pkp_to_writer<W: Write>(prover: &Prover, mut writer: W) -> Result<W> {
 
     // Postcard-encode the Prover into a temporary buffer, then write it. The
     // metadata is small (R1CS + builders + ABI), so this allocation is OK.
-    let postcard_bytes =
-        postcard::to_allocvec(prover).context("while postcard-encoding Prover")?;
+    let postcard_bytes = postcard::to_allocvec(prover).context("while postcard-encoding Prover")?;
     encoder
         .write_all(&postcard_bytes)
         .context("while writing postcard payload")?;

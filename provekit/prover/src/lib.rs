@@ -481,8 +481,7 @@ impl Prove for Groth16Prover {
         let has_commitments = !commitment_info.is_empty();
 
         // Allocate witness vector
-        let mut witness: Vec<Option<FieldElement>> =
-            vec![None; r1cs.num_witnesses_for_solving()];
+        let mut witness: Vec<Option<FieldElement>> = vec![None; r1cs.num_witnesses_for_solving()];
 
         // Create a dummy transcript — Groth16 doesn't use Fiat-Shamir during witness
         // solving
@@ -648,18 +647,14 @@ impl Prove for Groth16Prover {
 
         // r/s and the δ multiples are needed by both the H-independent stages
         // and `prove_krs`, so sample them before the rayon::join below.
-        use ark_ec::CurveGroup;
-        use ark_std::UniformRand;
+        use {ark_ec::CurveGroup, ark_std::UniformRand};
         let mut rng = ark_std::rand::thread_rng();
         let r_scalar = FieldElement::rand(&mut rng);
         let s_scalar = FieldElement::rand(&mut rng);
         let kr_scalar = -(r_scalar * s_scalar);
-        let r_delta =
-            (ark_bn254::G1Projective::from(g1_delta) * r_scalar).into_affine();
-        let s_delta =
-            (ark_bn254::G1Projective::from(g1_delta) * s_scalar).into_affine();
-        let kr_delta =
-            (ark_bn254::G1Projective::from(g1_delta) * kr_scalar).into_affine();
+        let r_delta = (ark_bn254::G1Projective::from(g1_delta) * r_scalar).into_affine();
+        let s_delta = (ark_bn254::G1Projective::from(g1_delta) * s_scalar).into_affine();
+        let kr_delta = (ark_bn254::G1Projective::from(g1_delta) * kr_scalar).into_affine();
 
         let domain: ark_poly::Radix2EvaluationDomain<FieldElement> =
             ark_poly::EvaluationDomain::new(num_constraints)
