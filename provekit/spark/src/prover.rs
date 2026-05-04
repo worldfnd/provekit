@@ -303,42 +303,44 @@ fn prove_combined_rs_ws_product(
     let row_field = &matrix.coo.row_field;
     let col_field = &matrix.coo.col_field;
     let n = row_field.len();
-    let m = col_field.len();
+    debug_assert_eq!(col_field.len(), n, "row_field and col_field must have equal length");
 
-    let (row_pairs, col_pairs) = tracing::info_span!("build_rs_ws_pairs").in_scope(|| {
+    let gpa_leaves_flat = tracing::info_span!("build_rs_ws_pairs").in_scope(|| {
+        let mut buf = vec![FieldElement::from(0u64); 4 * n];
+        let (row_section, col_section) = buf.split_at_mut(2 * n);
+        let (row_rs, row_ws) = row_section.split_at_mut(n);
+        let (col_rs, col_ws) = col_section.split_at_mut(n);
+
         join(
             || {
-                (0..n)
-                    .into_par_iter()
-                    .map(|i| {
-                        let a = row_field[i];
-                        let v = e_values.e_rx[i];
-                        let t = matrix.timestamps.read_row[i];
+                row_rs
+                    .par_iter_mut()
+                    .zip(row_ws.par_iter_mut())
+                    .zip(row_field.par_iter())
+                    .zip(e_values.e_rx.par_iter())
+                    .zip(matrix.timestamps.read_row.par_iter())
+                    .for_each(|((((rs, ws), &a), &v), &t)| {
                         let base = a * gamma_sq + v * challenges.gamma + t - challenges.tau;
-                        (base, base + one)
-                    })
-                    .collect::<Vec<(FieldElement, FieldElement)>>()
+                        *rs = base;
+                        *ws = base + one;
+                    });
             },
             || {
-                (0..m)
-                    .into_par_iter()
-                    .map(|i| {
-                        let a = col_field[i];
-                        let v = e_values.e_ry[i];
-                        let t = matrix.timestamps.read_col[i];
+                col_rs
+                    .par_iter_mut()
+                    .zip(col_ws.par_iter_mut())
+                    .zip(col_field.par_iter())
+                    .zip(e_values.e_ry.par_iter())
+                    .zip(matrix.timestamps.read_col.par_iter())
+                    .for_each(|((((rs, ws), &a), &v), &t)| {
                         let base = a * gamma_sq + v * challenges.gamma + t - challenges.tau;
-                        (base, base + one)
-                    })
-                    .collect::<Vec<(FieldElement, FieldElement)>>()
+                        *rs = base;
+                        *ws = base + one;
+                    });
             },
-        )
+        );
+        buf
     });
-    let (row_rs_vec, row_ws_vec): (Vec<_>, Vec<_>) = row_pairs.into_iter().unzip();
-    let (col_rs_vec, col_ws_vec): (Vec<_>, Vec<_>) = col_pairs.into_iter().unzip();
-
-    let mut gpa_leaves_flat = Vec::with_capacity(4 * row_rs_vec.len());
-    let gpa_leaves = [row_rs_vec, row_ws_vec, col_rs_vec, col_ws_vec];
-    gpa_leaves_flat.extend(gpa_leaves.into_iter().flatten());
     let gpa_randomness = run_gpa4(merlin, gpa_leaves_flat)?;
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
