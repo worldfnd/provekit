@@ -429,7 +429,7 @@ fn prove_combined_rs_ws_product(
             Cow::Borrowed(col_field),
             Cow::Borrowed(&matrix.timestamps.read_col),
         ],
-        vec![Cow::Owned(vals_rs_ws_witness.clone())],
+        vec![Cow::Borrowed(vals_rs_ws_witness)],
         vec![
             Box::new(fold_lf_for_vals_rs_ws)
                 as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
@@ -460,7 +460,7 @@ fn prove_combined_rs_ws_product(
     let _ = whir_configs.num_terms_2batched.prove(
         merlin,
         vec![Cow::Borrowed(&e_values.e_rx), Cow::Borrowed(&e_values.e_ry)],
-        vec![Cow::Owned(e_values_witness.clone())],
+        vec![Cow::Borrowed(e_values_witness)],
         vec![
             Box::new(fold_lf)
                 as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,

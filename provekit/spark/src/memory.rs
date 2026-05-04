@@ -147,7 +147,7 @@ pub fn produce_whir_proof(
     _ = config.prove(
         merlin,
         vectors.iter().map(|v| Cow::Borrowed(*v)).collect(),
-        vec![Cow::Owned(witness.clone())],
+        vec![Cow::Borrowed(witness)],
         vec![Box::new(lf)
             as Box<
                 dyn whir::algebra::linear_form::LinearForm<FieldElement>,
