@@ -336,58 +336,45 @@ fn prove_combined_rs_ws_product(
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
 
-    let ((row_address_eval, row_timestamp_eval), (col_address_eval, col_timestamp_eval)) =
-        tracing::info_span!("multilinear_extend_rs_ws").in_scope(|| {
-            join(
-                || {
-                    join(
-                        || multilinear_extend(row_field, evaluation_randomness),
-                        || multilinear_extend(&matrix.timestamps.read_row, evaluation_randomness),
-                    )
-                },
-                || {
-                    join(
-                        || multilinear_extend(col_field, evaluation_randomness),
-                        || multilinear_extend(&matrix.timestamps.read_col, evaluation_randomness),
-                    )
-                },
-            )
-        });
+    let polys: [&[FieldElement]; 4] = [
+        row_field,
+        &matrix.timestamps.read_row,
+        col_field,
+        &matrix.timestamps.read_col,
+    ];
+    let [row_address_eval, row_timestamp_eval, col_address_eval, col_timestamp_eval]: [_; 4] =
+        tracing::info_span!("multilinear_extend_rs_ws")
+            .in_scope(|| {
+                polys
+                    .par_iter()
+                    .map(|p| multilinear_extend(p, evaluation_randomness))
+                    .collect::<Vec<_>>()
+            })
+            .try_into()
+            .expect("4 polys");
 
     merlin.prover_hint_ark(&row_address_eval);
     merlin.prover_hint_ark(&row_timestamp_eval);
     merlin.prover_hint_ark(&col_address_eval);
     merlin.prover_hint_ark(&col_timestamp_eval);
 
-    let (
-        (row_field_at_fold, read_row_at_fold),
-        ((col_field_at_fold, read_col_at_fold), vals_at_eval),
-    ) = tracing::info_span!("multilinear_extend_vals_rs_ws_cross").in_scope(|| {
-        join(
-            || {
-                join(
-                    || multilinear_extend(row_field, folding_randomness),
-                    || multilinear_extend(&matrix.timestamps.read_row, folding_randomness),
-                )
-            },
-            || {
-                join(
-                    || {
-                        join(
-                            || multilinear_extend(col_field, folding_randomness),
-                            || {
-                                multilinear_extend(
-                                    &matrix.timestamps.read_col,
-                                    folding_randomness,
-                                )
-                            },
-                        )
-                    },
-                    || multilinear_extend(&matrix.coo.val, evaluation_randomness),
-                )
-            },
-        )
-    });
+    let pairs: [(&[FieldElement], &[FieldElement]); 5] = [
+        (row_field, folding_randomness),
+        (&matrix.timestamps.read_row, folding_randomness),
+        (col_field, folding_randomness),
+        (&matrix.timestamps.read_col, folding_randomness),
+        (&matrix.coo.val, evaluation_randomness),
+    ];
+    let [row_field_at_fold, read_row_at_fold, col_field_at_fold, read_col_at_fold, vals_at_eval]: [_; 5] =
+        tracing::info_span!("multilinear_extend_vals_rs_ws_cross")
+            .in_scope(|| {
+                pairs
+                    .par_iter()
+                    .map(|(p, r)| multilinear_extend(p, r))
+                    .collect::<Vec<_>>()
+            })
+            .try_into()
+            .expect("5 polys");
 
     merlin.prover_hint_ark(&row_field_at_fold);
     merlin.prover_hint_ark(&read_row_at_fold);
