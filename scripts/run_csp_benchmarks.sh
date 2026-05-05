@@ -174,8 +174,10 @@ for circuit in "${circuits[@]}"; do
   for ((i=1; i<=BENCH_RUNS; i++)); do
     if ! (cd "${workdir}" && "${TIME_BIN}" -f '%e %M' \
             -o "${out_dir}/prove_${i}.time" \
-            "${PROVEKIT_BIN}" prove "${pkp_path}" "${workdir}/Prover.toml" \
-            -o "${proof_path}") 2> "${out_dir}/prove_${i}.stderr"; then
+            "${PROVEKIT_BIN}" prove \
+              --prover "${pkp_path}" \
+              --input "${workdir}/Prover.toml" \
+              -o "${proof_path}") 2> "${out_dir}/prove_${i}.stderr"; then
       echo "FAIL: provekit-cli prove run ${i} (${circuit})"
       prove_ok=0
       break
@@ -193,7 +195,9 @@ for circuit in "${circuits[@]}"; do
   for ((i=1; i<=BENCH_RUNS; i++)); do
     if ! (cd "${workdir}" && "${TIME_BIN}" -f '%e %M' \
             -o "${out_dir}/verify_${i}.time" \
-            "${PROVEKIT_BIN}" verify "${pkv_path}" "${proof_path}") \
+            "${PROVEKIT_BIN}" verify \
+              --verifier "${pkv_path}" \
+              --proof "${proof_path}") \
             2> "${out_dir}/verify_${i}.stderr"; then
       echo "FAIL: provekit-cli verify run ${i} (${circuit})"
       verify_ok=0
