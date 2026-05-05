@@ -35,8 +35,17 @@ type Circuit struct {
 	SessionIDBytes    [32]byte
 	LogNumConstraints int
 
-	SessionID                    [32]uints.U8 `gnark:",public"`
-	Transcript                   []uints.U8   `gnark:",public"`
+	// PublicInputsHash is the Skyscraper compression chain of PublicInputs.Values
+	// (matching PublicInputs::hash_bytes() on the Rust side). It is the only
+	// public input to the recursive Groth16 proof — the on-chain verifier binds
+	// the proof to a specific public-input commitment via this single field.
+	// The transcript stays private; soundness is preserved because the same
+	// hash is absorbed into Fiat-Shamir as InstanceID, and is also asserted
+	// against the prover-written hash inside the transcript via
+	// publicInputsHashCheck.
+	PublicInputsHash frontend.Variable `gnark:",public"`
+
+	Transcript                   []uints.U8
 	BlindingCommitmentWhirConfig WHIRParams
 	BlindedCommitmentWhirConfig  WHIRParams
 	NumChallenges                int
@@ -69,6 +78,12 @@ func (circuit *Circuit) Define(api frontend.API) error {
 	if err != nil {
 		return err
 	}
+
+	// Bind PublicInputsHash (the sole public input to this Groth16 proof) to
+	// the in-circuit Skyscraper hash of PublicInputs.Values. Together with
+	// InstanceID absorption inside initializeComponents, this binds the entire
+	// Fiat-Shamir transcript to the public-input commitment.
+	api.AssertIsEqual(circuit.PublicInputsHash, publicInputsHash(sc, circuit.PublicInputs))
 
 	blindedCommitments, blindingCommitment, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig, 1)
 	// api.Println("blindedCommitments", blindedCommitments)
@@ -439,9 +454,24 @@ func verifyCircuit(
 		blindingMerkleAssign2 = dualData.BlindingMerkleData
 	}
 
+	// Compute the public-input hash natively so we can pass it as the sole
+	// public input to the Groth16 proof. The in-circuit AssertIsEqual in
+	// Define() pins this to the in-circuit Skyscraper recomputation.
+	piValuesNative := make([]*big.Int, len(publicInputs.Values))
+	for i, v := range publicInputs.Values {
+		bi, ok := v.(*big.Int)
+		if !ok {
+			return fmt.Errorf("public input %d is not *big.Int (got %T)", i, v)
+		}
+		piValuesNative[i] = bi
+	}
+	publicInputsHashLE := nativePublicInputsHashBytes(piValuesNative)
+	publicInputsHashBI := leBytesToNativeBigInt(publicInputsHashLE[:])
+
 	assignment := Circuit{
 		ProtocolID:                   protocolID,
 		SessionIDBytes:               sessionIDBytes,
+		PublicInputsHash:             publicInputsHashBI,
 		Transcript:                   transcriptT,
 		LogNumConstraints:            cfg.LogNumConstraints,
 		NumChallenges:                cfg.NumChallenges,

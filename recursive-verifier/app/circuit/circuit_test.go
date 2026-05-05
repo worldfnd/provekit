@@ -275,9 +275,21 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 		blindingMerkleAssign2 = dualData.BlindingMerkleData
 	}
 
+	piValuesNative := make([]*big.Int, len(config.PublicInputs.Values))
+	for i, v := range config.PublicInputs.Values {
+		bi, ok := v.(*big.Int)
+		if !ok {
+			return nil, nil, fmt.Errorf("public input %d is not *big.Int (got %T)", i, v)
+		}
+		piValuesNative[i] = bi
+	}
+	publicInputsHashLE := nativePublicInputsHashBytes(piValuesNative)
+	publicInputsHashBI := leBytesToNativeBigInt(publicInputsHashLE[:])
+
 	assignment := &Circuit{
 		ProtocolID:                   protocolID,
 		SessionIDBytes:               sessionIDBytes,
+		PublicInputsHash:             publicInputsHashBI,
 		Transcript:                   transcriptT,
 		LogNumConstraints:            config.LogNumConstraints,
 		NumChallenges:                config.NumChallenges,
