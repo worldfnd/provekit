@@ -83,7 +83,8 @@ jobs:
               ./benchmark-inputs/$circuit.pkp \
               ./benchmark-inputs/tbs_720/$circuit.toml \
               -o ./benchmark-inputs/$circuit-proof.np \
-              --spark-queries-dir ./benchmark-inputs/$circuit-spark
+              --spark-queries-dir ./benchmark-inputs/$circuit-spark \
+              --produce-spark-query
             echo "Proved $circuit"
           done
 

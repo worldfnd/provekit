@@ -46,15 +46,22 @@ pub struct Args {
         default = "PathBuf::from(\"./spark_proofs\")"
     )]
     spark_queries_dir: PathBuf,
+
+    /// produce SPARK queries as.
+    #[argh(switch, long = "produce-spark-query")]
+    produce_spark_query: bool,
 }
 
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         // Read the scheme
-        let prover: Prover = read(&self.prover_path).context("while reading Provekit Prover")?;
+        let mut prover: Prover =
+            read(&self.prover_path).context("while reading Provekit Prover")?;
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
+
+        prover.set_produce_spark_query(self.produce_spark_query);
 
         // Generate the proof
         let (proof, spark_queries) = prover

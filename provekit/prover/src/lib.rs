@@ -43,7 +43,8 @@ pub use {ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
 ///
 /// All methods return the `NoirProof` plus a `Vec<R1CSSparkQuery>` of SPARK
 /// queries produced as a side output. Callers that don't need the queries
-/// can discard with `let (proof, _) = ...`.
+/// can discard with `let (proof, _) = ...`. SPARK query generation is
+/// off by default; enable it by setting [`Prover::produce_spark_query`].
 pub trait Prove {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<(NoirProof, Vec<R1CSSparkQuery>)>;
@@ -270,7 +271,14 @@ impl Prove for NoirProver {
 
         let (whir_r1cs_proof, r1cs_spark_queries) = self
             .whir_for_witness
-            .prove_noir(merlin, r1cs, commitments, full_witness, &public_inputs)
+            .prove_noir(
+                merlin,
+                r1cs,
+                commitments,
+                full_witness,
+                &public_inputs,
+                self.produce_spark_query,
+            )
             .context("While proving R1CS instance")?;
 
         Ok((
@@ -367,6 +375,7 @@ impl Prove for MavrosProver {
                 self.witness_layout,
                 self.constraints_layout,
                 &self.ad_binary,
+                self.produce_spark_query,
             )
             .context("While proving R1CS instance")?;
 

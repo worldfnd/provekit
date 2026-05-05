@@ -64,9 +64,11 @@ pub trait WhirR1CSProver {
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
+        produce_spark_query: bool,
     ) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)>;
 
     #[cfg(not(target_arch = "wasm32"))]
+    #[allow(clippy::too_many_arguments)]
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
@@ -76,6 +78,7 @@ pub trait WhirR1CSProver {
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
+        produce_spark_query: bool,
     ) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)>;
 }
 
@@ -149,6 +152,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         commitments: Vec<WhirR1CSCommitment>,
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
+        produce_spark_query: bool,
     ) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -186,11 +190,13 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_weights,
             commitments,
             public_inputs,
+            produce_spark_query,
         )
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[instrument(skip_all)]
+    #[allow(clippy::too_many_arguments)]
     fn prove_mavros(
         &self,
         mut merlin: ProverState<TranscriptSponge>,
@@ -200,6 +206,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
+        produce_spark_query: bool,
     ) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -243,11 +250,13 @@ impl WhirR1CSProver for WhirR1CSScheme {
             blinding_weights,
             commitments,
             public_inputs,
+            produce_spark_query,
         )
     }
 }
 
 #[instrument(skip_all)]
+#[allow(clippy::too_many_arguments)]
 fn prove_from_alphas(
     scheme: &WhirR1CSScheme,
     mut merlin: ProverState<TranscriptSponge>,
@@ -258,6 +267,7 @@ fn prove_from_alphas(
     blinding_weights: Vec<FieldElement>,
     commitments: Vec<WhirR1CSCommitment>,
     public_inputs: &PublicInputs,
+    produce_spark_query: bool,
 ) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)> {
     let public_inputs_hash = public_inputs.hash(scheme.hash_config);
     let public_inputs_len = public_inputs.len();
@@ -295,10 +305,13 @@ fn prove_from_alphas(
 
         let blinding_covector = OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
-        let alpha_weight_data: Vec<_> = weights
-            .iter()
-            .map(|w| (w.vector().to_vec(), w.size()))
-            .collect();
+        let alpha_weight_data: Option<Vec<(Vec<FieldElement>, usize)>> = produce_spark_query
+            .then(|| {
+                weights
+                    .iter()
+                    .map(|w| (w.vector().to_vec(), w.size()))
+                    .collect()
+            });
 
         let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
             .into_iter()
@@ -316,31 +329,35 @@ fn prove_from_alphas(
             Cow::Borrowed(&evaluations),
         );
 
-        let rlc = zip_strict(
-            final_claim.rlc_coefficients[public_offset..(public_offset + 3)].iter(),
-            alpha_weight_data[public_offset..(public_offset + 3)].iter(),
-        )
-        .map(|(&c, (vec, ds))| {
-            let w = PrefixCovector::new(vec.clone(), *ds);
-            c * w.mle_evaluate(&final_claim.evaluation_point)
-        })
-        .sum::<FieldElement>();
+        if let Some(alpha_weight_data) = alpha_weight_data {
+            let rlc = zip_strict(
+                final_claim.rlc_coefficients[public_offset..(public_offset + 3)].iter(),
+                alpha_weight_data[public_offset..(public_offset + 3)].iter(),
+            )
+            .map(|(&c, (vec, ds))| {
+                let w = PrefixCovector::new(vec.clone(), *ds);
+                c * w.mle_evaluate(&final_claim.evaluation_point)
+            })
+            .sum::<FieldElement>();
 
-        let claimed_batched_spark_value = if !public_inputs.is_empty() {
-            rlc / final_claim.rlc_coefficients[1]
+            let claimed_batched_spark_value = if !public_inputs.is_empty() {
+                rlc / final_claim.rlc_coefficients[1]
+            } else {
+                rlc
+            };
+
+            let query = R1CSSparkQuery {
+                point_to_evaluate:          Point {
+                    row: alpha,
+                    col: final_claim.evaluation_point,
+                },
+                matrix_batching_randomness: final_claim.rlc_coefficients[1],
+                claimed_value:              claimed_batched_spark_value,
+            };
+            vec![query]
         } else {
-            rlc
-        };
-
-        let query = R1CSSparkQuery {
-            point_to_evaluate:          Point {
-                row: alpha,
-                col: final_claim.evaluation_point,
-            },
-            matrix_batching_randomness: final_claim.rlc_coefficients[1],
-            claimed_value:              claimed_batched_spark_value,
-        };
-        vec![query]
+            Vec::new()
+        }
     } else {
         // Dual commitment path
         let mut commitments = commitments.into_iter();
@@ -415,10 +432,13 @@ fn prove_from_alphas(
             let blinding_covector =
                 OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
-            let alpha_weight_data_1: Vec<_> = weights[public_offset_1..public_offset_1 + 3]
-                .iter()
-                .map(|w| (w.vector().to_vec(), w.size()))
-                .collect();
+            let alpha_weight_data_1: Option<Vec<(Vec<FieldElement>, usize)>> =
+                produce_spark_query.then(|| {
+                    weights[public_offset_1..public_offset_1 + 3]
+                        .iter()
+                        .map(|w| (w.vector().to_vec(), w.size()))
+                        .collect()
+                });
 
             let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
                 .into_iter()
@@ -434,21 +454,23 @@ fn prove_from_alphas(
                 Cow::Borrowed(&evaluations),
             );
 
-            let rlc1_sum = zip_strict(
-                final_claim1.rlc_coefficients[public_offset_1..(public_offset_1 + 3)].iter(),
-                alpha_weight_data_1.iter(),
-            )
-            .map(|(&c, (vec, ds))| {
-                let w = PrefixCovector::new(vec.clone(), *ds);
-                c * w.mle_evaluate(&final_claim1.evaluation_point)
-            })
-            .sum::<FieldElement>();
+            let claimed1 = alpha_weight_data_1.map(|alpha_weight_data_1| {
+                let rlc1_sum = zip_strict(
+                    final_claim1.rlc_coefficients[public_offset_1..(public_offset_1 + 3)].iter(),
+                    alpha_weight_data_1.iter(),
+                )
+                .map(|(&c, (vec, ds))| {
+                    let w = PrefixCovector::new(vec.clone(), *ds);
+                    c * w.mle_evaluate(&final_claim1.evaluation_point)
+                })
+                .sum::<FieldElement>();
 
-            let claimed1 = if has_public {
-                rlc1_sum / final_claim1.rlc_coefficients[1]
-            } else {
-                rlc1_sum
-            };
+                if has_public {
+                    rlc1_sum / final_claim1.rlc_coefficients[1]
+                } else {
+                    rlc1_sum
+                }
+            });
 
             (final_claim1, claimed1)
         };
@@ -463,10 +485,13 @@ fn prove_from_alphas(
             let weights = build_prefix_covectors(scheme.m, alphas_2.clone());
             let mut evaluations: Vec<FieldElement> = evals_2;
 
-            let alpha_weight_data_2: Vec<_> = weights[0..3]
-                .iter()
-                .map(|w| (w.vector().to_vec(), w.size()))
-                .collect();
+            let alpha_weight_data_2: Option<Vec<(Vec<FieldElement>, usize)>> =
+                produce_spark_query.then(|| {
+                    weights[0..3]
+                        .iter()
+                        .map(|w| (w.vector().to_vec(), w.size()))
+                        .collect()
+                });
 
             let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
                 .into_iter()
@@ -487,42 +512,49 @@ fn prove_from_alphas(
                 Cow::Borrowed(&evaluations),
             );
 
-            let rlc2_sum = zip_strict(
-                final_claim2.rlc_coefficients[0..3].iter(),
-                alpha_weight_data_2.iter(),
-            )
-            .map(|(&c, (vec, ds))| {
-                let w = PrefixCovector::new(vec.clone(), *ds);
-                c * w.mle_evaluate(&final_claim2.evaluation_point)
-            })
-            .sum::<FieldElement>();
+            let rlc2_sum = alpha_weight_data_2.map(|alpha_weight_data_2| {
+                zip_strict(
+                    final_claim2.rlc_coefficients[0..3].iter(),
+                    alpha_weight_data_2.iter(),
+                )
+                .map(|(&c, (vec, ds))| {
+                    let w = PrefixCovector::new(vec.clone(), *ds);
+                    c * w.mle_evaluate(&final_claim2.evaluation_point)
+                })
+                .sum::<FieldElement>()
+            });
 
             (final_claim2, rlc2_sum)
         };
 
-        let mut col1 = final_claim1.evaluation_point.clone();
-        col1.insert(0, FieldElement::zero());
-        let query1 = R1CSSparkQuery {
-            point_to_evaluate:          Point {
-                row: alpha.clone(),
-                col: col1,
-            },
-            matrix_batching_randomness: final_claim1.rlc_coefficients[1],
-            claimed_value:              rlc1,
-        };
+        match (rlc1, rlc2) {
+            (Some(rlc1), Some(rlc2)) => {
+                let mut col1 = final_claim1.evaluation_point.clone();
+                col1.insert(0, FieldElement::zero());
+                let query1 = R1CSSparkQuery {
+                    point_to_evaluate:          Point {
+                        row: alpha.clone(),
+                        col: col1,
+                    },
+                    matrix_batching_randomness: final_claim1.rlc_coefficients[1],
+                    claimed_value:              rlc1,
+                };
 
-        let mut col2 = final_claim2.evaluation_point.clone();
-        col2.insert(0, FieldElement::one());
-        let query2 = R1CSSparkQuery {
-            point_to_evaluate:          Point {
-                row: alpha,
-                col: col2,
-            },
-            matrix_batching_randomness: final_claim2.rlc_coefficients[1],
-            claimed_value:              rlc2,
-        };
+                let mut col2 = final_claim2.evaluation_point.clone();
+                col2.insert(0, FieldElement::one());
+                let query2 = R1CSSparkQuery {
+                    point_to_evaluate:          Point {
+                        row: alpha,
+                        col: col2,
+                    },
+                    matrix_batching_randomness: final_claim2.rlc_coefficients[1],
+                    claimed_value:              rlc2,
+                };
 
-        vec![query1, query2]
+                vec![query1, query2]
+            }
+            _ => Vec::new(),
+        }
     };
 
     let proof = merlin.proof();

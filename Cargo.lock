@@ -4609,7 +4609,6 @@ dependencies = [
  "provekit-spark",
  "provekit-verifier",
  "rayon",
- "serde",
  "serde_json",
  "tikv-jemallocator",
  "tracing",
