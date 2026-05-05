@@ -369,7 +369,6 @@ fn prove_from_alphas(
             .expect("dual-commitment path requires second commitment");
 
         let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
-            .clone()
             .into_iter()
             .map(|mut v| {
                 let v2 = v.split_off(scheme.w1_size);
@@ -420,7 +419,7 @@ fn prove_from_alphas(
             ..
         } = c1;
         let (final_claim1, rlc1) = {
-            let mut weights = build_prefix_covectors(scheme.m, alphas_1.clone());
+            let mut weights = build_prefix_covectors(scheme.m, alphas_1);
             let mut evaluations: Vec<FieldElement> = Vec::new();
             if let Some(pe) = public_1 {
                 weights.insert(0, make_public_weight(x, public_inputs_len, scheme.m));
@@ -482,7 +481,7 @@ fn prove_from_alphas(
             ..
         } = c2;
         let (final_claim2, rlc2) = {
-            let weights = build_prefix_covectors(scheme.m, alphas_2.clone());
+            let weights = build_prefix_covectors(scheme.m, alphas_2);
             let mut evaluations: Vec<FieldElement> = evals_2;
 
             let alpha_weight_data_2: Option<Vec<(Vec<FieldElement>, usize)>> =
