@@ -1,22 +1,26 @@
-/// Runtime hash configuration selection for ProveKit.
-///
-/// This module provides runtime selection of hash algorithms. The selected
-/// hash is used for Merkle tree commitments (via WHIR's `EngineId`) and
-/// the Fiat-Shamir transcript sponge (via [`crate::TranscriptSponge`]).
+//! Runtime hash configuration selection for ProveKit.
+//!
+//! Runtime selection of hash algorithms used for:
+//! - Merkle tree commitments (via WHIR's `EngineId`)
+//! - the Fiat-Shamir transcript sponge (via [`crate::TranscriptSponge`])
+//! - public-input instance binding ([`HashConfig::hash_field_elements`])
+
 use {
+    crate::{utils::field_to_bytes_le, FieldElement},
+    ark_ff::{BigInt, PrimeField},
     serde::{Deserialize, Serialize},
-    std::fmt,
+    std::{fmt, sync::LazyLock},
 };
 
 /// Hash algorithm configuration that can be selected at runtime.
 ///
-/// Each variant uses the same hash algorithm for:
-/// - **Merkle tree commitments**: Binds polynomial data
-/// - **Fiat-Shamir transcript**: Interactive proof made non-interactive
-/// - **Proof of Work**: Optional computational puzzle
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Each variant selects the same algorithm for Merkle commitments,
+/// Fiat-Shamir sponge, and public-input binding. [`Self::Skyscraper`] is the
+/// default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HashConfig {
+    #[default]
     #[serde(alias = "sky")]
     Skyscraper,
 
@@ -28,51 +32,85 @@ pub enum HashConfig {
 
     #[serde(alias = "blake-3", alias = "b3")]
     Blake3,
+
+    #[serde(alias = "pos2", alias = "p2")]
+    Poseidon2,
 }
+
+/// Domain-separation tag for public-input instance binding.
+///
+/// **Protocol-visible constant.** This string is absorbed into the SHA-256,
+/// Keccak, and BLAKE3 hashes used for public-input commitments; for Poseidon2
+/// it is reduced to a [`FieldElement`] via [`PUBLIC_INPUTS_DST_FE`] and
+/// prepended to the hash input. Changing it invalidates every proof generated
+/// under those configurations. The `V1` suffix reserves an unambiguous
+/// upgrade path (`_V2`, …) for any future construction change.
+///
+/// [`HashConfig::Skyscraper`] intentionally omits the tag — its
+/// empty-input-returns-0 output is part of the stable Skyscraper proof
+/// format, and introducing a tag would break every deployed Skyscraper
+/// proof.
+///
+/// Regression trip-wires: the KATs in `witness::tests` freeze the
+/// byte-exact output of each variant under this constant.
+const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V1";
+static PUBLIC_INPUTS_DST_FE: LazyLock<FieldElement> = LazyLock::new(|| {
+    use sha2::{Digest, Sha256};
+    FieldElement::from_le_bytes_mod_order(&Sha256::digest(PUBLIC_INPUTS_DST))
+});
 
 impl HashConfig {
     /// Returns the canonical name of this hash configuration.
+    #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
             Self::Skyscraper => "skyscraper",
             Self::Sha256 => "sha256",
             Self::Keccak => "keccak",
             Self::Blake3 => "blake3",
+            Self::Poseidon2 => "poseidon2",
         }
     }
 
     /// Returns the WHIR 2.0 engine ID for this hash configuration.
+    #[must_use]
     pub fn engine_id(&self) -> whir::engines::EngineId {
         match self {
             Self::Skyscraper => crate::skyscraper::SKYSCRAPER,
             Self::Sha256 => whir::hash::SHA2,
             Self::Keccak => whir::hash::KECCAK,
             Self::Blake3 => whir::hash::BLAKE3,
+            Self::Poseidon2 => crate::poseidon2::POSEIDON2,
         }
     }
 
     /// Converts hash configuration to a single byte for binary file headers.
+    #[must_use]
     pub fn to_byte(&self) -> u8 {
         match self {
             Self::Skyscraper => 0,
             Self::Sha256 => 1,
             Self::Keccak => 2,
             Self::Blake3 => 3,
+            Self::Poseidon2 => 4,
         }
     }
 
     /// Converts a byte from binary file header to hash configuration.
+    #[must_use]
     pub fn from_byte(byte: u8) -> Option<Self> {
         match byte {
             0 => Some(Self::Skyscraper),
             1 => Some(Self::Sha256),
             2 => Some(Self::Keccak),
             3 => Some(Self::Blake3),
+            4 => Some(Self::Poseidon2),
             _ => None,
         }
     }
 
     /// Parses a hash configuration from a string.
+    #[must_use]
     pub fn parse(s: &str) -> Option<Self> {
         let lower = s.to_lowercase();
         match lower.as_str() {
@@ -80,14 +118,36 @@ impl HashConfig {
             "sha256" | "sha" | "sha-256" => Some(Self::Sha256),
             "keccak" | "keccak-256" | "shake" => Some(Self::Keccak),
             "blake3" | "blake-3" | "b3" => Some(Self::Blake3),
+            "poseidon2" | "pos2" | "p2" => Some(Self::Poseidon2),
             _ => None,
         }
     }
-}
 
-impl Default for HashConfig {
-    fn default() -> Self {
-        Self::Skyscraper
+    /// Hashes `elements` into a single field element under this configuration.
+    ///
+    /// Binds public inputs to the Fiat-Shamir transcript instance: the prover
+    /// absorbs this value and the verifier recomputes and compares.
+    /// Deterministic in `(self, elements)`; any change in either produces a
+    /// different output with overwhelming probability.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use provekit_common::{FieldElement, HashConfig};
+    /// let h = HashConfig::Sha256
+    ///     .hash_field_elements(&[FieldElement::from(1u64), FieldElement::from(2u64)]);
+    /// # let _ = h;
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn hash_field_elements(self, elements: &[FieldElement]) -> FieldElement {
+        match self {
+            Self::Skyscraper => hash_skyscraper(elements),
+            Self::Sha256 => hash_digest::<sha2::Sha256>(PUBLIC_INPUTS_DST, elements),
+            Self::Keccak => hash_digest::<sha3::Keccak256>(PUBLIC_INPUTS_DST, elements),
+            Self::Blake3 => hash_blake3(PUBLIC_INPUTS_DST, elements),
+            Self::Poseidon2 => hash_poseidon2(elements),
+        }
     }
 }
 
@@ -104,11 +164,77 @@ impl std::str::FromStr for HashConfig {
         Self::parse(s).ok_or_else(|| {
             format!(
                 "Invalid hash configuration: '{}'. Valid options: skyscraper, sha256, keccak, \
-                 blake3",
+                 blake3, poseidon2",
                 s
             )
         })
     }
+}
+
+/// Pairwise Skyscraper compression; empty input hashes to 0. Not
+/// domain-separated (see [`PUBLIC_INPUTS_DST`]).
+#[inline]
+fn hash_skyscraper(elements: &[FieldElement]) -> FieldElement {
+    #[inline]
+    fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
+        let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);
+        FieldElement::new(BigInt(out))
+    }
+
+    let zero = FieldElement::from(0u64);
+    match elements {
+        [] => zero,
+        [x] => compress(*x, zero),
+        [first, rest @ ..] => rest.iter().copied().fold(*first, compress),
+    }
+}
+
+/// DST-tagged [`sha2::digest::Digest`] hash (SHA-256, Keccak-256) over
+/// `elements`.
+///
+/// The final [`FieldElement::from_le_bytes_mod_order`] reduction introduces
+/// ~2⁻²⁵⁴ bias — negligible for FS instance binding, but this is not a
+/// uniform field sampler.
+#[inline]
+fn hash_digest<D>(dst: &[u8], elements: &[FieldElement]) -> FieldElement
+where
+    D: sha2::digest::Digest,
+{
+    let mut hasher = D::new();
+    hasher.update(dst);
+    for fe in elements {
+        hasher.update(field_to_bytes_le(*fe));
+    }
+    FieldElement::from_le_bytes_mod_order(&hasher.finalize())
+}
+
+/// Poseidon2 one-shot hash over `elements` (including empty input).
+///
+/// Prepends [`PUBLIC_INPUTS_DST_FE`] as the first absorbed field element
+/// to provide **role** domain-separation (distinct from Merkle/FS usages of
+/// the same Poseidon2 permutation). The capacity-lane IV inside
+/// [`poseidon2::poseidon2_hash`] separately provides **length** domain-
+/// separation, so the two combined mirror what SHA/Keccak/BLAKE3 get via
+/// the raw [`PUBLIC_INPUTS_DST`] byte prefix.
+#[inline]
+fn hash_poseidon2(elements: &[FieldElement]) -> FieldElement {
+    let mut tagged = Vec::with_capacity(elements.len() + 1);
+    tagged.push(*PUBLIC_INPUTS_DST_FE);
+    tagged.extend_from_slice(elements);
+    poseidon2::poseidon2_hash(&tagged)
+}
+
+/// BLAKE3 analogue of [`hash_digest`]. BLAKE3 does not implement
+/// [`sha2::digest::Digest`] without the optional `traits-preview` feature, so
+/// it gets its own small helper.
+#[inline]
+fn hash_blake3(dst: &[u8], elements: &[FieldElement]) -> FieldElement {
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(dst);
+    for fe in elements {
+        hasher.update(&field_to_bytes_le(*fe));
+    }
+    FieldElement::from_le_bytes_mod_order(hasher.finalize().as_bytes())
 }
 
 #[cfg(test)]
@@ -123,6 +249,7 @@ mod tests {
         HashConfig::Sha256,
         HashConfig::Keccak,
         HashConfig::Blake3,
+        HashConfig::Poseidon2,
     ];
 
     #[test]
@@ -137,7 +264,6 @@ mod tests {
 
     #[test]
     fn from_byte_returns_none_for_invalid() {
-        // One past the last valid byte, and a large value.
         let first_invalid = ALL_VARIANTS.len() as u8;
         assert!(
             HashConfig::from_byte(first_invalid).is_none(),
@@ -159,7 +285,6 @@ mod tests {
 
     #[test]
     fn from_byte_covers_all_variants() {
-        // Collect every Some value from from_byte over the full u8 range.
         let recovered: Vec<HashConfig> = (0..=u8::MAX).filter_map(HashConfig::from_byte).collect();
         for &variant in ALL_VARIANTS {
             assert!(

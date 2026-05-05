@@ -178,6 +178,11 @@ pub fn div_p_32b(x: u64) -> u64 {
     MULSHIFT.div_p(upper_bits)
 }
 
+#[inline(always)]
+pub fn div_p_2b(x: u64) -> u64 {
+    x >> 62
+}
+
 /// Subtracts an approximate multiple of P from `x` using `div_p` on the high
 /// limb.
 ///

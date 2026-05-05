@@ -55,3 +55,4 @@ tooling/provekit-wasm/pkg/*
 
 # logs for passport circuit benchmarks
 noir-examples/noir-passport/merkle_age_check/benchmark-inputs/logs/
+.omx/

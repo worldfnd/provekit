@@ -12,9 +12,20 @@ import (
 func initializeComponents(api frontend.API, circuit *Circuit) (*skyscraper.Skyscraper, gnarkNimue.Nimue, *uints.BinaryField[uints.U64], error) {
 	sc := skyscraper.NewSkyscraper(api, 2)
 
-	// Compute InstanceID in-circuit from public inputs, matching Rust's PublicInputs::hash_bytes().
-	initData := circuit.InitializationData
-	initData.InstanceID = publicInputsHash(sc, circuit.PublicInputs)
+	// ProtocolID and SessionIDBytes are baked-in compile-time constants for
+	// this circuit shape. We construct frontend.Variables from the raw bytes
+	// so gnark inlines them as constants in the constraint system rather than
+	// allocating witnesses.
+	initData := NimueInit{
+		ProtocolID: [2]frontend.Variable{
+			leBytesToNativeBigInt(circuit.ProtocolID[:32]),
+			leBytesToNativeBigInt(circuit.ProtocolID[32:]),
+		},
+		SessionID: leBytesToNativeBigInt(circuit.SessionIDBytes[:]),
+		// InstanceID is computed in-circuit from public inputs, matching
+		// Rust's PublicInputs::hash_bytes().
+		InstanceID: publicInputsHash(sc, circuit.PublicInputs),
+	}
 
 	nimue, err := gnarkNimue.NewSkyscraperNimue(api, sc, initData, circuit.Transcript[:])
 	if err != nil {

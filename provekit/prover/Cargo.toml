@@ -25,7 +25,6 @@ noirc_abi.workspace = true
 ark-ff.workspace = true
 ark-std.workspace = true
 whir.workspace = true
-hex.workspace = true
 
 # 3rd party
 anyhow.workspace = true

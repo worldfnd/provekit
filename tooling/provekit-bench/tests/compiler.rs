@@ -4,9 +4,9 @@ use {
     nargo_cli::cli::compile_cmd::compile_workspace_full,
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
     noirc_driver::CompileOptions,
-    provekit_common::{Prover, Verifier},
+    provekit_common::{HashConfig, Prover, Verifier},
     provekit_prover::Prove,
-    provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
+    provekit_r1cs_compiler::NoirCompiler,
     provekit_verifier::Verify,
     serde::Deserialize,
     std::path::{Path, PathBuf},
@@ -52,6 +52,13 @@ fn compile_workspace_once(workspace_path: &Path) {
 }
 
 fn test_noir_compiler(test_case_path: impl AsRef<Path>, witness_file: &str) {
+    test_noir_compiler_with_hash_config(test_case_path, witness_file, HashConfig::default());
+}
+
+fn load_noir_artifact_paths(
+    test_case_path: impl AsRef<Path>,
+    witness_file: &str,
+) -> (PathBuf, PathBuf) {
     let test_case_path = test_case_path.as_ref();
 
     compile_workspace_once(test_case_path);
@@ -66,8 +73,17 @@ fn test_noir_compiler(test_case_path: impl AsRef<Path>, witness_file: &str) {
     let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
     let witness_file_path = test_case_path.join(witness_file);
 
-    let schema = NoirCompiler::from_file(&circuit_path, provekit_common::HashConfig::default())
-        .expect("Reading proof scheme");
+    (circuit_path, witness_file_path)
+}
+
+fn test_noir_compiler_with_hash_config(
+    test_case_path: impl AsRef<Path>,
+    witness_file: &str,
+    hash_config: HashConfig,
+) {
+    let (circuit_path, witness_file_path) = load_noir_artifact_paths(test_case_path, witness_file);
+
+    let schema = NoirCompiler::from_file(&circuit_path, hash_config).expect("Reading proof scheme");
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
@@ -150,6 +166,10 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
     "Prover.toml"
 )]
 #[test_case(
+    "../../noir-examples/noir-r1cs-test-programs/bin-opcode-u64-large-const",
+    "Prover.toml"
+)]
+#[test_case(
     "../../noir-examples/noir-r1cs-test-programs/bin-opcode-i8",
     "Prover.toml"
 )]
@@ -174,6 +194,42 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
     "../../noir-examples/noir-r1cs-test-programs/brillig-unconstrained",
     "Prover.toml"
 )]
+#[test_case("../../noir-examples/basic", "Prover.toml")]
+#[test_case("../../noir-examples/basic-2", "Prover.toml")]
+#[test_case("../../noir-examples/basic-3", "Prover.toml")]
+#[test_case("../../noir-examples/basic-4", "Prover.toml")]
+#[test_case("../../noir-examples/many_poseidons", "Prover.toml")]
+#[test_case("../../noir-examples/native_msm", "Prover.toml")]
+#[test_case("../../noir-examples/noir_sha256", "Prover.toml")]
+#[test_case("../../noir-examples/oprf", "Prover.toml")]
+#[test_case("../../noir-examples/p256_bigcurve", "Prover.toml")]
+#[test_case("../../noir-examples/poseidon-rounds", "Prover.toml")]
+#[test_case("../../noir-examples/poseidon2", "Prover.toml")]
+#[test_case("../../noir-examples/power", "Prover.toml")]
+#[test_case("../../noir-examples/rangechecks", "Prover.toml")]
+#[test_case("../../noir-examples/sha256", "Prover.toml")]
+#[test_case("../../noir-examples/zkchase", "Prover.toml")]
+#[test_case("../../noir-examples/csp-benchmarks/sha256_128", "Prover.toml"; "ethproofs_csp_sha256_128")]
+#[test_case("../../noir-examples/csp-benchmarks/sha256_256", "Prover.toml"; "ethproofs_csp_sha256_256")]
+#[test_case("../../noir-examples/csp-benchmarks/sha256_512", "Prover.toml"; "ethproofs_csp_sha256_512")]
+#[test_case("../../noir-examples/csp-benchmarks/sha256_1024", "Prover.toml"; "ethproofs_csp_sha256_1024")]
+#[test_case("../../noir-examples/csp-benchmarks/sha256_2048", "Prover.toml"; "ethproofs_csp_sha256_2048")]
+#[test_case("../../noir-examples/csp-benchmarks/keccak_128", "Prover.toml"; "ethproofs_csp_keccak_128")]
+#[test_case("../../noir-examples/csp-benchmarks/keccak_256", "Prover.toml"; "ethproofs_csp_keccak_256")]
+#[test_case("../../noir-examples/csp-benchmarks/keccak_512", "Prover.toml"; "ethproofs_csp_keccak_512")]
+#[test_case("../../noir-examples/csp-benchmarks/keccak_1024", "Prover.toml"; "ethproofs_csp_keccak_1024")]
+#[test_case("../../noir-examples/csp-benchmarks/keccak_2048", "Prover.toml"; "ethproofs_csp_keccak_2048")]
+#[test_case("../../noir-examples/csp-benchmarks/poseidon_2", "Prover.toml"; "ethproofs_csp_poseidon_2")]
+#[test_case("../../noir-examples/csp-benchmarks/poseidon_4", "Prover.toml"; "ethproofs_csp_poseidon_4")]
+#[test_case("../../noir-examples/csp-benchmarks/poseidon_8", "Prover.toml"; "ethproofs_csp_poseidon_8")]
+#[test_case("../../noir-examples/csp-benchmarks/poseidon_12", "Prover.toml"; "ethproofs_csp_poseidon_12")]
+#[test_case("../../noir-examples/csp-benchmarks/poseidon_16", "Prover.toml"; "ethproofs_csp_poseidon_16")]
+#[test_case("../../noir-examples/csp-benchmarks/poseidon2_2", "Prover.toml"; "ethproofs_csp_poseidon2_2")]
+#[test_case("../../noir-examples/csp-benchmarks/poseidon2_4", "Prover.toml"; "ethproofs_csp_poseidon2_4")]
+#[test_case("../../noir-examples/csp-benchmarks/poseidon2_8", "Prover.toml"; "ethproofs_csp_poseidon2_8")]
+#[test_case("../../noir-examples/csp-benchmarks/poseidon2_12", "Prover.toml"; "ethproofs_csp_poseidon2_12")]
+#[test_case("../../noir-examples/csp-benchmarks/poseidon2_16", "Prover.toml"; "ethproofs_csp_poseidon2_16")]
+#[test_case("../../noir-examples/csp-benchmarks/ecdsa_p256", "Prover.toml"; "ethproofs_csp_ecdsa_p256")]
 #[test_case("../../noir-examples/noir-passport-monolithic/complete_age_check", "Prover.toml"; "complete_age_check")]
 #[test_case("../../noir-examples/embedded_curve_msm", "Prover.toml"; "embedded_curve_msm")]
 #[test_case("../../noir-examples/embedded_curve_msm", "Prover_zero_scalars.toml"; "msm_zero_scalars")]
@@ -184,23 +240,28 @@ fn case_noir(path: &str, witness_file: &str) {
     test_noir_compiler(path, witness_file);
 }
 
+/// MSM inside a conditional branch — exercises the predicate field added in
+/// ACIR beta.19. Active branch (predicate=1), inactive branch (predicate=0),
+/// and nested conditionals (compound predicate) are all covered.
+#[test_case("../../noir-examples/msm_conditional", "Prover.toml"; "msm_conditional_active")]
+#[test_case("../../noir-examples/msm_conditional", "Prover_inactive.toml"; "msm_conditional_inactive")]
+#[test_case("../../noir-examples/msm_conditional", "Prover_scalar2.toml"; "msm_conditional_active_scalar2")]
+#[test_case("../../noir-examples/msm_conditional_nested", "Prover.toml"; "msm_nested_both_true")]
+#[test_case("../../noir-examples/msm_conditional_nested", "Prover_outer_false.toml"; "msm_nested_outer_false")]
+#[test_case("../../noir-examples/msm_conditional_nested", "Prover_inner_false.toml"; "msm_nested_inner_false")]
+fn case_noir_msm_conditional(path: &str, witness_file: &str) {
+    test_noir_compiler(path, witness_file);
+}
+
 /// Verify that the verifier rejects a proof whose public inputs have been
 /// tampered with.
 #[test]
 fn test_public_input_binding_exploit() {
-    use provekit_common::{witness::PublicInputs, FieldElement, HashConfig};
+    use provekit_common::{witness::PublicInputs, FieldElement};
 
     let test_case_path = Path::new("../../noir-examples/basic-4");
 
-    compile_workspace_once(test_case_path);
-
-    let nargo_toml_path = test_case_path.join("Nargo.toml");
-    let nargo_toml = std::fs::read_to_string(&nargo_toml_path).expect("Reading Nargo.toml");
-    let nargo_toml: NargoToml = toml::from_str(&nargo_toml).expect("Deserializing Nargo.toml");
-    let package_name = nargo_toml.package.name;
-
-    let circuit_path = test_case_path.join(format!("target/{package_name}.json"));
-    let witness_file_path = test_case_path.join("Prover.toml");
+    let (circuit_path, witness_file_path) = load_noir_artifact_paths(test_case_path, "Prover.toml");
 
     let schema = NoirCompiler::from_file(&circuit_path, HashConfig::default())
         .expect("Reading proof scheme");
@@ -228,5 +289,50 @@ fn test_public_input_binding_exploit() {
     assert!(
         result.is_err(),
         "Verification should fail when public inputs are tampered, but it succeeded",
+    );
+}
+
+#[test]
+fn test_hash_config_does_not_leak_between_operations() {
+    let test_case_path = Path::new("../../noir-examples/basic-4");
+
+    for config in [
+        HashConfig::Skyscraper,
+        HashConfig::Sha256,
+        HashConfig::Keccak,
+        HashConfig::Blake3,
+        HashConfig::Poseidon2,
+        HashConfig::Sha256,
+    ] {
+        test_noir_compiler_with_hash_config(test_case_path, "Prover.toml", config);
+    }
+}
+
+#[test]
+fn test_verifier_rejects_mismatched_hash_config() {
+    let test_case_path = Path::new("../../noir-examples/basic-4");
+    let (circuit_path, witness_file_path) = load_noir_artifact_paths(test_case_path, "Prover.toml");
+
+    let prover_schema =
+        NoirCompiler::from_file(&circuit_path, HashConfig::Sha256).expect("Reading prover schema");
+    let verifier_schema = NoirCompiler::from_file(&circuit_path, HashConfig::Keccak)
+        .expect("Reading verifier schema");
+
+    let prover = Prover::from_noir_proof_scheme(prover_schema.clone());
+    let mut matching_verifier = Verifier::from_noir_proof_scheme(prover_schema);
+    let mut mismatched_verifier = Verifier::from_noir_proof_scheme(verifier_schema);
+
+    let proof = prover
+        .prove_with_toml(&witness_file_path)
+        .expect("While proving Noir program statement");
+
+    matching_verifier
+        .verify(&proof)
+        .expect("Matching verifier should accept the proof");
+
+    let result = mismatched_verifier.verify(&proof);
+    assert!(
+        result.is_err(),
+        "Verification should fail when prover and verifier use different hash configs",
     );
 }

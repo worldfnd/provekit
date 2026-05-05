@@ -84,6 +84,9 @@ fn cow_to_digit(
 ) -> ConstantOrR1CSWitness {
     match cow {
         ConstantOrR1CSWitness::Constant(c) => {
+            // Constants reaching `cow_to_digit` have already been
+            // byte-decomposed by `process_binop_opcode` (via `const_byte`),
+            // so the value here always fits in a single byte (≤ 255).
             let val = c.into_bigint().0[0];
             let digit =
                 (val >> (digit_i as u64 * atomic_bits as u64)) & ((1u64 << atomic_bits) - 1);

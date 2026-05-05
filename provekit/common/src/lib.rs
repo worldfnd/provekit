@@ -6,6 +6,7 @@ mod mavros;
 mod noir_proof_scheme;
 pub mod ntt;
 pub mod optimize;
+pub mod poseidon2;
 pub mod prefix_covector;
 mod prover;
 mod r1cs;
@@ -56,8 +57,9 @@ pub fn register_ntt() {
 
         whir::algebra::ntt::NTT.insert(ntt);
 
-        // Register Skyscraper (ProveKit-specific); WHIR's built-in engines
+        // Register ProveKit-specific engines; WHIR's built-in engines
         // (SHA2, Keccak, Blake3, etc.) are pre-registered via whir::hash::ENGINES.
         whir::hash::ENGINES.register(Arc::new(skyscraper::SkyscraperHashEngine));
+        whir::hash::ENGINES.register(Arc::new(poseidon2::Poseidon2HashEngine));
     });
 }

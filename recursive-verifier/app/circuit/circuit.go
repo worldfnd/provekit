@@ -25,8 +25,15 @@ import (
 type NimueInit = gnark_nimue.NimueInit
 
 type Circuit struct {
-	InitializationData NimueInit
-	LogNumConstraints  int
+	// ProtocolID is SHA3-512(CBOR(WhirR1CSScheme)) for this circuit shape.
+	// SessionIDBytes is the raw 32-byte session id used in domain separation.
+	// Both are fixed for a given circuit instance, so we carry them as
+	// Go-typed fields (not frontend.Variable) so gnark inlines them as
+	// constants in the constraint system rather than allocating witness
+	// variables.
+	ProtocolID        [64]byte
+	SessionIDBytes    [32]byte
+	LogNumConstraints int
 
 	SessionID                    [32]uints.U8 `gnark:",public"`
 	Transcript                   []uints.U8   `gnark:",public"`
@@ -284,39 +291,6 @@ func flattenOODAnswers(answers [][]frontend.Variable) []frontend.Variable {
 	return flat
 }
 
-// configToNimueInit returns (circuit placeholder, assignment) for NimueInit.
-// Circuit placeholder has all fields zeroed. Assignment is filled from cfg:
-//   - ProtocolID[0]: little-endian field element from cfg.ProtocolID bytes 0..31
-//   - ProtocolID[1]: little-endian field element from cfg.ProtocolID bytes 32..63
-//   - SessionID:     little-endian field element from cfg.SessionID bytes 0..31
-//
-// InstanceID is computed in-circuit from PublicInputs (see initializeComponents).
-func configToNimueInit(cfg Config) (circuit, assign NimueInit) {
-	var pid [64]byte
-	copy(pid[:], cfg.ProtocolID)
-	var sid [32]byte
-	copy(sid[:], cfg.SessionID)
-
-	// Compute instance = public_inputs.hash_bytes() for the assignment.
-	// The circuit recomputes this in-circuit (see initializeComponents), but
-	// gnark requires all witness fields to have concrete values.
-	piValues := make([]*big.Int, len(cfg.PublicInputs.Values))
-	for i, v := range cfg.PublicInputs.Values {
-		piValues[i] = v.(*big.Int)
-	}
-	instance := nativePublicInputsHashBytes(piValues)
-
-	assign = NimueInit{
-		ProtocolID: [2]frontend.Variable{
-			leBytesToNativeBigInt(pid[:32]),
-			leBytesToNativeBigInt(pid[32:]),
-		},
-		SessionID:  leBytesToNativeBigInt(sid[:]),
-		InstanceID: leBytesToNativeBigInt(instance[:]),
-	}
-	return circuit, assign
-}
-
 // DualCommitmentData holds the additional data needed for dual-commitment mode.
 type DualCommitmentData struct {
 	Evals2BigInt       []*big.Int
@@ -344,7 +318,10 @@ func verifyCircuit(
 		transcriptT[i] = uints.NewU8(cfg.NargString[i])
 	}
 
-	nimueInitCircuit, nimueInitAssign := configToNimueInit(cfg)
+	var protocolID [64]byte
+	copy(protocolID[:], cfg.ProtocolID)
+	var sessionIDBytes [32]byte
+	copy(sessionIDBytes[:], cfg.SessionID)
 
 	matrixA, matrixB, matrixC, err := buildR1CSMatrixCells(internedR1CS, interner)
 	if err != nil {
@@ -367,7 +344,8 @@ func verifyCircuit(
 	}
 
 	circuit := Circuit{
-		InitializationData:           nimueInitCircuit,
+		ProtocolID:                   protocolID,
+		SessionIDBytes:               sessionIDBytes,
 		Transcript:                   contTranscript,
 		LogNumConstraints:            cfg.LogNumConstraints,
 		NumChallenges:                cfg.NumChallenges,
@@ -462,7 +440,8 @@ func verifyCircuit(
 	}
 
 	assignment := Circuit{
-		InitializationData:           nimueInitAssign,
+		ProtocolID:                   protocolID,
+		SessionIDBytes:               sessionIDBytes,
 		Transcript:                   transcriptT,
 		LogNumConstraints:            cfg.LogNumConstraints,
 		NumChallenges:                cfg.NumChallenges,

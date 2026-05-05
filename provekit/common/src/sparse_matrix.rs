@@ -1,5 +1,6 @@
 use {
     crate::{FieldElement, InternedFieldElement, Interner},
+    anyhow::{bail, Result},
     ark_std::Zero,
     rayon::{
         iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
@@ -516,6 +517,12 @@ impl SparseMatrix {
         self.iter_row(row).collect()
     }
 
+    /// Borrow the raw column/value slices for a row.
+    pub fn row_slices(&self, row: usize) -> (&[u32], &[InternedFieldElement]) {
+        let range = self.row_range(row);
+        (&self.col_indices[range.clone()], &self.values[range])
+    }
+
     /// Replace a row's entries entirely. The new entries must be sorted by
     /// column.
     pub fn replace_row(&mut self, row: usize, entries: &[(usize, InternedFieldElement)]) {
@@ -527,14 +534,21 @@ impl SparseMatrix {
         let old_len = range.len();
         let new_len = entries.len();
 
-        let new_cols: Vec<u32> = entries.iter().map(|(c, _)| *c as u32).collect();
-        let new_vals: Vec<InternedFieldElement> = entries.iter().map(|(_, v)| *v).collect();
+        if new_len == old_len {
+            let row_cols = &mut self.col_indices[range.clone()];
+            let row_vals = &mut self.values[range];
+            for (idx, (col, val)) in entries.iter().enumerate() {
+                row_cols[idx] = *col as u32;
+                row_vals[idx] = *val;
+            }
+        } else {
+            let new_cols: Vec<u32> = entries.iter().map(|(c, _)| *c as u32).collect();
+            let new_vals: Vec<InternedFieldElement> = entries.iter().map(|(_, v)| *v).collect();
 
-        self.col_indices.splice(range.clone(), new_cols);
-        self.values.splice(range.clone(), new_vals);
+            self.col_indices.splice(range.clone(), new_cols);
+            self.values.splice(range.clone(), new_vals);
 
-        let diff = new_len as i64 - old_len as i64;
-        if diff != 0 {
+            let diff = new_len as i64 - old_len as i64;
             for index in &mut self.new_row_indices[row + 1..] {
                 *index = (*index as i64 + diff) as u32;
             }
@@ -567,6 +581,45 @@ impl SparseMatrix {
             col_indices: new_col_indices,
             values: new_values,
         }
+    }
+
+    /// Remove columns at the given indices and compact remaining columns.
+    /// Returns a new SparseMatrix with columns remapped according to the
+    /// given table. `remap[old_col] = Some(new_col)` keeps the column;
+    /// `None` removes it (entries are dropped).
+    pub fn remove_columns(&self, remap: &[Option<usize>]) -> Result<SparseMatrix> {
+        let new_num_cols = remap.iter().filter(|r| r.is_some()).count();
+        let mut new_row_indices = Vec::with_capacity(self.num_rows);
+        let mut new_col_indices = Vec::new();
+        let mut new_values = Vec::new();
+
+        for row in 0..self.num_rows {
+            new_row_indices.push(new_col_indices.len() as u32);
+            let range = self.row_range(row);
+            for i in range {
+                let old_col = self.col_indices[i] as usize;
+                if let Some(new_col) = remap[old_col] {
+                    new_col_indices.push(new_col as u32);
+                    new_values.push(self.values[i]);
+                } else {
+                    // Dead columns should have no entries (zero occurrence).
+                    // If we reach here, a non-zero entry is being dropped —
+                    // this indicates a bug in dead-column classification.
+                    bail!(
+                        "remove_columns: dropping non-zero entry at row {row}, col {old_col} — \
+                         column was classified as dead but has entries"
+                    );
+                }
+            }
+        }
+
+        Ok(SparseMatrix {
+            num_rows: self.num_rows,
+            num_cols: new_num_cols,
+            new_row_indices,
+            col_indices: new_col_indices,
+            values: new_values,
+        })
     }
 
     /// Count how many rows reference each column. Returns a Vec of length

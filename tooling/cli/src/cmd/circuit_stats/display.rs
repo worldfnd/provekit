@@ -468,15 +468,31 @@ pub(super) fn print_ge_optimization(
     println!("└{}", SUBSECTION);
 
     println!("\n┌─ After Optimization");
+    let opt_constraints = optimized_r1cs.num_constraints();
+    if opt_constraints > 0 {
+        println!(
+            "│  Constraints:  {:>8}  (2^{:.2})",
+            opt_constraints,
+            (opt_constraints as f64).log2()
+        );
+    } else {
+        println!("│  Constraints:  {:>8}", opt_constraints);
+    }
+    if stats.witnesses_after > 0 {
+        println!(
+            "│  Witnesses:    {:>8}  (2^{:.2})  committed to WHIR",
+            stats.witnesses_after,
+            (stats.witnesses_after as f64).log2()
+        );
+    } else {
+        println!(
+            "│  Witnesses:    {:>8}           committed to WHIR",
+            stats.witnesses_after
+        );
+    }
     println!(
-        "│  Constraints:  {:>8}  (2^{:.2})",
-        optimized_r1cs.num_constraints(),
-        (optimized_r1cs.num_constraints() as f64).log2()
-    );
-    println!(
-        "│  Witnesses:    {:>8}  (2^{:.2})",
-        optimized_r1cs.num_witnesses(),
-        (optimized_r1cs.num_witnesses() as f64).log2()
+        "│  Virtual:      {:>8}           solving only, not committed",
+        stats.num_virtual
     );
     println!("│  A entries:    {:>8}", optimized_r1cs.a.num_entries());
     println!("│  B entries:    {:>8}", optimized_r1cs.b.num_entries());
@@ -485,14 +501,17 @@ pub(super) fn print_ge_optimization(
 
     println!("\n{}", SEPARATOR);
     println!(
-        "ELIMINATED:          {:>8}  linear constraints substituted",
-        stats.eliminated
-    );
-    println!(
         "CONSTRAINT REDUCTION: {:>7.2}%  ({} -> {})",
         stats.constraint_reduction_percent(),
         stats.constraints_before,
         stats.constraints_after
+    );
+    println!(
+        "WITNESS REDUCTION:    {:>7.2}%  ({} -> {} committed + {} virtual)",
+        stats.witness_reduction_percent(),
+        stats.witnesses_before,
+        stats.witnesses_after,
+        stats.num_virtual
     );
     println!("{}", SEPARATOR);
     println!();

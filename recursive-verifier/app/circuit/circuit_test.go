@@ -225,7 +225,10 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	}
 
 	// 9. Build circuit template and assignment (mirrors verifyCircuit)
-	nimueInitCircuit, nimueInitAssign := configToNimueInit(config)
+	var protocolID [64]byte
+	copy(protocolID[:], config.ProtocolID)
+	var sessionIDBytes [32]byte
+	copy(sessionIDBytes[:], config.SessionID)
 
 	transcriptT := make([]uints.U8, len(config.NargString))
 	contTranscript := make([]uints.U8, len(config.NargString))
@@ -247,7 +250,8 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	}
 
 	circuit := &Circuit{
-		InitializationData:           nimueInitCircuit,
+		ProtocolID:                   protocolID,
+		SessionIDBytes:               sessionIDBytes,
 		Transcript:                   contTranscript,
 		LogNumConstraints:            config.LogNumConstraints,
 		NumChallenges:                config.NumChallenges,
@@ -272,7 +276,8 @@ func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit
 	}
 
 	assignment := &Circuit{
-		InitializationData:           nimueInitAssign,
+		ProtocolID:                   protocolID,
+		SessionIDBytes:               sessionIDBytes,
 		Transcript:                   transcriptT,
 		LogNumConstraints:            config.LogNumConstraints,
 		NumChallenges:                config.NumChallenges,

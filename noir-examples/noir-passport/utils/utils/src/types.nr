@@ -1,5 +1,5 @@
-use poseidon::poseidon2::Poseidon2;
 use crate::pack_be_bytes_into_fields;
+use poseidon::poseidon2::Poseidon2;
 
 // DG1 types
 pub type DG1Data = [u8; 95];
