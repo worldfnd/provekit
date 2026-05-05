@@ -305,8 +305,8 @@ fn prove_from_alphas(
 
         let blinding_covector = OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
-        let alpha_weight_data: Option<Vec<(Vec<FieldElement>, usize)>> = produce_spark_query
-            .then(|| {
+        let alpha_weight_data: Option<Vec<(Vec<FieldElement>, usize)>> =
+            produce_spark_query.then(|| {
                 weights
                     .iter()
                     .map(|w| (w.vector().to_vec(), w.size()))
@@ -431,8 +431,8 @@ fn prove_from_alphas(
             let blinding_covector =
                 OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
-            let alpha_weight_data_1: Option<Vec<(Vec<FieldElement>, usize)>> =
-                produce_spark_query.then(|| {
+            let alpha_weight_data_1: Option<Vec<(Vec<FieldElement>, usize)>> = produce_spark_query
+                .then(|| {
                     weights[public_offset_1..public_offset_1 + 3]
                         .iter()
                         .map(|w| (w.vector().to_vec(), w.size()))
@@ -484,8 +484,8 @@ fn prove_from_alphas(
             let weights = build_prefix_covectors(scheme.m, alphas_2);
             let mut evaluations: Vec<FieldElement> = evals_2;
 
-            let alpha_weight_data_2: Option<Vec<(Vec<FieldElement>, usize)>> =
-                produce_spark_query.then(|| {
+            let alpha_weight_data_2: Option<Vec<(Vec<FieldElement>, usize)>> = produce_spark_query
+                .then(|| {
                     weights[0..3]
                         .iter()
                         .map(|w| (w.vector().to_vec(), w.size()))

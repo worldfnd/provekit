@@ -52,9 +52,8 @@ pub fn prove_axis_init_final_product(
             .zip(final_section.par_iter_mut())
             .enumerate()
             .for_each(|(i, (init_slot, final_slot))| {
-                let base = FieldElement::from(i as u64) * gamma_sq
-                    + config.eq_memory[i] * gamma
-                    - tau;
+                let base =
+                    FieldElement::from(i as u64) * gamma_sq + config.eq_memory[i] * gamma - tau;
                 *init_slot = base;
                 *final_slot = base + config.final_timestamp[i];
             });

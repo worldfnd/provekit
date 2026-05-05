@@ -395,8 +395,8 @@ fn prove_combined_rs_ws_product(
 
     let fold_lf_for_vals_rs_ws = MultilinearExtension::new(folding_randomness.to_vec());
     let eval_lf_for_vals_rs_ws = MultilinearExtension::new(evaluation_randomness.to_vec());
-    // Layout: linear_form-major, then poly. Polys: [vals, row_field, read_row, col_field,
-    // read_col].
+    // Layout: linear_form-major, then poly. Polys: [vals, row_field, read_row,
+    // col_field, read_col].
     let vals_rs_ws_evaluations = [
         // fold_lf
         sumcheck_final_folds[0],
@@ -453,10 +453,8 @@ fn prove_combined_rs_ws_product(
         vec![Cow::Borrowed(&e_values.e_rx), Cow::Borrowed(&e_values.e_ry)],
         vec![Cow::Borrowed(e_values_witness)],
         vec![
-            Box::new(fold_lf)
-                as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
-            Box::new(eval_lf)
-                as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
+            Box::new(fold_lf) as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
+            Box::new(eval_lf) as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
         ],
         Cow::Borrowed(&evaluations),
     );
