@@ -44,7 +44,8 @@ pub use {ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
 /// All methods return the `NoirProof` plus a `Vec<R1CSSparkQuery>` of SPARK
 /// queries produced as a side output. Callers that don't need the queries
 /// can discard with `let (proof, _) = ...`. SPARK query generation is
-/// off by default; enable it by setting [`Prover::produce_spark_query`].
+/// off by default; enable it by calling
+/// [`Prover::set_produce_spark_query`](provekit_common::Prover::set_produce_spark_query).
 pub trait Prove {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<(NoirProof, Vec<R1CSSparkQuery>)>;
