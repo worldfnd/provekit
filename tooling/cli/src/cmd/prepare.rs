@@ -107,7 +107,7 @@ impl Command for Args {
         if self.spark {
             provekit_common::register_ntt();
             let matrix = build_spark_matrix_for_scheme(&scheme, self.r1cs_path.as_deref())?;
-            let (setup, _witnesses) = provekit_spark::preprocess_spark(&matrix);
+            let (setup, _witnesses) = provekit_spark::preprocess_spark(&matrix, hash_config);
             write(&setup, &self.spc_path)
                 .with_context(|| format!("writing SPARK setup to {:?}", self.spc_path))?;
             info!("Wrote SPARK setup to {:?}", self.spc_path);

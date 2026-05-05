@@ -57,7 +57,8 @@ impl Command for Args {
         // TODO: cache from `prepare --spark` instead of recomputing; blocked on
         // serde for `WhirWitness` over `ark_bn254::Fr`.
         let spark_matrix = build_spark_matrix(&prover, self.r1cs_path.as_deref())?;
-        let (setup, witnesses) = provekit_spark::preprocess_spark(&spark_matrix);
+        let hash_config = prover.whir_for_witness().hash_config;
+        let (setup, witnesses) = provekit_spark::preprocess_spark(&spark_matrix, hash_config);
         let context = SparkProverContext {
             matrix: spark_matrix,
             witnesses,
@@ -69,7 +70,8 @@ impl Command for Args {
         let num_nonzero = context.matrix.coo.val.len();
 
         for (index, query) in queries.iter().enumerate() {
-            let scheme = SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero);
+            let scheme =
+                SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero, hash_config);
             let spark_proof = scheme
                 .prove(&context, query)
                 .context("generating SPARK proof")?;

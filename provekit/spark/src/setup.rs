@@ -4,7 +4,7 @@ use {
         types::{SPARKSetup, SparkMatrix, SparkWitnesses},
     },
     anyhow::Result,
-    provekit_common::{FieldElement, TranscriptSponge, WhirR1CSProof},
+    provekit_common::{FieldElement, HashConfig, TranscriptSponge, WhirR1CSProof},
     tracing::instrument,
     whir::{
         protocols::irs_commit::Commitment,
@@ -19,11 +19,14 @@ pub(crate) struct PrecomputedCommitments {
 }
 
 #[instrument(skip_all)]
-pub fn preprocess_spark(matrix: &SparkMatrix) -> (SPARKSetup, SparkWitnesses) {
+pub fn preprocess_spark(
+    matrix: &SparkMatrix,
+    hash_config: HashConfig,
+) -> (SPARKSetup, SparkWitnesses) {
     let num_rows = matrix.timestamps.final_row.len();
     let num_cols = matrix.timestamps.final_col.len();
     let nonzero_terms = matrix.coo.val.len();
-    let scheme = SPARKProverScheme::new(num_rows, num_cols, nonzero_terms);
+    let scheme = SPARKProverScheme::new(num_rows, num_cols, nonzero_terms, hash_config);
 
     let ds = DomainSeparator::protocol(&scheme.whir_configs).instance(&Empty);
     let mut merlin = ProverState::new(&ds, TranscriptSponge::default());

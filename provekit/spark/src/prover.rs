@@ -12,14 +12,15 @@ use {
     anyhow::{ensure, Result},
     ark_ff::{Field, Zero},
     provekit_common::{
-        spark::R1CSSparkQuery, utils::next_power_of_two, FieldElement, TranscriptSponge,
-        WhirConfig, WhirR1CSProof,
+        spark::R1CSSparkQuery, utils::next_power_of_two, FieldElement, HashConfig,
+        TranscriptSponge, WhirConfig, WhirR1CSProof,
     },
     rayon::{join, prelude::*},
     std::borrow::Cow,
     tracing::instrument,
     whir::{
         algebra::{linear_form::MultilinearExtension, multilinear_extend},
+        engines::EngineId,
         parameters::ProtocolParameters,
         transcript::{DomainSeparator, ProverState, VerifierMessage},
     },
@@ -38,7 +39,11 @@ pub struct SPARKScheme {
     pub matrix_dimensions: MatrixDimensions,
 }
 
-pub fn new_whir_config_for_size(log_size: usize, batch_size: usize) -> WhirConfig {
+pub fn new_whir_config_for_size(
+    log_size: usize,
+    batch_size: usize,
+    hash_id: EngineId,
+) -> WhirConfig {
     let nv = log_size.max(4);
 
     let whir_params = ProtocolParameters {
@@ -49,31 +54,37 @@ pub fn new_whir_config_for_size(log_size: usize, batch_size: usize) -> WhirConfi
         folding_factor: 3,
         starting_log_inv_rate: 2,
         batch_size,
-        hash_id: whir::hash::SHA2,
+        hash_id,
     };
 
     WhirConfig::new(1 << nv, &whir_params)
 }
 
 impl SPARKScheme {
-    pub fn new_for_r1cs(r1cs: &provekit_common::R1CS) -> Self {
+    pub fn new_for_r1cs(r1cs: &provekit_common::R1CS, hash_config: HashConfig) -> Self {
         let num_rows = 2 * r1cs.num_constraints();
         let num_cols = 2 * r1cs.num_witnesses();
         let nonzero_terms =
             r1cs.a().iter().count() + r1cs.b().iter().count() + r1cs.c().iter().count();
 
-        Self::new(num_rows, num_cols, nonzero_terms)
+        Self::new(num_rows, num_cols, nonzero_terms, hash_config)
     }
 
-    pub fn new(num_rows: usize, num_cols: usize, nonzero_terms: usize) -> Self {
+    pub fn new(
+        num_rows: usize,
+        num_cols: usize,
+        nonzero_terms: usize,
+        hash_config: HashConfig,
+    ) -> Self {
         let padded_num_entries = 1 << next_power_of_two(nonzero_terms);
+        let hash_id = hash_config.engine_id();
 
-        let row_config = new_whir_config_for_size(next_power_of_two(num_rows), 1);
-        let col_config = new_whir_config_for_size(next_power_of_two(num_cols), 1);
+        let row_config = new_whir_config_for_size(next_power_of_two(num_rows), 1, hash_id);
+        let col_config = new_whir_config_for_size(next_power_of_two(num_cols), 1, hash_id);
         let num_terms_2batched_config =
-            new_whir_config_for_size(next_power_of_two(padded_num_entries), 2);
+            new_whir_config_for_size(next_power_of_two(padded_num_entries), 2, hash_id);
         let num_terms_5batched_config =
-            new_whir_config_for_size(next_power_of_two(padded_num_entries), 5);
+            new_whir_config_for_size(next_power_of_two(padded_num_entries), 5, hash_id);
 
         Self {
             whir_configs:      SPARKWHIRConfigs {
