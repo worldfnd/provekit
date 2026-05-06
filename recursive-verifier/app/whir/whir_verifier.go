@@ -254,6 +254,33 @@ func VerifyWhir(
 			}
 		}
 		verifyMerkleProofs(api, sc, rd.Leaves, rd.LeafIndexes, rd.SiblingHashes, rd.AuthPaths, prevRootHash)
+
+		// Final-round in-domain consistency check (mirrors Rust whir
+		// verifier.rs lines 217-226):
+		//
+		//   for each STIR query q:
+		//     dot(tensor_product(poly_rlc, eq_weights(last_fold_rand)), leaf_q)
+		//       == UnivariateEval(final_vector, stir_point_q)
+		//
+		// where stir_point_q = generator^bit_reverse(stir_index_q), i.e.
+		// finalRandomnessPoints[q]. poly_rlc is vectorRlcCoeffs when the
+		// final round opens the initial commitment (no main rounds), else [1].
+		lastFoldRand := totalFoldingRandomness[len(totalFoldingRandomness)-params.FoldingFactorArray[finalRoundIdx]:]
+		eqWFinal := computeEqWeights(api, lastFoldRand)
+		var finalInDomainWeights []frontend.Variable
+		if finalRoundIdx == 0 {
+			finalInDomainWeights = TensorProduct(api, vectorRlcCoeffs, eqWFinal)
+		} else {
+			finalInDomainWeights = eqWFinal
+		}
+		for q := range finalIndexes {
+			if q >= len(rd.Leaves) || q >= len(finalRandomnessPoints) {
+				continue
+			}
+			leafCombo := DotProduct(api, finalInDomainWeights, rd.Leaves[q])
+			univEval := UnivarPoly(api, finalVector, []frontend.Variable{finalRandomnessPoints[q]})[0]
+			api.AssertIsEqual(leafCombo, univEval)
+		}
 	}
 
 	// Final sumcheck.
