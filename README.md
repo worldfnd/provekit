@@ -16,7 +16,7 @@ ProveKit is a zero-knowledge proof system toolkit that compiles [Noir](https://n
 
 ## Why ProveKit
 
-- **Noir frontend:** write circuits in Noir and use ProveKit to prepare keys, prove, and verify with one CLI.
+- **Noir frontend:** write circuits in Noir and use ProveKit to compile, prepare keys, prove, and verify with one CLI.
 - **Post-quantum secure proofs:** produce WHIR proofs designed around post-quantum security assumptions.
 - **Integration-ready surface:** use ProveKit from Rust or from C-compatible FFI hosts such as Swift, Kotlin, Python, and JavaScript.
 - **Recursive verifier for on-chain Groth16:** export prover-key/proof data for the gnark recursive verifier when an on-chain Groth16 wrapper is required.
@@ -27,7 +27,7 @@ ProveKit is a zero-knowledge proof system toolkit that compiles [Noir](https://n
 
 Install Rust with `rustup`. This repository includes `rust-toolchain.toml`, so Cargo picks the pinned nightly automatically.
 
-Install nargo `v1.0.0-beta.11`:
+Install the Noir toolchain version used by v1 examples:
 
 ```sh
 noirup --version v1.0.0-beta.11
@@ -39,29 +39,33 @@ The smallest v1 end-to-end path is the [`noir-examples/basic-4`](./noir-examples
 
 ```sh
 cd noir-examples/basic-4
-nargo compile
-cargo run --release --bin provekit-cli prepare ./target/basic.json --pkp prover.pkp --pkv verifier.pkv
-cargo run --release --bin provekit-cli prove prover.pkp Prover.toml -o proof.np
-cargo run --release --bin provekit-cli verify verifier.pkv proof.np
+cargo run --release --bin provekit-cli prepare
+cargo run --release --bin provekit-cli prove
+cargo run --release --bin provekit-cli verify
 ```
 
-`prepare` reads the compiled Noir artifact and writes a **ProveKit Prover** key (`.pkp`) and a **ProveKit Verifier** key (`.pkv`). `prove` reads the PKP plus `Prover.toml` and writes `proof.np`. `verify` reads the PKV and the proof.
+`prepare` compiles the Noir package in the current directory and writes `<circuit>.pkp` and `<circuit>.pkv`. `prove` reads `<circuit>.pkp` plus `./Prover.toml` and writes `./proof.np`. `verify` reads `<circuit>.pkv` and `./proof.np`.
 
 ### Command reference
 
 | Command | Purpose | Key options |
 | :--- | :--- | :--- |
-| `prepare` | Read a compiled Noir artifact and write prover/verifier keys | positional compiled artifact, `--pkp`/`-p`, `--pkv`/`-v` |
-| `prove` | Produce `proof.np` from a prover key and inputs | positional prover key, positional `Prover.toml`, `--out`/`-o` |
-| `verify` | Verify a proof against a verifier key | positional verifier key, positional proof |
-| `generate-gnark-inputs` | Export recursive-verifier inputs | positional prover key, positional proof, `--proof`, `--params`, `--r1cs` |
+| `prepare [program-dir]` | Compile a Noir package and write prover/verifier keys | `--package`, `--workspace`, `--target-dir`, `--pkp`/`-p`, `--pkv`/`-v`, `--force` |
+| `prove` | Produce `proof.np` from a prover key and inputs | `--prover`/`-p`, `--input`/`-i`, `--out`/`-o` |
+| `verify` | Verify a proof against a verifier key | `--verifier`/`-v`, `--proof` |
+| `generate-gnark-inputs` | Export recursive-verifier inputs | positional prover key, positional proof, `--params`, `--r1cs` |
+| `circuit-stats` | Inspect ACIR and R1CS structure | positional compiled circuit JSON |
+| `analyze-pkp` | Inspect prover-key size breakdown | positional `.pkp` file |
+| `show-inputs` | Display public inputs from a proof | positional `.pkv` file, positional proof, `--hex` |
+
+Read the table per command: the short `-p` flag changes meaning between `prepare` and `prove`.
 
 ## How It Works
 
 ```mermaid
 graph LR
-    Noir[Noir source<br/>.nr] -->|nargo compile| ACIR[ACIR artifact<br/>target/*.json]
-    ACIR -->|provekit-cli prepare| R1CS[R1CS<br/>+ witness builders]
+    Noir[Noir package<br/>Nargo.toml + .nr] -->|provekit-cli prepare| ACIR[ACIR artifact<br/>target/*.json]
+    ACIR -->|r1cs-compiler| R1CS[R1CS<br/>+ witness builders]
     R1CS --> PKP[(.pkp<br/>prover key)]
     R1CS --> PKV[(.pkv<br/>verifier key)]
     Inputs[Prover.toml] --> Prover((Prover))
@@ -75,7 +79,7 @@ graph LR
     Recursive --> Groth16[Groth16 proof]
 ```
 
-The v1 frontend starts from a Noir artifact produced by `nargo compile`. `provekit-cli prepare` lowers that artifact into R1CS, constructs witness builders, and writes `.pkp`/`.pkv` key files. Recursive verification exports use the `.pkp` prover key plus `proof.np` because the v1 CLI needs prover-side WHIR/R1CS parameters to create the gnark input files.
+The v1 CLI compiles Noir packages during `prepare`, saves the ACIR artifact under the package target directory, lowers ACIR into R1CS, constructs witness builders, and writes `.pkp`/`.pkv` key files. Recursive verification exports use the `.pkp` prover key plus `proof.np` because v1 needs prover-side WHIR/R1CS parameters to create the gnark input files.
 
 ## Example Circuit
 
@@ -96,7 +100,7 @@ For larger circuits and integration experiments, see [`noir-examples/`](./noir-e
 | Layer | Path | Crate/package | Purpose |
 | :--- | :--- | :--- | :--- |
 | Common types | `provekit/common/` | `provekit-common` | Shared R1CS, witness, proof, key, serialization, and transcript utilities |
-| Compiler | `provekit/r1cs-compiler/` | `provekit-r1cs-compiler` | Noir ACIR -> R1CS with constraint optimizations |
+| Compiler | `provekit/r1cs-compiler/` | `provekit-r1cs-compiler` | Noir ACIR → R1CS with constraint optimizations |
 | Prover | `provekit/prover/` | `provekit-prover` | WHIR proving, witness solving, R1CS compression, and commitments |
 | Verifier | `provekit/verifier/` | `provekit-verifier` | WHIR verification, transcript replay, sumcheck checks, and public input binding |
 | CLI | `tooling/cli/` | `provekit-cli` | Commands for prepare, prove, verify, inspection, and gnark input generation |
@@ -111,8 +115,9 @@ For larger circuits and integration experiments, see [`noir-examples/`](./noir-e
 
 ## Advanced Usage
 
-- **Recursive verifier inputs:** `provekit-cli generate-gnark-inputs <prover.pkp> <proof.np>` writes `proof_for_recursive_verifier`, `params_for_recursive_verifier`, and `r1cs.json` by default; use `--proof`, `--params`, and `--r1cs` to override those paths.
-- **Inspection commands:** use `circuit_stats` for Noir ACIR/R1CS structure, `analyze-pkp` for prover-key size breakdowns, and `show-inputs` for public inputs.
+- **Explicit project paths:** run `provekit-cli prepare ./noir-examples/poseidon-rounds --pkp ./prover.pkp --pkv ./verifier.pkv` when preparing a package outside the current directory or when you want fixed key names.
+- **Recursive verifier inputs:** `provekit-cli generate-gnark-inputs <prover.pkp> <proof.np>` writes `params_for_recursive_verifier` and `r1cs.json` by default; use `--params` and `--r1cs` to override those paths.
+- **Inspection commands:** use `circuit-stats` for ACIR/R1CS structure, `analyze-pkp` for prover-key size breakdowns, and `show-inputs` for public inputs.
 - **FFI integration:** start in [`tooling/provekit-ffi/`](tooling/provekit-ffi/) for C ABI headers, mobile build targets, and host-language examples.
 - **Benchmarking:** use [`tooling/provekit-bench/`](tooling/provekit-bench/) for internal benchmark coverage, or compare CLI proof generation with external tools using `hyperfine`.
 
@@ -135,10 +140,10 @@ Contributions are welcome. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for develo
 
 ## Acknowledgements
 
-- [**WHIR**](https://github.com/WizardOfMenlo/whir): the polynomial commitment scheme and sumcheck protocol the proof system is built on. `WhirR1CSScheme` wraps it for R1CS satisfiability over BN254.
-- [**Spongefish**](https://github.com/arkworks-rs/spongefish): Fiat-Shamir library from arkworks. All transcript construction and challenge derivation goes through its `DuplexSponge` API.
-- [**gnark-skyscraper**](https://github.com/reilabs/gnark-skyscraper): Go implementation of the Skyscraper hash. The recursive verifier needs it to reproduce the same Merkle commitments as the Rust prover.
-- [**Noir**](https://github.com/noir-lang/noir): the ZK DSL we compile from. Write your circuit in Noir, run nargo to get ACIR, and ProveKit handles the rest.
+- [**WHIR**](https://github.com/WizardOfMenlo/whir) — polynomial commitment scheme and sumcheck protocol used by the proof system.
+- [**Spongefish**](https://github.com/arkworks-rs/spongefish) — Fiat–Shamir transcript library used for challenge derivation.
+- [**gnark-skyscraper**](https://github.com/reilabs/gnark-skyscraper) — Go implementation used by the recursive verifier to reproduce Skyscraper commitments.
+- [**Noir**](https://github.com/noir-lang/noir) — ZK DSL compiled by ProveKit.
 
 ## License
 
