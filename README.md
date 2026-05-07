@@ -117,7 +117,7 @@ For larger circuits and integration experiments, see [`noir-examples/`](./noir-e
 
 ## Project Status
 
-ProveKit is under active development. Proof and key formats are versioned, but breaking changes can still occur on `main`; pin a commit if you depend on a specific format.
+ProveKit is under active development. For the current stable interface, use the `v1` branch; `main` may include breaking changes while new proof and key formats are being developed.
 
 ## Contributing
 
