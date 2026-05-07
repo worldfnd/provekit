@@ -4,13 +4,13 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/worldfnd/provekit/ci.yml?branch=main&style=flat-square&label=CI&logo=github)](https://github.com/worldfnd/provekit/actions/workflows/ci.yml)
 [![Rust](https://img.shields.io/badge/rust-nightly-e32828?style=flat-square&logo=rust)](https://rustup.rs/)
-[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./License.md)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE.md)
 
 [Getting Started](#getting-started) · [Examples](./noir-examples/) · [Architecture](#architecture) · [Contributing](./CONTRIBUTING.md) · [Issues](https://github.com/worldfnd/provekit/issues)
 
 </div>
 
-ProveKit takes a [Noir](https://noir-lang.org/) circuit, compiles it to R1CS, and produces a [WHIR](https://github.com/WizardOfMenlo/whir) proof. It is designed for mobile and other constrained environments and ships with a custom BN254 hash engine ([Skyscraper](skyscraper/)), swap-to-disk memory management for large witnesses, and C FFI bindings for iOS and Android. For on-chain settlement, a [gnark](https://github.com/Consensys/gnark)-based recursive verifier wraps proofs in Groth16.
+ProveKit takes a [Noir](https://noir-lang.org/) circuit, compiles it to R1CS, and produces a [WHIR](https://github.com/WizardOfMenlo/whir) proof. It is designed for mobile and other constrained environments and ships with swap-to-disk memory management for large witnesses and C FFI bindings for iOS and Android. SHA-256, Keccak, Blake3, Poseidon2, and a custom BN254 hash engine ([Skyscraper](skyscraper/)) are all available as Merkle and Fiat–Shamir hashes; SHA-256 is the typical choice on the prover side, and Skyscraper is used inside the recursive verifier where SNARK-friendliness matters. For on-chain settlement, a [gnark](https://github.com/Consensys/gnark)-based recursive verifier wraps proofs in Groth16.
 
 ---
 
@@ -18,8 +18,9 @@ ProveKit takes a [Noir](https://noir-lang.org/) circuit, compiles it to R1CS, an
 
 ```mermaid
 graph LR
-    N[Noir source<br/>.nr] -->|nargo / mavros| ACIR[ACIR]
+    N[Noir source<br/>.nr] -->|nargo| ACIR[ACIR]
     ACIR -->|r1cs-compiler| R1CS[R1CS<br/>+ witness builders]
+    N -.->|mavros| R1CS
     R1CS --> PKP[(.pkp<br/>prover key)]
     R1CS --> PKV[(.pkv<br/>verifier key)]
     PKP --> Prover((Prover))
@@ -29,6 +30,8 @@ graph LR
     Verifier -.->|generate-gnark-inputs| Recursive[Gnark recursive verifier]
     Recursive --> G16[Groth16 proof<br/>on-chain]
 ```
+
+`prepare` runs the Noir frontend (compile to ACIR) and the R1CS compiler in one step, then writes the prover and verifier keys. The Mavros frontend skips ACIR and emits R1CS directly.
 
 ### Crates
 
@@ -66,7 +69,7 @@ cargo run --release --bin provekit-cli prove
 cargo run --release --bin provekit-cli verify
 ```
 
-Every step uses sensible defaults. `prepare` compiles the Noir package in the current directory and writes `<circuit>.pkp` and `<circuit>.pkv` next to `Nargo.toml`. `prove` reads those plus `./Prover.toml` and writes `./proof.np`. `verify` reads them back. Override any path with `-p`/`--pkp`, `-i`/`--input`, `-o`/`--out`, `-v`/`--verifier`, or `--proof`.
+Every step uses sensible defaults. `prepare` runs `nargo` and the R1CS compiler on the package in the current directory and writes `<circuit>.pkp` and `<circuit>.pkv` next to `Nargo.toml`. `prove` reads those plus `./Prover.toml` and writes `./proof.np`. `verify` reads them back. Override any path with `-p`/`--pkp`, `-i`/`--input`, `-o`/`--out`, `-v`/`--verifier`, or `--proof`.
 
 ---
 
@@ -81,14 +84,14 @@ noirup --version v1.0.0-beta.19
 <details>
 <summary><strong>Compile a circuit</strong></summary><br>
 
-The default flow uses `nargo` as the compiler. `prepare` runs it for you and writes the prover and verifier keys:
+The default flow uses `nargo` as the frontend. `prepare` invokes `nargo`, runs the R1CS compiler on the resulting ACIR, and writes the prover and verifier keys:
 
 ```sh
 cd noir-examples/poseidon-rounds
 cargo run --release --bin provekit-cli prepare
 ```
 
-Or use [`mavros`](https://github.com/reilabs/mavros) for circuits that benefit from its R1CS frontend:
+For circuits that benefit from a hand-tuned R1CS frontend, use [`mavros`](https://github.com/reilabs/mavros) — it emits R1CS directly, skipping the ACIR step:
 
 ```sh
 cd noir-examples/poseidon-rounds
@@ -97,7 +100,7 @@ cargo run --release --bin provekit-cli prepare \
   --compiler mavros ./target/basic.json --r1cs ./target/r1cs.bin
 ```
 
-`prepare` accepts `--hash skyscraper|sha256|keccak|blake3|poseidon2` to pick the Merkle and Fiat–Shamir hash. Skyscraper is the default and the only one with hardware acceleration.
+Pick the Merkle and Fiat–Shamir hash with `--hash sha256|keccak|blake3|poseidon2|skyscraper`. SHA-256 is the typical choice for native proving; Skyscraper has SIMD-accelerated field arithmetic and is the right pick when the recursive verifier is in the loop.
 
 </details>
 
@@ -130,26 +133,6 @@ go run cmd/cli/main.go \
 The Groth16 proving key and the WHIR R1CS must be generated together — they are not interchangeable across runs.
 
 </details>
-
-<details>
-<summary><strong>Benchmark against Barretenberg</strong></summary><br>
-
-Install [Barretenberg](https://github.com/AztecProtocol/aztec-packages/blob/master/barretenberg/bbup/README.md) and [hyperfine](https://github.com/sharkdp/hyperfine), then:
-
-```sh
-cd noir-examples/poseidon-rounds
-nargo compile
-cargo run --release --bin provekit-cli prepare
-hyperfine \
-  'nargo execute && bb prove -b ./target/basic.json -w ./target/basic.gz -o ./target' \
-  '../../target/release/provekit-cli prove'
-```
-
-The internal benchmark suite:
-
-```sh
-cargo test -p provekit-bench --bench bench
-```
 
 </details>
 
@@ -196,4 +179,4 @@ ProveKit is under active development. Proof and key formats are versioned, but b
 
 ## License
 
-Released under the [MIT License](./License.md). Copyright (c) 2025 World Foundation.
+Released under the [MIT License](./LICENSE.md). Copyright (c) 2025 World Foundation.
