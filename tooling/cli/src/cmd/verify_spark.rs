@@ -8,7 +8,7 @@ use {
     tracing::instrument,
 };
 
-/// Verify a standalone SPARK proof against a saved R1CSSparkQuery.
+/// Verify a standalone SPARK proof against the saved R1CSSparkQuery set.
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "verify-spark")]
 pub struct Args {
@@ -20,9 +20,9 @@ pub struct Args {
     #[argh(positional)]
     setup_path: PathBuf,
 
-    /// path to the R1CSSparkQuery JSON file
-    #[argh(positional)]
-    query_path: PathBuf,
+    /// paths to one or more R1CSSparkQuery JSON files (in transcript order)
+    #[argh(positional, greedy)]
+    query_paths: Vec<PathBuf>,
 }
 
 impl Command for Args {
@@ -30,21 +30,31 @@ impl Command for Args {
     fn run(&self) -> Result<()> {
         provekit_common::register_ntt();
 
-        let (proof, (setup, query)) = rayon::join(
+        anyhow::ensure!(
+            !self.query_paths.is_empty(),
+            "verify-spark needs at least one query path"
+        );
+
+        let (proof, (setup, queries)) = rayon::join(
             || read::<SPARKProof>(&self.proof_path).context("while reading SPARK proof"),
             || {
                 rayon::join(
                     || read::<SPARKSetup>(&self.setup_path).context("while reading SPARK setup"),
-                    || read_query(&self.query_path).context("while reading SPARK query"),
+                    || {
+                        self.query_paths
+                            .iter()
+                            .map(|p| read_query(p).with_context(|| format!("while reading {p:?}")))
+                            .collect::<Result<Vec<_>>>()
+                    },
                 )
             },
         );
         let proof = proof?;
         let setup = setup?;
-        let query = query?;
+        let queries = queries?;
 
         SPARKVerifierScheme
-            .verify(proof, &setup, &query)
+            .verify(proof, &setup, &queries)
             .context("while verifying SPARK proof")?;
 
         Ok(())

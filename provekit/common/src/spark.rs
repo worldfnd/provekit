@@ -25,7 +25,11 @@ pub struct R1CSSparkQuery {
 
 impl R1CSSparkQuery {
     pub fn hash_bytes(&self) -> [u8; 32] {
-        let bytes = postcard::to_allocvec(self).expect("serializing R1CSSparkQuery");
-        Sha3_256::digest(&bytes).into()
+        hash_query_set(std::slice::from_ref(self))
     }
+}
+
+pub fn hash_query_set(queries: &[R1CSSparkQuery]) -> [u8; 32] {
+    let bytes = postcard::to_allocvec(queries).expect("serializing R1CSSparkQuery set");
+    Sha3_256::digest(&bytes).into()
 }

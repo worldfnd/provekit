@@ -1,7 +1,45 @@
 pub use crate::types::Memory;
-use provekit_common::{
-    utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, FieldElement,
+use {
+    crate::types::{MatrixDimensions, SparkMatrix},
+    ark_ff::Zero,
+    provekit_common::{
+        utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, FieldElement,
+    },
 };
+
+#[tracing::instrument(skip_all)]
+pub fn alphas_from_spark(
+    spark: &SparkMatrix,
+    dims: &MatrixDimensions,
+    alpha: &[FieldElement],
+) -> [Vec<FieldElement>; 3] {
+    let row_cnt = dims.num_rows / 2;
+    let col_cnt = dims.num_cols / 2;
+
+    let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(alpha, row_cnt);
+
+    let mut a = vec![FieldElement::zero(); col_cnt];
+    let mut b = vec![FieldElement::zero(); col_cnt];
+    let mut c = vec![FieldElement::zero(); col_cnt];
+
+    for i in 0..spark.coo.val.len() {
+        let v = spark.coo.val[i];
+        if v.is_zero() {
+            continue;
+        }
+        let r = spark.coo.row[i];
+        let col = spark.coo.col[i];
+        if r < row_cnt && col < col_cnt {
+            a[col] += v * eq_alpha[r];
+        } else if r < row_cnt {
+            b[col - col_cnt] += v * eq_alpha[r];
+        } else {
+            c[col - col_cnt] += v * eq_alpha[r - row_cnt];
+        }
+    }
+
+    [a, b, c]
+}
 
 #[tracing::instrument(skip_all)]
 pub fn calculate_memory(

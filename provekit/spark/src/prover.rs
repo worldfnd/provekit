@@ -1,19 +1,18 @@
 use {
     crate::{
         gpa::run_gpa4,
-        memory::{prove_axis_init_final_product, AxisConfig},
+        memory::{AxisConfig, prove_axis_init_final_product},
         sumcheck::run_spark_sumcheck,
         types::{
             Challenges, EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
             SparkMatrix, SparkProverContext, WhirWitness,
         },
-        utils::calculate_memory,
+        utils::{alphas_from_spark, calculate_memory},
     },
-    anyhow::{ensure, Result},
-    ark_ff::{Field, Zero},
+    anyhow::{Result, ensure},
+    ark_ff::{AdditiveGroup, Field, Zero},
     provekit_common::{
-        spark::R1CSSparkQuery, utils::next_power_of_two, FieldElement, HashConfig,
-        TranscriptSponge, WhirConfig, WhirR1CSProof,
+        FieldElement, HashConfig, TranscriptSponge, WhirConfig, WhirR1CSProof, spark::{Point, R1CSSparkQuery, hash_query_set}, utils::{next_power_of_two, sumcheck::{calculate_evaluations_over_boolean_hypercube_for_eq, eval_quadratic_poly, sumcheck_fold_map_reduce}}
     },
     rayon::{join, prelude::*},
     std::borrow::Cow,
@@ -30,7 +29,7 @@ pub trait SPARKProver {
     fn prove(
         &self,
         spark_data: &SparkProverContext,
-        request: &R1CSSparkQuery,
+        request: &Vec<R1CSSparkQuery>,
     ) -> Result<SPARKProof>;
 }
 
@@ -107,16 +106,57 @@ impl SPARKProver for SPARKScheme {
     fn prove(
         &self,
         spark_data: &SparkProverContext,
-        request: &R1CSSparkQuery,
+        requests: &Vec<R1CSSparkQuery>,
     ) -> Result<SPARKProof> {
+        
+        let alphas = alphas_from_spark(
+            &spark_data.matrix,
+            &spark_data.setup.matrix_dimensions,
+            &requests[0].point_to_evaluate.row,
+        );
+
         let padded_num_entries = spark_data.matrix.coo.val.len();
 
         let mut merlin = ProverState::new(
             &DomainSeparator::protocol(&self.whir_configs)
                 .session(&spark_data.setup.transcript.narg_string)
-                .instance(&request.hash_bytes()),
+                .instance(&hash_query_set(requests)),
             TranscriptSponge::default(),
         );
+
+        let beta: FieldElement = merlin.verifier_message();
+
+        let domain_size = spark_data.setup.matrix_dimensions.num_cols / 2;
+        let mut hypercube = vec![FieldElement::ZERO; domain_size];
+        let mut claimed_evals = [FieldElement::ZERO; 3];
+        let mut beta_pow = FieldElement::ONE;
+        for request in requests {
+            let eq = calculate_evaluations_over_boolean_hypercube_for_eq(
+                &request.point_to_evaluate.col,
+                domain_size,
+            );
+            for (slot, &e) in hypercube.iter_mut().zip(eq.iter()) {
+                *slot += beta_pow * e;
+            }
+            claimed_evals[0] += beta_pow * request.claimed_a;
+            claimed_evals[1] += beta_pow * request.claimed_b;
+            claimed_evals[2] += beta_pow * request.claimed_c;
+            beta_pow *= beta;
+        }
+
+        let alpha_refs: [&[FieldElement]; 3] = [&alphas[0], &alphas[1], &alphas[2]];
+        let (folded_values, folding_randomness) =
+            run_parallel_sumchecks(&mut merlin, &hypercube, alpha_refs, claimed_evals)?;
+
+        let request = R1CSSparkQuery {
+            point_to_evaluate: Point {
+                row: requests[0].point_to_evaluate.row.clone(),
+                col: folding_randomness,
+            },
+            claimed_a:         folded_values[1],
+            claimed_b:         folded_values[2],
+            claimed_c:         folded_values[3],
+        };
 
         let r: FieldElement = merlin.verifier_message();
         ensure!(
@@ -124,12 +164,13 @@ impl SPARKProver for SPARKScheme {
             "SPARK RLC randomness must not equal -1 (would zero the denominator)"
         );
 
+
         let b1 = r / (FieldElement::ONE + r);
         let combined = request.claimed_a + r * request.claimed_b + r * r * request.claimed_c;
         let claimed_value =
             combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
 
-        let (memory, e_values) = compute_spark_data(request, b1, spark_data, padded_num_entries);
+        let (memory, e_values) = compute_spark_data(&request, b1, spark_data, padded_num_entries);
 
         prove_spark(
             &mut merlin,
@@ -468,4 +509,100 @@ fn commit_e_values(
     whir_configs
         .num_terms_2batched
         .commit(merlin, &[&e_values.e_rx, &e_values.e_ry])
+}
+
+pub fn run_parallel_sumchecks(
+    merlin: &mut ProverState<TranscriptSponge>,
+    hypercube: &[FieldElement],
+    alphas: [&[FieldElement]; 3],
+    mut claimed_values: [FieldElement; 3],
+) -> Result<([FieldElement; 4], Vec<FieldElement>)> {
+    let mut sumcheck_randomness;
+    let mut sumcheck_randomness_accumulator = Vec::<FieldElement>::new();
+    let mut fold = None;
+
+    let mut h_mle = hypercube.to_vec();
+    let mut a_mle = alphas[0].to_vec();
+    let mut b_mle = alphas[1].to_vec();
+    let mut c_mle = alphas[2].to_vec();
+    loop {
+        let [a_hhat_i_at_0, a_highest_coeff, b_hhat_i_at_0, b_highest_coeff, c_hhat_i_at_0, c_highest_coeff] =
+            sumcheck_fold_map_reduce(
+                [&mut h_mle, &mut a_mle, &mut b_mle, &mut c_mle],
+                fold,
+                |[h_mle, a_mle, b_mle, c_mle]| {
+                    [
+                        h_mle.0 * a_mle.0,
+                        (h_mle.1 - h_mle.0) * (a_mle.1 - a_mle.0),
+                        h_mle.0 * b_mle.0,
+                        (h_mle.1 - h_mle.0) * (b_mle.1 - b_mle.0),
+                        h_mle.0 * c_mle.0,
+                        (h_mle.1 - h_mle.0) * (c_mle.1 - c_mle.0),
+                    ]
+                },
+            );
+
+        if fold.is_some() {
+            h_mle.truncate(h_mle.len() / 2);
+            a_mle.truncate(a_mle.len() / 2);
+            b_mle.truncate(b_mle.len() / 2);
+            c_mle.truncate(c_mle.len() / 2);
+        }
+
+        let mut a_hhat_i_coeffs = [FieldElement::zero(); 3];
+
+        a_hhat_i_coeffs[0] = a_hhat_i_at_0;
+        a_hhat_i_coeffs[2] = a_highest_coeff;
+        a_hhat_i_coeffs[1] =
+            claimed_values[0] - a_hhat_i_coeffs[0] - a_hhat_i_coeffs[0] - a_hhat_i_coeffs[2];
+
+        for a_coeff in &a_hhat_i_coeffs {
+            merlin.prover_message(a_coeff);
+        }
+
+        let mut b_hhat_i_coeffs = [FieldElement::zero(); 3];
+
+        b_hhat_i_coeffs[0] = b_hhat_i_at_0;
+        b_hhat_i_coeffs[2] = b_highest_coeff;
+        b_hhat_i_coeffs[1] =
+            claimed_values[1] - b_hhat_i_coeffs[0] - b_hhat_i_coeffs[0] - b_hhat_i_coeffs[2];
+
+        for b_coeff in &b_hhat_i_coeffs {
+            merlin.prover_message(b_coeff);
+        }
+
+        let mut c_hhat_i_coeffs = [FieldElement::zero(); 3];
+
+        c_hhat_i_coeffs[0] = c_hhat_i_at_0;
+        c_hhat_i_coeffs[2] = c_highest_coeff;
+        c_hhat_i_coeffs[1] =
+            claimed_values[2] - c_hhat_i_coeffs[0] - c_hhat_i_coeffs[0] - c_hhat_i_coeffs[2];
+
+        for c_coeff in &c_hhat_i_coeffs {
+            merlin.prover_message(c_coeff);
+        }
+
+        sumcheck_randomness = merlin.verifier_message();
+        fold = Some(sumcheck_randomness);
+        claimed_values[0] = eval_quadratic_poly(a_hhat_i_coeffs, sumcheck_randomness);
+        claimed_values[1] = eval_quadratic_poly(b_hhat_i_coeffs, sumcheck_randomness);
+        claimed_values[2] = eval_quadratic_poly(c_hhat_i_coeffs, sumcheck_randomness);
+
+        sumcheck_randomness_accumulator.push(sumcheck_randomness);
+        if h_mle.len() <= 2 {
+            break;
+        }
+    }
+
+    let folded_h = h_mle[0] + (h_mle[1] - h_mle[0]) * sumcheck_randomness;
+    let folded_a = a_mle[0] + (a_mle[1] - a_mle[0]) * sumcheck_randomness;
+    let folded_b = b_mle[0] + (b_mle[1] - b_mle[0]) * sumcheck_randomness;
+    let folded_c = c_mle[0] + (c_mle[1] - c_mle[0]) * sumcheck_randomness;
+
+    merlin.prover_hint_ark(&[folded_a, folded_b, folded_c]);
+
+    Ok((
+        [folded_h, folded_a, folded_b, folded_c],
+        sumcheck_randomness_accumulator,
+    ))
 }

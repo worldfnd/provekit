@@ -3,13 +3,13 @@ use {
         gpa::gpa_sumcheck_verifier4,
         memory::verify_axis,
         setup::PrecomputedCommitments,
-        sumcheck::run_sumcheck_verifier_spark,
+        sumcheck::{run_parallel_sumchecks_verifier, run_sumcheck_verifier_spark},
         types::{MatrixDimensions, SPARKProof, SPARKSetup, SPARKWHIRConfigs},
     },
     anyhow::{ensure, Context, Result},
-    ark_ff::{Field, Zero},
+    ark_ff::{AdditiveGroup, Field, Zero},
     provekit_common::{
-        spark::R1CSSparkQuery,
+        spark::{hash_query_set, Point, R1CSSparkQuery},
         utils::{next_power_of_two, sumcheck::calculate_eq},
         FieldElement, TranscriptSponge,
     },
@@ -21,8 +21,12 @@ use {
 };
 
 pub trait SPARKVerifier {
-    fn verify(&self, proof: SPARKProof, setup: &SPARKSetup, request: &R1CSSparkQuery)
-        -> Result<()>;
+    fn verify(
+        &self,
+        proof: SPARKProof,
+        setup: &SPARKSetup,
+        requests: &[R1CSSparkQuery],
+    ) -> Result<()>;
 }
 
 pub struct SPARKScheme;
@@ -33,8 +37,10 @@ impl SPARKVerifier for SPARKScheme {
         &self,
         proof: SPARKProof,
         setup: &SPARKSetup,
-        request: &R1CSSparkQuery,
+        requests: &[R1CSSparkQuery],
     ) -> Result<()> {
+        ensure!(!requests.is_empty(), "SPARK verifier needs at least one request");
+
         let precomputed_commitments = setup.extract_commitments()?;
 
         let whir_proof = Proof {
@@ -46,10 +52,58 @@ impl SPARKVerifier for SPARKScheme {
         let mut arthur = VerifierState::new(
             &DomainSeparator::protocol(&setup.whir_params)
                 .session(&setup.transcript.narg_string)
-                .instance(&request.hash_bytes()),
+                .instance(&hash_query_set(requests)),
             &whir_proof,
             TranscriptSponge::default(),
         );
+
+        let beta: FieldElement = arthur.verifier_message();
+
+        let mut claimed_evals = [FieldElement::ZERO; 3];
+        let mut beta_pow = FieldElement::ONE;
+        for request in requests {
+            claimed_evals[0] += beta_pow * request.claimed_a;
+            claimed_evals[1] += beta_pow * request.claimed_b;
+            claimed_evals[2] += beta_pow * request.claimed_c;
+            beta_pow *= beta;
+        }
+
+        let domain_size = setup.matrix_dimensions.num_cols / 2;
+        let variable_count = domain_size
+            .checked_ilog2()
+            .expect("domain_size must be a power of two") as usize;
+        let (final_claims, folded, folding_randomness) =
+            run_parallel_sumchecks_verifier(&mut arthur, variable_count, claimed_evals)
+                .context("verifying parallel sumchecks")?;
+
+        let mut h_at_fr = FieldElement::ZERO;
+        let mut beta_pow = FieldElement::ONE;
+        for request in requests {
+            h_at_fr += beta_pow * calculate_eq(&request.point_to_evaluate.col, &folding_randomness);
+            beta_pow *= beta;
+        }
+        ensure!(
+            final_claims[0] == h_at_fr * folded[0],
+            "parallel sumcheck final-equation check failed (a)"
+        );
+        ensure!(
+            final_claims[1] == h_at_fr * folded[1],
+            "parallel sumcheck final-equation check failed (b)"
+        );
+        ensure!(
+            final_claims[2] == h_at_fr * folded[2],
+            "parallel sumcheck final-equation check failed (c)"
+        );
+
+        let request = R1CSSparkQuery {
+            point_to_evaluate: Point {
+                row: requests[0].point_to_evaluate.row.clone(),
+                col: folding_randomness,
+            },
+            claimed_a:         folded[0],
+            claimed_b:         folded[1],
+            claimed_c:         folded[2],
+        };
 
         let r: FieldElement = arthur.verifier_message();
         ensure!(

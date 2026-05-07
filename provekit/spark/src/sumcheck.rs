@@ -3,7 +3,7 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         utils::{
-            sumcheck::{eval_cubic_poly, sumcheck_fold_map_reduce},
+            sumcheck::{eval_cubic_poly, eval_quadratic_poly, sumcheck_fold_map_reduce},
             HALF,
         },
         FieldElement, TranscriptSponge,
@@ -84,6 +84,59 @@ pub fn run_spark_sumcheck(
         [folded_v0, folded_v1, folded_v2],
         sumcheck_randomness_accumulator,
     ))
+}
+
+#[instrument(skip_all)]
+pub fn run_parallel_sumchecks_verifier(
+    arthur: &mut VerifierState<'_, TranscriptSponge>,
+    variable_count: usize,
+    mut claimed_values: [FieldElement; 3],
+) -> Result<([FieldElement; 3], [FieldElement; 3], Vec<FieldElement>)> {
+    let mut folding_randomness = Vec::with_capacity(variable_count);
+
+    for _ in 0..variable_count {
+        let a_coeffs: [FieldElement; 3] = [
+            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+        ];
+        let b_coeffs: [FieldElement; 3] = [
+            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+        ];
+        let c_coeffs: [FieldElement; 3] = [
+            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+        ];
+
+        ensure!(
+            claimed_values[0] == a_coeffs[0] + a_coeffs[0] + a_coeffs[1] + a_coeffs[2],
+            "parallel sumcheck equality failed (a)"
+        );
+        ensure!(
+            claimed_values[1] == b_coeffs[0] + b_coeffs[0] + b_coeffs[1] + b_coeffs[2],
+            "parallel sumcheck equality failed (b)"
+        );
+        ensure!(
+            claimed_values[2] == c_coeffs[0] + c_coeffs[0] + c_coeffs[1] + c_coeffs[2],
+            "parallel sumcheck equality failed (c)"
+        );
+
+        let alpha_i: FieldElement = arthur.verifier_message();
+        folding_randomness.push(alpha_i);
+
+        claimed_values[0] = eval_quadratic_poly(a_coeffs, alpha_i);
+        claimed_values[1] = eval_quadratic_poly(b_coeffs, alpha_i);
+        claimed_values[2] = eval_quadratic_poly(c_coeffs, alpha_i);
+    }
+
+    let folded: [FieldElement; 3] = arthur
+        .prover_hint_ark()
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    Ok((claimed_values, folded, folding_randomness))
 }
 
 #[instrument(skip_all)]
