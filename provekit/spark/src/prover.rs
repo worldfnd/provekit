@@ -109,11 +109,6 @@ impl SPARKProver for SPARKScheme {
         spark_data: &SparkProverContext,
         request: &R1CSSparkQuery,
     ) -> Result<SPARKProof> {
-        ensure!(
-            !(FieldElement::ONE + request.matrix_batching_randomness).is_zero(),
-            "matrix_batching_randomness must not equal -1 (would zero the SPARK denominator)"
-        );
-
         let padded_num_entries = spark_data.matrix.coo.val.len();
 
         let mut merlin = ProverState::new(
@@ -123,11 +118,18 @@ impl SPARKProver for SPARKScheme {
             TranscriptSponge::default(),
         );
 
-        let (memory, e_values) = compute_spark_data(request, spark_data, padded_num_entries);
+        let r: FieldElement = merlin.verifier_message();
+        ensure!(
+            !(FieldElement::ONE + r).is_zero(),
+            "SPARK RLC randomness must not equal -1 (would zero the denominator)"
+        );
 
-        let claimed_value = (request.claimed_value
-            / (FieldElement::ONE + request.matrix_batching_randomness))
-            / (FieldElement::ONE + request.matrix_batching_randomness);
+        let b1 = r / (FieldElement::ONE + r);
+        let combined = request.claimed_a + r * request.claimed_b + r * r * request.claimed_c;
+        let claimed_value =
+            combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
+
+        let (memory, e_values) = compute_spark_data(request, b1, spark_data, padded_num_entries);
 
         prove_spark(
             &mut merlin,
@@ -151,22 +153,17 @@ impl SPARKProver for SPARKScheme {
 #[instrument(skip_all)]
 fn compute_spark_data(
     request: &R1CSSparkQuery,
+    b1: FieldElement,
     spark_data: &SparkProverContext,
     padded_num_entries: usize,
 ) -> (Memory, EValuesForMatrix) {
-    let memory = compute_memory(request);
-    let e_values = compute_e_values(spark_data, &memory, padded_num_entries);
-    (memory, e_values)
-}
-
-#[instrument(skip_all)]
-fn compute_memory(request: &R1CSSparkQuery) -> Memory {
-    calculate_memory(
-        request.matrix_batching_randomness
-            / (FieldElement::ONE + request.matrix_batching_randomness),
+    let memory = calculate_memory(
+        b1,
         &request.point_to_evaluate.row,
         &request.point_to_evaluate.col,
-    )
+    );
+    let e_values = compute_e_values(spark_data, &memory, padded_num_entries);
+    (memory, e_values)
 }
 
 #[instrument(skip_all)]

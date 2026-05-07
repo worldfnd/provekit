@@ -35,11 +35,6 @@ impl SPARKVerifier for SPARKScheme {
         setup: &SPARKSetup,
         request: &R1CSSparkQuery,
     ) -> Result<()> {
-        ensure!(
-            !(FieldElement::ONE + request.matrix_batching_randomness).is_zero(),
-            "matrix_batching_randomness must not equal -1 (would zero the SPARK denominator)"
-        );
-
         let precomputed_commitments = setup.extract_commitments()?;
 
         let whir_proof = Proof {
@@ -56,13 +51,19 @@ impl SPARKVerifier for SPARKScheme {
             TranscriptSponge::default(),
         );
 
-        let claimed_value = (request.claimed_value
-            / (FieldElement::ONE + request.matrix_batching_randomness))
-            / (FieldElement::ONE + request.matrix_batching_randomness);
+        let r: FieldElement = arthur.verifier_message();
+        ensure!(
+            !(FieldElement::ONE + r).is_zero(),
+            "SPARK RLC randomness must not equal -1 (would zero the denominator)"
+        );
+
+        let b1 = r / (FieldElement::ONE + r);
+        let combined =
+            request.claimed_a + r * request.claimed_b + r * r * request.claimed_c;
+        let claimed_value =
+            combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
 
         let mut new_request = request.clone();
-        let b1 = request.matrix_batching_randomness
-            / (FieldElement::ONE + request.matrix_batching_randomness);
         new_request.point_to_evaluate.row = std::iter::once(b1)
             .chain(new_request.point_to_evaluate.row.clone())
             .collect();

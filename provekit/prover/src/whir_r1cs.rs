@@ -27,7 +27,6 @@ use {
         algebra::{dot, linear_form::LinearForm},
         protocols::{whir::FinalClaim, whir_zk::Witness as WhirZkWitness},
         transcript::{ProverState, VerifierMessage},
-        utils::zip_strict,
     },
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -330,29 +329,25 @@ fn prove_from_alphas(
         );
 
         if let Some(alpha_weight_data) = alpha_weight_data {
-            let rlc = zip_strict(
-                final_claim.rlc_coefficients[public_offset..(public_offset + 3)].iter(),
-                alpha_weight_data[public_offset..(public_offset + 3)].iter(),
-            )
-            .map(|(&c, (vec, ds))| {
-                let w = PrefixCovector::new(vec.clone(), *ds);
-                c * w.mle_evaluate(&final_claim.evaluation_point)
-            })
-            .sum::<FieldElement>();
-
-            let claimed_batched_spark_value = if !public_inputs.is_empty() {
-                rlc / final_claim.rlc_coefficients[1]
-            } else {
-                rlc
-            };
+            let evaluations: [FieldElement; 3] = alpha_weight_data
+                [public_offset..(public_offset + 3)]
+                .iter()
+                .map(|(vec, ds)| {
+                    let w = PrefixCovector::new(vec.clone(), *ds);
+                    w.mle_evaluate(&final_claim.evaluation_point)
+                })
+                .collect::<Vec<_>>()
+                .try_into()
+                .expect("exactly 3 alpha-weight evaluations");
 
             let query = R1CSSparkQuery {
-                point_to_evaluate:          Point {
+                point_to_evaluate: Point {
                     row: alpha,
                     col: final_claim.evaluation_point,
                 },
-                matrix_batching_randomness: final_claim.rlc_coefficients[1],
-                claimed_value:              claimed_batched_spark_value,
+                claimed_a:         evaluations[0],
+                claimed_b:         evaluations[1],
+                claimed_c:         evaluations[2],
             };
             vec![query]
         } else {
@@ -453,23 +448,18 @@ fn prove_from_alphas(
                 Cow::Borrowed(&evaluations),
             );
 
-            let claimed1 = alpha_weight_data_1.map(|alpha_weight_data_1| {
-                let rlc1_sum = zip_strict(
-                    final_claim1.rlc_coefficients[public_offset_1..(public_offset_1 + 3)].iter(),
-                    alpha_weight_data_1.iter(),
-                )
-                .map(|(&c, (vec, ds))| {
-                    let w = PrefixCovector::new(vec.clone(), *ds);
-                    c * w.mle_evaluate(&final_claim1.evaluation_point)
-                })
-                .sum::<FieldElement>();
-
-                if has_public {
-                    rlc1_sum / final_claim1.rlc_coefficients[1]
-                } else {
-                    rlc1_sum
-                }
-            });
+            let claimed1: Option<[FieldElement; 3]> =
+                alpha_weight_data_1.map(|alpha_weight_data_1| {
+                    alpha_weight_data_1
+                        .iter()
+                        .map(|(vec, ds)| {
+                            let w = PrefixCovector::new(vec.clone(), *ds);
+                            w.mle_evaluate(&final_claim1.evaluation_point)
+                        })
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .expect("exactly 3 alpha-weight evaluations")
+                });
 
             (final_claim1, claimed1)
         };
@@ -511,43 +501,46 @@ fn prove_from_alphas(
                 Cow::Borrowed(&evaluations),
             );
 
-            let rlc2_sum = alpha_weight_data_2.map(|alpha_weight_data_2| {
-                zip_strict(
-                    final_claim2.rlc_coefficients[0..3].iter(),
-                    alpha_weight_data_2.iter(),
-                )
-                .map(|(&c, (vec, ds))| {
-                    let w = PrefixCovector::new(vec.clone(), *ds);
-                    c * w.mle_evaluate(&final_claim2.evaluation_point)
-                })
-                .sum::<FieldElement>()
-            });
+            let claimed2: Option<[FieldElement; 3]> =
+                alpha_weight_data_2.map(|alpha_weight_data_2| {
+                    alpha_weight_data_2
+                        .iter()
+                        .map(|(vec, ds)| {
+                            let w = PrefixCovector::new(vec.clone(), *ds);
+                            w.mle_evaluate(&final_claim2.evaluation_point)
+                        })
+                        .collect::<Vec<_>>()
+                        .try_into()
+                        .expect("exactly 3 alpha-weight evaluations")
+                });
 
-            (final_claim2, rlc2_sum)
+            (final_claim2, claimed2)
         };
 
         match (rlc1, rlc2) {
-            (Some(rlc1), Some(rlc2)) => {
+            (Some(claimed1), Some(claimed2)) => {
                 let mut col1 = final_claim1.evaluation_point.clone();
                 col1.insert(0, FieldElement::zero());
                 let query1 = R1CSSparkQuery {
-                    point_to_evaluate:          Point {
+                    point_to_evaluate: Point {
                         row: alpha.clone(),
                         col: col1,
                     },
-                    matrix_batching_randomness: final_claim1.rlc_coefficients[1],
-                    claimed_value:              rlc1,
+                    claimed_a:         claimed1[0],
+                    claimed_b:         claimed1[1],
+                    claimed_c:         claimed1[2],
                 };
 
                 let mut col2 = final_claim2.evaluation_point.clone();
                 col2.insert(0, FieldElement::one());
                 let query2 = R1CSSparkQuery {
-                    point_to_evaluate:          Point {
+                    point_to_evaluate: Point {
                         row: alpha,
                         col: col2,
                     },
-                    matrix_batching_randomness: final_claim2.rlc_coefficients[1],
-                    claimed_value:              rlc2,
+                    claimed_a:         claimed2[0],
+                    claimed_b:         claimed2[1],
+                    claimed_c:         claimed2[2],
                 };
 
                 vec![query1, query2]

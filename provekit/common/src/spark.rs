@@ -14,11 +14,13 @@ pub struct Point {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct R1CSSparkQuery {
-    pub point_to_evaluate:          Point,
+    pub point_to_evaluate: Point,
     #[serde(with = "serde_ark")]
-    pub matrix_batching_randomness: FieldElement,
+    pub claimed_a:         FieldElement,
     #[serde(with = "serde_ark")]
-    pub claimed_value:              FieldElement,
+    pub claimed_b:         FieldElement,
+    #[serde(with = "serde_ark")]
+    pub claimed_c:         FieldElement,
 }
 
 impl R1CSSparkQuery {
