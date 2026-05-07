@@ -16,8 +16,12 @@ Reference for this implementation
     - Writes each query as `spark_query_<i>.json` to `--spark-queries-dir`.
 
 3. Provekit prove-spark step
-    - Reads queries from `--spark-dir` and produces a SPARK proof per query
-      (`spark_proof_<i>.sp` written back to the same directory).
+    - Reads queries from `--spark-dir` and produces a single batched SPARK
+      proof (`spark_proof.sp` written back to the same directory). When the
+      query set has more than one entry the prover RLC's them with a
+      transcript-derived `beta` and runs a parallel sumcheck before falling
+      into the single-query SPARK protocol; with one query it goes straight to
+      that protocol.
 
 4. Provekit and SPARK verify step
     - Verifies Provekit and SPARK proofs
@@ -47,44 +51,68 @@ One matrix, one commitment, one opening.
 | `num_terms_2batched` e-values are committed and opened together. Opened once in sumcheck and once in rs_ws GPA
 | `num_terms_4batched` | Address/timestamp values for row-wise and col-wise memory checks are committed and opened together
 
-### Split witness: two SPARK queries 
-The current ZK WHIR doesn't support batching which would enable easier handling of split witness commitment. 
+### Split witness: two SPARK queries
+The current ZK WHIR doesn't support batching which would enable easier handling of split witness commitment.
 
-The current implementation emits **two SPARK
-queries** for the dual-commitment path — one per split half.
+The current implementation emits **two SPARK queries** for the dual-commitment
+path — one per split half. Both queries are then batched into a single SPARK
+proof by RLC'ing their per-matrix claims with a transcript-derived `beta` and
+running one parallel sumcheck of `Σ_i β^i · eq(col_i, x) · M(α, x)` for
+M ∈ {A, B, C}. The folded values become the claims of a single synthesized
+query passed into the single-query SPARK protocol.
 
 
-## Full workflow for a Noir passport circuit:
+## Full workflow for the `complete_age_check` Noir passport circuit:
 
 ```bash
 cargo build --release --bin provekit-cli
 
-cd noir-examples/power
+cd noir-examples/noir-passport-monolithic/complete_age_check
 nargo compile
 
 # 1. Prepare the circuit (compiles and writes prover/verifier artifacts plus
 #    the SPARK setup transcript).
-cargo run --release --bin provekit-cli -- prepare ./target/power.json \
+cargo run --release --bin provekit-cli -- prepare ./target/complete_age_check.json \
   --pkp ./benchmark-inputs/power.pkp \
   --pkv ./benchmark-inputs/power.pkv \
   --spark \
   --spc ./benchmark-inputs/power.spc
 
 # 2. Prove (generates Noir proof + writes SPARK queries to disk).
+#    `--produce-spark-query` is required, otherwise no queries are written.
 cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/power.pkp ./Prover.toml \
   -o ./benchmark-inputs/power-proof.np \
-  --spark-queries-dir ./spark_proofs
+  --spark-queries-dir ./spark_proofs \
+  --produce-spark-query
 
-# 3. Generate SPARK proofs for the queries written in step 2.
+# 3. Generate one batched SPARK proof covering every query written in step 2.
+#    The prover reads all `spark_query_*.json` files in --spark-dir, batches
+#    them, and writes a single ./spark_proofs/spark_proof.sp.
 cargo run --release --bin provekit-cli -- prove-spark ./benchmark-inputs/power.pkp \
   --spark-dir ./spark_proofs
 
 # 4. Natively verify the Noir proof. Native verification evaluates MLE directly. Spark proofs are useful only in the recursive verifier.
 cargo run --release --bin provekit-cli -- verify ./benchmark-inputs/power.pkv ./benchmark-inputs/power-proof.np
 
-# 5. Verify a standalone SPARK proof. Needs the per-proof artifacts (.sp, .json)
-#    plus the SPARK setup transcript (.spc) emitted by `prepare --spark`.
-cargo run --release --bin provekit-cli -- verify-spark ./spark_proofs/spark_proof_0.sp ./benchmark-inputs/power.spc ./spark_proofs/spark_query_0.json
+# 5. Verify the batched SPARK proof. Pass every query that the prover saw, in
+#    index order (`_0`, `_1`, ...). The order matters because the transcript
+#    instance is bound to the postcard-serialized query slice.
+cargo run --release --bin provekit-cli -- verify-spark \
+  ./spark_proofs/spark_proof.sp \
+  ./benchmark-inputs/power.spc \
+  ./spark_proofs/spark_query_0.json \
+  ./spark_proofs/spark_query_1.json
+
+# Or, equivalently, with a glob (single-digit indices sort lexically):
+# cargo run --release --bin provekit-cli -- verify-spark \
+#   ./spark_proofs/spark_proof.sp \
+#   ./benchmark-inputs/power.spc \
+#   ./spark_proofs/spark_query_*.json
 
 # TODO: 6. Recursively verify the Noir proof and SPARK.
 ```
+
+The `complete_age_check` circuit uses the multi-challenge Noir API, so the
+provekit prover takes the dual-commitment path and emits **two** spark
+queries (`spark_query_0.json` and `spark_query_1.json`). Single-commitment
+circuits emit just `spark_query_0.json` and step 5 needs only that one path.
