@@ -91,11 +91,13 @@ pub struct Args {
     #[argh(switch)]
     force: bool,
 
-    /// output path for the prover key (default: `<circuit>.pkp`)
+    /// output path for the ProveKit Prover (PKP) key (default:
+    /// `<circuit>.pkp`)
     #[argh(option, long = "pkp", short = 'p')]
     pkp_path: Option<PathBuf>,
 
-    /// output path for the verifier key (default: `<circuit>.pkv`)
+    /// output path for the ProveKit Verifier (PKV) key (default:
+    /// `<circuit>.pkv`)
     #[argh(option, long = "pkv", short = 'v')]
     pkv_path: Option<PathBuf>,
 

@@ -17,7 +17,7 @@ use {provekit_common::Verifier, provekit_verifier::Verify};
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prove")]
 pub struct Args {
-    /// path to the prover key (default: `<circuit>.pkp`)
+    /// path to the ProveKit Prover (PKP) key (default: `<circuit>.pkp`)
     #[argh(option, long = "prover", short = 'p')]
     prover_path: Option<PathBuf>,
 
