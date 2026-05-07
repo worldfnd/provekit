@@ -21,17 +21,20 @@ graph LR
     N[Noir source<br/>.nr] -->|nargo| ACIR[ACIR]
     ACIR -->|r1cs-compiler| R1CS[R1CS<br/>+ witness builders]
     N -.->|mavros| R1CS
-    R1CS --> PKP[(.pkp<br/>prover key)]
-    R1CS --> PKV[(.pkv<br/>verifier key)]
+    R1CS --> PKP[(.pkp)]
+    R1CS --> PKV[(.pkv)]
     PKP --> Prover((Prover))
     Inputs[Prover.toml] --> Prover
-    Prover -->|proof.np| Verifier((Verifier))
-    PKV --> Verifier
-    Verifier -.->|generate-gnark-inputs| Recursive[Gnark recursive verifier]
-    Recursive --> G16[Groth16 proof<br/>on-chain]
+    Prover --> NP[proof.np]
+    PKV --> Verifier((Verifier))
+    NP --> Verifier
+    PKV -.-> GGI[generate-gnark-inputs]
+    NP -.-> GGI
+    GGI -.->|params + r1cs.json| Recursive((Gnark recursive<br/>verifier))
+    Recursive --> G16[Groth16 proof]
 ```
 
-`prepare` runs the Noir frontend (compile to ACIR) and the R1CS compiler in one step, then writes the prover and verifier keys. The Mavros frontend skips ACIR and emits R1CS directly.
+`prepare` runs the Noir frontend (compile to ACIR) and the R1CS compiler in one step, then writes the prover and verifier keys. The Mavros frontend skips ACIR and emits R1CS directly. `generate-gnark-inputs` is a separate path that reads the same `.pkv` and `proof.np` the native verifier reads, but transcodes them into a parameter file plus an R1CS JSON for the Go/gnark recursive verifier to consume.
 
 ### Crates
 
