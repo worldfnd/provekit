@@ -19,6 +19,7 @@ ProveKit compiles [Noir](https://noir-lang.org/) circuits into R1CS and produces
 - **Noir frontend:** write circuits in Noir and use ProveKit to prepare keys, prove, and verify with one CLI.
 - **Post-quantum secure proofs:** produce WHIR proofs designed around post-quantum security assumptions.
 - **Integration-ready surface:** use ProveKit from Swift, Kotlin, JavaScript, and Rust, or use the C-compatible FFI when you need another language.
+- **Recursive verifier for on-chain Groth16:** export verifier/proof data for a recursive verifier when an on-chain Groth16 wrapper is required.
 
 ## Quick Start
 
