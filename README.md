@@ -91,15 +91,21 @@ For larger circuits and integration experiments, see [`noir-examples/`](./noir-e
 
 ## Repository Map
 
-| Layer | Path | Purpose |
-| :--- | :--- | :--- |
-| CLI | `tooling/cli/` | `provekit-cli` commands for prepare, prove, verify, inspection, and gnark input generation |
-| Compiler | `provekit/r1cs-compiler/` | Noir ACIR → R1CS lowering, including binop, range-check, and lookup-table handling |
-| Prover | `provekit/prover/` | Witness solving, R1CS compression, WHIR commitments, and proof generation |
-| Verifier | `provekit/verifier/` | Fiat–Shamir replay, sumcheck verification, and public input binding |
-| Hash engine | [`skyscraper/`](skyscraper/) | BN254 hash implementation used by the Skyscraper hash configuration |
-| FFI | `tooling/provekit-ffi/` | C ABI bindings for native and mobile hosts, including Swift/Kotlin-oriented examples |
-| Recursive verifier | `recursive-verifier/` | Go + gnark verifier wrapper for Groth16 recursion |
+| Layer | Path | Crate/package | Purpose |
+| :--- | :--- | :--- | :--- |
+| Common types | `provekit/common/` | `provekit-common` | Shared R1CS, witness, proof, key, serialization, and transcript utilities |
+| Compiler | `provekit/r1cs-compiler/` | `provekit-r1cs-compiler` | Noir ACIR → R1CS lowering, including binop, range-check, and lookup-table handling |
+| Prover | `provekit/prover/` | `provekit-prover` | Witness solving, R1CS compression, WHIR commitments, and proof generation |
+| Verifier | `provekit/verifier/` | `provekit-verifier` | Fiat–Shamir replay, sumcheck verification, and public input binding |
+| CLI | `tooling/cli/` | `provekit-cli` | Commands for prepare, prove, verify, inspection, and gnark input generation |
+| Benchmarks | `tooling/provekit-bench/` | `provekit-bench` | Benchmark utilities and regression coverage for proving workflows |
+| FFI | `tooling/provekit-ffi/` | `provekit-ffi` | C ABI bindings for Swift/iOS, Kotlin/Android, Python, JavaScript, and other FFI hosts |
+| Gnark export | `tooling/provekit-gnark/` | `provekit-gnark` | Rust-side export/config bridge for recursive verification artifacts |
+| Verifier server | `tooling/verifier-server/` | `verifier-server` | HTTP server that orchestrates Rust proof handling and Go verifier execution |
+| NTT | `ntt/` | `ntt` | Number Theoretic Transform implementation used by polynomial evaluation paths |
+| Hash engine | [`skyscraper/`](skyscraper/) | first-party Skyscraper crates | BN254 hash implementation used by the Skyscraper hash configuration |
+| Recursive verifier | `recursive-verifier/` | Go module | Go + gnark verifier wrapper for Groth16 recursion |
+| Examples | `noir-examples/` | Noir packages | Noir example circuits and R1CS compiler test programs |
 
 ## Advanced Usage
 
