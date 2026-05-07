@@ -57,52 +57,57 @@ impl SPARKVerifier for SPARKScheme {
             TranscriptSponge::default(),
         );
 
-        let beta: FieldElement = arthur.verifier_message();
+        let request = if requests.len() == 1 {
+            requests[0].clone()
+        } else {
+            let beta: FieldElement = arthur.verifier_message();
 
-        let mut claimed_evals = [FieldElement::ZERO; 3];
-        let mut beta_pow = FieldElement::ONE;
-        for request in requests {
-            claimed_evals[0] += beta_pow * request.claimed_a;
-            claimed_evals[1] += beta_pow * request.claimed_b;
-            claimed_evals[2] += beta_pow * request.claimed_c;
-            beta_pow *= beta;
-        }
+            let mut claimed_evals = [FieldElement::ZERO; 3];
+            let mut beta_pow = FieldElement::ONE;
+            for request in requests {
+                claimed_evals[0] += beta_pow * request.claimed_a;
+                claimed_evals[1] += beta_pow * request.claimed_b;
+                claimed_evals[2] += beta_pow * request.claimed_c;
+                beta_pow *= beta;
+            }
 
-        let domain_size = setup.matrix_dimensions.num_cols / 2;
-        let variable_count = domain_size
-            .checked_ilog2()
-            .expect("domain_size must be a power of two") as usize;
-        let (final_claims, folded, folding_randomness) =
-            run_parallel_sumchecks_verifier(&mut arthur, variable_count, claimed_evals)
-                .context("verifying parallel sumchecks")?;
+            let domain_size = setup.matrix_dimensions.num_cols / 2;
+            let variable_count = domain_size
+                .checked_ilog2()
+                .expect("domain_size must be a power of two") as usize;
+            let (final_claims, folded, folding_randomness) =
+                run_parallel_sumchecks_verifier(&mut arthur, variable_count, claimed_evals)
+                    .context("verifying parallel sumchecks")?;
 
-        let mut h_at_fr = FieldElement::ZERO;
-        let mut beta_pow = FieldElement::ONE;
-        for request in requests {
-            h_at_fr += beta_pow * calculate_eq(&request.point_to_evaluate.col, &folding_randomness);
-            beta_pow *= beta;
-        }
-        ensure!(
-            final_claims[0] == h_at_fr * folded[0],
-            "parallel sumcheck final-equation check failed (a)"
-        );
-        ensure!(
-            final_claims[1] == h_at_fr * folded[1],
-            "parallel sumcheck final-equation check failed (b)"
-        );
-        ensure!(
-            final_claims[2] == h_at_fr * folded[2],
-            "parallel sumcheck final-equation check failed (c)"
-        );
+            let mut h_at_fr = FieldElement::ZERO;
+            let mut beta_pow = FieldElement::ONE;
+            for request in requests {
+                h_at_fr +=
+                    beta_pow * calculate_eq(&request.point_to_evaluate.col, &folding_randomness);
+                beta_pow *= beta;
+            }
+            ensure!(
+                final_claims[0] == h_at_fr * folded[0],
+                "parallel sumcheck final-equation check failed (a)"
+            );
+            ensure!(
+                final_claims[1] == h_at_fr * folded[1],
+                "parallel sumcheck final-equation check failed (b)"
+            );
+            ensure!(
+                final_claims[2] == h_at_fr * folded[2],
+                "parallel sumcheck final-equation check failed (c)"
+            );
 
-        let request = R1CSSparkQuery {
-            point_to_evaluate: Point {
-                row: requests[0].point_to_evaluate.row.clone(),
-                col: folding_randomness,
-            },
-            claimed_a:         folded[0],
-            claimed_b:         folded[1],
-            claimed_c:         folded[2],
+            R1CSSparkQuery {
+                point_to_evaluate: Point {
+                    row: requests[0].point_to_evaluate.row.clone(),
+                    col: folding_randomness,
+                },
+                claimed_a:         folded[0],
+                claimed_b:         folded[1],
+                claimed_c:         folded[2],
+            }
         };
 
         let r: FieldElement = arthur.verifier_message();

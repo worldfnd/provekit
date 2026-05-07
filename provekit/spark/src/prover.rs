@@ -108,12 +108,7 @@ impl SPARKProver for SPARKScheme {
         spark_data: &SparkProverContext,
         requests: &Vec<R1CSSparkQuery>,
     ) -> Result<SPARKProof> {
-        
-        let alphas = alphas_from_spark(
-            &spark_data.matrix,
-            &spark_data.setup.matrix_dimensions,
-            &requests[0].point_to_evaluate.row,
-        );
+        ensure!(!requests.is_empty(), "SPARK prover needs at least one request");
 
         let padded_num_entries = spark_data.matrix.coo.val.len();
 
@@ -124,38 +119,48 @@ impl SPARKProver for SPARKScheme {
             TranscriptSponge::default(),
         );
 
-        let beta: FieldElement = merlin.verifier_message();
-
-        let domain_size = spark_data.setup.matrix_dimensions.num_cols / 2;
-        let mut hypercube = vec![FieldElement::ZERO; domain_size];
-        let mut claimed_evals = [FieldElement::ZERO; 3];
-        let mut beta_pow = FieldElement::ONE;
-        for request in requests {
-            let eq = calculate_evaluations_over_boolean_hypercube_for_eq(
-                &request.point_to_evaluate.col,
-                domain_size,
+        let request = if requests.len() == 1 {
+            requests[0].clone()
+        } else {
+            let alphas = alphas_from_spark(
+                &spark_data.matrix,
+                &spark_data.setup.matrix_dimensions,
+                &requests[0].point_to_evaluate.row,
             );
-            for (slot, &e) in hypercube.iter_mut().zip(eq.iter()) {
-                *slot += beta_pow * e;
+
+            let beta: FieldElement = merlin.verifier_message();
+
+            let domain_size = spark_data.setup.matrix_dimensions.num_cols / 2;
+            let mut hypercube = vec![FieldElement::ZERO; domain_size];
+            let mut claimed_evals = [FieldElement::ZERO; 3];
+            let mut beta_pow = FieldElement::ONE;
+            for request in requests {
+                let eq = calculate_evaluations_over_boolean_hypercube_for_eq(
+                    &request.point_to_evaluate.col,
+                    domain_size,
+                );
+                for (slot, &e) in hypercube.iter_mut().zip(eq.iter()) {
+                    *slot += beta_pow * e;
+                }
+                claimed_evals[0] += beta_pow * request.claimed_a;
+                claimed_evals[1] += beta_pow * request.claimed_b;
+                claimed_evals[2] += beta_pow * request.claimed_c;
+                beta_pow *= beta;
             }
-            claimed_evals[0] += beta_pow * request.claimed_a;
-            claimed_evals[1] += beta_pow * request.claimed_b;
-            claimed_evals[2] += beta_pow * request.claimed_c;
-            beta_pow *= beta;
-        }
 
-        let alpha_refs: [&[FieldElement]; 3] = [&alphas[0], &alphas[1], &alphas[2]];
-        let (folded_values, folding_randomness) =
-            run_parallel_sumchecks(&mut merlin, &hypercube, alpha_refs, claimed_evals)?;
+            let alpha_refs: [&[FieldElement]; 3] = [&alphas[0], &alphas[1], &alphas[2]];
+            let (folded_values, folding_randomness) =
+                run_parallel_sumchecks(&mut merlin, &hypercube, alpha_refs, claimed_evals)?;
 
-        let request = R1CSSparkQuery {
-            point_to_evaluate: Point {
-                row: requests[0].point_to_evaluate.row.clone(),
-                col: folding_randomness,
-            },
-            claimed_a:         folded_values[1],
-            claimed_b:         folded_values[2],
-            claimed_c:         folded_values[3],
+            R1CSSparkQuery {
+                point_to_evaluate: Point {
+                    row: requests[0].point_to_evaluate.row.clone(),
+                    col: folding_randomness,
+                },
+                claimed_a:         folded_values[1],
+                claimed_b:         folded_values[2],
+                claimed_c:         folded_values[3],
+            }
         };
 
         let r: FieldElement = merlin.verifier_message();
