@@ -1,7 +1,7 @@
 use {
     crate::{
         gpa::run_gpa4,
-        memory::{AxisConfig, prove_axis_init_final_product},
+        memory::{prove_axis_init_final_product, AxisConfig},
         sumcheck::run_spark_sumcheck,
         types::{
             Challenges, EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
@@ -9,10 +9,18 @@ use {
         },
         utils::{alphas_from_spark, calculate_memory},
     },
-    anyhow::{Result, ensure},
+    anyhow::{ensure, Result},
     ark_ff::{AdditiveGroup, Field, Zero},
     provekit_common::{
-        FieldElement, HashConfig, TranscriptSponge, WhirConfig, WhirR1CSProof, spark::{Point, R1CSSparkQuery, hash_query_set}, utils::{next_power_of_two, sumcheck::{calculate_evaluations_over_boolean_hypercube_for_eq, eval_quadratic_poly, sumcheck_fold_map_reduce}}
+        spark::{hash_query_set, Point, R1CSSparkQuery},
+        utils::{
+            next_power_of_two,
+            sumcheck::{
+                calculate_evaluations_over_boolean_hypercube_for_eq, eval_quadratic_poly,
+                sumcheck_fold_map_reduce,
+            },
+        },
+        FieldElement, HashConfig, TranscriptSponge, WhirConfig, WhirR1CSProof,
     },
     rayon::{join, prelude::*},
     std::borrow::Cow,
@@ -108,7 +116,10 @@ impl SPARKProver for SPARKScheme {
         spark_data: &SparkProverContext,
         requests: &Vec<R1CSSparkQuery>,
     ) -> Result<SPARKProof> {
-        ensure!(!requests.is_empty(), "SPARK prover needs at least one request");
+        ensure!(
+            !requests.is_empty(),
+            "SPARK prover needs at least one request"
+        );
 
         let padded_num_entries = spark_data.matrix.coo.val.len();
 
@@ -169,11 +180,9 @@ impl SPARKProver for SPARKScheme {
             "SPARK RLC randomness must not equal -1 (would zero the denominator)"
         );
 
-
         let b1 = r / (FieldElement::ONE + r);
         let combined = request.claimed_a + r * request.claimed_b + r * r * request.claimed_c;
-        let claimed_value =
-            combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
+        let claimed_value = combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
 
         let (memory, e_values) = compute_spark_data(&request, b1, spark_data, padded_num_entries);
 

@@ -96,19 +96,37 @@ pub fn run_parallel_sumchecks_verifier(
 
     for _ in 0..variable_count {
         let a_coeffs: [FieldElement; 3] = [
-            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
-            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
-            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur
+                .prover_message()
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur
+                .prover_message()
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur
+                .prover_message()
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
         ];
         let b_coeffs: [FieldElement; 3] = [
-            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
-            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
-            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur
+                .prover_message()
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur
+                .prover_message()
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur
+                .prover_message()
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
         ];
         let c_coeffs: [FieldElement; 3] = [
-            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
-            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
-            arthur.prover_message().map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur
+                .prover_message()
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur
+                .prover_message()
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
+            arthur
+                .prover_message()
+                .map_err(|e| anyhow::anyhow!("{e}"))?,
         ];
 
         ensure!(

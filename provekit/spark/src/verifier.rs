@@ -39,7 +39,10 @@ impl SPARKVerifier for SPARKScheme {
         setup: &SPARKSetup,
         requests: &[R1CSSparkQuery],
     ) -> Result<()> {
-        ensure!(!requests.is_empty(), "SPARK verifier needs at least one request");
+        ensure!(
+            !requests.is_empty(),
+            "SPARK verifier needs at least one request"
+        );
 
         let precomputed_commitments = setup.extract_commitments()?;
 
@@ -74,7 +77,8 @@ impl SPARKVerifier for SPARKScheme {
             let domain_size = setup.matrix_dimensions.num_cols / 2;
             let variable_count = domain_size
                 .checked_ilog2()
-                .expect("domain_size must be a power of two") as usize;
+                .expect("domain_size must be a power of two")
+                as usize;
             let (final_claims, folded, folding_randomness) =
                 run_parallel_sumchecks_verifier(&mut arthur, variable_count, claimed_evals)
                     .context("verifying parallel sumchecks")?;
@@ -117,10 +121,8 @@ impl SPARKVerifier for SPARKScheme {
         );
 
         let b1 = r / (FieldElement::ONE + r);
-        let combined =
-            request.claimed_a + r * request.claimed_b + r * r * request.claimed_c;
-        let claimed_value =
-            combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
+        let combined = request.claimed_a + r * request.claimed_b + r * r * request.claimed_c;
+        let claimed_value = combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
 
         let mut new_request = request.clone();
         new_request.point_to_evaluate.row = std::iter::once(b1)

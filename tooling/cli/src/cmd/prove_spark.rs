@@ -71,19 +71,21 @@ impl Command for Args {
         let num_constraints = context.matrix.timestamps.final_row.len();
         let num_witnesses = context.matrix.timestamps.final_col.len();
         let num_nonzero = context.matrix.coo.val.len();
-        
-        let scheme = SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero, hash_config);
-        let spark_proof = scheme.prove(&context, &queries).context("generating SPARK proof")?;
+
+        let scheme =
+            SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero, hash_config);
+        let spark_proof = scheme
+            .prove(&context, &queries)
+            .context("generating SPARK proof")?;
         let proof_path = self.spark_dir.join(format!("spark_proof.sp"));
         write(&spark_proof, &proof_path)
             .with_context(|| format!("writing SPARK proof to {proof_path:?}"))?;
-            info!("Wrote SPARK proof to {proof_path:?}");
-        
-            
+        info!("Wrote SPARK proof to {proof_path:?}");
+
         // for (index, query) in queries.iter().enumerate() {
         //     let scheme =
-        //         SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero, hash_config);
-        //     let spark_proof = scheme
+        //         SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero,
+        // hash_config);     let spark_proof = scheme
         //         .prove(&context, query)
         //         .context("generating SPARK proof")?;
         //     let proof_path = self.spark_dir.join(format!("spark_proof_{index}.sp"));
@@ -111,10 +113,7 @@ fn collect_queries(dir: &Path) -> Result<Vec<R1CSSparkQuery>> {
     Ok(out)
 }
 
-fn build_spark_matrix(
-    prover: &Prover,
-    r1cs_path: Option<&Path>,
-) -> Result<(SparkMatrix, R1CS)> {
+fn build_spark_matrix(prover: &Prover, r1cs_path: Option<&Path>) -> Result<(SparkMatrix, R1CS)> {
     let whir = prover.whir_for_witness().clone();
     match prover {
         Prover::Noir(p) => {
