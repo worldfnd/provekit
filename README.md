@@ -126,4 +126,4 @@ Contributions are welcome. See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for develo
 
 ## License
 
-Released under the [MIT License](./LICENSE.md). Copyright (c) 2025 World Foundation.
+Released under the [MIT License](./LICENSE.md). Copyright (c) 2026 World Foundation.
