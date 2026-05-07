@@ -10,7 +10,14 @@
 
 </div>
 
-ProveKit lets you take a Noir circuit, compile it to R1CS, and generate a WHIR proof. It's built for mobile and constrained environments and ships with a custom BN254 hash engine ([Skyscraper](skyscraper/)), swap-to-disk memory management, and C FFI for iOS and Android. If you need on-chain verification, there's a gnark recursive verifier that wraps proofs in Groth16.
+ProveKit is a zero-knowledge proof system toolkit that compiles [Noir](https://noir-lang.org/) programs to R1CS constraints and generates and verifies [WHIR](https://github.com/WizardOfMenlo/whir) proofs using a Spartan-style R1CS protocol. It includes custom SIMD-accelerated field arithmetic, memory-efficient algorithms for resource-constrained environments, C-compatible FFI, and recursive verification support for on-chain Groth16 applications.
+
+## Why ProveKit
+
+- **Noir frontend:** write circuits in Noir and use ProveKit to prepare keys, prove, and verify with one CLI.
+- **Post-quantum secure proofs:** produce WHIR proofs designed around post-quantum security assumptions.
+- **Integration-ready surface:** use ProveKit from Rust or from C-compatible FFI hosts such as Swift, Kotlin, Python, and JavaScript.
+- **Recursive verifier for on-chain Groth16:** export prover-key/proof data for the gnark recursive verifier when an on-chain Groth16 wrapper is required.
 
 ---
 
@@ -54,7 +61,7 @@ graph TD
 | Compiler | `provekit/r1cs-compiler/` | Noir ACIR → R1CS with constraint optimizations |
 | Hash engine | `skyscraper/` | Custom BN254 hash with SIMD-accelerated field arithmetic |
 | Interop | `tooling/provekit-gnark/`<br>`gnark-whir/` | Rust ↔ Go/gnark bridge for recursive verification |
-| FFI | `tooling/provekit-ffi/` | C-compatible bindings for iOS, Android, and Python |
+| FFI | `tooling/provekit-ffi/` | C-compatible bindings for Swift/iOS, Kotlin/Android, Python, JavaScript, and other FFI hosts |
 
 ---
 
