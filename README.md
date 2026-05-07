@@ -52,16 +52,23 @@ graph TD
     V -->|Validates| G
 ```
 
-### Crates
+### Repository Map
 
-| Layer | Crate | Description |
-| :--- | :--- | :--- |
-| CLI | `tooling/cli/` | `provekit-cli`: prepare, prove, verify, inspect |
-| Prover / Verifier | `provekit/prover/`<br>`provekit/verifier/` | WHIR sumcheck, witness solving, commitment |
-| Compiler | `provekit/r1cs-compiler/` | Noir ACIR → R1CS with constraint optimizations |
-| Hash engine | `skyscraper/` | Custom BN254 hash with SIMD-accelerated field arithmetic |
-| Interop | `tooling/provekit-gnark/`<br>`gnark-whir/` | Rust ↔ Go/gnark bridge for recursive verification |
-| FFI | `tooling/provekit-ffi/` | C-compatible bindings for Swift/iOS, Kotlin/Android, Python, JavaScript, and other FFI hosts |
+| Layer | Path | Crate/package | Description |
+| :--- | :--- | :--- | :--- |
+| Common types | `provekit/common/` | `provekit-common` | Shared R1CS, witness, proof, key, serialization, and transcript utilities |
+| Compiler | `provekit/r1cs-compiler/` | `provekit-r1cs-compiler` | Noir ACIR → R1CS with constraint optimizations |
+| Prover | `provekit/prover/` | `provekit-prover` | WHIR proving, witness solving, R1CS compression, and commitments |
+| Verifier | `provekit/verifier/` | `provekit-verifier` | WHIR verification, transcript replay, sumcheck checks, and public input binding |
+| CLI | `tooling/cli/` | `provekit-cli` | Commands for prepare, prove, verify, inspection, and gnark input generation |
+| Benchmarks | `tooling/provekit-bench/` | `provekit-bench` | Benchmark utilities and regression coverage for proving workflows |
+| FFI | `tooling/provekit-ffi/` | `provekit-ffi` | C-compatible bindings for Swift/iOS, Kotlin/Android, Python, JavaScript, and other FFI hosts |
+| Gnark export | `tooling/provekit-gnark/` | `provekit-gnark` | Rust-side export/config bridge for recursive verification artifacts |
+| Verifier server | `tooling/verifier-server/` | `verifier-server` | HTTP server that orchestrates Rust proof handling and Go verifier execution |
+| NTT | `ntt/` | `provekit-ntt` | Number Theoretic Transform implementation for BN254 polynomial evaluation paths |
+| Hash engine | `skyscraper/` | first-party Skyscraper crates | Custom BN254 hash and SIMD-accelerated field arithmetic support |
+| Recursive verifier | `recursive-verifier/` | Go module | Go + gnark recursive verifier for on-chain Groth16 wrappers |
+| Examples | `noir-examples/` | Noir packages | Noir example circuits and R1CS compiler test programs |
 
 ---
 
