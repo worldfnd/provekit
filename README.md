@@ -12,7 +12,7 @@
 
 </div>
 
-ProveKit is a modular zero-knowledge proof toolkit optimized for mobile devices. It lets developers write circuits in the [Noir](https://noir-lang.org/) programming language and generate compact, verifiable proofs using the [WHIR](https://github.com/WizardOfMenlo/whir) polynomial commitment scheme and a Spartan-based proving protocol.
+ProveKit is a zero-knowledge proof system toolkit that compiles [Noir](https://noir-lang.org/) programs to R1CS constraints and generates and verifies [WHIR](https://github.com/WizardOfMenlo/whir) proofs using a Spartan-based protocol. It includes custom SIMD-accelerated field arithmetic and memory-efficient algorithms for resource-constrained environments, with a complete proving and verification stack plus recursive verification support for on-chain Groth16 applications.
 
 ## Why ProveKit
 
