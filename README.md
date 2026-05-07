@@ -12,7 +12,7 @@
 
 </div>
 
-ProveKit compiles [Noir](https://noir-lang.org/) circuits into R1CS and produces [WHIR](https://github.com/WizardOfMenlo/whir) proofs. It is built for teams that need a native proving stack, verifier artifacts, C-compatible FFI integration surfaces, and an optional [gnark](https://github.com/Consensys/gnark) recursion path for a Groth16 wrapper.
+ProveKit is a modular zero-knowledge proof toolkit optimized for mobile devices. It lets developers write circuits in the [Noir](https://noir-lang.org/) programming language and generate compact, verifiable proofs using the [WHIR](https://github.com/WizardOfMenlo/whir) polynomial commitment scheme and a Spartan-based proving protocol.
 
 ## Why ProveKit
 
