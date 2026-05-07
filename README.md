@@ -144,7 +144,7 @@ Inspect circuits and proofs without a full prove run:
 
 ```sh
 # Constraint count and R1CS structure (after `nargo compile`)
-cargo run --release --bin provekit-cli circuit_stats ./target/basic.json
+cargo run --release --bin provekit-cli circuit-stats ./target/basic.json
 
 # Proving key size breakdown
 cargo run --release --bin provekit-cli analyze-pkp ./prover.pkp
