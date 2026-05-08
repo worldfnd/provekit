@@ -47,8 +47,11 @@ impl Proof {
             return false;
         }
 
-        // Krs must be on the curve (zero is technically valid but suspicious).
-        if !self.krs.is_on_curve() {
+        // Krs must be a non-zero G1 point on the curve. A zero Krs is
+        // overwhelmingly unlikely for an honest prover (`r`/`s` are sampled
+        // uniformly), and accepting it widens the surface for malformed or
+        // malicious proofs.
+        if !self.krs.is_on_curve() || self.krs.is_zero() {
             return false;
         }
 
@@ -147,6 +150,13 @@ pub struct VerifyingKey {
     /// Pedersen commitment verifying keys (one per BSB22 commitment).
     pub commitment_keys:                 Vec<pedersen::VerifyingKey>,
     /// For each commitment, the indices of public/commitment-committed wires.
+    ///
+    /// Indices are **absolute witness indices**: position 0 is the constant-1
+    /// ONE_WIRE, public input `i` lives at index `1 + i`, and challenge wires
+    /// follow the public range. Index 0 is therefore never a valid entry —
+    /// the verifier maps `idx` → `extended_public[idx - 1]` to strip the
+    /// ONE_WIRE offset (see [`crate::verifier::verify`]). Producers (e.g.
+    /// `cli/src/cmd/prepare.rs`) populate this with `(1..num_public)`.
     pub public_and_commitment_committed: Vec<Vec<usize>>,
     /// Number of challenges derived from each commitment.
     /// Single-challenge: all 1s. Multi-challenge: `[N]` for one commitment

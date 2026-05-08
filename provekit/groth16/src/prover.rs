@@ -48,7 +48,13 @@ pub fn bsb22_pok(
 
     let mut commitments_serialized = vec![0u8; FR_BYTES * challenge_wire_indices.len()];
     for (j, &wire_idx) in challenge_wire_indices.iter().enumerate() {
-        let bytes = fr_to_bytes(&wire_values[wire_idx])?;
+        let val = wire_values.get(wire_idx).ok_or_else(|| {
+            anyhow::anyhow!(
+                "challenge wire index {wire_idx} out of bounds (witness len = {})",
+                wire_values.len()
+            )
+        })?;
+        let bytes = fr_to_bytes(val)?;
         commitments_serialized[FR_BYTES * j..FR_BYTES * (j + 1)].copy_from_slice(&bytes);
     }
 

@@ -132,8 +132,22 @@ fn read_pkp_from_reader<R: Read + BufRead>(mut reader: R) -> Result<Prover> {
     ensure!(header_bytes[8..16] == PROVER_FORMAT, "Invalid format");
     let file_major = u16::from_le_bytes([header_bytes[16], header_bytes[17]]);
     let file_minor = u16::from_le_bytes([header_bytes[18], header_bytes[19]]);
-    ensure!(file_major == PROVER_VERSION.0, "Incompatible major version");
-    ensure!(file_minor >= PROVER_VERSION.1, "Incompatible minor version");
+    ensure!(
+        file_major == PROVER_VERSION.0,
+        "Incompatible major version: file is v{}.{}, this build expects v{}.{}",
+        file_major,
+        file_minor,
+        PROVER_VERSION.0,
+        PROVER_VERSION.1,
+    );
+    ensure!(
+        file_minor >= PROVER_VERSION.1,
+        "Incompatible minor version: file is v{}.{}, this build requires v{}.{} or newer",
+        file_major,
+        file_minor,
+        PROVER_VERSION.0,
+        PROVER_VERSION.1,
+    );
     let _hash_config = header_bytes[20];
 
     // Detect compression

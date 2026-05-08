@@ -39,13 +39,13 @@ mod whir_r1cs;
 mod witness;
 
 // Public re-exports for items used by integration tests and benchmarks.
+#[cfg(not(target_arch = "wasm32"))]
+pub use pkp_io::{deserialize_pkp, read_pkp, serialize_pkp, write_pkp};
 pub use {
     ec_arith::ec_scalar_mul,
     prover_types::{Groth16CommitmentInfo, Groth16Prover, Prover},
     r1cs::solve_witness_vec,
 };
-#[cfg(not(target_arch = "wasm32"))]
-pub use pkp_io::{deserialize_pkp, read_pkp, serialize_pkp, write_pkp};
 
 /// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
 /// `prove_with_witness` is available on all targets. `MavrosProver` does not

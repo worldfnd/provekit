@@ -23,10 +23,16 @@ pub const BSB22_FOLD_DST: &[u8] = b"G16-BSB22";
 pub const FR_BYTES: usize = 32;
 
 /// Information about a single BSB22 commitment within the R1CS.
+///
+/// All wire indices in this struct are **absolute witness indices**: position
+/// 0 is the constant-1 ONE_WIRE, public input `i` lives at index `1 + i`, and
+/// private/challenge wires follow. The verifier subtracts 1 when looking up
+/// values in its `extended_public` vector (which excludes the ONE_WIRE), so
+/// index 0 is never a valid entry in `public_and_commitment_committed`.
 #[derive(Clone, Debug, Default)]
 pub struct CommitmentInfo {
     /// Indices of public wires and other commitment wires hashed with this
-    /// commitment.
+    /// commitment. See struct-level docs for index convention.
     pub public_and_commitment_committed: Vec<usize>,
     /// Indices of private/internal wires committed to.
     pub private_committed:               Vec<usize>,

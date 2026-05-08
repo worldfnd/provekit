@@ -5,6 +5,11 @@
 //! import `provekit_groth16` without creating a dependency cycle, so the union
 //! type that knows about every backend is rooted here.
 
+// `MaybeHashAware` lives behind `provekit_common::file::io`, which is gated to
+// non-wasm targets. The only consumer of the `MaybeHashAware for Prover` impl
+// is `pkp_io`, which is itself non-wasm-gated, so confine both to that target.
+#[cfg(not(target_arch = "wasm32"))]
+use provekit_common::{file::MaybeHashAware, HashConfig};
 use {
     acir::circuit::Program,
     provekit_common::{
@@ -13,11 +18,6 @@ use {
     },
     serde::{Deserialize, Serialize},
 };
-// `MaybeHashAware` lives behind `provekit_common::file::io`, which is gated to
-// non-wasm targets. The only consumer of the `MaybeHashAware for Prover` impl
-// is `pkp_io`, which is itself non-wasm-gated, so confine both to that target.
-#[cfg(not(target_arch = "wasm32"))]
-use provekit_common::{file::MaybeHashAware, HashConfig};
 
 /// BSB22 commitment info for ProveKit's Groth16 backend.
 ///
