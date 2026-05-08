@@ -15,7 +15,7 @@ pub const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
 // ---------------------------------------------------------------------------
 
 pub const PROVER_FORMAT: [u8; 8] = *b"PrvKitPr";
-pub const PROVER_VERSION: (u16, u16) = (1, 4);
+pub const PROVER_VERSION: (u16, u16) = (1, 3);
 
 pub const VERIFIER_FORMAT: [u8; 8] = *b"PrvKitVr";
 pub const VERIFIER_VERSION: (u16, u16) = (1, 4);
