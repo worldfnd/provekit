@@ -46,8 +46,7 @@ impl Command for Args {
             .clone()
             .unwrap_or_else(|| PathBuf::from("./Prover.toml"));
 
-        let prover: Prover =
-            read_pkp(&prover_path).context("while reading Provekit Prover")?;
+        let prover: Prover = read_pkp(&prover_path).context("while reading Provekit Prover")?;
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 

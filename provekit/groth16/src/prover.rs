@@ -15,9 +15,9 @@
 //! derive challenges → solve w2). Functions in this module take the completed
 //! witness and commitments as inputs.
 
-use anyhow::{ensure, Result};
 use {
     crate::{pedersen, CommitmentInfo, BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES},
+    anyhow::{ensure, Result},
     ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective},
     ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM},
     ark_ff::{FftField, Field, One, PrimeField, Zero},

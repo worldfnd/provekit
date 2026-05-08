@@ -256,9 +256,10 @@ pub fn setup(
             continue;
         }
         let (pks, vk) = pedersen::setup(&[ck_bases], Some(g2_random))?;
-        let pk = pks.into_iter().next().ok_or_else(|| {
-            anyhow::anyhow!("pedersen::setup returned empty proving key vector")
-        })?;
+        let pk = pks
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("pedersen::setup returned empty proving key vector"))?;
         pk_commitment_keys.push(pk);
         vk_commitment_keys.push(vk);
     }
