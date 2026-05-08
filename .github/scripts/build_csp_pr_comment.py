@@ -2,9 +2,10 @@
 """Build a sticky PR comment for the CSP benchmarks workflow.
 
 Reads the CSV emitted by ``scripts/run_csp_benchmarks.sh`` (one row per
-circuit) and renders it as a markdown table with human-readable units. If
-``--baseline-csv`` is given, each metric cell appends a percentage delta
-versus the baseline value (last successful CSP-benchmarks run on main).
+(circuit, backend)) and renders one markdown table per backend with
+human-readable units. If ``--baseline-csv`` is given, each metric cell
+appends a percentage delta versus the baseline value (last successful
+CSP-benchmarks run on main) keyed by (circuit, backend).
 """
 
 from __future__ import annotations
@@ -111,30 +112,46 @@ def read_rows(csv_path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(f))
 
 
-def index_baseline(rows: list[dict[str, str]]) -> dict[str, dict[str, float]]:
-    """Index baseline rows by circuit name with float metric values."""
-    out: dict[str, dict[str, float]] = {}
+def index_baseline(rows: list[dict[str, str]]) -> dict[tuple[str, str], dict[str, float]]:
+    """Index baseline rows by (circuit, backend) with float metric values.
+
+    Older baseline CSVs without a `backend` column are treated as `whir`
+    (the only backend that existed before backend-aware benchmarks landed),
+    so deltas remain valid across the schema bump.
+    """
+    out: dict[tuple[str, str], dict[str, float]] = {}
     for row in rows:
         circuit = (row.get("circuit") or "").strip()
         if not circuit:
             continue
+        backend = (row.get("backend") or "whir").strip() or "whir"
         metrics: dict[str, float] = {}
         for metric, _unit in METRIC_COLUMNS:
             try:
                 metrics[metric] = float(row.get(metric) or 0)
             except ValueError:
                 metrics[metric] = 0.0
-        out[circuit] = metrics
+        out[(circuit, backend)] = metrics
+    return out
+
+
+def group_by_backend(rows: list[dict[str, str]]) -> dict[str, list[dict[str, str]]]:
+    """Bucket result rows by backend, preserving insertion order of backends."""
+    out: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        backend = (row.get("backend") or "whir").strip() or "whir"
+        out.setdefault(backend, []).append(row)
     return out
 
 
 def render_table(
     rows: list[dict[str, str]],
-    baseline: dict[str, dict[str, float]],
+    backend: str,
+    baseline: dict[tuple[str, str], dict[str, float]],
     has_baseline_file: bool,
 ) -> str:
     if not rows:
-        return "_No benchmark results were produced._"
+        return "_No benchmark results were produced for this backend._"
 
     header = (
         "| Circuit | Constraints | Witnesses | Prover time | Peak RSS | "
@@ -145,7 +162,7 @@ def render_table(
 
     for row in sorted(rows, key=lambda r: r.get("circuit", "")):
         circuit = row.get("circuit", "")
-        baseline_metrics = baseline.get(circuit)
+        baseline_metrics = baseline.get((circuit, backend))
 
         cells = [f"`{circuit}`"]
         for metric, unit in METRIC_COLUMNS:
@@ -169,9 +186,18 @@ def render_table(
     return "\n".join(lines)
 
 
+# Display order for backends. Anything not listed here is appended in the
+# order it appeared in the CSV.
+BACKEND_DISPLAY_ORDER: tuple[str, ...] = ("whir", "groth16")
+BACKEND_TITLES: dict[str, str] = {
+    "whir": "WHIR backend",
+    "groth16": "Groth16 backend",
+}
+
+
 def compose_comment(
     rows: list[dict[str, str]],
-    baseline: dict[str, dict[str, float]],
+    baseline: dict[tuple[str, str], dict[str, float]],
     baseline_run_id: str,
     has_baseline_file: bool,
     run_id: str,
@@ -181,7 +207,15 @@ def compose_comment(
     runs_per_circuit: str,
 ) -> str:
     short_sha = sha[:12] if sha else "unknown"
-    table = render_table(rows, baseline, has_baseline_file)
+    by_backend = group_by_backend(rows)
+
+    # Stable backend display order: known backends first, unknown ones after.
+    backends_present = list(by_backend.keys())
+    ordered_backends = [b for b in BACKEND_DISPLAY_ORDER if b in by_backend]
+    ordered_backends += [b for b in backends_present if b not in BACKEND_DISPLAY_ORDER]
+
+    distinct_circuits = sorted({(row.get("circuit") or "") for row in rows})
+    distinct_circuits = [c for c in distinct_circuits if c]
 
     if has_baseline_file:
         if baseline_run_id:
@@ -189,19 +223,23 @@ def compose_comment(
                 f"Each metric cell shows the current value followed by the "
                 f"percentage delta against the latest successful "
                 f"[`main` run #{baseline_run_id}](https://github.com/worldfnd/provekit/actions/runs/{baseline_run_id}). "
-                f"`(new)` marks circuits absent from the baseline."
+                f"`(new)` marks (circuit, backend) pairs absent from the baseline."
             )
         else:
             baseline_note = (
                 "Each metric cell shows the current value followed by the "
                 "percentage delta against the latest successful `main` run. "
-                "`(new)` marks circuits absent from the baseline."
+                "`(new)` marks (circuit, backend) pairs absent from the baseline."
             )
     else:
         baseline_note = (
             "_No baseline available yet — deltas will appear once this "
             "workflow has produced at least one successful `main` run._"
         )
+
+    backend_summary = ", ".join(
+        f"{BACKEND_TITLES.get(b, b)} ({len(by_backend[b])})" for b in ordered_backends
+    ) or "—"
 
     lines = [
         MARKER,
@@ -212,8 +250,9 @@ def compose_comment(
         f"| Workflow status | {status_with_icon(status)} |",
         f"| Commit | `{short_sha}` |",
         f"| Run | [#{run_id}]({run_url}) |",
-        f"| Circuits benchmarked | {len(rows)} |",
-        f"| Iterations averaged per circuit | {runs_per_circuit} |",
+        f"| Distinct circuits | {len(distinct_circuits)} |",
+        f"| Backends benchmarked | {backend_summary} |",
+        f"| Iterations averaged per (circuit, backend) | {runs_per_circuit} |",
         "",
         "Prover time, peak RSS, peak heap, and verifier time are arithmetic means "
         "across the iterations. Peak heap comes from the largest "
@@ -222,14 +261,27 @@ def compose_comment(
         "",
         baseline_note,
         "",
-        "<details open>",
-        "<summary>Results</summary>",
-        "",
-        table,
-        "",
-        "</details>",
-        "",
     ]
+
+    if not ordered_backends:
+        lines.append("_No benchmark results were produced._")
+        lines.append("")
+    else:
+        for backend in ordered_backends:
+            title = BACKEND_TITLES.get(backend, backend)
+            table = render_table(by_backend[backend], backend, baseline, has_baseline_file)
+            lines.extend([
+                f"### {title}",
+                "",
+                "<details open>",
+                "<summary>Results</summary>",
+                "",
+                table,
+                "",
+                "</details>",
+                "",
+            ])
+
     return "\n".join(lines)
 
 

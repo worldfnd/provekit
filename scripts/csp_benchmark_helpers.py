@@ -2,15 +2,17 @@
 """Helpers for scripts/run_csp_benchmarks.sh.
 
 Subcommands:
-  parse-runs <bench_dir> <circuit>  Aggregate per-run measurements for one
-                                    circuit and emit a single CSV row to stdout.
+  parse-runs <bench_dir> <circuit> <backend>
+                                    Aggregate per-run measurements for one
+                                    (circuit, backend) pair and emit a single
+                                    CSV row to stdout.
   human-to-bytes <value>            Convert a human-formatted byte string from
                                     the prover trace ("1.23 GB", "456 MB", etc.)
                                     to an integer byte count. Used by tests.
 
 Bench layout produced by run_csp_benchmarks.sh::
 
-    <bench_dir>/per_circuit/<circuit>/
+    <bench_dir>/per_circuit/<circuit>/<backend>/
         prove_<i>.time          # `/usr/bin/time -f '%e %M'` output
         prove_<i>.stderr        # provekit-cli prove stderr (span_stats trace)
         verify_<i>.time
@@ -129,8 +131,8 @@ def read_meta(meta_path: Path) -> dict[str, str]:
     return out
 
 
-def parse_runs(bench_dir: Path, circuit: str) -> str:
-    circuit_dir = bench_dir / "per_circuit" / circuit
+def parse_runs(bench_dir: Path, circuit: str, backend: str) -> str:
+    circuit_dir = bench_dir / "per_circuit" / circuit / backend
     meta = read_meta(circuit_dir / "meta.txt")
 
     prove_runs: list[tuple[float, int, int]] = []
@@ -173,6 +175,7 @@ def parse_runs(bench_dir: Path, circuit: str) -> str:
     return ",".join(
         [
             circuit,
+            backend,
             str(num_constraints),
             str(num_witnesses),
             f"{prove_time_ms:.1f}",
@@ -193,6 +196,7 @@ def main() -> int:
     p = sub.add_parser("parse-runs")
     p.add_argument("bench_dir", type=Path)
     p.add_argument("circuit")
+    p.add_argument("backend")
 
     p = sub.add_parser("human-to-bytes")
     p.add_argument("value")
@@ -200,7 +204,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.cmd == "parse-runs":
-        row = parse_runs(args.bench_dir, args.circuit)
+        row = parse_runs(args.bench_dir, args.circuit, args.backend)
         if row:
             print(row)
     elif args.cmd == "human-to-bytes":
