@@ -30,6 +30,8 @@ pub(crate) mod bigint_mod;
 pub(crate) mod ec_arith;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
+// `pkp_io` depends on `xz2`/`zstd`/`bytes`, none of which build on wasm32.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod pkp_io;
 pub mod prover_types;
 pub(crate) mod r1cs;
@@ -39,10 +41,11 @@ mod witness;
 // Public re-exports for items used by integration tests and benchmarks.
 pub use {
     ec_arith::ec_scalar_mul,
-    pkp_io::{deserialize_pkp, read_pkp, serialize_pkp, write_pkp},
     prover_types::{Groth16CommitmentInfo, Groth16Prover, Prover},
     r1cs::solve_witness_vec,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use pkp_io::{deserialize_pkp, read_pkp, serialize_pkp, write_pkp};
 
 /// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
 /// `prove_with_witness` is available on all targets. `MavrosProver` does not
@@ -609,7 +612,7 @@ impl Prove for Groth16Prover {
         drop(acir_witness_idx_to_value_map);
 
         // Compute R1CS solution vectors: A·w, B·w, C·w
-        let (mut a_evals, mut b_evals, mut c_evals) = {
+        let (a_evals, b_evals, c_evals) = {
             let _s = info_span!("r1cs_matvec").entered();
             let a = r1cs.a() * full_witness.as_slice();
             let b = r1cs.b() * full_witness.as_slice();
@@ -670,14 +673,7 @@ impl Prove for Groth16Prover {
         // is alive at a time — without that, FFT scratch and MSM buckets
         // would stack and inflate peak under rayon contention.
         let (h, branch_b) = rayon::join(
-            || {
-                provekit_groth16::prover::compute_h(
-                    &mut a_evals,
-                    &mut b_evals,
-                    &mut c_evals,
-                    &domain,
-                )
-            },
+            move || provekit_groth16::prover::compute_h(a_evals, b_evals, c_evals, &domain),
             || -> Result<(
                 ark_bn254::G1Affine,
                 ark_bn254::G1Affine,
@@ -710,10 +706,6 @@ impl Prove for Groth16Prover {
                 Ok((pok, ar, bs, bs1))
             },
         );
-
-        drop(a_evals);
-        drop(b_evals);
-        drop(c_evals);
 
         let h = h.context("while computing quotient polynomial H")?;
         let (commitment_pok, ar, bs, bs1) = branch_b?;

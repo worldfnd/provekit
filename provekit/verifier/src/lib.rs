@@ -48,10 +48,9 @@ impl Verify for Verifier {
 
                 tracing::debug!(vk_bytes_len = vk_bytes.len(), "deserializing Groth16 VK");
 
-                let mut vk: provekit_groth16::VerifyingKey =
+                let vk: provekit_groth16::VerifyingKey =
                     CanonicalDeserialize::deserialize_uncompressed(&vk_bytes[..])
                         .context("while deserializing Groth16 verifying key")?;
-                vk.precompute()?;
 
                 tracing::debug!(
                     g1_k_len = vk.g1_k.len(),

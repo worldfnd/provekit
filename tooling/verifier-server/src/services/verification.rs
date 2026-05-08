@@ -82,6 +82,23 @@ impl VerificationService {
             .to_str()
             .ok_or_else(|| AppError::Internal("Invalid gnark params path".to_string()))?;
 
+        // The gnark recursive verifier path only handles WHIR proofs; reject a
+        // Groth16 proof here rather than letting `whir_r1cs_proof()` panic and
+        // kill the HTTP service.
+        let (public_inputs, whir_r1cs_proof) = match proof {
+            NoirProof::Whir {
+                public_inputs,
+                whir_r1cs_proof,
+            } => (public_inputs, whir_r1cs_proof),
+            NoirProof::Groth16 { .. } => {
+                return Err(AppError::Internal(
+                    "Groth16 proofs are not supported on the gnark recursion endpoint; submit a \
+                     WHIR proof or use the Groth16 verifier directly"
+                        .to_string(),
+                ));
+            }
+        };
+
         let whir_scheme = verifier
             .whir_for_witness
             .as_ref()
@@ -89,13 +106,13 @@ impl VerificationService {
 
         write_gnark_parameters_to_file(
             &whir_scheme.whir_witness.blinded_commitment,
-            proof.whir_r1cs_proof(),
+            whir_r1cs_proof,
             whir_scheme.m_0,
             whir_scheme.m,
             whir_scheme.a_num_terms,
             whir_scheme.num_challenges,
             whir_scheme.w1_size,
-            proof.public_inputs(),
+            public_inputs,
             gnark_params_path,
         );
 

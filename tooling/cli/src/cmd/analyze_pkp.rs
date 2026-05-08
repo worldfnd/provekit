@@ -21,8 +21,14 @@ impl Command for Args {
     fn run(&self) -> Result<()> {
         let prover: Prover = read_pkp(&self.pkp_path).context("while reading PKP file")?;
 
-        let Prover::Noir(p) = prover else {
-            anyhow::bail!("analyze-pkp is not currently supported for Mavros compiler");
+        let p = match prover {
+            Prover::Noir(p) => p,
+            Prover::Mavros(_) => {
+                anyhow::bail!("analyze-pkp is not currently supported for the Mavros compiler");
+            }
+            Prover::Groth16(_) => {
+                anyhow::bail!("analyze-pkp is not currently supported for the Groth16 backend");
+            }
         };
 
         let program_size = postcard::to_allocvec(&p.program)

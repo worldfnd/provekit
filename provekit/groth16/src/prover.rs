@@ -228,11 +228,16 @@ fn filter_by_sorted_indices(slice: &[Fr], sorted_indices: &[usize], base_offset:
 ///
 /// Given the wire-level evaluations of A·w, B·w, C·w for each constraint,
 /// compute H such that A·B - C = H·Z where Z is the vanishing polynomial.
+///
+/// The buffers are consumed: the `a_evals` allocation is reused in-place
+/// for the returned H coefficients (avoiding an extra domain-sized
+/// allocation), and `b_evals`/`c_evals` are dropped at the end of the call.
+/// Buffers shorter than `domain.size()` are zero-padded internally.
 #[instrument(skip_all)]
 pub fn compute_h(
-    a_evals: &mut Vec<Fr>,
-    b_evals: &mut Vec<Fr>,
-    c_evals: &mut Vec<Fr>,
+    mut a_evals: Vec<Fr>,
+    mut b_evals: Vec<Fr>,
+    mut c_evals: Vec<Fr>,
     domain: &Radix2EvaluationDomain<Fr>,
 ) -> Result<Vec<Fr>> {
     let n = domain.size();
@@ -249,18 +254,18 @@ pub fn compute_h(
         .ok_or_else(|| anyhow::anyhow!("failed to construct coset domain"))?;
     rayon::join(
         || {
-            domain.ifft_in_place(a_evals);
-            coset_domain.fft_in_place(a_evals);
+            domain.ifft_in_place(&mut a_evals);
+            coset_domain.fft_in_place(&mut a_evals);
         },
         || {
             rayon::join(
                 || {
-                    domain.ifft_in_place(b_evals);
-                    coset_domain.fft_in_place(b_evals);
+                    domain.ifft_in_place(&mut b_evals);
+                    coset_domain.fft_in_place(&mut b_evals);
                 },
                 || {
-                    domain.ifft_in_place(c_evals);
-                    coset_domain.fft_in_place(c_evals);
+                    domain.ifft_in_place(&mut c_evals);
+                    coset_domain.fft_in_place(&mut c_evals);
                 },
             )
         },
@@ -285,10 +290,9 @@ pub fn compute_h(
         });
 
     // IFFT on coset: evaluation on coset → coefficient form
-    coset_domain.ifft_in_place(a_evals);
+    coset_domain.ifft_in_place(&mut a_evals);
 
-    // Return the reused buffer (now contains H coefficients)
-    Ok(std::mem::take(a_evals))
+    Ok(a_evals)
 }
 
 /// Convert a field element to its canonical compressed byte form.

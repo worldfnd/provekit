@@ -18,6 +18,7 @@ anyhow = { workspace = true }
 sha2 = { workspace = true }
 serde = { workspace = true }
 tracing = { workspace = true }
+zeroize = { workspace = true, features = ["derive"] }
 provekit-common = { workspace = true }
 
 [lints]

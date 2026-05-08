@@ -15,6 +15,10 @@ use {
 };
 
 /// Toxic waste: secret random values used during setup and then destroyed.
+///
+/// `ZeroizeOnDrop` wipes every secret field when the value goes out of scope,
+/// so the trusted-setup secrets can't be recovered from freed memory.
+#[derive(zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
 struct ToxicWaste {
     t:         Fr,
     alpha:     Fr,
@@ -307,7 +311,9 @@ pub fn setup(
         commitment_keys: pk_commitment_keys,
     };
 
-    // toxic waste is dropped here — in production this is the MPC ceremony's job
+    // toxic waste is dropped here — in production this is the MPC ceremony's job.
+    // `ToxicWaste` is `ZeroizeOnDrop`, so the secret field elements are wiped
+    // from memory when this drop runs.
     drop(toxic);
 
     Ok((pk, vk))

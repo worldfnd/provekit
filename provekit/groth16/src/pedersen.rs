@@ -11,6 +11,7 @@ use {
     ark_ec::{AffineRepr, CurveGroup, VariableBaseMSM},
     ark_ff::{One, UniformRand, Zero},
     ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
+    zeroize::Zeroizing,
 };
 
 /// Pedersen proving key: bases for commitment and PoK generation.
@@ -47,12 +48,14 @@ pub fn setup(
     // Choose G2 generator
     let g = g2_point.unwrap_or_else(|| G2Projective::rand(&mut rng).into_affine());
 
-    // Sample secret sigma
-    let sigma = Fr::rand(&mut rng);
+    // Sample secret sigma. `Zeroizing` wipes the field element when it drops,
+    // so the toxic Pedersen secret can't be recovered from freed memory after
+    // setup returns.
+    let sigma = Zeroizing::new(Fr::rand(&mut rng));
     ensure!(!sigma.is_zero(), "sigma must be non-zero");
 
     // Compute G^(-sigma)
-    let g_sigma_neg: G2Affine = (-(G2Projective::from(g) * sigma)).into_affine();
+    let g_sigma_neg: G2Affine = (-(G2Projective::from(g) * *sigma)).into_affine();
 
     let vk = VerifyingKey { g, g_sigma_neg };
 
@@ -62,7 +65,7 @@ pub fn setup(
             // BasisExpSigma[i] = Basis[i] * sigma
             let basis_exp_sigma: Vec<G1Affine> = bases
                 .iter()
-                .map(|b| (G1Projective::from(*b) * sigma).into_affine())
+                .map(|b| (G1Projective::from(*b) * *sigma).into_affine())
                 .collect();
 
             ProvingKey {
@@ -194,8 +197,15 @@ pub fn batch_verify_multi_vk(
         return Ok(());
     }
 
-    // All VKs should share the same G point (enforced during setup).
+    // All VKs must share the same G point. `setup()` always emits a single G,
+    // but a deserialized batch could mix VKs whose `g` differs — folding
+    // `g_sigma_neg` against `vks[0].g` would then quietly check the wrong
+    // pairing equation, so reject the batch outright.
     let g = vks[0].g;
+    ensure!(
+        vks.iter().all(|v| v.g == g),
+        "batch_verify: all verifying keys must share the same G point"
+    );
 
     // Fold commitments: C_folded = C₀ + challenge·C₁ + challenge²·C₂ + ...
     let folded_commitment = fold(commitments, folding_challenge)?;

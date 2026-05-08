@@ -229,15 +229,22 @@ impl CanonicalDeserialize for VerifyingKey {
         let num_challenges_per_commitment =
             Vec::<usize>::deserialize_with_mode(&mut r, compress, validate)?;
 
+        // Compute cached values inline so a freshly deserialized VK is
+        // immediately ready to verify. Equivalent to calling `precompute()`
+        // — kept here so callers cannot forget that step.
+        let e_alpha_beta = Bn254::pairing(g1_alpha, g2_beta).0;
+        let g2_delta_neg: G2Affine = (-G2Projective::from(g2_delta)).into();
+        let g2_gamma_neg: G2Affine = (-G2Projective::from(g2_gamma)).into();
+
         Ok(Self {
             g1_alpha,
             g1_k,
             g2_beta,
             g2_delta,
             g2_gamma,
-            g2_delta_neg: G2Affine::zero(),
-            g2_gamma_neg: G2Affine::zero(),
-            e_alpha_beta: ark_ff::AdditiveGroup::ZERO,
+            g2_delta_neg,
+            g2_gamma_neg,
+            e_alpha_beta,
             commitment_keys,
             public_and_commitment_committed,
             num_challenges_per_commitment,

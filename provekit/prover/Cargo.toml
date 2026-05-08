@@ -33,22 +33,24 @@ whir.workspace = true
 
 # 3rd party
 anyhow.workspace = true
-bytes.workspace = true
 num-bigint.workspace = true
 postcard.workspace = true
 rayon.workspace = true
 serde.workspace = true
 tracing.workspace = true
-xz2.workspace = true
-zstd.workspace = true
 
-# Target-specific dependencies: only on non-WASM targets
+# Target-specific dependencies: only on non-WASM targets.
+# `xz2` and `zstd` wrap C libraries and don't build for wasm32; `bytes` is only
+# used by `pkp_io`, which is itself non-wasm.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bn254_blackbox_solver = { workspace = true, optional = true }
 nargo = { workspace = true, optional = true }
 noir_artifact_cli = { workspace = true, optional = true }
 mavros-vm.workspace = true
 mavros-artifacts.workspace = true
+bytes.workspace = true
+xz2.workspace = true
+zstd.workspace = true
 
 [lints]
 workspace = true

@@ -1,5 +1,5 @@
 use {
-    super::Command,
+    super::{util::resolve_key_path, Command},
     anyhow::{Context as _, Result},
     argh::FromArgs,
     provekit_common::{file::write, HashConfig, Verifier},
@@ -66,39 +66,15 @@ pub struct Args {
     #[argh(option, long = "backend", default = "Backend::Whir")]
     backend: Backend,
 
-    /// output path for the ProveKit Prover (PKP) key
-    #[argh(
-        option,
-        long = "pkp",
-        short = 'p',
-        default = "PathBuf::from(\"noir_proof_scheme.pkp\")"
-    )]
-    pkp_path: PathBuf,
+    /// output path for the ProveKit Prover (PKP) key (default:
+    /// `<circuit>.pkp` for Noir, `noir_proof_scheme.pkp` for Mavros)
+    #[argh(option, long = "pkp", short = 'p')]
+    pkp_path: Option<PathBuf>,
 
-    /// output path for the ProveKit Verifier (PKV) key
-    #[argh(
-        option,
-        long = "pkv",
-        short = 'v',
-        default = "PathBuf::from(\"noir_proof_scheme.pkv\")"
-    )]
-    pkv_path: PathBuf,
-
-    /// print the ACIR for the compiled circuit (noir only)
-    #[argh(switch)]
-    print_acir: bool,
-
-    /// skip the under-constrained-values check (noir only)
-    #[argh(switch)]
-    skip_underconstrained_check: bool,
-
-    /// skip the Brillig call-constraints check (noir only)
-    #[argh(switch)]
-    skip_brillig_constraints_check: bool,
-
-    /// force a full recompilation, ignoring cached artifacts (noir only)
-    #[argh(switch)]
-    force: bool,
+    /// output path for the ProveKit Verifier (PKV) key (default:
+    /// `<circuit>.pkv` for Noir, `noir_proof_scheme.pkv` for Mavros)
+    #[argh(option, long = "pkv", short = 'v')]
+    pkv_path: Option<PathBuf>,
 
     /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
     /// blake3, poseidon2)
@@ -123,13 +99,27 @@ impl Command for Args {
             }
         };
 
+        // Default key paths must match what `prove` and `verify` look up by
+        // default. For Noir that's `<package>.pkp` / `<package>.pkv` derived
+        // from Nargo.toml; Mavros has no manifest, so fall back to the legacy
+        // `noir_proof_scheme.*` names.
+        let resolve_path = |opt: Option<&PathBuf>, ext: &str| -> Result<PathBuf> {
+            match (opt, &self.compiler) {
+                (Some(p), _) => Ok(p.clone()),
+                (None, Compiler::Noir) => resolve_key_path(None, ext),
+                (None, Compiler::Mavros) => Ok(PathBuf::from(format!("noir_proof_scheme.{ext}"))),
+            }
+        };
+        let pkp_path = resolve_path(self.pkp_path.as_ref(), "pkp")?;
+        let pkv_path = resolve_path(self.pkv_path.as_ref(), "pkv")?;
+
         match self.backend {
             Backend::Whir => {
                 let prover = Prover::from_noir_proof_scheme(scheme.clone());
                 let verifier = Verifier::from_noir_proof_scheme(scheme);
 
-                write_pkp(&prover, &self.pkp_path).context("while writing Provekit Prover")?;
-                write(&verifier, &self.pkv_path).context("while writing Provekit Verifier")?;
+                write_pkp(&prover, &pkp_path).context("while writing Provekit Prover")?;
+                write(&verifier, &pkv_path).context("while writing Provekit Verifier")?;
             }
             Backend::Groth16 => {
                 use {
@@ -267,8 +257,8 @@ impl Command for Args {
                     groth16_vk: Some(vk_bytes),
                 };
 
-                write_pkp(&prover, &self.pkp_path).context("while writing Provekit Prover")?;
-                write(&verifier, &self.pkv_path).context("while writing Provekit Verifier")?;
+                write_pkp(&prover, &pkp_path).context("while writing Provekit Prover")?;
+                write(&verifier, &pkv_path).context("while writing Provekit Verifier")?;
             }
         }
 

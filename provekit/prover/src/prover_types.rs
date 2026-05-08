@@ -8,12 +8,16 @@
 use {
     acir::circuit::Program,
     provekit_common::{
-        file::MaybeHashAware,
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        HashConfig, MavrosProver, NoirElement, NoirProver, R1CS,
+        MavrosProver, NoirElement, NoirProver, R1CS,
     },
     serde::{Deserialize, Serialize},
 };
+// `MaybeHashAware` lives behind `provekit_common::file::io`, which is gated to
+// non-wasm targets. The only consumer of the `MaybeHashAware for Prover` impl
+// is `pkp_io`, which is itself non-wasm-gated, so confine both to that target.
+#[cfg(not(target_arch = "wasm32"))]
+use provekit_common::{file::MaybeHashAware, HashConfig};
 
 /// BSB22 commitment info for ProveKit's Groth16 backend.
 ///
@@ -113,6 +117,7 @@ impl Prover {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl MaybeHashAware for Prover {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         match self {
