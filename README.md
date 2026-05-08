@@ -44,13 +44,15 @@ cargo run --release --bin provekit-cli verify
 
 | Command | Purpose | Key options |
 | :--- | :--- | :--- |
-| `prepare` | Compile a Noir package and write prover/verifier keys | `--pkp`/`-p`, `--pkv`/`-v`, `--hash`; default hash: `skyscraper` |
+| `prepare` | Compile a Noir package and write prover/verifier keys | `--pkp`/`-p`, `--pkv`/`-v`, `--hash`, `--backend`; default hash: `skyscraper`, default backend: `whir` |
 | `prove` | Produce `proof.np` from a prover key and inputs | `--prover`/`-p`, `--input`/`-i`, `--out`/`-o` |
 | `verify` | Verify a proof against a verifier key | `--verifier`/`-v`, `--proof` |
 
 Read the table per command: the short `-p` flag changes meaning between `prepare` and `prove`.
 
 Available `prepare --hash` choices are `skyscraper`, `sha256`, `keccak`, `blake3`, and `poseidon2`.
+
+Available `prepare --backend` choices are `whir` (default) and `groth16`.
 
 ## How It Works
 
