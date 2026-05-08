@@ -483,8 +483,12 @@ impl Prove for Groth16Prover {
         // Allocate witness vector
         let mut witness: Vec<Option<FieldElement>> = vec![None; r1cs.num_witnesses_for_solving()];
 
-        // Create a dummy transcript — Groth16 doesn't use Fiat-Shamir during witness
-        // solving
+        // `solve_witness_vec` requires a `&mut ProverState` because the WHIR
+        // pipeline absorbs intermediate values into the transcript while
+        // solving. Groth16 doesn't share that protocol — its only Fiat-Shamir
+        // step is the BSB22 commitment hash, done explicitly below — so we
+        // pass a throwaway transcript here purely to satisfy the signature.
+        // Nothing absorbed into it ever leaves this function.
         let dummy_instance: Vec<u8> = Vec::new();
         let ds =
             whir::transcript::DomainSeparator::protocol(&"groth16-dummy").instance(&dummy_instance);
@@ -553,7 +557,7 @@ impl Prove for Groth16Prover {
                     .context("while serializing commitment")?;
                 data.extend_from_slice(&commitment_bytes);
                 for val in &public_vals {
-                    let bytes = provekit_groth16::prover::fr_to_bytes(val);
+                    let bytes = provekit_groth16::prover::fr_to_bytes(val)?;
                     data.extend_from_slice(&bytes);
                 }
                 data
@@ -711,6 +715,7 @@ impl Prove for Groth16Prover {
         drop(b_evals);
         drop(c_evals);
 
+        let h = h.context("while computing quotient polynomial H")?;
         let (commitment_pok, ar, bs, bs1) = branch_b?;
 
         // PK fields used only by `bsb22_pok` / `prove_ar_bs_bs1` are dropped

@@ -48,8 +48,12 @@ impl ToxicWaste {
             beta,
             gamma,
             delta,
-            gamma_inv: gamma.inverse().expect("gamma nonzero"),
-            delta_inv: delta.inverse().expect("delta nonzero"),
+            gamma_inv: gamma
+                .inverse()
+                .ok_or_else(|| anyhow::anyhow!("gamma is zero, cannot invert"))?,
+            delta_inv: delta
+                .inverse()
+                .ok_or_else(|| anyhow::anyhow!("delta is zero, cannot invert"))?,
         })
     }
 }
@@ -62,6 +66,15 @@ impl ToxicWaste {
 ///
 /// `challenge_wire_indices` lists ALL wire indices that hold challenge values
 /// (treated as public).
+///
+/// CONTRACT: `challenge_wire_indices` must be flattened across commitments
+/// in the same order as `commitment_info`/`num_challenges_per_commitment`,
+/// i.e. `[commit0_wire0, commit0_wire1, ..., commit1_wire0, ...]`. Within
+/// each commitment, the order must match the order the verifier inserts
+/// derived challenges into `extended_public` (the `hash_to_fr_multi` output
+/// order for multi-challenge commitments). Violating this contract causes
+/// `vk.g1_k` to be paired with the wrong public-input scalars at verify
+/// time, producing a silent miscompute for multi-commitment circuits.
 pub fn setup(
     r1cs: &R1CS,
     commitment_info: &[CommitmentInfo],
@@ -110,27 +123,44 @@ pub fn setup(
         }
     }
 
-    let mut commitment_wire_set: std::collections::HashSet<usize> =
-        std::collections::HashSet::new();
-    for &w in challenge_wire_indices {
-        commitment_wire_set.insert(w);
+    let commitment_wire_set: std::collections::HashSet<usize> =
+        challenge_wire_indices.iter().copied().collect();
+
+    let k_at = |i: usize| -> Fr {
+        // K(i) = β·A(i) + α·B(i) + C(i)
+        toxic.beta * a_at_t[i] + toxic.alpha * b_at_t[i] + c_at_t[i]
+    };
+
+    // Pass 1: public wires (constant + Noir public inputs), in wire-index
+    // order. `vk.g1_k[0]` corresponds to the constant-1 wire and is paired
+    // with the implicit `1` term in the verifier; `vk.g1_k[1..1+num_public]`
+    // is paired with `public_witness` in the same order Noir emits public
+    // inputs.
+    for i in 0..nb_public_variables {
+        vk_k.push(k_at(i) * toxic.gamma_inv);
     }
 
-    for i in 0..nb_wires {
-        let is_public = i < nb_public_variables;
-        let is_commitment = commitment_wire_set.contains(&i);
+    // Pass 2: challenge wires in commitment-iteration order. The verifier
+    // appends derived challenges to `extended_public` in this same order
+    // (`for (i, _) in vk.public_and_commitment_committed.iter().enumerate()`
+    // → `extended_public.extend_from_slice(&challenges)`), so the bases
+    // emitted here line up with the scalars the verifier produces.
+    for &wire_idx in challenge_wire_indices {
+        vk_k.push(k_at(wire_idx) * toxic.gamma_inv);
+    }
 
-        // K(i) = β·A(i) + α·B(i) + C(i)
-        let k_val = toxic.beta * a_at_t[i] + toxic.alpha * b_at_t[i] + c_at_t[i];
-
-        if is_public || is_commitment {
-            // Public/commitment wire → divide by γ
-            vk_k.push(k_val * toxic.gamma_inv);
-        } else if let Some(&ci) = committed_map.get(&i) {
-            // Private committed wire → goes to commitment bases, divide by γ
+    // Pass 3: private wires. Each goes either to a commitment bucket (if
+    // it's in `private_committed` for some commitment) or to `pk_k`.
+    // Challenge wires that landed in the private range are skipped — they
+    // were already pushed to `vk_k` in pass 2.
+    for i in nb_public_variables..nb_wires {
+        if commitment_wire_set.contains(&i) {
+            continue;
+        }
+        let k_val = k_at(i);
+        if let Some(&ci) = committed_map.get(&i) {
             ck_k[ci].push(k_val * toxic.gamma_inv);
         } else {
-            // Private non-committed wire → divide by δ
             pk_k.push(k_val * toxic.delta_inv);
         }
     }
@@ -226,7 +256,10 @@ pub fn setup(
             continue;
         }
         let (pks, vk) = pedersen::setup(&[ck_bases], Some(g2_random))?;
-        pk_commitment_keys.push(pks.into_iter().next().unwrap());
+        let pk = pks.into_iter().next().ok_or_else(|| {
+            anyhow::anyhow!("pedersen::setup returned empty proving key vector")
+        })?;
+        pk_commitment_keys.push(pk);
         vk_commitment_keys.push(vk);
     }
 
@@ -310,24 +343,28 @@ fn evaluate_abc_at_t(
 
     // L₀(τ) = (τⁿ - 1) / (n · (τ - ω⁰))
     let t_n = toxic.t.pow([domain.size() as u64]);
-    let n_inv = Fr::from(domain.size() as u64).inverse().expect("n nonzero");
+    let n_inv = Fr::from(domain.size() as u64)
+        .inverse()
+        .ok_or_else(|| anyhow::anyhow!("FFT domain size is zero, cannot invert"))?;
     let mut lagrange = (t_n - Fr::one()) * t_minus_wi_inv[0] * n_inv;
 
     // Accumulate: for each constraint row, add coeff * Lⱼ(τ) to the appropriate
     // wire. Iterates directly over SparseMatrix rows instead of gnark's Term
     // lists.
+    let lookup_coeff = |interned| {
+        r1cs.interner
+            .get(interned)
+            .ok_or_else(|| anyhow::anyhow!("R1CS interner missing value for matrix entry"))
+    };
     for j in 0..n {
         for (col, interned) in r1cs.a.iter_row(j) {
-            let coeff = r1cs.interner.get(interned).expect("interned value missing");
-            a[col] += coeff * lagrange;
+            a[col] += lookup_coeff(interned)? * lagrange;
         }
         for (col, interned) in r1cs.b.iter_row(j) {
-            let coeff = r1cs.interner.get(interned).expect("interned value missing");
-            b[col] += coeff * lagrange;
+            b[col] += lookup_coeff(interned)? * lagrange;
         }
         for (col, interned) in r1cs.c.iter_row(j) {
-            let coeff = r1cs.interner.get(interned).expect("interned value missing");
-            c[col] += coeff * lagrange;
+            c[col] += lookup_coeff(interned)? * lagrange;
         }
 
         // Lⱼ₊₁(τ) = ω · Lⱼ(τ) · (τ - ω^j) / (τ - ω^(j+1))

@@ -28,6 +28,17 @@ use {
 /// * `public_witness` - Public input values (excluding the constant 1 wire).
 pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result<()> {
     let total_challenges: usize = vk.num_challenges_per_commitment.iter().sum();
+    // Guard the subtraction below: a malformed VK with more declared
+    // challenges than g1_k entries would otherwise underflow `usize` (panic
+    // in debug, wrap in release — release still rejects via the size-check
+    // a few lines down, but the panic in debug is a DoS surface and the
+    // wrap masks the real problem).
+    ensure!(
+        vk.g1_k.len() >= total_challenges + 1,
+        "invalid verifying key: g1_k has {} entries but {} challenges + ONE_WIRE were declared",
+        vk.g1_k.len(),
+        total_challenges,
+    );
     let nb_public_vars = vk.g1_k.len() - total_challenges;
     let expected_commitments = vk.public_and_commitment_committed.len();
 
@@ -83,7 +94,7 @@ pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result
         if num_challenges <= 1 {
             let challenge = derive_commitment_challenge(&proof.commitments[i], &public_vals)?;
             extended_public.push(challenge);
-            let bytes = crate::prover::fr_to_bytes(&challenge);
+            let bytes = crate::prover::fr_to_bytes(&challenge)?;
             commitments_serialized[FR_BYTES * serial_offset..FR_BYTES * (serial_offset + 1)]
                 .copy_from_slice(&bytes);
             serial_offset += 1;
@@ -97,7 +108,7 @@ pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result
                     .map_err(|e| anyhow::anyhow!("serialize commitment: {e}"))?;
                 data.extend_from_slice(&commitment_bytes);
                 for val in &public_vals {
-                    let bytes = crate::prover::fr_to_bytes(val);
+                    let bytes = crate::prover::fr_to_bytes(val)?;
                     data.extend_from_slice(&bytes);
                 }
                 data
@@ -106,7 +117,7 @@ pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result
             let challenges = hash_to_fr_multi(&challenge_data, COMMITMENT_DST, num_challenges)?;
 
             for ch in &challenges {
-                let bytes = crate::prover::fr_to_bytes(ch);
+                let bytes = crate::prover::fr_to_bytes(ch)?;
                 commitments_serialized[FR_BYTES * serial_offset..FR_BYTES * (serial_offset + 1)]
                     .copy_from_slice(&bytes);
                 serial_offset += 1;

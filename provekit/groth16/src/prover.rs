@@ -1,13 +1,20 @@
-/// Groth16+BSB22 prover: generates proofs from R1CS + witness.
-///
-/// Ported from gnark's `backend/groth16/bn254/prove.go`.
-///
-/// The proving flow:
-/// 1. (BSB22) Commit to pre-challenge witness values via Pedersen
-/// 2. (BSB22) Derive challenges from commitment hashes
-/// 3. Compute quotient polynomial H via FFT
-/// 4. Compute proof elements Ar, Bs, Krs via MSM
-/// 5. (BSB22) Generate and fold proofs of knowledge
+//! Groth16+BSB22 prover building blocks: generates proofs from R1CS + witness.
+//!
+//! Ported from gnark's `backend/groth16/bn254/prove.go`.
+//!
+//! The end-to-end proving flow (orchestrated by `provekit_prover::Prove for
+//! Groth16Prover` in `provekit/prover/src/lib.rs`) is:
+//! 1. (BSB22) Commit to pre-challenge witness values via Pedersen.
+//! 2. (BSB22) Derive challenges from commitment hashes.
+//! 3. Compute quotient polynomial H via FFT (see [`compute_h`]).
+//! 4. Compute proof elements Ar, Bs, Krs via MSM (see [`prove_ar_bs_bs1`] and
+//!    [`prove_krs`]).
+//! 5. (BSB22) Generate and fold proofs of knowledge (see [`bsb22_pok`]).
+//!
+//! The caller owns the BSB22 witness-splitting flow (solve w1 → commit →
+//! derive challenges → solve w2). Functions in this module take the completed
+//! witness and commitments as inputs.
+
 use anyhow::{ensure, Result};
 use {
     crate::{pedersen, CommitmentInfo, BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES},
@@ -19,25 +26,9 @@ use {
     tracing::{info_span, instrument},
 };
 
-/// Prove generates a Groth16+BSB22 proof.
-///
-/// # Arguments
-/// * `pk` - Proving key from trusted setup.
-/// * `r1cs_nb_public` - Number of public variables in the R1CS.
-/// * `wire_values` - Full witness vector (all wires: constant, public,
-///   private).
-/// * `commitment_info` - BSB22 commitment metadata.
-/// * `committed_values` - For each commitment, the private values that were
-///   committed.
-/// * `commitments` - Pedersen commitment points (computed during witness
-///   solving).
-///
-/// The caller is responsible for the BSB22 witness-splitting flow:
-/// solving w1, computing Pedersen commitments, deriving challenges, then
-/// solving w2. This function takes the completed witness and commitments.
 /// BSB22 batched proof of knowledge over all commitments, folded into a
 /// single G1 element. Independent of `H`, so callers can run this in
-/// parallel with `compute_h`.
+/// parallel with [`compute_h`].
 #[instrument(skip_all)]
 pub fn bsb22_pok(
     commitment_keys: &[pedersen::ProvingKey],
@@ -57,7 +48,7 @@ pub fn bsb22_pok(
 
     let mut commitments_serialized = vec![0u8; FR_BYTES * challenge_wire_indices.len()];
     for (j, &wire_idx) in challenge_wire_indices.iter().enumerate() {
-        let bytes = fr_to_bytes(&wire_values[wire_idx]);
+        let bytes = fr_to_bytes(&wire_values[wire_idx])?;
         commitments_serialized[FR_BYTES * j..FR_BYTES * (j + 1)].copy_from_slice(&bytes);
     }
 
@@ -243,7 +234,7 @@ pub fn compute_h(
     b_evals: &mut Vec<Fr>,
     c_evals: &mut Vec<Fr>,
     domain: &Radix2EvaluationDomain<Fr>,
-) -> Vec<Fr> {
+) -> Result<Vec<Fr>> {
     let n = domain.size();
 
     // Pad to domain size
@@ -253,7 +244,9 @@ pub fn compute_h(
 
     // IFFT → coset FFT for each buffer. The three pipelines are independent
     // (separate buffers, immutable domain refs), so run them in parallel.
-    let coset_domain = domain.get_coset(Fr::GENERATOR).expect("coset domain");
+    let coset_domain = domain
+        .get_coset(Fr::GENERATOR)
+        .ok_or_else(|| anyhow::anyhow!("failed to construct coset domain"))?;
     rayon::join(
         || {
             domain.ifft_in_place(a_evals);
@@ -278,7 +271,9 @@ pub fn compute_h(
     // Z(g·ωⁱ) = (g·ωⁱ)^N - 1 = g^N - 1 (constant on coset)
     let z_inv = {
         let gen_n = Fr::GENERATOR.pow([n as u64]);
-        (gen_n - Fr::one()).inverse().expect("Z(coset) nonzero")
+        (gen_n - Fr::one())
+            .inverse()
+            .ok_or_else(|| anyhow::anyhow!("Z(coset) is zero, cannot invert"))?
     };
 
     a_evals
@@ -293,15 +288,16 @@ pub fn compute_h(
     coset_domain.ifft_in_place(a_evals);
 
     // Return the reused buffer (now contains H coefficients)
-    std::mem::take(a_evals)
+    Ok(std::mem::take(a_evals))
 }
 
-/// Convert a field element to big-endian bytes.
-pub fn fr_to_bytes(val: &Fr) -> Vec<u8> {
+/// Convert a field element to its canonical compressed byte form.
+pub fn fr_to_bytes(val: &Fr) -> Result<Vec<u8>> {
     use ark_serialize::CanonicalSerialize;
     let mut bytes = vec![0u8; FR_BYTES];
-    val.serialize_compressed(&mut bytes[..]).unwrap_or_default();
-    bytes
+    val.serialize_compressed(&mut bytes[..])
+        .map_err(|e| anyhow::anyhow!("failed to serialize Fr: {e}"))?;
+    Ok(bytes)
 }
 
 /// RFC 9380 Section 5.3: expand_message_xmd using SHA-256.
@@ -315,7 +311,7 @@ fn expand_message_xmd(msg: &[u8], dst: &[u8], len_in_bytes: usize) -> Result<Vec
     let r_in_bytes = 64usize; // SHA-256 block size
 
     ensure!(dst.len() <= 255, "DST must be at most 255 bytes");
-    let ell = (len_in_bytes + b_in_bytes - 1) / b_in_bytes;
+    let ell = len_in_bytes.div_ceil(b_in_bytes);
     ensure!(ell <= 255, "expand_message_xmd: output too large");
 
     // DST_prime = DST || I2OSP(len(DST), 1)
@@ -413,7 +409,7 @@ pub fn derive_commitment_challenge(commitment: &G1Affine, public_values: &[Fr]) 
 
     // Serialize public values
     for val in public_values {
-        let bytes = fr_to_bytes(val);
+        let bytes = fr_to_bytes(val)?;
         data.extend_from_slice(&bytes);
     }
 

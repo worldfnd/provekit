@@ -102,11 +102,13 @@ impl Prover {
         }
     }
 
-    pub fn whir_for_witness(&self) -> &provekit_common::WhirR1CSScheme {
+    /// Returns the WHIR scheme for backends that use it (Noir, Mavros).
+    /// Returns `None` for Groth16, which doesn't use WHIR.
+    pub fn whir_for_witness(&self) -> Option<&provekit_common::WhirR1CSScheme> {
         match self {
-            Prover::Noir(p) => &p.whir_for_witness,
-            Prover::Mavros(p) => &p.whir_for_witness,
-            Prover::Groth16(_) => panic!("Groth16 prover does not use WHIR"),
+            Prover::Noir(p) => Some(&p.whir_for_witness),
+            Prover::Mavros(p) => Some(&p.whir_for_witness),
+            Prover::Groth16(_) => None,
         }
     }
 }

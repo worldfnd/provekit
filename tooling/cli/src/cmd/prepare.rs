@@ -1,23 +1,11 @@
 use {
-    super::{util::resolve_key_path, Command},
-    anyhow::{anyhow, bail, Context as _, Result},
+    super::Command,
+    anyhow::{Context as _, Result},
     argh::FromArgs,
-    nargo::{
-        insert_all_files_for_workspace_into_file_manager,
-        ops::{check_program, collect_errors, compile_program, optimize_program, report_errors},
-        parse_all,
-    },
-    nargo_toml::{find_root, get_package_manifest, resolve_workspace_from_toml, PackageSelection},
-    noir_artifact_cli::fs::artifact::save_program_to_file,
-    noirc_driver::{CompilationResult, CompileOptions, CrateName, NOIR_ARTIFACT_VERSION_STRING},
     provekit_common::{file::write, HashConfig, Verifier},
     provekit_prover::{write_pkp, Groth16CommitmentInfo, Groth16Prover, Prover},
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    rayon::prelude::*,
-    std::{
-        path::{Path, PathBuf},
-        str::FromStr,
-    },
+    std::{path::PathBuf, str::FromStr},
     tracing::{info, instrument},
 };
 
@@ -34,24 +22,6 @@ impl argh::FromArgValue for Compiler {
             "mavros" => Ok(Compiler::Mavros),
             other => Err(format!(
                 "Unknown compiler: {other}. Use \"noir\" or \"mavros\"."
-            )),
-        }
-    }
-}
-
-#[derive(PartialEq, Eq, Debug)]
-enum Backend {
-    Whir,
-    Groth16,
-}
-
-impl argh::FromArgValue for Backend {
-    fn from_arg_value(value: &str) -> std::result::Result<Self, String> {
-        match value {
-            "whir" => Ok(Backend::Whir),
-            "groth16" => Ok(Backend::Groth16),
-            other => Err(format!(
-                "Unknown backend: {other}. Use \"whir\" or \"groth16\"."
             )),
         }
     }
@@ -96,7 +66,7 @@ pub struct Args {
     #[argh(option, long = "backend", default = "Backend::Whir")]
     backend: Backend,
 
-    /// output path for the prepared proof scheme
+    /// output path for the ProveKit Prover (PKP) key
     #[argh(
         option,
         long = "pkp",
@@ -104,6 +74,15 @@ pub struct Args {
         default = "PathBuf::from(\"noir_proof_scheme.pkp\")"
     )]
     pkp_path: PathBuf,
+
+    /// output path for the ProveKit Verifier (PKV) key
+    #[argh(
+        option,
+        long = "pkv",
+        short = 'v',
+        default = "PathBuf::from(\"noir_proof_scheme.pkv\")"
+    )]
+    pkv_path: PathBuf,
 
     /// print the ACIR for the compiled circuit (noir only)
     #[argh(switch)]
@@ -120,16 +99,6 @@ pub struct Args {
     /// force a full recompilation, ignoring cached artifacts (noir only)
     #[argh(switch)]
     force: bool,
-
-    /// output path for the ProveKit Prover (PKP) key (default:
-    /// `<circuit>.pkp`)
-    #[argh(option, long = "pkp", short = 'p')]
-    pkp_path: Option<PathBuf>,
-
-    /// output path for the ProveKit Verifier (PKV) key (default:
-    /// `<circuit>.pkv`)
-    #[argh(option, long = "pkv", short = 'v')]
-    pkv_path: Option<PathBuf>,
 
     /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
     /// blake3, poseidon2)
@@ -209,8 +178,11 @@ impl Command for Args {
 
                 let (commitment_info, groth16_ci, num_challenges_per_commitment) =
                     if num_challenges > 0 && !private_w1_wires.is_empty() {
-                        // Sort challenge wire indices so they match the order
-                        // in vk.g1_k (which is wire-index order from the setup loop).
+                        // Single commitment: any internal ordering of
+                        // `challenge_indices` is fine as long as the prover
+                        // (which iterates `ci.challenge_indices`) and the
+                        // setup (which iterates `challenge_wire_indices`)
+                        // agree. We sort by wire index for determinism.
                         let mut sorted_challenge_indices: Vec<usize> = challenge_offsets
                             .iter()
                             .map(|&offset| w1_size + offset)
@@ -242,12 +214,15 @@ impl Command for Args {
                     w1_size,
                     "Running Groth16 trusted setup..."
                 );
-                // All challenge wire indices for setup (sorted to match vk.g1_k order)
-                let mut challenge_wire_indices: Vec<usize> = challenge_offsets
+                // Flatten challenge wire indices across commitments in the
+                // SAME order as `commitment_info` (the setup contract). With
+                // a single commitment this is just that commitment's
+                // challenge wires; with multiple commitments the caller is
+                // responsible for concatenating them in commitment order.
+                let challenge_wire_indices: Vec<usize> = commitment_info
                     .iter()
-                    .map(|&offset| w1_size + offset)
+                    .flat_map(|ci| ci.challenge_indices.iter().copied())
                     .collect();
-                challenge_wire_indices.sort_unstable();
 
                 let (pk, vk) = provekit_groth16::setup::setup(
                     &r1cs,
@@ -298,48 +273,5 @@ impl Command for Args {
         }
 
         Ok(())
-    }
-
-    fn compile_options(&self) -> CompileOptions {
-        CompileOptions {
-            deny_warnings: self.deny_warnings,
-            silence_warnings: self.silence_warnings,
-            print_acir: self.print_acir,
-            skip_underconstrained_check: self.skip_underconstrained_check,
-            skip_brillig_constraints_check: self.skip_brillig_constraints_check,
-            force_compile: self.force,
-            ..CompileOptions::default()
-        }
-    }
-
-    fn package_selection(
-        &self,
-        workspace_dir: &Path,
-        package_dir: &Path,
-    ) -> Result<PackageSelection> {
-        if self.workspace {
-            return Ok(PackageSelection::All);
-        }
-        if let Some(name) = &self.package {
-            let crate_name: CrateName = name
-                .parse()
-                .map_err(|e| anyhow!("invalid package name `{name}`: {e}"))?;
-            return Ok(PackageSelection::Selected(crate_name));
-        }
-        // When CWD is inside a sub-package of a multi-package workspace, narrow
-        // to that package rather than compiling the whole workspace.
-        if workspace_dir != package_dir {
-            let inner = resolve_workspace_from_toml(
-                &get_package_manifest(package_dir)?,
-                PackageSelection::DefaultOrAll,
-                Some(NOIR_ARTIFACT_VERSION_STRING.to_owned()),
-            )?;
-            let package = inner
-                .into_iter()
-                .next()
-                .expect("a package manifest resolves to exactly one member");
-            return Ok(PackageSelection::Selected(package.name.clone()));
-        }
-        Ok(PackageSelection::DefaultOrAll)
     }
 }
