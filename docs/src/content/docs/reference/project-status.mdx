@@ -1,0 +1,69 @@
+---
+title: Project status and versioning
+description: Stable vs. development documentation and artifact policy for ProveKit.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+ProveKit is under active development. Treat code, proof/key formats, recursive-verifier inputs, and integration APIs as branch-scoped unless a release explicitly says otherwise.
+
+<Aside type="caution" title="Version before artifact sharing">
+Before sharing `.pkp`, `.pkv`, proof, recursive-verifier, or SDK artifacts, record the branch, commit, lockfile, toolchain, compiler backend, hash choice, and command line used to create them.
+</Aside>
+
+## Branch policy
+
+| Branch | Audience | Documentation expectation |
+| :--- | :--- | :--- |
+| `v1` | Users who need the current stable interface. | Stable docs should target this branch first. |
+| `main` | Contributors and early adopters. | May include breaking changes to proof, key, recursive-verifier, or API formats. |
+
+Use `v1` when reproducibility matters more than testing the newest implementation. Use `main` only when you are prepared to regenerate artifacts and adapt to source-level changes.
+
+## Artifact compatibility policy
+
+Do not assume compatibility across branches or commits unless a release note says the formats are unchanged.
+
+Regenerate all affected artifacts after changing any of these inputs:
+
+- Git branch, commit, or dependency lockfile.
+- Noir circuit source, package selection, or workspace layout.
+- Compiler backend (`noir` vs. `mavros`).
+- `prepare --hash` value.
+- Prover inputs that should produce a new proof.
+- Recursive-verifier export settings or proof/verifier pair.
+
+The safest deployment record includes the Git commit, `rust-toolchain.toml`, `Cargo.lock`, CLI command lines, generated artifact checksums, and the public input encoding expected by downstream systems.
+
+## Integration status
+
+| Path | Current status | Compatibility notes |
+| :--- | :--- | :--- |
+| CLI prepare/prove/verify | Primary local workflow. | Defaults are package-derived; use explicit paths in CI and production. |
+| Rust crates | Internal integration path. | API names and proof/key types may move while `main` evolves. |
+| WASM bindings | Active browser/JavaScript path. | Provers are consumed after one proof; `getCircuit()` supports Noir provers. |
+| FFI bindings | Active mobile/native host path. | Hosts must manage initialization, allocator configuration, and buffer ownership. |
+| Verifier server | Active HTTP verification path. | Requires reachable HTTP/HTTPS artifact URLs and tuned request/time/concurrency limits. |
+| Recursive verifier | Active Go/gnark wrapper. | Recursive params and R1CS JSON must be regenerated with the matching verifier/proof pair. |
+
+## Documentation policy
+
+- Prefer documenting stable `v1` behavior unless a page is explicitly marked as development-only.
+- Mark examples that require `main`-only behavior.
+- Keep command examples runnable from a fresh checkout.
+- Use explicit artifact paths in docs aimed at CI, services, or production.
+- Link generated Rust API docs separately from task-based user docs when hosted API docs are available.
+- Keep artifact custody and trust-boundary guidance aligned with [Security and trust model](/concepts/security-model/).
+
+## Known launch gaps
+
+Resolve or explicitly accept these gaps before recommending ProveKit for external production users:
+
+- Published release notes for proof/key and recursive-verifier artifact format compatibility.
+- Hosted API docs for Rust crates and generated C header documentation.
+- Release-specific binary distribution or installation guidance for `provekit-cli`.
+- Executable app templates or CI-backed fixtures for each supported host language and platform.
+- Release-specific security review notes, audit status, and trusted setup key handling guidance.
+- Support policy for branch-specific docs and migration notes.
+
+Track deployment-specific readiness in the [Production checklist](/reference/production-checklist/).

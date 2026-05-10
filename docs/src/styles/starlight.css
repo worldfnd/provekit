@@ -1,0 +1,371 @@
+:root {
+  --pk-brand: #0D74FF;
+  --pk-brand-strong: #0356D8;
+  --pk-brand-ink: #A2D0FC;
+  --pk-ink: #121826;
+  --pk-ink-soft: #2D3648;
+  --pk-canvas: #F8FEFF;
+  --pk-surface: #FFFFFF;
+  --pk-surface-raised: #F1F7FF;
+  --pk-border: #C9E1FA;
+  --pk-code: #0B1020;
+
+  --sl-color-accent-low: #102542;
+  --sl-color-accent: var(--pk-brand-ink);
+  --sl-color-accent-high: #E3F2FF;
+  --sl-color-text: #EAF4FF;
+  --sl-color-text-accent: var(--pk-brand-ink);
+  --sl-color-text-invert: var(--pk-ink);
+  --sl-color-bg: #0B1020;
+  --sl-color-bg-nav: #0B1020;
+  --sl-color-bg-sidebar: #101827;
+  --sl-color-bg-inline-code: #17223A;
+  --sl-color-bg-accent: var(--pk-brand-ink);
+  --sl-color-hairline-light: #23324D;
+  --sl-color-hairline: #2F4261;
+  --sl-color-hairline-shade: #111B2D;
+  --sl-color-black: #0B1020;
+  --sl-color-white: #F8FEFF;
+}
+
+:root[data-theme='light'] {
+  --sl-color-accent-low: #D7EBFF;
+  --sl-color-accent: var(--pk-brand);
+  --sl-color-accent-high: #053B91;
+  --sl-color-text: var(--pk-ink);
+  --sl-color-text-accent: var(--pk-brand-strong);
+  --sl-color-text-invert: var(--pk-surface);
+  --sl-color-bg: var(--pk-canvas);
+  --sl-color-bg-nav: var(--pk-ink);
+  --sl-color-bg-sidebar: var(--pk-surface);
+  --sl-color-bg-inline-code: #EAF4FF;
+  --sl-color-bg-accent: var(--pk-brand);
+  --sl-color-hairline-light: var(--pk-border);
+  --sl-color-hairline: var(--pk-border);
+  --sl-color-hairline-shade: #B8D7F7;
+  --sl-color-white: var(--pk-ink);
+  --sl-color-black: var(--pk-surface);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  letter-spacing: -0.006em;
+}
+
+.site-title img {
+  max-width: min(12rem, 48vw);
+}
+
+.header {
+  border-bottom-color: var(--sl-color-hairline);
+  box-shadow: 0 1px 0 rgb(255 255 255 / 0.04);
+}
+
+:root[data-theme='light'] .sidebar-pane {
+  box-shadow: 1px 0 0 var(--sl-color-hairline);
+}
+
+:root[data-theme='light'] .main-pane {
+  background:
+    radial-gradient(circle at top left, rgb(13 116 255 / 0.08), transparent 24rem),
+    var(--pk-canvas);
+}
+
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sl-color-text-accent);
+  text-underline-offset: 0.16em;
+}
+
+.sl-markdown-content :is(h2, h3):not(:where(.not-content *)) {
+  letter-spacing: -0.02em;
+}
+
+.sl-markdown-content table:not(:where(.not-content *)) {
+  font-size: 0.94rem;
+}
+
+.sl-markdown-content code:not(:where(pre code, .not-content *)) {
+  border: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0.35rem;
+  padding: 0.08rem 0.32rem;
+}
+
+.sl-markdown-content .lead {
+  color: var(--sl-color-gray-2);
+  font-size: clamp(1.05rem, 0.98rem + 0.35vw, 1.22rem);
+  line-height: 1.65;
+  margin-top: 0;
+}
+
+:root[data-theme='light'] .sl-markdown-content .lead {
+  color: var(--pk-ink-soft);
+}
+
+.pk-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.pk-pill-row > * {
+  margin-top: 0 !important;
+}
+
+.pk-pill {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 999rem;
+  color: var(--sl-color-gray-2);
+  font-size: var(--sl-text-sm);
+  padding: 0.25rem 0.7rem;
+}
+
+:root[data-theme='light'] .pk-pill {
+  background: rgb(255 255 255 / 0.72);
+  color: var(--pk-ink-soft);
+}
+
+.pk-metric-grid {
+  align-items: stretch;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  margin: 1.5rem 0;
+}
+
+.pk-metric-grid > * {
+  margin-top: 0 !important;
+}
+
+.pk-metric {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0.75rem;
+  background: rgb(255 255 255 / 0.035);
+  padding: 1rem;
+}
+
+.pk-metric > * {
+  margin-top: 0 !important;
+}
+
+.pk-metric strong {
+  color: var(--sl-color-white);
+  display: block;
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.pk-metric span {
+  color: var(--sl-color-gray-3);
+  display: block;
+  font-size: var(--sl-text-sm);
+  margin-top: 0.35rem;
+}
+
+:root[data-theme='light'] .pk-metric {
+  background: rgb(255 255 255 / 0.82);
+}
+
+:root[data-theme='light'] .pk-metric strong {
+  color: var(--pk-ink);
+}
+
+:root[data-theme='light'] .pk-metric span {
+  color: var(--pk-ink-soft);
+}
+
+.card,
+.sl-link-card,
+.starlight-aside {
+  border-radius: 0.8rem;
+}
+
+:root[data-theme='light'] .card,
+:root[data-theme='light'] .sl-link-card {
+  background: rgb(255 255 255 / 0.84);
+}
+
+.sl-link-card {
+  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+}
+
+.sl-link-card:hover {
+  transform: translateY(-1px);
+}
+
+.hero {
+  position: relative;
+}
+
+.hero::after {
+  background: radial-gradient(circle, rgb(13 116 255 / 0.16), transparent 60%);
+  content: '';
+  height: 24rem;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  pointer-events: none;
+  position: absolute;
+  width: min(42vw, 28rem);
+  z-index: -1;
+}
+
+/* Keep Starlight's semantic light-mode variables intact while using a dark,
+   branded header in both themes. */
+.header {
+  background: var(--pk-ink);
+}
+
+.header :is(a, button, select),
+.header .icon {
+  color: var(--pk-brand-ink);
+}
+
+.header select {
+  background-color: transparent;
+}
+
+.header option {
+  color: var(--pk-ink);
+}
+
+.header [data-open-modal] {
+  border-color: color-mix(in srgb, var(--pk-brand-ink), transparent 30%);
+  background: color-mix(in srgb, var(--pk-ink), black 18%);
+}
+
+.header [data-open-modal] kbd {
+  background: var(--pk-canvas);
+  color: var(--pk-brand-strong);
+}
+
+.pk-flow {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 1rem;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--sl-color-bg), var(--sl-color-accent-low) 18%), var(--sl-color-bg));
+  box-shadow: var(--sl-shadow-sm);
+  margin: 1.5rem 0 2rem;
+  overflow-x: auto;
+  padding: 1rem;
+}
+
+.pk-flow > *,
+.pk-flow-row > *,
+.pk-flow-node > * {
+  margin-top: 0 !important;
+}
+
+.pk-flow-row {
+  align-items: stretch;
+  column-gap: 0.75rem;
+  display: grid;
+  justify-content: center;
+  margin: 0.65rem auto;
+  row-gap: 0.75rem;
+  width: 100%;
+}
+
+.pk-flow-row--two {
+  grid-template-columns: minmax(10rem, 12rem) 2rem minmax(10rem, 13rem);
+}
+
+.pk-flow-row--three {
+  grid-template-columns: minmax(9rem, 10.5rem) 2rem minmax(9rem, 10.5rem) 2rem minmax(9rem, 10.5rem);
+}
+
+.pk-flow-row--wide {
+  grid-template-columns: minmax(10rem, 12rem) 2rem minmax(11rem, 13.5rem) 2rem minmax(10rem, 13rem);
+}
+
+.pk-flow-node {
+  align-items: center;
+  border: 1px solid var(--sl-color-hairline-light);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--sl-color-bg), var(--sl-color-bg-accent) 8%);
+  box-sizing: border-box;
+  color: var(--sl-color-white);
+  display: flex;
+  flex-direction: column;
+  font-weight: 650;
+  justify-content: center;
+  line-height: 1.25;
+  min-height: 4.1rem;
+  min-width: 0;
+  padding: 0.75rem 0.9rem;
+  text-align: center;
+  width: 100%;
+}
+
+.pk-flow-node--accent {
+  border-color: color-mix(in srgb, var(--sl-color-accent), transparent 25%);
+  background: color-mix(in srgb, var(--sl-color-accent-low), var(--sl-color-bg) 28%);
+}
+
+.pk-flow-node--output {
+  border-color: color-mix(in srgb, var(--sl-color-accent), transparent 10%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sl-color-accent), transparent 70%);
+}
+
+.pk-flow-arrow {
+  align-items: center;
+  color: var(--sl-color-text-accent);
+  display: flex;
+  font-size: 1.35rem;
+  font-weight: 800;
+  justify-content: center;
+  line-height: 1;
+  min-width: 2rem;
+}
+
+.pk-flow-split {
+  border-top: 1px solid var(--sl-color-hairline-light);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.pk-flow-caption {
+  color: var(--sl-color-gray-3);
+  display: block;
+  font-size: var(--sl-text-xs);
+  font-weight: 500;
+  margin-top: 0.25rem;
+}
+
+:root[data-theme='light'] .pk-flow {
+  background:
+    radial-gradient(circle at top left, rgb(13 116 255 / 0.10), transparent 16rem),
+    rgb(255 255 255 / 0.72);
+}
+
+:root[data-theme='light'] .pk-flow-node {
+  background: rgb(255 255 255 / 0.86);
+}
+
+:root[data-theme='light'] .pk-flow-node--accent {
+  background: color-mix(in srgb, var(--sl-color-accent-low), white 45%);
+}
+
+@media (max-width: 42rem) {
+  .pk-flow-row,
+  .pk-flow-row--two,
+  .pk-flow-row--three,
+  .pk-flow-row--wide {
+    align-items: stretch;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .pk-flow-node {
+    width: 100%;
+  }
+
+  .pk-flow-arrow {
+    align-self: center;
+    margin: 0.35rem 0;
+    transform: rotate(90deg);
+  }
+}

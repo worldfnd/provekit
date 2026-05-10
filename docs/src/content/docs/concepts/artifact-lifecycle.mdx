@@ -1,0 +1,97 @@
+---
+title: Artifact lifecycle
+description: Learn how ProveKit artifacts are generated, paired, transported, regenerated, and retired.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+ProveKit is artifact-driven. A safe integration treats every generated key, proof, and recursive-verifier export as a versioned deployment object with explicit provenance.
+
+## Artifact map
+
+| Artifact | Produced by | Consumed by | Keep paired with |
+| :--- | :--- | :--- | :--- |
+| `.pkp` | `provekit-cli prepare` | `prove`, WASM/FFI/Rust provers | matching `.pkv`, circuit source, compiler backend, hash choice, commit |
+| `.pkv` | `provekit-cli prepare` | `verify`, `show-inputs`, `generate-gnark-inputs`, verifier server | matching `.pkp`, proof set, public input encoding |
+| `proof.np` | `provekit-cli prove` | `verify`, `show-inputs`, `generate-gnark-inputs` | matching `.pkv`, public inputs, witness provenance |
+| `params_for_recursive_verifier` | `generate-gnark-inputs` | `recursive-verifier/` | exact `.pkv` and `proof.np` used for export |
+| `r1cs.json` | `generate-gnark-inputs` | `recursive-verifier/`, verifier server | exact `.pkv` and `proof.np` used for export |
+
+## Lifecycle stages
+
+<Steps>
+1. **Generate** artifacts from a clean checkout with explicit commands.
+
+   ```sh
+   mkdir -p artifacts
+   cargo run --release --bin provekit-cli -- prepare \
+     . \
+     --pkp artifacts/app.pkp \
+     --pkv artifacts/app.pkv
+   ```
+
+2. **Record provenance**: branch, commit, `Cargo.lock`, `rust-toolchain.toml`, command line, feature flags, compiler backend, hash choice, and checksums.
+
+3. **Prove** with inputs intended for that exact prepared circuit.
+
+   ```sh
+   cargo run --release --bin provekit-cli -- prove \
+     --prover artifacts/app.pkp \
+     --input Prover.toml \
+     --out artifacts/proof.np
+   ```
+
+4. **Verify** before moving artifacts across a trust boundary.
+
+   ```sh
+   cargo run --release --bin provekit-cli -- verify \
+     --verifier artifacts/app.pkv \
+     --proof artifacts/proof.np
+   ```
+
+5. **Export recursive-verifier inputs** only after the base proof verifies.
+
+   ```sh
+   cargo run --release --bin provekit-cli -- generate-gnark-inputs \
+     artifacts/app.pkv \
+     artifacts/proof.np \
+     --params artifacts/params_for_recursive_verifier \
+     --r1cs artifacts/r1cs.json
+   ```
+</Steps>
+
+## Regeneration rules
+
+Regenerate all affected artifacts after changing any of these inputs:
+
+- Git branch, commit, lockfile, Rust toolchain, or relevant feature flags.
+- Noir package source, package selection, workspace layout, or compiler backend.
+- `prepare --hash` value.
+- Prover inputs when a new proof is expected.
+- Proof/verifier pair used for recursive-verifier export.
+- Serialization or transport layer that changes proof JSON or public input encoding.
+
+<Aside type="danger" title="Never mix artifact generations">
+A verifier key from one preparation run must not be used to verify a proof generated from a different prover key, circuit, branch, hash choice, or backend. Treat a mismatch as a deployment failure, not as a recoverable warning.
+</Aside>
+
+## Custody and storage
+
+| File | Recommended handling |
+| :--- | :--- |
+| `.pkp` | Restrict to trusted proving hosts. It enables proof generation for the prepared circuit. |
+| `.pkv` | Can be distributed to verifiers, but keep integrity-protected and versioned. |
+| `proof.np` / proof JSON | Transport through authenticated application channels; preserve public inputs exactly. |
+| `Prover.toml` / witnesses | Treat private witness values as sensitive unless your application explicitly defines them as public. |
+| Recursive params and `r1cs.json` | Keep with the exact proof/verifier pair used to generate them. |
+
+## Deployment evidence
+
+Before publishing or accepting an artifact set, retain:
+
+- SHA-256 checksums or equivalent content hashes.
+- Full CLI command lines.
+- Local `verify` success output.
+- `show-inputs --hex` output for public input review.
+- Negative test evidence showing mismatched or corrupted proofs are rejected.
+- Owner and rotation plan for regenerating artifacts.

@@ -1,0 +1,118 @@
+---
+title: ProveKit Documentation
+description: Start here to learn what ProveKit does, run your first proof, understand artifacts, and choose an integration path.
+template: splash
+hero:
+  tagline: Compile Noir programs to R1CS, generate WHIR proofs, and verify them across native, browser, mobile, service, and recursive-verifier workflows.
+  actions:
+    - text: Run the quickstart
+      link: /getting-started/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: Choose an integration
+      link: /integrations/overview/
+      icon: document
+    - text: View on GitHub
+      link: https://github.com/worldfnd/provekit
+      icon: external
+---
+
+import { Aside, Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+<p class="lead">
+ProveKit compiles Noir circuits to R1CS, produces WHIR proofs, and verifies those proofs through the CLI, Rust crates, WebAssembly, mobile FFI, an HTTP verifier service, or a Go/gnark recursive verifier.
+</p>
+
+<div class="pk-pill-row">
+  <span class="pk-pill">Noir frontend</span>
+  <span class="pk-pill">R1CS pipeline</span>
+  <span class="pk-pill">WHIR proofs</span>
+  <span class="pk-pill">Native + WASM + mobile</span>
+  <span class="pk-pill">Recursive-verifier export</span>
+</div>
+
+<CardGrid>
+  <Card title="First successful proof">
+    Use the checked-in `noir-examples/basic` circuit to prepare keys, generate `proof.np`, and verify it locally.
+
+    [Start the quickstart →](/getting-started/quickstart/)
+  </Card>
+  <Card title="Artifact lifecycle">
+    Learn which files are generated, which files must stay paired, and when to regenerate keys, proofs, recursive params, and R1CS exports.
+
+    [Understand artifacts →](/concepts/artifact-lifecycle/)
+  </Card>
+  <Card title="Integration paths">
+    Pick the path that matches where proving or verification runs: CLI automation, Rust, WASM, C-compatible FFI, verifier server, or recursive verifier.
+
+    [Choose an integration →](/integrations/overview/)
+  </Card>
+  <Card title="Deployment checks">
+    Review the evidence to capture before accepting proofs in a user-facing system.
+
+    [Review the checklist →](/reference/production-checklist/)
+  </Card>
+</CardGrid>
+
+<Aside type="caution" title="Active-development status">
+ProveKit is under active development. Use the `v1` branch when reproducibility matters. The `main` branch may change proof formats, key formats, recursive-verifier inputs, or integration APIs. See [Project status and versioning](/reference/project-status/) before mixing artifacts across branches or commits.
+</Aside>
+
+## What ProveKit gives you
+
+| Capability | What it means in practice |
+| :--- | :--- |
+| Noir-to-R1CS compilation | Author circuits in Noir, then let ProveKit prepare prover and verifier artifacts from the compiled circuit. |
+| WHIR proof generation | Generate proofs from prepared key material and circuit inputs. |
+| Multi-host verification | Verify locally, in Rust services, in WebAssembly, through FFI/mobile hosts, or through the verifier server. |
+| Recursive-verifier bridge | Export `params_for_recursive_verifier` and `r1cs.json` for the Go/gnark wrapper when a Groth16 outer proof is required. |
+| Artifact-first operations | Treat `.pkp`, `.pkv`, `proof.np`, recursive params, and R1CS exports as versioned deployment artifacts with provenance. |
+
+## Choose your path
+
+<LinkCard
+  href="/getting-started/quickstart/"
+  title="I want the shortest runnable path"
+  description="Run prepare → prove → verify against noir-examples/basic."
+/>
+<LinkCard
+  href="/e2e/generate-artifacts/"
+  title="I need deterministic artifact paths for CI or demos"
+  description="Use explicit output flags, hash choices, and cleanup rules."
+/>
+<LinkCard
+  href="/e2e/rust/"
+  title="I am integrating a Rust service"
+  description="Load .pkp/.pkv artifacts, prove from TOML, persist proof.np, and verify directly in Rust."
+/>
+<LinkCard
+  href="/e2e/js-typescript/"
+  title="I am integrating a browser or Node.js app"
+  description="Load .pkp/.pkv bytes, generate witnesses, prove, and verify through WASM-backed bindings."
+/>
+<LinkCard
+  href="/e2e/swift/"
+  title="I am integrating iOS or macOS"
+  description="Use the Swift SDK package modes and lifecycle expectations."
+/>
+<LinkCard
+  href="/e2e/kotlin/"
+  title="I am integrating Android"
+  description="Use the Kotlin/Android SDK, JNI packaging notes, and memory controls."
+/>
+<LinkCard
+  href="/troubleshooting/common-errors/"
+  title="Something failed"
+  description="Diagnose setup, stale artifact, WASM, FFI, verifier-server, and recursive-verifier issues."
+/>
+
+## Artifact rules
+
+<div class="pk-metric-grid">
+  <div class="pk-metric"><strong>.pkp</strong><span>Prover-side key produced by `prepare` and consumed by `prove`.</span></div>
+  <div class="pk-metric"><strong>.pkv</strong><span>Verifier-side key produced by `prepare` and consumed by `verify` and recursive export.</span></div>
+  <div class="pk-metric"><strong>proof.np</strong><span>Proof produced by `prove` and consumed by verification paths.</span></div>
+  <div class="pk-metric"><strong>r1cs.json</strong><span>Recursive-verifier R1CS export produced from a matching verifier/proof pair.</span></div>
+</div>
+
+Do not mix artifacts generated from different circuits, commits, branches, compiler backends, hash choices, or proof/verifier pairs.

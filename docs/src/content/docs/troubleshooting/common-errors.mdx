@@ -1,0 +1,226 @@
+---
+title: Common errors
+description: Troubleshooting guide for ProveKit setup, proving, verification, integrations, and deployment issues.
+---
+
+Use this page to diagnose setup, artifact, CLI, WASM, FFI, verifier-server, and recursive-verifier failures. Start by checking which artifact was produced by which command, branch, compiler backend, and hash configuration.
+
+## Rust toolchain mismatch
+
+**Symptom:** Cargo fails before building ProveKit crates, or reports an unexpected nightly/stable compiler.
+
+**Checks:**
+
+```sh
+rustup show
+cargo --version
+cat rust-toolchain.toml
+```
+
+**Resolution:** Run commands from a checkout that contains `rust-toolchain.toml` so Cargo selects the pinned toolchain. If the toolchain is missing, install/update it with `rustup` and retry from the repository root.
+
+## Cargo cannot find `provekit-cli`
+
+**Symptom:** `cargo run` reports that the binary target cannot be found, or CLI arguments are parsed by Cargo instead of ProveKit.
+
+**Checks:**
+
+```sh
+cargo metadata --no-deps --format-version 1 | rg 'provekit-cli|tooling/cli'
+cargo run --release --bin provekit-cli -- --help
+```
+
+**Resolution:** Run from the workspace root and pass CLI arguments after `--`:
+
+```sh
+cargo run --release --bin provekit-cli -- prepare
+```
+
+## No enclosing Noir package
+
+**Symptom:** `prepare`, `prove`, or `verify` cannot infer default key names, or a Noir command cannot find a package manifest.
+
+**Checks:**
+
+```sh
+pwd
+find .. -name Nargo.toml -maxdepth 4
+```
+
+**Resolution:** Run from the Noir package directory, pass `prepare <program_path>`, or use explicit artifact paths such as `--pkp`, `--pkv`, `--prover`, and `--verifier`.
+
+## Multiple binary packages with explicit key outputs
+
+**Symptom:** `prepare --workspace --pkp ... --pkv ...` fails because multiple binary packages would write to one explicit key pair.
+
+**Resolution:** Either compile one package with `--package <name>` or omit `--pkp`/`--pkv` so each binary package can use its package-derived output names.
+
+## Mavros compile missing `--r1cs`
+
+**Symptom:** `prepare --compiler mavros ...` fails before key generation.
+
+**Resolution:** Pass both the Mavros artifacts JSON path and the matching R1CS path:
+
+```sh
+cargo run --release --bin provekit-cli -- prepare \
+  --compiler mavros \
+  path/to/artifacts.json \
+  --r1cs path/to/r1cs.bin
+```
+
+## Unsupported hash choice
+
+**Symptom:** `prepare --hash <name>` rejects the hash argument.
+
+**Resolution:** Use one of the supported names:
+
+- `skyscraper`
+- `sha256`
+- `keccak`
+- `blake3`
+- `poseidon2`
+
+Regenerate the prover key, verifier key, and proof after changing the hash.
+
+## Missing or stale artifacts
+
+**Symptom:** `prove` or `verify` cannot find expected `.pkp`, `.pkv`, or `proof.np` files.
+
+**Checks:**
+
+```sh
+ls -lh *.pkp *.pkv proof.np 2>/dev/null || true
+cargo run --release --bin provekit-cli -- prepare --help
+```
+
+**Resolution:** Re-run the workflow from `prepare` in the same Noir package directory, or pass explicit paths for every artifact:
+
+```sh
+mkdir -p artifacts
+cargo run --release --bin provekit-cli -- prepare \
+  . \
+  --pkp artifacts/app.pkp \
+  --pkv artifacts/app.pkv
+cargo run --release --bin provekit-cli -- prove \
+  --prover artifacts/app.pkp \
+  --input Prover.toml \
+  --out artifacts/proof.np
+cargo run --release --bin provekit-cli -- verify \
+  --verifier artifacts/app.pkv \
+  --proof artifacts/proof.np
+```
+
+## Verification failure
+
+**Symptom:** `verify` rejects a generated or supplied proof.
+
+**Likely causes:**
+
+- The proof was generated with a different `.pkp` than the `.pkv` used for verification.
+- The circuit source or Noir package changed after `prepare`.
+- The proof was generated from inputs that do not satisfy the circuit.
+- The branch changed between artifact generation and verification.
+- The hash configuration changed.
+- Public inputs were serialized or transported incorrectly.
+
+**Resolution:** Regenerate `.pkp`, `.pkv`, and `proof.np` from the same checkout and hash choice. Use `show-inputs` to inspect public inputs:
+
+```sh
+cargo run --release --bin provekit-cli -- show-inputs --hex artifacts/app.pkv artifacts/proof.np
+```
+
+## `show-inputs` reports an ABI/public-input mismatch
+
+**Symptom:** `show-inputs` says the ABI expects more public inputs than the proof contains.
+
+**Resolution:** The proof and verifier key are not from the same compiled circuit, or the proof JSON was modified/truncated. Regenerate from `prepare` and avoid manually editing proof JSON.
+
+## `circuit-stats` cannot read the circuit JSON
+
+**Symptom:** `circuit-stats` reports a missing `bytecode` field or base64 decode error.
+
+**Resolution:** Pass the Noir ACIR artifact JSON produced under the Noir target directory, not a `.pkp`, `.pkv`, proof, or recursive-verifier `r1cs.json` file.
+
+## WASM prover has already been consumed
+
+**Symptom:** Browser code receives `Prover has been consumed by a previous prove() call`.
+
+**Resolution:** Create a new `Prover` instance for each proof. The WASM `Verifier` can be reused, but `Prover.proveBytes()` and `Prover.proveJs()` consume the prover state.
+
+## WASM witness map parsing fails
+
+**Symptom:** Browser code reports an empty witness map, unsupported key type, non-string value, invalid hex, or a field element larger than 32 bytes.
+
+**Resolution:** Pass a JavaScript `Map<number|string, string>` or plain object mapping witness indices to hex strings:
+
+```js
+const witnessMap = new Map([
+  [0, "0x01"],
+  [1, "0x02"],
+]);
+```
+
+Values are reduced as BN254 field elements and must fit within 32 bytes.
+
+## FFI returns an error code
+
+**Symptom:** A C, Swift, Kotlin, Python, or other FFI host receives a non-zero `PKError`.
+
+**Checks:**
+
+- `PK_INVALID_INPUT`: ensure pointers and paths are not null.
+- `PK_SCHEME_READ_ERROR`: confirm the `.pkp` path exists and is readable.
+- `PK_WITNESS_READ_ERROR`: confirm the input TOML path exists and matches the circuit ABI.
+- `PK_PROOF_ERROR`: regenerate artifacts and test the same inputs with the CLI.
+- `PK_SERIALIZATION_ERROR` or `PK_FILE_WRITE_ERROR`: check output paths and permissions.
+
+**Resolution:** Call `pk_init()` before proving, free returned buffers with `pk_free_buf()`, and configure custom allocators or mmap memory before initialization.
+
+## Verifier server rejects a request
+
+**Symptom:** `/verify` returns validation errors, `isValid: false`, timeout status, or an HTTP error.
+
+**Checks:**
+
+```sh
+curl http://localhost:3000/health
+```
+
+Confirm the request has:
+
+- `pkvUrl`: non-empty HTTP/HTTPS URL to a `.pkv` artifact.
+- `r1csUrl`: non-empty HTTP/HTTPS URL to recursive-verifier R1CS JSON.
+- `np`: non-null JSON `NoirProof` object.
+- Optional `verificationParams.maxVerificationTime`: greater than `0` and at most `300` seconds.
+
+**Resolution:** Make artifacts reachable from the server, raise `VERIFIER_MAX_REQUEST_SIZE` for larger requests, tune `VERIFIER_REQUEST_TIMEOUT` / `VERIFIER_TIMEOUT_SECONDS` for long verification, and keep `VERIFIER_SEMAPHORE_LIMIT` aligned with available CPU and memory.
+
+## Recursive-verifier input mismatch
+
+**Symptom:** The Go recursive verifier fails with config/R1CS/key errors.
+
+**Resolution:** Re-run `generate-gnark-inputs` from the same `.pkv` and proof you plan to verify:
+
+```sh
+cargo run --release --bin provekit-cli -- generate-gnark-inputs \
+  artifacts/app.pkv \
+  artifacts/proof.np \
+  --params artifacts/params_for_recursive_verifier \
+  --r1cs artifacts/r1cs.json
+```
+
+Then pass those exact files to the Go CLI or server. Do not reuse recursive params after changing the proof, verifier key, branch, circuit, or hash configuration.
+
+## Still stuck?
+
+Collect this information before opening an issue or escalating internally:
+
+- Git branch and commit.
+- Rust toolchain from `rustup show`.
+- Full command line and stderr.
+- Whether artifacts were generated on `v1` or `main`.
+- The `prepare --hash` value.
+- File sizes and modification times for `.pkp`, `.pkv`, `proof.np`, `r1cs.json`, and recursive params.
+- Whether the same proof verifies with the local CLI.
+
+Before deploying a fix, review the [Production checklist](/reference/production-checklist/).

@@ -1,0 +1,153 @@
+---
+title: End-to-end overview
+description: How a ProveKit run moves from Noir source to proof verification and optional recursive-verifier export.
+---
+
+import { Aside, Card, CardGrid, Steps } from '@astrojs/starlight/components';
+
+An end-to-end ProveKit run starts with one circuit package and ends with a verified proof. The same `.pkp`, `.pkv`, and proof files are used by CLI workflows, SDK examples, verifier services, and recursive-verifier export.
+
+## The full path
+
+<div class="pk-flow" role="img" aria-label="End-to-end ProveKit command sequence and generated artifacts">
+  <div class="pk-flow-row pk-flow-row--three">
+    <div class="pk-flow-node pk-flow-node--accent">Noir package</div>
+    <div class="pk-flow-arrow">→</div>
+    <div class="pk-flow-node">prepare</div>
+    <div class="pk-flow-arrow">→</div>
+    <div class="pk-flow-node pk-flow-node--output">.pkp + .pkv</div>
+  </div>
+  <div class="pk-flow-row pk-flow-row--three pk-flow-split">
+    <div class="pk-flow-node pk-flow-node--output">.pkp + Prover.toml</div>
+    <div class="pk-flow-arrow">→</div>
+    <div class="pk-flow-node">prove</div>
+    <div class="pk-flow-arrow">→</div>
+    <div class="pk-flow-node pk-flow-node--output">proof.np</div>
+  </div>
+  <div class="pk-flow-row pk-flow-row--two pk-flow-split">
+    <div class="pk-flow-node pk-flow-node--output">.pkv + proof.np</div>
+    <div class="pk-flow-arrow">→</div>
+    <div class="pk-flow-node">verify</div>
+  </div>
+  <div class="pk-flow-row pk-flow-row--wide pk-flow-split">
+    <div class="pk-flow-node pk-flow-node--output">.pkv + proof.np</div>
+    <div class="pk-flow-arrow">→</div>
+    <div class="pk-flow-node">generate-gnark-inputs</div>
+    <div class="pk-flow-arrow">→</div>
+    <div class="pk-flow-node pk-flow-node--output">params + r1cs.json</div>
+  </div>
+</div>
+
+## Working-directory rule
+
+By default, the CLI resolves the enclosing Noir package from the current directory:
+
+- `prepare` compiles `.` when no package path is provided.
+- `prove` looks for `<package>.pkp` and `./Prover.toml`.
+- `verify` looks for `<package>.pkv` and `./proof.np`.
+
+For `noir-examples/basic`, the default files are `basic.pkp`, `basic.pkv`, `Prover.toml`, and `proof.np`.
+
+<Aside type="tip" title="Prefer explicit paths in automation">
+Default paths are convenient for local demos. CI jobs, services, and reproducible fixtures should pass explicit `--pkp`, `--pkv`, `--prover`, `--verifier`, `--input`, and `--out` paths.
+</Aside>
+
+## Artifact ownership
+
+| File | Owner | Regenerate when |
+| :--- | :--- | :--- |
+| `<package>.pkp` | Prover-side runtime. | Noir program, compiler path, branch/commit, hash choice, or proving configuration changes. |
+| `<package>.pkv` | Verifier-side runtime. | The prover key is regenerated, or verifier configuration changes. |
+| `proof.np` | Proof transport/storage layer. | Inputs change, prover key changes, or a fresh proof is required. |
+| `params_for_recursive_verifier` and `r1cs.json` | Recursive-verifier integration. | The verifier key or proof changes. |
+
+## Local command sequence
+
+<Steps>
+1. Prepare keys.
+
+   ```sh
+   cargo run --release --bin provekit-cli -- prepare
+   ```
+
+2. Generate a proof.
+
+   ```sh
+   cargo run --release --bin provekit-cli -- prove
+   ```
+
+3. Verify locally.
+
+   ```sh
+   cargo run --release --bin provekit-cli -- verify
+   ```
+
+4. Optional: export recursive-verifier inputs.
+
+   ```sh
+   cargo run --release --bin provekit-cli -- generate-gnark-inputs \
+     basic.pkv \
+     proof.np
+   ```
+</Steps>
+
+## Path overrides
+
+Create the target directory before passing paths into it:
+
+```sh
+mkdir -p artifacts
+```
+
+Then run with explicit paths:
+
+```sh
+cargo run --release --bin provekit-cli -- prepare . \
+  --pkp ./artifacts/basic.pkp \
+  --pkv ./artifacts/basic.pkv
+
+cargo run --release --bin provekit-cli -- prove \
+  --prover ./artifacts/basic.pkp \
+  --input ./Prover.toml \
+  --out ./artifacts/proof.np
+
+cargo run --release --bin provekit-cli -- verify \
+  --verifier ./artifacts/basic.pkv \
+  --proof ./artifacts/proof.np
+```
+
+## Choose the next guide
+
+<CardGrid>
+  <Card title="Generate CI artifacts">
+    Use deterministic paths and recursive-verifier export.
+
+    [Generate artifacts →](/e2e/generate-artifacts/)
+  </Card>
+  <Card title="Use Rust directly">
+    Load `.pkp` / `.pkv`, prove from TOML, persist `proof.np`, and verify with ProveKit crates.
+
+    [Rust guide →](/e2e/rust/)
+  </Card>
+  <Card title="Use JavaScript or TypeScript">
+    Load `.pkp` / `.pkv` bytes and use WASM-backed proving and verification.
+
+    [JS / TypeScript guide →](/e2e/js-typescript/)
+  </Card>
+  <Card title="Use Swift or Kotlin">
+    Integrate through mobile SDKs and native/FFI packaging.
+
+    [Swift →](/e2e/swift/) · [Kotlin →](/e2e/kotlin/)
+  </Card>
+  <Card title="Prepare for deployment">
+    Pin artifact provenance and validate release checks.
+
+    [Production checklist →](/reference/production-checklist/)
+  </Card>
+</CardGrid>
+
+## Related pages
+
+- [Quickstart](/getting-started/quickstart/) runs the default-path flow.
+- [Artifact lifecycle](/concepts/artifact-lifecycle/) explains pairing and regeneration rules.
+- [CLI overview](/cli/overview/) lists command options and hash choices.
