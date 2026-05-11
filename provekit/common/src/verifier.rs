@@ -7,6 +7,12 @@ use {
     serde::{Deserialize, Serialize},
 };
 
+/// On-disk **ProveKit Verifier** (PKV) — the verifier-side scheme that gets
+/// serialized to a `.pkv` file by `prepare` and loaded by `verify` (or by
+/// `generate-gnark-inputs` for the recursive path).
+///
+/// Holds the R1CS, the WHIR-for-witness commitment configuration, and the
+/// ABI needed to bind public inputs back to their Noir-level names.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Verifier {
     pub hash_config:      HashConfig,
