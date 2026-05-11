@@ -5,7 +5,7 @@ use bench_mobile::passport::{
 #[test]
 fn embedded_passport_fixture_prepares_non_empty_artifacts() {
     let prepared = prepare_complete_age_check_fixture().expect("prepare fixture");
-    let (constraints, witnesses) = prepared.prover.size();
+    let (constraints, witnesses) = prepared.prover_size();
 
     assert!(constraints > 0, "expected non-empty constraint set");
     assert!(witnesses > 0, "expected non-empty witness set");

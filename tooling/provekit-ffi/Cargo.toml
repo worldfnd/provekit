@@ -9,7 +9,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [lib]
-crate-type = ["staticlib"]
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 # Workspace crates
@@ -20,10 +20,12 @@ provekit-verifier.workspace = true
 
 # Noir language
 noirc_abi.workspace = true
+noirc_artifacts.workspace = true
 
 # 3rd party
 anyhow.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 parking_lot.workspace = true
 
 [target.'cfg(unix)'.dependencies]

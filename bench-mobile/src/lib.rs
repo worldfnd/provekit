@@ -337,9 +337,9 @@ pub fn bench_passport_complete_age_check_prepare() {
     });
 
     black_box((
-        prepared.prover.size(),
-        prepared.verifier.r1cs.num_constraints(),
-        prepared.input_map.len(),
+        prepared.prover_size(),
+        prepared.constraint_count(),
+        prepared.input_count(),
     ));
 }
 
@@ -389,9 +389,9 @@ pub fn bench_oprf_prepare() {
     });
 
     black_box((
-        prepared.prover.size(),
-        prepared.verifier.r1cs.num_constraints(),
-        prepared.input_map.len(),
+        prepared.prover_size(),
+        prepared.constraint_count(),
+        prepared.input_count(),
     ));
 }
 
@@ -440,9 +440,9 @@ pub fn bench_p256_bigcurve_prepare() {
     });
 
     black_box((
-        prepared.prover.size(),
-        prepared.verifier.r1cs.num_constraints(),
-        prepared.input_map.len(),
+        prepared.prover_size(),
+        prepared.constraint_count(),
+        prepared.input_count(),
     ));
 }
 

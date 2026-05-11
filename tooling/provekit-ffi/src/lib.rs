@@ -29,6 +29,7 @@
 
 pub mod ffi;
 mod ffi_allocator;
+pub mod in_process;
 pub mod mmap_allocator;
 mod serialization;
 pub mod types;

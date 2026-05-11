@@ -660,12 +660,7 @@ dependencies = [
  "anyhow",
  "inventory",
  "mobench-sdk",
- "provekit-common",
- "provekit-prover",
- "provekit-r1cs-compiler",
- "provekit-verifier",
- "provekit_noirc_abi",
- "provekit_noirc_artifacts",
+ "provekit-ffi",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -3931,7 +3926,9 @@ dependencies = [
  "provekit-r1cs-compiler",
  "provekit-verifier",
  "provekit_noirc_abi",
+ "provekit_noirc_artifacts",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
