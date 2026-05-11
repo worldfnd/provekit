@@ -8,7 +8,7 @@ fn embedded_example_fixtures_prepare_non_empty_artifacts() {
         MobileBenchFixture::P256Bigcurve,
     ] {
         let prepared = prepare_fixture(fixture).expect("prepare fixture");
-        let (constraints, witnesses) = prepared.prover.size();
+        let (constraints, witnesses) = prepared.prover_size();
 
         assert!(constraints > 0, "expected non-empty constraint set");
         assert!(witnesses > 0, "expected non-empty witness set");

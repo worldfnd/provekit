@@ -64,9 +64,9 @@ jobs:
             *) echo "::warning::Invalid platform '${platform}', defaulting to 'both'"; platform="both" ;;
           esac
 
-          case "${device_profile:-smoke}" in
-            smoke|triad|worst) device_profile="${device_profile:-smoke}" ;;
-            *) echo "::warning::Invalid device_profile '${device_profile}', defaulting to 'smoke'"; device_profile="smoke" ;;
+          case "${device_profile:-triad}" in
+            smoke|triad|worst) device_profile="${device_profile:-triad}" ;;
+            *) echo "::warning::Invalid device_profile '${device_profile}', defaulting to 'triad'"; device_profile="triad" ;;
           esac
 
           if ! [[ "${iterations:-2}" =~ ^[0-9]+$ ]]; then

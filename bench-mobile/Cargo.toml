@@ -24,12 +24,7 @@ path = "src/bin/uniffi-bindgen.rs"
 anyhow.workspace = true
 inventory.workspace = true
 mobench-sdk.workspace = true
-noirc_abi.workspace = true
-noirc_artifacts.workspace = true
-provekit-common.workspace = true
-provekit-prover = { workspace = true, features = ["witness-generation"] }
-provekit-r1cs-compiler.workspace = true
-provekit-verifier.workspace = true
+provekit-ffi.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror = "1.0"

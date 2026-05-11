@@ -21,7 +21,9 @@ provekit-verifier = { workspace = true }
 # 3rd party
 anyhow.workspace = true
 noirc_abi.workspace = true
+noirc_artifacts.workspace = true
 parking_lot.workspace = true
+serde_json.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

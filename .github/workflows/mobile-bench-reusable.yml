@@ -142,8 +142,8 @@ jobs:
               fetch_timeout_secs="7200"
               ;;
             triad)
-              device_specs="iPhone 7,iPhone 15-17,iPhone 16 Pro-18"
-              fallback_device_specs="iPhone SE 2020-16"
+              device_specs="iPhone SE 2020-16,iPhone 15-17,iPhone 16 Pro-18"
+              fallback_device_specs=""
               fetch_timeout_secs="7200"
               ;;
             *)
@@ -201,8 +201,17 @@ jobs:
           fi
           cargo-mobench --version
 
+      - name: Setup Noir
+        uses: noir-lang/noirup@v0.1.2
+        with:
+          toolchain: v1.0.0-beta.19
+
       - name: Install iOS tooling
         run: brew install xcodegen swiftformat
+
+      - name: Generate mobile benchmark Noir artifacts
+        working-directory: caller
+        run: bench-mobile/scripts/generate-fixtures.sh
 
       - name: Build iOS artifacts
         working-directory: caller
@@ -506,6 +515,15 @@ jobs:
             cargo install mobench --version "${MOBENCH_VERSION}" --locked --force
           fi
           cargo-mobench --version
+
+      - name: Setup Noir
+        uses: noir-lang/noirup@v0.1.2
+        with:
+          toolchain: v1.0.0-beta.19
+
+      - name: Generate mobile benchmark Noir artifacts
+        working-directory: caller
+        run: bench-mobile/scripts/generate-fixtures.sh
 
       - name: Build Android artifacts
         working-directory: caller
