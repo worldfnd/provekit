@@ -1,21 +1,27 @@
 ---
 title: Swift end-to-end
-description: Use the Verity Swift SDK with SPM across source-only, native, and release modes.
+description: Integrate ProveKit on iOS and macOS via the Verity Swift SDK and Swift Package Manager.
 ---
 
-This guide uses the Verity Swift SDK at commit `3f6b8ad6e7c994a740a204fbf35c0a3f3001e4d3`. It covers the iOS and macOS wrapper around the shared Verity dispatcher and ProveKit backend. Treat the snippets as examples until they run in an app or test target with the required framework linked.
+import { Aside } from '@astrojs/starlight/components';
 
-## Referenced APIs
+This guide uses the Verity Swift SDK, which wraps the shared Verity dispatcher and the ProveKit backend for Apple platforms. References below are pinned to Verity commit `3f6b8ad6e7c994a740a204fbf35c0a3f3001e4d3`.
 
-At that Verity revision:
+<Aside type="note" title="Validate against your build">
+Treat the snippets as starting points until they run in an app or test target with the required framework linked.
+</Aside>
 
-- Root `Package.swift` supports iOS 15+ and macOS 13+ and exposes the `Verity` library product.
-- `Package.swift` selects `source-only`, `native`, or `release` mode with `VERITY_SWIFT_SDK_MODE` or auto-detection.
+## SDK surface
+
+At the pinned Verity revision:
+
+- The root `Package.swift` supports iOS 15+ and macOS 13+ and exposes the `Verity` library product.
+- `Package.swift` selects `source-only`, `native`, or `release` mode via the `VERITY_SWIFT_SDK_MODE` environment variable (or auto-detection).
 - `sdks/swift/Sources/Verity/Verity.swift` defines `Backend.provekit`, initializes the backend once, and loads prover/verifier schemes from file paths, URLs, or `Data`.
-- `Witness.swift` accepts TOML paths, dictionaries of field-element strings, or JSON strings.
+- `Witness.swift` accepts TOML paths, dictionaries of field-element strings, and JSON strings.
 - `ProverScheme.swift` and `VerifierScheme.swift` expose `prove(witness:)`, `verify(proof:)`, `serialize()`, `save(to:)`, and explicit `close()` lifecycle methods.
 
-## Package sketch
+## Package declaration
 
 ```swift
 // Package.swift
@@ -36,11 +42,11 @@ import Verity
 
 let verity = try Verity(backend: .provekit)
 
-let prover = try verity.loadProver(from: "scheme.pkp")
+let prover   = try verity.loadProver(from: "scheme.pkp")
 let verifier = try verity.loadVerifier(from: "scheme.pkv")
 
 let witness = Witness(values: ["age": "25", "threshold": "18"])
-let proof = try prover.prove(witness: witness)
+let proof   = try prover.prove(witness: witness)
 
 let valid = try verifier.verify(proof: proof)
 precondition(valid, "proof did not verify")
@@ -49,17 +55,17 @@ prover.close()
 verifier.close()
 ```
 
-Use `loadProver(data:)` and `loadVerifier(data:)` instead when your app downloads or bundles artifacts as `Data`.
+Use `loadProver(data:)` and `loadVerifier(data:)` when the app downloads or bundles artifacts as `Data`.
 
-## Build and artifact caveats
+## Build and packaging notes
 
-- `source-only` validates the Swift wrapper and public API without linking the iOS xcframework; it is not an end-to-end native proof harness by itself.
-- `native` requires a locally built `output/Verity.xcframework`; `release` consumes the published xcframework declared by the package manifest.
-- The pinned Verity build notes say the native mobile artifact currently bundles the ProveKit backend only.
+- `source-only` validates the Swift wrapper and public API without linking the iOS xcframework, it is not a native proof harness on its own.
+- `native` requires a locally built `output/Verity.xcframework`. `release` consumes the published xcframework declared by the package manifest.
+- The pinned build notes record that the native mobile artifact currently bundles the ProveKit backend only.
 - Use Xcode's iOS simulator test runner for native verification.
-- Call ProveKit memory configuration before constructing `Verity` when your app needs mobile RAM limits or file-backed memory.
+- Call ProveKit's memory configuration before constructing `Verity` when the app needs mobile RAM limits or file-backed memory.
 
-## Related docs
+## Related pages
 
 - [End-to-end overview](/e2e/overview/)
 - [Generate artifacts](/e2e/generate-artifacts/)

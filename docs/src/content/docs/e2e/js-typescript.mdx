@@ -1,20 +1,26 @@
 ---
 title: JS / TypeScript end-to-end
-description: Use the ProveKit WASM backend from JavaScript or TypeScript in Node.js and browser apps.
+description: Drive ProveKit's WASM backend from JavaScript or TypeScript in Node.js and browser applications.
 ---
 
-This guide uses the Verity JS / TypeScript SDK at commit `3f6b8ad6e7c994a740a204fbf35c0a3f3001e4d3`. It wraps ProveKit's WASM backend for browser and Node.js environments. Treat the snippets as examples until they run in your app or tests with the generated WASM and `.pkp` / `.pkv` artifacts.
+import { Aside } from '@astrojs/starlight/components';
 
-## Referenced APIs
+This guide uses the Verity JS / TypeScript SDK, which wraps ProveKit's WASM backend for browser and Node.js environments. References below are pinned to Verity commit `3f6b8ad6e7c994a740a204fbf35c0a3f3001e4d3`.
 
-At that Verity revision:
+<Aside type="note" title="Validate against your build">
+Treat the snippets as starting points until they run in your application or tests with the generated WASM and your own `.pkp` / `.pkv` artifacts.
+</Aside>
+
+## SDK surface
+
+At the pinned Verity revision:
 
 - `sdks/js/package.json` publishes `@atheon/verity` as an ESM-first package with Node and browser export targets.
 - `sdks/js/src/index.ts` exports `Verity`, `Backend`, `Proof`, and the scheme types.
-- `sdks/js/src/verity.ts` creates `Verity` with `Verity.create(Backend.ProveKit)`, then loads prover and verifier schemes from bytes.
+- `sdks/js/src/verity.ts` constructs `Verity` via `Verity.create(Backend.ProveKit)` and loads prover and verifier schemes from bytes.
 - `sdks/js/src/types.ts` defines `ProverScheme.prove(inputs: Record<string, unknown> | string)` and `VerifierScheme.verify(proof)`.
-- `sdks/js/src/verity.ts` also exposes `verity.prove(...)` and `verity.verify(...)` as convenience delegates, but the scheme methods are the canonical API shown below.
-- `sdks/js/src/backends/provekit.ts` loads ProveKit WASM, extracts the Noir circuit JSON from `.pkp` bytes, uses `@noir-lang/noir_js` / `@noir-lang/acvm_js` for witness generation, and verifies proofs through the WASM verifier.
+- `verity.ts` also exposes `verity.prove(...)` and `verity.verify(...)` convenience delegates, but the scheme methods shown below are the canonical API.
+- `sdks/js/src/backends/provekit.ts` loads the ProveKit WASM module, extracts Noir circuit JSON from `.pkp` bytes, uses `@noir-lang/noir_js` and `@noir-lang/acvm_js` for witness generation, and verifies proofs through the WASM verifier.
 
 ## Minimal flow
 
@@ -23,8 +29,8 @@ import { Backend, Verity } from "@atheon/verity";
 
 const verity = await Verity.create(Backend.ProveKit);
 
-const prover = await verity.loadProver(proverBytes);   // Uint8Array .pkp bytes
-const verifier = await verity.loadVerifier(verifierBytes); // Uint8Array .pkv bytes
+const prover   = await verity.loadProver(proverBytes);     // Uint8Array of .pkp
+const verifier = await verity.loadVerifier(verifierBytes); // Uint8Array of .pkv
 
 const proof = await prover.prove({ age: "25", threshold: "18" });
 const valid = await verifier.verify(proof);
@@ -37,17 +43,17 @@ prover.dispose();
 verifier.dispose();
 ```
 
-`inputs` may be a plain object or a JSON object string. For Noir circuits with arrays or structured inputs, keep the object layout aligned with the circuit ABI and validate it in app tests.
+`inputs` may be a plain object or a JSON object string. For Noir circuits with arrays or structured inputs, keep the object layout aligned with the circuit ABI and validate it in application tests.
 
-## Build and artifact caveats
+## Build and packaging notes
 
 - Build the ProveKit WASM artifact before running the browser or Node path from the Verity repo: `make core-wasm`.
-- Generate JS demo/test `.pkp` and `.pkv` fixtures with `bash scripts/generate-js-artifacts.sh` when using the Verity fixture flow.
-- Install optional Noir peer dependencies when proving from witness inputs in JS: `@noir-lang/noir_js` and `@noir-lang/acvm_js`.
-- Browser threading depends on `SharedArrayBuffer`; the Verity ProveKit binding uses a non-threaded path when worker/thread-pool initialization is unavailable.
-- The snippet above assumes `proverBytes` and `verifierBytes` are already loaded as `Uint8Array` values. Fetching, caching, integrity checks, and lifecycle cleanup belong in the application.
+- Generate demo/test `.pkp` and `.pkv` fixtures via `bash scripts/generate-js-artifacts.sh` when using the Verity fixture flow.
+- Install the optional Noir peer dependencies for JS witness generation: `@noir-lang/noir_js` and `@noir-lang/acvm_js`.
+- Browser threading depends on `SharedArrayBuffer`. The Verity ProveKit binding falls back to a non-threaded path when worker/thread-pool initialization is unavailable.
+- `proverBytes` and `verifierBytes` are assumed to be `Uint8Array` values already loaded by the application. Fetching, caching, integrity checks, and lifecycle cleanup are the host's responsibility.
 
-## Related docs
+## Related pages
 
 - [End-to-end overview](/e2e/overview/)
 - [Generate artifacts](/e2e/generate-artifacts/)

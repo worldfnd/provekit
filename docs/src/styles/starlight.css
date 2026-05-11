@@ -369,3 +369,112 @@ body {
     transform: rotate(90deg);
   }
 }
+
+/* Architecture overview SVG ------------------------------------------- */
+
+.pk-arch-svg {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 1rem;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--sl-color-bg), var(--sl-color-accent-low) 22%), var(--sl-color-bg));
+  box-shadow: var(--sl-shadow-sm);
+  display: block;
+  height: auto;
+  margin: 1.5rem 0 1.75rem;
+  padding: 1rem;
+  width: 100%;
+}
+
+.pk-arch-edges path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--sl-color-accent), transparent 30%);
+  stroke-width: 1.6;
+}
+
+.pk-arch-edges marker path,
+.pk-arch-svg marker path {
+  fill: color-mix(in srgb, var(--sl-color-accent), transparent 30%);
+  stroke: none;
+}
+
+.pk-arch-node {
+  fill: color-mix(in srgb, var(--sl-color-bg), var(--sl-color-accent-low) 8%);
+  stroke: var(--sl-color-hairline);
+  stroke-width: 1.25;
+}
+
+.pk-arch-node--source {
+  fill: color-mix(in srgb, var(--sl-color-accent-low), var(--sl-color-bg) 30%);
+  stroke: color-mix(in srgb, var(--sl-color-accent), transparent 25%);
+}
+
+.pk-arch-node--cmd {
+  fill: color-mix(in srgb, var(--sl-color-bg), var(--sl-color-accent-low) 22%);
+  stroke: color-mix(in srgb, var(--sl-color-accent), transparent 40%);
+}
+
+.pk-arch-node--artifact {
+  fill: color-mix(in srgb, var(--sl-color-bg), transparent 0%);
+  stroke: color-mix(in srgb, var(--sl-color-accent), transparent 20%);
+  stroke-dasharray: 4 3;
+}
+
+.pk-arch-node--optional {
+  fill: color-mix(in srgb, var(--sl-color-bg), var(--sl-color-accent-low) 6%);
+  stroke: color-mix(in srgb, var(--sl-color-accent), transparent 60%);
+  stroke-dasharray: 2 3;
+}
+
+.pk-arch-label {
+  fill: var(--sl-color-white);
+  font: 600 13.5px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  letter-spacing: -0.005em;
+  text-anchor: middle;
+}
+
+.pk-arch-sub {
+  fill: var(--sl-color-gray-3);
+  font: 500 11px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  text-anchor: middle;
+}
+
+:root[data-theme='light'] .pk-arch-svg {
+  background:
+    radial-gradient(circle at top left, rgb(13 116 255 / 0.10), transparent 18rem),
+    rgb(255 255 255 / 0.78);
+}
+
+:root[data-theme='light'] .pk-arch-node {
+  fill: rgb(255 255 255 / 0.92);
+  stroke: var(--pk-border);
+}
+
+:root[data-theme='light'] .pk-arch-node--source {
+  fill: color-mix(in srgb, var(--pk-brand-ink), white 60%);
+  stroke: var(--pk-brand);
+}
+
+:root[data-theme='light'] .pk-arch-node--cmd {
+  fill: color-mix(in srgb, var(--pk-brand-ink), white 78%);
+  stroke: var(--pk-brand);
+}
+
+:root[data-theme='light'] .pk-arch-node--artifact {
+  stroke: var(--pk-brand);
+}
+
+:root[data-theme='light'] .pk-arch-label {
+  fill: var(--pk-ink);
+}
+
+:root[data-theme='light'] .pk-arch-sub {
+  fill: var(--pk-ink-soft);
+}
+
+:root[data-theme='light'] .pk-arch-edges path {
+  stroke: var(--pk-brand);
+}
+
+:root[data-theme='light'] .pk-arch-svg marker path {
+  fill: var(--pk-brand);
+}

@@ -1,11 +1,68 @@
 ---
 title: Proving flow
-description: Understand how ProveKit turns Noir programs into verifiable WHIR proofs.
+description: How ProveKit turns Noir programs into verifiable WHIR proofs.
 ---
 
 import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
 
-ProveKit connects circuit authoring, constraint generation, key preparation, proving, verification, and optional recursive-verifier export. The CLI wraps this lifecycle in three primary commands: `prepare`, `prove`, and `verify`.
+ProveKit connects circuit authoring, constraint generation, key preparation, proving, verification, and optional recursive-verifier export. The CLI wraps this lifecycle in three primary commands, `prepare`, `prove`, and `verify`, plus an export step (`generate-gnark-inputs`) when you need recursive verification.
+
+<svg class="pk-arch-svg" viewBox="0 0 880 280" role="img" aria-label="ProveKit pipeline from Noir source through proof generation to verification and optional Groth16 wrapping">
+  <defs>
+    <marker id="pk-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" />
+    </marker>
+  </defs>
+  <g class="pk-arch-edges">
+    <path d="M 145 50 L 195 50" marker-end="url(#pk-arrow)" />
+    <path d="M 285 50 L 335 50" marker-end="url(#pk-arrow)" />
+    <path d="M 425 50 L 475 50" marker-end="url(#pk-arrow)" />
+    <path d="M 565 50 L 615 50" marker-end="url(#pk-arrow)" />
+    <path d="M 545 80 L 545 130" marker-end="url(#pk-arrow)" />
+    <path d="M 685 80 L 685 130" marker-end="url(#pk-arrow)" />
+    <path d="M 545 186 L 545 210" marker-end="url(#pk-arrow)" />
+    <path d="M 685 186 L 685 210" marker-end="url(#pk-arrow)" />
+    <path d="M 615 158 L 615 158" />
+  </g>
+  <g class="pk-arch-nodes">
+    <rect class="pk-arch-node pk-arch-node--source" x="20" y="22" width="125" height="56" rx="10"/>
+    <text class="pk-arch-label" x="82" y="46">Noir circuit</text>
+    <text class="pk-arch-sub" x="82" y="64">.nr source</text>
+
+    <rect class="pk-arch-node" x="195" y="22" width="90" height="56" rx="10"/>
+    <text class="pk-arch-label" x="240" y="46">ACIR</text>
+    <text class="pk-arch-sub" x="240" y="64">Noir IR</text>
+
+    <rect class="pk-arch-node" x="335" y="22" width="90" height="56" rx="10"/>
+    <text class="pk-arch-label" x="380" y="46">R1CS</text>
+    <text class="pk-arch-sub" x="380" y="64">constraints</text>
+
+    <rect class="pk-arch-node pk-arch-node--cmd" x="475" y="22" width="90" height="56" rx="10"/>
+    <text class="pk-arch-label" x="520" y="46">prepare</text>
+    <text class="pk-arch-sub" x="520" y="64">compile + emit</text>
+
+    <rect class="pk-arch-node pk-arch-node--artifact" x="475" y="130" width="140" height="56" rx="10"/>
+    <text class="pk-arch-label" x="545" y="154">.pkp</text>
+    <text class="pk-arch-sub" x="545" y="172">prover key</text>
+
+    <rect class="pk-arch-node pk-arch-node--artifact" x="625" y="130" width="140" height="56" rx="10"/>
+    <text class="pk-arch-label" x="685" y="154">.pkv</text>
+    <text class="pk-arch-sub" x="685" y="172">verifier key</text>
+
+    <rect class="pk-arch-node pk-arch-node--cmd" x="475" y="210" width="140" height="56" rx="10"/>
+    <text class="pk-arch-label" x="545" y="234">prove</text>
+    <text class="pk-arch-sub" x="545" y="252">→ proof.np</text>
+
+    <rect class="pk-arch-node pk-arch-node--cmd" x="625" y="210" width="140" height="56" rx="10"/>
+    <text class="pk-arch-label" x="685" y="234">verify</text>
+    <text class="pk-arch-sub" x="685" y="252">valid / invalid</text>
+
+    <rect class="pk-arch-node pk-arch-node--optional" x="785" y="130" width="80" height="136" rx="10"/>
+    <text class="pk-arch-label" x="825" y="180">gnark</text>
+    <text class="pk-arch-label" x="825" y="200">wrap</text>
+    <text class="pk-arch-sub" x="825" y="222">Groth16</text>
+  </g>
+</svg>
 
 <div class="pk-flow" role="img" aria-label="ProveKit proving flow from Noir source to proof verification and recursive verifier export">
   <div class="pk-flow-row pk-flow-row--three">
@@ -47,16 +104,16 @@ ProveKit connects circuit authoring, constraint generation, key preparation, pro
 
 <CardGrid>
   <Card title="Author in Noir">
-    Write the computation and public/private input boundary in a Noir package.
+    Express the computation and its public/private boundary as a Noir package.
   </Card>
-  <Card title="Prepare once per circuit version">
-    Compile the circuit and produce a matching `.pkp` prover key and `.pkv` verifier key.
+  <Card title="Prepare once per version">
+    Compile the circuit to produce a matching `.pkp` prover key and `.pkv` verifier key.
   </Card>
   <Card title="Prove per witness">
-    Bind the prover key with concrete witness inputs from `Prover.toml` or an SDK witness map.
+    Combine the prover key with concrete witness inputs from `Prover.toml` or an SDK witness map.
   </Card>
-  <Card title="Verify wherever needed">
-    Verify the proof with the matching `.pkv` locally, in a service, in WASM, through FFI, or through recursive-verifier tooling.
+  <Card title="Verify everywhere">
+    Verify with the matching `.pkv` locally, in a service, in WASM, through FFI, or via recursive verification.
   </Card>
 </CardGrid>
 
@@ -64,31 +121,31 @@ ProveKit connects circuit authoring, constraint generation, key preparation, pro
 
 | Concept | Description |
 | :--- | :--- |
-| Noir | User-facing circuit language used for ProveKit's primary authoring path. |
-| ACIR | Intermediate representation emitted by the Noir frontend. |
-| R1CS | Constraint system used by the ProveKit proving pipeline. |
-| Prover key (`.pkp`) | Key material used to generate a proof for a prepared circuit. |
-| Verifier key (`.pkv`) | Key material used to verify proofs generated for the matching prepared circuit. |
-| WHIR proof | Proof object generated by the ProveKit prover and consumed by verification paths. |
-| Recursive-verifier export | `params_for_recursive_verifier` and `r1cs.json` derived from a matching verifier key and proof. |
+| **Noir** | The user-facing circuit language used for ProveKit's primary authoring path. |
+| **ACIR** | Abstract Circuit Intermediate Representation emitted by the Noir frontend. |
+| **R1CS** | Rank-1 Constraint System used by the ProveKit proving pipeline. |
+| **Prover key (`.pkp`)** | Key material used to generate a proof for a prepared circuit. |
+| **Verifier key (`.pkv`)** | Key material used to verify proofs from the matching prepared circuit. |
+| **WHIR proof** | Proof object generated by the prover and consumed by every verification path. |
+| **Recursive export** | `params_for_recursive_verifier` and `r1cs.json` derived from a matching verifier key and proof. |
 
 ## Command responsibilities
 
-| Command | Responsibility | Typical cadence |
+| Command | Responsibility | Run when |
 | :--- | :--- | :--- |
-| `prepare` | Compile the program and write `.pkp` / `.pkv`. | When circuit source, compiler backend, hash choice, branch, or proof format changes. |
+| `prepare` | Compile the circuit and write `.pkp` / `.pkv`. | The circuit source, compiler backend, hash choice, branch, or proof format changes. |
 | `prove` | Generate `proof.np` from a prover key and inputs. | Once per witness or proof request. |
-| `verify` | Verify a proof against a verifier key. | At every trust boundary. |
-| `show-inputs` | Decode public inputs from a verifier key and proof. | During integration and production validation. |
+| `verify` | Check a proof against a verifier key. | At every trust boundary. |
+| `show-inputs` | Decode public inputs from a verifier key and proof. | During integration testing and production validation. |
 | `generate-gnark-inputs` | Export recursive-verifier inputs from a verifier key and proof. | Whenever the verifier key or proof changes. |
 
-## Trust and setup boundary
+## The setup boundary
 
-<Aside type="caution" title="Do not infer compatibility from filenames">
-Files named `basic.pkp`, `basic.pkv`, and `proof.np` are compatible only when they were generated from the same circuit configuration and branch/commit. Use provenance records and checksums for deployment artifacts.
+<Aside type="caution" title="Filenames do not imply compatibility">
+`basic.pkp`, `basic.pkv`, and `proof.np` are only compatible when generated from the same circuit configuration, branch, and commit. Use checksums and provenance records, never trust the filename alone.
 </Aside>
 
-This page stays at the product-flow level. For deployment controls and operational evidence, use:
+This page stays at the product-flow level. For deployment controls and the security model, continue with:
 
 - [Artifact lifecycle](/concepts/artifact-lifecycle/)
 - [Security and trust model](/concepts/security-model/)

@@ -1,11 +1,11 @@
 ---
 title: End-to-end overview
-description: How a ProveKit run moves from Noir source to proof verification and optional recursive-verifier export.
+description: How a ProveKit run moves from Noir source to a verified proof and (optionally) a recursive-verifier export.
 ---
 
 import { Aside, Card, CardGrid, Steps } from '@astrojs/starlight/components';
 
-An end-to-end ProveKit run starts with one circuit package and ends with a verified proof. The same `.pkp`, `.pkv`, and proof files are used by CLI workflows, SDK examples, verifier services, and recursive-verifier export.
+A complete ProveKit run starts with one Noir package and ends with a verified proof. The same `.pkp`, `.pkv`, and `proof.np` files flow through every integration path, CLI workflows, SDK examples, the verifier service, and recursive-verifier export.
 
 ## The full path
 
@@ -46,20 +46,20 @@ By default, the CLI resolves the enclosing Noir package from the current directo
 - `prove` looks for `<package>.pkp` and `./Prover.toml`.
 - `verify` looks for `<package>.pkv` and `./proof.np`.
 
-For `noir-examples/basic`, the default files are `basic.pkp`, `basic.pkv`, `Prover.toml`, and `proof.np`.
+For `noir-examples/basic`, the defaults are `basic.pkp`, `basic.pkv`, `Prover.toml`, and `proof.np`.
 
 <Aside type="tip" title="Prefer explicit paths in automation">
-Default paths are convenient for local demos. CI jobs, services, and reproducible fixtures should pass explicit `--pkp`, `--pkv`, `--prover`, `--verifier`, `--input`, and `--out` paths.
+Defaults are convenient locally, but CI jobs, services, and reproducible fixtures should always pass explicit `--pkp`, `--pkv`, `--prover`, `--verifier`, `--input`, and `--out` paths.
 </Aside>
 
 ## Artifact ownership
 
 | File | Owner | Regenerate when |
 | :--- | :--- | :--- |
-| `<package>.pkp` | Prover-side runtime. | Noir program, compiler path, branch/commit, hash choice, or proving configuration changes. |
-| `<package>.pkv` | Verifier-side runtime. | The prover key is regenerated, or verifier configuration changes. |
-| `proof.np` | Proof transport/storage layer. | Inputs change, prover key changes, or a fresh proof is required. |
-| `params_for_recursive_verifier` and `r1cs.json` | Recursive-verifier integration. | The verifier key or proof changes. |
+| `<package>.pkp` | Prover-side runtime | Circuit, compiler backend, branch/commit, hash, or proving configuration changes. |
+| `<package>.pkv` | Verifier-side runtime | The prover key is regenerated, or verifier configuration changes. |
+| `proof.np` | Proof transport / storage layer | Inputs change, the prover key changes, or a fresh proof is required. |
+| `params_for_recursive_verifier` + `r1cs.json` | Recursive-verifier integration | The verifier key or proof changes. |
 
 ## Local command sequence
 
@@ -82,18 +82,16 @@ Default paths are convenient for local demos. CI jobs, services, and reproducibl
    cargo run --release --bin provekit-cli -- verify
    ```
 
-4. Optional: export recursive-verifier inputs.
+4. *(Optional)* Export recursive-verifier inputs.
 
    ```sh
-   cargo run --release --bin provekit-cli -- generate-gnark-inputs \
-     basic.pkv \
-     proof.np
+   cargo run --release --bin provekit-cli -- generate-gnark-inputs basic.pkv proof.np
    ```
 </Steps>
 
-## Path overrides
+## Explicit output paths
 
-Create the target directory before passing paths into it:
+Create the target directory before writing into it:
 
 ```sh
 mkdir -p artifacts
@@ -116,16 +114,16 @@ cargo run --release --bin provekit-cli -- verify \
   --proof ./artifacts/proof.np
 ```
 
-## Choose the next guide
+## Pick the next guide
 
 <CardGrid>
   <Card title="Generate CI artifacts">
-    Use deterministic paths and recursive-verifier export.
+    Deterministic paths, pinned hash choices, and recursive-verifier export.
 
     [Generate artifacts →](/e2e/generate-artifacts/)
   </Card>
   <Card title="Use Rust directly">
-    Load `.pkp` / `.pkv`, prove from TOML, persist `proof.np`, and verify with ProveKit crates.
+    Load `.pkp` / `.pkv`, prove from TOML, persist `proof.np`, and verify through the ProveKit crates.
 
     [Rust guide →](/e2e/rust/)
   </Card>
@@ -135,12 +133,12 @@ cargo run --release --bin provekit-cli -- verify \
     [JS / TypeScript guide →](/e2e/js-typescript/)
   </Card>
   <Card title="Use Swift or Kotlin">
-    Integrate through mobile SDKs and native/FFI packaging.
+    Integrate through the mobile SDKs and their native/FFI packaging.
 
     [Swift →](/e2e/swift/) · [Kotlin →](/e2e/kotlin/)
   </Card>
   <Card title="Prepare for deployment">
-    Pin artifact provenance and validate release checks.
+    Pin artifact provenance and complete pre-launch checks.
 
     [Production checklist →](/reference/production-checklist/)
   </Card>
@@ -148,6 +146,6 @@ cargo run --release --bin provekit-cli -- verify \
 
 ## Related pages
 
-- [Quickstart](/getting-started/quickstart/) runs the default-path flow.
-- [Artifact lifecycle](/concepts/artifact-lifecycle/) explains pairing and regeneration rules.
-- [CLI overview](/cli/overview/) lists command options and hash choices.
+- [Quickstart](/getting-started/quickstart/), runs the default-path flow.
+- [Artifact lifecycle](/concepts/artifact-lifecycle/), pairing and regeneration rules.
+- [CLI overview](/cli/overview/), every command option and hash choice.

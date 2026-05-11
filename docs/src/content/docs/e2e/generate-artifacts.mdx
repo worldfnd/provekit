@@ -1,6 +1,6 @@
 ---
 title: Generate artifacts
-description: Produce reproducible ProveKit key, proof, and recursive-verifier artifacts with explicit paths.
+description: Produce reproducible ProveKit keys, proofs, and recursive-verifier exports with explicit paths.
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
@@ -29,7 +29,7 @@ This writes:
 ## Explicit artifact directory
 
 <Steps>
-1. Start inside the Noir package and create an output directory.
+1. Enter the Noir package and create an output directory.
 
    ```sh
    cd noir-examples/basic
@@ -64,21 +64,21 @@ This writes:
 
 ## Hash choice
 
-`prepare` defaults to `skyscraper`. The CLI also accepts `sha256`, `keccak`, `blake3`, and `poseidon2` through `--hash`:
+`prepare` defaults to `skyscraper`. The CLI also accepts `sha256`, `keccak`, `blake3`, and `poseidon2` via `--hash`:
 
 ```sh
 cargo run --release --bin provekit-cli -- prepare . --hash blake3
 ```
 
-Regenerate both keys and any proofs after changing the hash choice; keys and proofs must come from the same prepared circuit configuration.
+The hash is part of the artifact's identity. Regenerate the prover key, verifier key, and every proof after changing it.
 
 <Aside type="caution" title="Record the hash choice">
-The hash choice is part of the artifact provenance. Include it in release notes, CI logs, checksums, and any manifest that accompanies `.pkp`, `.pkv`, proof, or recursive-verifier files.
+Include the `--hash` value in release notes, CI logs, checksums, and any manifest that ships with `.pkp`, `.pkv`, proof, or recursive-verifier files.
 </Aside>
 
-## Public input inspection
+## Inspect public inputs
 
-Use `show-inputs` to review public inputs as part of integration testing:
+Decode public inputs as part of integration testing:
 
 ```sh
 cargo run --release --bin provekit-cli -- show-inputs --hex \
@@ -86,11 +86,11 @@ cargo run --release --bin provekit-cli -- show-inputs --hex \
   ./artifacts/proof.np
 ```
 
-Review this output with the application owner. Verification proves the proof is valid for the verifier key; the application must still decide whether the public inputs authorize the requested action.
+Review the output with the application owner. Verification proves the proof is valid for the verifier key, your application still owns the decision about whether those inputs authorize the requested action.
 
 ## Recursive-verifier export
 
-After a proof verifies, export inputs for the Go/gnark recursive-verifier path:
+After the proof verifies, export inputs for the Go/gnark recursive verifier:
 
 ```sh
 cargo run --release --bin provekit-cli -- generate-gnark-inputs \
@@ -100,26 +100,26 @@ cargo run --release --bin provekit-cli -- generate-gnark-inputs \
   --r1cs ./artifacts/r1cs.json
 ```
 
-The command reads the verifier key and proof, then writes recursive-verifier parameters plus a JSON R1CS file. Keep those outputs paired with the exact `basic.pkv` and `proof.np` that produced them.
+The command reads the verifier key and proof, then writes the recursive parameters and an R1CS JSON. Keep those outputs paired with the exact `basic.pkv` and `proof.np` that produced them.
 
 ## CI evidence template
 
 A release-producing CI job should persist at least:
 
 ```text
-commit: <git sha>
-rust-toolchain: <contents of rust-toolchain.toml>
-lockfile: Cargo.lock
-compiler: noir
-prepare_hash: skyscraper
+commit:          <git sha>
+rust-toolchain:  <contents of rust-toolchain.toml>
+lockfile:        Cargo.lock
+compiler:        noir
+prepare_hash:    skyscraper
 commands:
   - cargo run --release --bin provekit-cli -- prepare ...
   - cargo run --release --bin provekit-cli -- prove ...
   - cargo run --release --bin provekit-cli -- verify ...
 artifacts:
-  - artifacts/basic.pkp <checksum>
-  - artifacts/basic.pkv <checksum>
-  - artifacts/proof.np <checksum>
+  - artifacts/basic.pkp  <checksum>
+  - artifacts/basic.pkv  <checksum>
+  - artifacts/proof.np   <checksum>
 ```
 
 ## Cleanup

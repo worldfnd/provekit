@@ -9,36 +9,37 @@ Use this glossary when reading ProveKit docs, debugging artifacts, or writing in
 
 | Term | Meaning |
 | :--- | :--- |
-| ACIR | Abstract Circuit Intermediate Representation emitted by Noir before backend-specific lowering. |
-| Artifact provenance | The branch, commit, toolchain, lockfile, command line, feature flags, hash choice, and checksum record for a generated file. |
-| BN254 | Elliptic-curve scalar field used by the current field-element and witness encoding paths. |
-| Circuit | The constrained computation being proven. In the default flow, it is authored as a Noir package. |
-| Compiler backend | The path used by `prepare` to derive a ProveKit proof scheme, such as `noir` or `mavros`. |
+| <span id="acir">**ACIR**</span> | Abstract Circuit Intermediate Representation emitted by Noir before backend-specific lowering. |
+| <span id="artifact-provenance">**Artifact provenance**</span> | The branch, commit, toolchain, lockfile, command line, feature flags, hash choice, and checksum record for a generated file. |
+| <span id="bn254">**BN254**</span> | Elliptic-curve scalar field used by the current field-element and witness encoding paths. |
+| <span id="circuit">**Circuit**</span> | The constrained computation being proven. In the default flow it is authored as a Noir package. |
+| <span id="compiler-backend">**Compiler backend**</span> | The path used by `prepare` to derive a ProveKit proof scheme, `noir` or `mavros`. |
 
 ## D–P
 
 | Term | Meaning |
 | :--- | :--- |
-| FFI | Foreign Function Interface. ProveKit exposes a C ABI for mobile/native hosts that cannot link Rust directly. |
-| Hash choice | The Merkle commitment hash selected by `prepare --hash`: `skyscraper`, `sha256`, `keccak`, `blake3`, or `poseidon2`. |
-| Mavros | Alternate compiler path accepted by `prepare --compiler mavros` with an explicit R1CS file. |
-| Noir | Circuit language used by ProveKit's primary authoring flow. |
-| PKP | ProveKit prover key file (`.pkp`) produced by `prepare` and consumed by provers. |
-| PKV | ProveKit verifier key file (`.pkv`) produced by `prepare` and consumed by verifiers. |
-| Proof | Serialized proof output, commonly `proof.np` from the CLI or JSON proof values in WASM/server flows. |
-| Public inputs | Values intentionally exposed by the circuit and bound into verification. Your application must interpret them correctly. |
+| <span id="ffi">**FFI**</span> | Foreign Function Interface. ProveKit exposes a C ABI for mobile and native hosts that cannot link Rust directly. |
+| <span id="hash-choice">**Hash choice**</span> | The Merkle commitment hash selected by `prepare --hash`: `skyscraper`, `sha256`, `keccak`, `blake3`, or `poseidon2`. |
+| <span id="mavros">**Mavros**</span> | Alternate compiler path accepted by `prepare --compiler mavros` with an explicit R1CS file. |
+| <span id="noir">**Noir**</span> | Circuit language used by ProveKit's primary authoring flow. |
+| <span id="pkp">**PKP**</span> | ProveKit prover key file (`.pkp`), produced by `prepare`, consumed by provers. |
+| <span id="pkv">**PKV**</span> | ProveKit verifier key file (`.pkv`), produced by `prepare`, consumed by verifiers. |
+| <span id="proof">**Proof**</span> | Serialized proof output, `proof.np` from the CLI, or JSON proof values in WASM and server flows. |
+| <span id="public-inputs">**Public inputs**</span> | Values intentionally exposed by the circuit and bound into verification. Your application is responsible for interpreting them. |
 
 ## R–Z
 
 | Term | Meaning |
 | :--- | :--- |
-| R1CS | Rank-1 Constraint System used by the ProveKit proving pipeline. |
-| Recursive verifier | Go/gnark wrapper that verifies a ProveKit proof inside an outer Groth16-style workflow. |
-| `r1cs.json` | Recursive-verifier R1CS export generated from a matching verifier key and proof. |
-| `params_for_recursive_verifier` | Recursive-verifier parameter file generated from a matching verifier key and proof. |
-| Verifier server | HTTP service in `tooling/verifier-server` that downloads artifacts and orchestrates proof verification. |
-| Witness | Private and public assignment values used to satisfy the circuit during proving. |
-| WHIR | Proof system family used by ProveKit for proof generation and verification. |
+| <span id="r1cs">**R1CS**</span> | Rank-1 Constraint System used by the ProveKit proving pipeline. |
+| <span id="recursive-verifier">**Recursive verifier**</span> | Go/gnark wrapper that verifies a ProveKit proof inside an outer Groth16-style workflow. |
+| <span id="r1cs-json">**`r1cs.json`**</span> | Recursive-verifier R1CS export generated from a matching verifier key and proof. |
+| <span id="params-recursive">**`params_for_recursive_verifier`**</span> | Recursive-verifier parameter file generated from a matching verifier key and proof. |
+| <span id="skyscraper">**Skyscraper**</span> | Custom BN254-tuned hash engine used as ProveKit's default Merkle commitment and Fiat-Shamir transcript hash. |
+| <span id="verifier-server">**Verifier server**</span> | HTTP service in `tooling/verifier-server` that downloads artifacts and orchestrates proof verification. |
+| <span id="witness">**Witness**</span> | Private and public assignment values used to satisfy the circuit during proving. |
+| <span id="whir">**WHIR**</span> | Proof system family used by ProveKit for proof generation and verification. |
 
 ## Related pages
 

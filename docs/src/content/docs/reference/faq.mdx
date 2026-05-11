@@ -1,0 +1,124 @@
+---
+title: Frequently asked questions
+description: Common questions about ProveKit's maturity, scope, performance, and how it compares to other ZK systems.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Project and maturity
+
+### Is ProveKit production-ready?
+
+ProveKit is under active development. The proof system, key formats, and integration APIs continue to evolve on `main`. The `v1` branch holds the current stable interface, use it for any work where reproducibility matters. The [Production checklist](/reference/production-checklist/) outlines the controls you should have in place before shipping a user-facing workflow.
+
+### Which branch should I use?
+
+| Use `v1` when | Use `main` when |
+| :--- | :--- |
+| Reproducibility, stable formats, and clean upgrades matter. | You are contributing, testing experimental features, or accept regenerating artifacts as formats change. |
+
+See [Project status and versioning](/reference/project-status/) for the full policy.
+
+### Has ProveKit been audited?
+
+There is no public audit certification yet. Treat ProveKit as alpha-grade cryptographic software for the purpose of risk management. The codebase ships with property-based tests, regression tests, and a documented soundness checklist for reviewers in `CLAUDE.md` at the repo root.
+
+### What's the license?
+
+[MIT](https://github.com/worldfnd/provekit/blob/main/LICENSE.md).
+
+## Capabilities and scope
+
+### What proof system does ProveKit use?
+
+[WHIR](https://github.com/WizardOfMenlo/whir), a polynomial commitment scheme paired with a Spartan-style sumcheck. WHIR is plausibly post-quantum-friendly and requires no trusted setup for the base proof. The optional recursive verifier wraps proofs in Groth16 for on-chain settlement.
+
+### What's the BN254 curve doing here?
+
+ProveKit's field arithmetic is performed over the BN254 scalar field. BN254 is well-supported on EVM chains, which makes the recursive Groth16 wrapper natural for on-chain verification. You don't interact with the field directly, Noir handles it.
+
+### Can I verify on-chain?
+
+Yes, through the [recursive verifier](/integrations/overview/#recursive-verifier--gnark): export `params_for_recursive_verifier` and `r1cs.json` with `provekit-cli generate-gnark-inputs`, then feed them into the Go/gnark wrapper in `recursive-verifier/`. The wrapper produces a Groth16 outer proof that can be verified by an EVM contract.
+
+### What hash functions are available?
+
+`--hash` accepts `skyscraper` (default, custom-optimized for BN254), `sha256`, `keccak`, `blake3`, and `poseidon2`. The hash is part of the artifact's identity, keys, proofs, and recursive exports made with one hash are not interchangeable with another. See the [CLI overview](/cli/overview/#prepare) for details.
+
+### Which compiler backends are supported?
+
+Two:
+
+- **`noir` (default)**, compiles a Noir package via ACIR.
+- **`mavros`**, accepts an explicit R1CS file alongside basic artifacts JSON. Use when you have a circuit lowered through Reilabs' Mavros compiler.
+
+## Performance and limits
+
+### How big a circuit can ProveKit handle?
+
+There is no architectural cap. Practical limits depend on the host: the mobile FFI ships a file-backed mmap allocator so circuits whose witness exceeds device RAM can still prove. For very large circuits, configure memory before initialization (`pk_configure_memory` on FFI, `Verity.configureMemory` on mobile SDKs).
+
+### How long does proving take?
+
+It depends on circuit size, hash choice, and host. The proving pipeline is parallelized with [Rayon](https://github.com/rayon-rs/rayon); SIMD-accelerated BN254 arithmetic gives an extra boost on `aarch64`. The fastest path is `--hash skyscraper` on native Rust; the slowest paths are typically constrained-memory mobile builds. Benchmark your specific circuit before estimating production timing.
+
+### How fast is verification?
+
+Verification is significantly cheaper than proving and runs on every supported host. The verifier server defaults to a single concurrent verification (`VERIFIER_SEMAPHORE_LIMIT=1`) and a 20-minute request timeout (`VERIFIER_REQUEST_TIMEOUT=1200`, `VERIFIER_TIMEOUT_SECONDS=1200`). Per-request `verificationParams.maxVerificationTime` is capped at 300 seconds. Tune all of those for your circuit. WASM verification is reusable: load a `Verifier` once and verify many proofs without rebuilding state.
+
+### Can I prove in the browser?
+
+Yes. The [WASM bindings](/integrations/overview/#wasm--javascript) load `.pkp` bytes, accept a witness map, and produce a JSON proof. Threading depends on `SharedArrayBuffer`; the binding falls back to a single-threaded path when worker setup isn't available. Note: each `Prover` is consumed by one `prove()` call, instantiate a new one per proof.
+
+## Integration
+
+### Do I need to know Rust to use ProveKit?
+
+Only if you embed it through the Rust crates. The CLI is the primary entry point and works with any language that can shell out. The [WASM bindings](/integrations/overview/#wasm--javascript), [Swift SDK](/e2e/swift/), and [Kotlin SDK](/e2e/kotlin/) wrap ProveKit for non-Rust hosts.
+
+### Can I generate `.pkp` and `.pkv` on one machine and use them on another?
+
+Yes, that is the deployment model. Generate keys in CI, record the [provenance](/concepts/artifact-lifecycle/), distribute the verifier key alongside your application, and keep the prover key on the proving host. The artifacts are independent of platform.
+
+### Can I switch hash configurations after deployment?
+
+Only by regenerating every artifact. `.pkp`, `.pkv`, and the resulting proofs are all tied to the chosen hash. Plan hash choice as a versioned decision, not a runtime knob.
+
+### What happens if I modify the circuit?
+
+Every downstream artifact is invalidated, `.pkp`, `.pkv`, proofs, recursive params, and `r1cs.json`. Re-run `prepare` and propagate the new artifacts. The verifier will not accept proofs from the old keys. See [Artifact lifecycle](/concepts/artifact-lifecycle/) for the regeneration rules.
+
+## Comparisons
+
+### How is ProveKit different from raw Noir?
+
+Noir is a circuit language; ProveKit is a proof system, runtime, and deployment toolkit built around it. Noir defines what you want to prove; ProveKit handles the compilation to R1CS, proof generation, verification, and the host-language integrations. You can think of Noir as your source code and ProveKit as your compiler-plus-runtime.
+
+### How does this compare to Halo2, Plonky2, or Circom?
+
+The big differentiators:
+
+- **Noir frontend.** You write circuits in a high-level language with type checking, not at the constraint level.
+- **WHIR backend.** No trusted setup for the base proof; modern verification cost characteristics.
+- **Cross-host runtime.** First-class CLI, Rust, WASM, FFI, server, and recursive paths from one codebase.
+- **Production tooling.** Memory configuration, artifact versioning, hash selection, and a verifier service.
+
+Performance comparisons depend heavily on circuit shape, benchmark for your workload.
+
+### Do I have to use the recursive verifier for on-chain settlement?
+
+You have to use *some* on-chain verifier. ProveKit's path is the Go/gnark wrapper, which produces a Groth16 proof that's cheap to verify on EVM chains. Other recursion targets (other proof systems, other curves) would require separate engineering.
+
+## Getting help
+
+### Where do I report bugs?
+
+Open an issue on the [GitHub repository](https://github.com/worldfnd/provekit/issues). Include the information from the "Still stuck?" section of [Common errors](/troubleshooting/common-errors/#still-stuck) so the maintainers can reproduce.
+
+### Where do I find the source for a specific component?
+
+The [Repository Map](https://github.com/worldfnd/provekit#repository-map) in the root README lists every crate, its purpose, and its path. The CLI lives in `tooling/cli/`, the proof system in `provekit/`, and the recursive verifier in `recursive-verifier/`.
+
+### Is there a changelog?
+
+There is no per-release changelog yet. Until one is published, treat the Git history of the chosen branch as the canonical record of changes. See [Project status](/reference/project-status/) for the gaps still being filled.

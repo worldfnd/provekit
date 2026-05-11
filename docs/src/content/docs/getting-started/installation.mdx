@@ -1,37 +1,37 @@
 ---
 title: Installation and setup
-description: Set up a source checkout, Rust toolchain, and docs/dev commands for ProveKit.
+description: Prepare a machine to build ProveKit, run the CLI, and (optionally) build the docs site.
 ---
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-This page prepares a machine to build ProveKit and run the CLI from source. These docs assume a source checkout; add release-specific binary installation notes when a release publishes them.
+These docs assume a source checkout. Release binaries will be documented here once published.
 
 ## Prerequisites
 
 | Requirement | Why it matters |
 | :--- | :--- |
-| Git | Clone the repository and record exact commits for artifact provenance. |
-| Rust via `rustup` | Cargo uses the pinned toolchain in `rust-toolchain.toml`. |
-| Network access | First build fetches Rust crates and pinned Noir dependencies. |
-| Optional: Corepack + pnpm | Required only for editing or building this docs site. |
-| Optional: Go toolchain | Required only for recursive-verifier development. |
+| **Git** | Clones the repository and records exact commits for artifact provenance. |
+| **Rust via `rustup`** | Cargo selects the pinned toolchain in `rust-toolchain.toml` automatically. |
+| **Network access** | The first build fetches Cargo crates and pinned Noir dependencies. |
+| **Corepack + pnpm** *(optional)* | Required only to edit or build this docs site. |
+| **Go toolchain** *(optional)* | Required only for recursive-verifier development. |
 
-<Aside type="tip" title="Use the repository toolchain file">
-Run Cargo commands from inside the repository so Rust automatically honors `rust-toolchain.toml`. Avoid overriding the pinned nightly unless you are intentionally testing a toolchain migration.
+<Aside type="tip" title="Let the repo pick the toolchain">
+Run Cargo commands from inside the repository so `rust-toolchain.toml` is honored automatically. Don't override the pinned nightly unless you are deliberately testing a toolchain migration.
 </Aside>
 
 ## Set up the repository
 
 <Steps>
-1. Clone the project and enter the checkout.
+1. Clone and enter the checkout.
 
    ```sh
    git clone https://github.com/worldfnd/provekit.git
    cd provekit
    ```
 
-2. Confirm the Rust toolchain selected by `rustup`.
+2. Confirm the selected Rust toolchain.
 
    ```sh
    rustup show
@@ -39,13 +39,13 @@ Run Cargo commands from inside the repository so Rust automatically honors `rust
    cat rust-toolchain.toml
    ```
 
-3. Check that the CLI target is visible to Cargo.
+3. Verify the CLI builds.
 
    ```sh
    cargo run --release --bin provekit-cli -- --help
    ```
 
-4. Run the first proof.
+4. Run the example proof end-to-end.
 
    ```sh
    cd noir-examples/basic
@@ -55,9 +55,11 @@ Run Cargo commands from inside the repository so Rust automatically honors `rust
    ```
 </Steps>
 
+If step 4 completes without errors, your setup is healthy.
+
 ## Build the documentation site
 
-Documentation lives in `docs/` and is built with Astro Starlight.
+The docs live in `docs/` and are built with [Astro Starlight](https://starlight.astro.build/).
 
 ```sh
 cd docs
@@ -67,23 +69,23 @@ pnpm check
 pnpm build
 ```
 
-Use `pnpm dev` while authoring docs locally.
+Use `pnpm dev` for live preview while authoring.
 
 ## Optional host tooling
 
 | Target | Additional tooling |
 | :--- | :--- |
-| Browser / JS | Build the WASM package under `tooling/provekit-wasm/` and load generated `.pkp` / `.pkv` artifacts as bytes. |
-| iOS / macOS | Build or consume the Swift SDK package mode used by your app, then link the required native artifacts. |
-| Android | Package the JNI libraries required by the Kotlin/Android host and test on target ABIs. |
-| Verifier server | Build the Rust HTTP server in `tooling/verifier-server/` and provide the Go verifier binary path expected by that service. |
-| Recursive verifier | Use the Go module in `recursive-verifier/` with the `params_for_recursive_verifier` and `r1cs.json` exported by the CLI. |
+| **Browser / Node.js** | Build the WASM package in `tooling/provekit-wasm/` and load `.pkp` / `.pkv` artifacts as bytes. |
+| **iOS / macOS** | Build or consume the Swift SDK package mode used by your app, then link the required native artifacts. |
+| **Android** | Package the JNI libraries required by the Kotlin/Android host and test on target ABIs. |
+| **Verifier server** | Build the Rust HTTP server in `tooling/verifier-server/` and configure the Go verifier binary path. |
+| **Recursive verifier** | Use the Go module in `recursive-verifier/` with the `params_for_recursive_verifier` and `r1cs.json` exported by the CLI. |
 
 ## Verify your setup
 
-A healthy setup can do all of the following:
+A healthy setup satisfies all of these checks:
 
-- `cargo run --release --bin provekit-cli -- --help` prints CLI help.
-- The [Quickstart](/getting-started/quickstart/) completes without verification errors.
-- `git status --short` shows only intentional source edits after cleanup.
-- If editing docs, `pnpm check` and `pnpm build` pass in `docs/`.
+- `cargo run --release --bin provekit-cli -- --help` prints the CLI help text.
+- The [Quickstart](/getting-started/quickstart/) completes with `verify` returning exit code `0`.
+- `git status --short` is clean (or shows only intentional source edits) after the cleanup step.
+- For docs work: `pnpm check` and `pnpm build` both pass inside `docs/`.

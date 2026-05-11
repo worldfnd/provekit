@@ -1,0 +1,68 @@
+---
+title: How ProveKit compares
+description: Side-by-side comparison of ProveKit with other zero-knowledge proof systems, Halo2, Plonky2, Circom + SnarkJS, RISC Zero.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+There is no single "best" ZK proof system, choices depend on the frontend you want, the verification target, audit posture, and operational tooling. This page summarizes how ProveKit positions itself against the most common alternatives.
+
+<Aside type="note" title="Pick by use case, not benchmark">
+Headline performance numbers from any single proof system rarely generalize. Measure the systems on *your* circuit and target hosts before committing.
+</Aside>
+
+## Comparison matrix
+
+| Dimension | **ProveKit** | Halo2 (PSE / zcash) | Plonky2 | Circom + SnarkJS / RapidSnark | RISC Zero |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Frontend** | Noir | Rust DSL (in-circuit `Region`/`Gate` API) | Rust DSL | Circom | Rust binary (zkVM) |
+| **Proof system** | WHIR + Spartan-style sumcheck | Plonkish + IPA / KZG | FRI-based PLONK | Groth16 (default) | STARK + Groth16 wrap |
+| **Trusted setup (base proof)** | None | None (IPA) / per-circuit (KZG) | None | Per-circuit ceremony | None |
+| **Field** | BN254 | BN254 / Pasta | Goldilocks | BN254 / BLS12-381 | Baby Bear → BN254 wrap |
+| **On-chain target** | Groth16 wrap via Go/gnark | Direct on Ethereum (KZG mode) | Wrap to Groth16 | Direct on Ethereum | Groth16 wrap |
+| **Native host support** | CLI, Rust, WASM, FFI, HTTP server, recursive | Rust | Rust | JS/WASM, native binary | Rust, WASM |
+| **Mobile path** | First-class (Swift + Kotlin SDKs via FFI) | DIY | DIY | DIY | Experimental |
+| **Recursive verification** | Via gnark Groth16 wrapper | Native | Native (fast) | Limited | Native (zkVM-style) |
+| **Audit status** | No public audit yet | Multiple audits | Audited (Polygon) | Multiple audits | Multiple audits |
+| **License** | MIT | MIT / Apache-2 | Apache-2 / MIT | GPL-3 / MIT components | Apache-2 |
+| **Best when** | You want Noir + production-shaped runtime + cheap EVM verification | You want maximum control inside Ethereum tooling | You want fast recursion in pure Rust | You're already invested in Circom or need legacy EVM verifiers | You want to prove arbitrary Rust without writing a circuit |
+
+## Where ProveKit shines
+
+- **Noir frontend.** Higher-level than Halo2's in-circuit API, less constrained than Circom's signal-based model, type-checked unlike most circuit DSLs.
+- **Cross-host runtime out of the box.** CLI, Rust, WASM, FFI, mobile, and recursive paths from one codebase. Most alternatives leave host integration to you.
+- **No trusted setup for the base proof.** WHIR's commitment scheme avoids per-circuit ceremonies; only the optional Groth16 outer wrap involves one.
+- **Production-shaped tooling.** Versioned artifacts, hash-choice control, public-input inspection, memory configuration on mobile, and a verifier service with concurrency controls.
+
+## Where ProveKit is weaker today
+
+- **Audit maturity.** No public audit certification yet. Halo2, Plonky2, and Circom-based stacks have multiple audits behind them.
+- **Recursive verification.** Native recursion isn't yet a first-class operation, the path goes through gnark Groth16 wrapping. Plonky2 and RISC Zero have direct recursion built in.
+- **Established benchmarks.** WHIR is newer than PLONK and FRI families; published numbers from competing systems are not directly comparable yet.
+- **Ecosystem.** Noir's ecosystem is younger than Circom's. Reusable libraries (signatures, primitives) are growing but smaller in scope.
+
+## Choosing between them
+
+| If your priority is... | Consider |
+| :--- | :--- |
+| **Ship a credential or attestation app across web + mobile** | ProveKit. The integration story is the differentiator. |
+| **Verify directly on Ethereum without a wrapper** | Halo2 (KZG mode) or Circom + SnarkJS. Mature on-chain verifiers exist. |
+| **Prove arbitrary Rust binaries without a circuit** | RISC Zero. zkVM approach trades constraint efficiency for developer ergonomics. |
+| **Maximize recursion throughput** | Plonky2. Native fast recursion is the headline feature. |
+| **Battle-tested + Ethereum-native** | Halo2. Most production Ethereum ZK stacks lean on it. |
+| **Audit-mature signature schemes** | Circom ecosystem. The largest catalog of audited primitives. |
+
+## What to verify before committing
+
+For any proof system, validate these before building on top:
+
+1. **Run your real circuit through it.** Synthetic benchmarks rarely predict your workload.
+2. **Confirm the verification target.** Where does the verifier run? On-chain? In a phone? In a browser?
+3. **Check audit status.** Has the proof system, the frontend, and the recursive verifier been independently reviewed?
+4. **Test the deployment story.** Versioning, artifact distribution, key management, these are where most ZK projects struggle, regardless of the proof system underneath.
+
+## Related pages
+
+- [What is ProveKit?](/concepts/what-is-provekit/), the ProveKit overview.
+- [FAQ](/reference/faq/), broader Q&A on capabilities and limits.
+- [Performance](/reference/performance/), how to measure ProveKit honestly.

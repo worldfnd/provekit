@@ -1,21 +1,27 @@
 ---
 title: Kotlin end-to-end
-description: Use the Verity Kotlin SDK on Android with the published AAR or a local build.
+description: Integrate ProveKit on Android via the Verity Kotlin SDK, using the published AAR or a local build.
 ---
 
-This guide uses the Verity Kotlin SDK at commit `3f6b8ad6e7c994a740a204fbf35c0a3f3001e4d3`. It covers the Android wrapper around the JNI bridge, shared dispatcher, and ProveKit backend. Treat the snippets as examples until they run in an Android app or instrumented test with the native libraries packaged.
+import { Aside } from '@astrojs/starlight/components';
 
-## Referenced APIs
+This guide uses the Verity Kotlin SDK, which wraps the JNI bridge, shared dispatcher, and ProveKit backend for Android. References below are pinned to Verity commit `3f6b8ad6e7c994a740a204fbf35c0a3f3001e4d3`.
 
-At that Verity revision:
+<Aside type="note" title="Validate against your build">
+Treat the snippets as starting points until they run in an Android app or instrumented test with the native libraries packaged.
+</Aside>
+
+## SDK surface
+
+At the pinned Verity revision:
 
 - `sdks/kotlin/build.gradle.kts` defines an Android library and currently publishes `arm64-v8a` JNI libraries.
 - `Backend.kt` exposes `Backend.PROVEKIT` for the ProveKit WHIR backend.
-- `Verity.kt` loads `verity_jni`, initializes a backend once, and loads prover/verifier schemes from file paths or `ByteArray` values.
+- `Verity.kt` loads `verity_jni`, initializes a backend once, and loads prover/verifier schemes from file paths or `ByteArray`.
 - `Witness.kt` supports TOML files, flat maps of field-element strings, and JSON strings for arrays or nested objects.
 - `ProverScheme.kt`, `VerifierScheme.kt`, and `Proof.kt` expose `prove`, `verify`, serialization, deterministic `close()`, and `use { ... }` cleanup patterns.
 
-## Gradle sketch
+## Gradle declaration
 
 ```kotlin
 dependencies {
@@ -23,37 +29,37 @@ dependencies {
 }
 ```
 
-Confirm the published version and ABI coverage for your release. At the pinned source revision, the Gradle metadata and build notes indicate `arm64-v8a` is the published ABI.
+Confirm the published version and ABI coverage for your release. At the pinned revision, the Gradle metadata indicates `arm64-v8a` is the published ABI.
 
 ## Minimal flow
 
 ```kotlin
 import xyz.atheon.verity.*
 
-val verity = Verity(Backend.PROVEKIT)
-val prover = verity.loadProver("scheme.pkp")
+val verity   = Verity(Backend.PROVEKIT)
+val prover   = verity.loadProver("scheme.pkp")
 val verifier = verity.loadVerifier("scheme.pkv")
 
 prover.use { p ->
     verifier.use { v ->
         val witness = Witness.of(mapOf("age" to "25", "threshold" to "18"))
-        val proof = p.prove(witness)
+        val proof   = p.prove(witness)
         check(v.verify(proof)) { "proof did not verify" }
     }
 }
 ```
 
-Use `loadProver(ByteArray)` and `loadVerifier(ByteArray)` when your Android app stores artifacts in assets, downloads them, or manages them through encrypted storage.
+Use `loadProver(ByteArray)` and `loadVerifier(ByteArray)` when the app stores artifacts as Android assets, downloads them, or manages them through encrypted storage.
 
-## Build and artifact caveats
+## Build and packaging notes
 
-- `make test-kotlin` runs Android `connectedAndroidTest` in the Verity repo; its fixture generation requires `core-native`.
-- The pinned build notes say the published Kotlin AAR currently ships `arm64-v8a` JNI libraries only.
-- Local Android builds use `core/build/build-android.sh`, which can accept `VERITY_ANDROID_ABIS=arm64-v8a,x86_64` for additional ABI outputs.
+- `make test-kotlin` runs Android `connectedAndroidTest` in the Verity repo; fixture generation requires `core-native`.
+- The pinned build notes record that the published Kotlin AAR currently ships `arm64-v8a` JNI libraries only.
+- Local Android builds use `core/build/build-android.sh`, which accepts `VERITY_ANDROID_ABIS=arm64-v8a,x86_64` for additional ABI outputs.
 - Call `Verity.configureMemory(...)` before constructing `Verity` when large ProveKit circuits need Android RAM limits or file-backed memory.
-- The snippet assumes `scheme.pkp` and `scheme.pkv` are readable from the app's filesystem. If they are packaged as assets, copy them to a readable path or load them as bytes first.
+- The snippet assumes `scheme.pkp` and `scheme.pkv` are readable from the app's filesystem. Package them as assets and copy to a readable path, or load them as bytes, depending on your distribution model.
 
-## Related docs
+## Related pages
 
 - [End-to-end overview](/e2e/overview/)
 - [Generate artifacts](/e2e/generate-artifacts/)

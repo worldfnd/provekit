@@ -5,59 +5,59 @@ description: Security boundaries and operational assumptions for teams integrati
 
 import { Aside } from '@astrojs/starlight/components';
 
-This page documents integration-level security expectations. It is not a cryptographic proof, audit report, or production readiness certification. Use it to decide where artifacts live, who may generate them, and which checks must happen before accepting a proof.
+This page documents integration-level security expectations. It is not a cryptographic proof, audit report, or production-readiness certification, use it to decide where artifacts live, who may generate them, and which checks must run before accepting a proof.
 
-<Aside type="caution" title="Active-development caveat">
-ProveKit is under active development. Do not treat `main` branch behavior, proof formats, or key formats as stable unless a release explicitly says so. Use the [production checklist](/reference/production-checklist/) before shipping a user-facing workflow.
+<Aside type="caution" title="Active development">
+ProveKit is under active development. Treat `main`-branch behavior, proof formats, and key formats as unstable unless a release note says otherwise. Walk through the [production checklist](/reference/production-checklist/) before shipping a user-facing workflow.
 </Aside>
 
 ## Trust boundaries
 
 | Boundary | What crosses it | Required control |
 | :--- | :--- | :--- |
-| Circuit authoring → key preparation | Noir source, compiler backend, hash choice | Code review, pinned commit, reproducible command line |
-| Key preparation → prover runtime | `.pkp` | Access control, integrity checks, artifact provenance |
-| Prover runtime → verifier runtime | `proof.np` / proof JSON and public inputs | Verification with the matching `.pkv`; public-input review |
-| Verifier runtime → application decision | Boolean validity and decoded public inputs | Application-level authorization and policy checks |
-| Recursive export → Go/gnark wrapper | `params_for_recursive_verifier`, `r1cs.json` | Regenerate from the exact verifier/proof pair; manage setup keys explicitly |
+| Circuit authoring → key preparation | Noir source, compiler backend, hash choice | Code review, pinned commit, reproducible command line. |
+| Key preparation → prover runtime | `.pkp` | Access control, integrity checks, recorded provenance. |
+| Prover runtime → verifier runtime | `proof.np` / proof JSON and public inputs | Verification with the matching `.pkv`; public-input review. |
+| Verifier runtime → application decision | Boolean validity plus decoded public inputs | Application-level authorization and policy checks. |
+| Recursive export → Go/gnark wrapper | `params_for_recursive_verifier`, `r1cs.json` | Regenerated from the exact verifier/proof pair; setup keys managed explicitly. |
 
 ## What verification proves
 
-A successful ProveKit verification means the proof verifies against the verifier key and public input binding used by the verifier. Your application must still decide whether those public inputs authorize the requested action.
+A successful ProveKit verification means the proof is valid against the verifier key and public-input binding presented to the verifier. **It does not tell your application what to do with that proof.**
 
-Examples of application-level checks that remain outside the prover:
+Your application still owns these decisions:
 
 - Whether a user is allowed to submit a proof for a given account or session.
 - Whether public inputs match the expected credential, nullifier, domain separator, or request ID.
-- Whether the proof/key/artifact version is still accepted by the service.
-- Whether replay protection or one-time-use semantics are required.
+- Whether the proof / key / artifact version is still accepted by the service.
+- Whether replay protection or one-time-use semantics apply.
 
 ## Sensitive material
 
 | Material | Sensitivity |
 | :--- | :--- |
-| Private witness inputs | Sensitive by default; avoid logs and client-visible telemetry. |
-| `.pkp` prover keys | Operationally sensitive because they enable proof generation for a prepared circuit. |
-| `.pkv` verifier keys | Usually distributable, but must be integrity-protected and versioned. |
-| Proofs | May contain public inputs and metadata that are sensitive in your application context. |
-| Recursive proving keys | Manage explicitly; development-time generation is not enough for production. |
+| Private witness inputs | Sensitive by default. Keep out of logs and client-visible telemetry. |
+| `.pkp` prover keys | Operationally sensitive, they enable proof generation for the prepared circuit. |
+| `.pkv` verifier keys | Usually distributable, but always integrity-protected and versioned. |
+| Proofs | May carry public inputs and metadata that are sensitive in your application context. |
+| Recursive proving keys | Manage explicitly. Development-time generation is not sufficient for production. |
 
 ## Operational controls
 
-- Pin branch, commit, lockfile, toolchain, compiler backend, and hash choice for every artifact release.
-- Verify locally before accepting or publishing generated proof artifacts.
-- Decode and review public inputs with `show-inputs`, preferably in hex for exactness.
-- Reject proofs when artifact provenance is unknown or spans multiple generations.
-- Restrict verifier-server artifact URL sources or proxy downloads through trusted storage.
-- Keep FFI buffers, mobile memory settings, and WASM prover lifecycle under test on real target devices.
-- Add negative tests for mismatched key/proof pairs and corrupted proof payloads.
+- Pin the branch, commit, lockfile, toolchain, compiler backend, and hash choice for every artifact release.
+- Verify locally before publishing or accepting any proof artifact.
+- Review public inputs with `show-inputs --hex` for byte-exact comparison.
+- Reject proofs whose provenance is unknown or spans multiple generations.
+- Restrict verifier-server artifact URLs to trusted sources, or proxy downloads through trusted storage.
+- Keep FFI buffer ownership, mobile memory settings, and WASM prover lifecycle under test on real target devices.
+- Add negative tests for mismatched key / proof pairs and corrupted proof payloads.
 
 ## Red-team prompts for reviewers
 
-Ask these questions during integration review:
+Ask these questions during every integration review:
 
 1. Can a client choose the `.pkv`, `r1cs.json`, proving key, or verifying key used by a verifier service?
 2. Are public inputs bound to the correct account, session, chain, domain, or request?
-3. Can an old but valid proof be replayed after policy or circuit changes?
-4. Can an artifact generated from `main` be accidentally accepted by a `v1` deployment?
-5. Are witness values, proofs, or prover keys logged by CLI wrappers, web servers, or mobile crash reporters?
+3. Can a previously valid proof be replayed after a policy or circuit change?
+4. Could an artifact generated from `main` be accepted by a `v1` deployment by accident?
+5. Are witness values, proofs, or prover keys logged anywhere, CLI wrappers, web servers, mobile crash reporters?

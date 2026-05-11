@@ -1,22 +1,87 @@
 ---
 title: Integrations overview
-description: Choose where ProveKit runs in applications, services, browsers, mobile hosts, and recursive verification.
+description: Pick the integration path that matches where ProveKit will prove or verify in your system.
 ---
 
-import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+import { Aside, Card, CardGrid, Tabs, TabItem } from '@astrojs/starlight/components';
 
-ProveKit can run through the CLI, Rust crates, WASM, FFI/mobile bindings, a verifier server, or recursive-verifier tooling. Choose the path that matches where proof generation or verification runs, then keep artifact provenance consistent across boundaries.
+ProveKit ships six integration paths: the CLI, native Rust crates, WebAssembly, a C FFI for mobile, an HTTP verifier service, and a Go/gnark recursive verifier. Choose the path that matches where proof generation or verification needs to run, then keep artifact provenance consistent across boundaries.
+
+**Rust API:** [`provekit-common`](https://docs.rs/provekit-common) · [`provekit-prover`](https://docs.rs/provekit-prover) · [`provekit-verifier`](https://docs.rs/provekit-verifier). New here? Start with [What is ProveKit?](/concepts/what-is-provekit/) and the [glossary](/reference/glossary/).
+
+## The same flow, every host
+
+Every integration runs the same three-step pipeline. Here's what verifying a proof looks like in each:
+
+<Tabs>
+<TabItem label="CLI">
+```sh
+cargo run --release --bin provekit-cli -- verify \
+  --verifier app.pkv \
+  --proof   proof.np
+# exit 0 = valid
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+use provekit_common::{file::read, NoirProof, Verifier};
+use provekit_verifier::Verify;
+
+let mut verifier: Verifier = read("app.pkv")?;
+let proof: NoirProof = read("proof.np")?;
+verifier.verify(&proof)?;
+```
+</TabItem>
+<TabItem label="JS / TS">
+```ts
+import { Backend, Verity } from "@atheon/verity";
+
+const verity   = await Verity.create(Backend.ProveKit);
+const verifier = await verity.loadVerifier(pkvBytes);
+const valid    = await verifier.verify(proof);
+```
+</TabItem>
+<TabItem label="Swift">
+```swift
+import Verity
+
+let verity   = try Verity(backend: .provekit)
+let verifier = try verity.loadVerifier(from: "app.pkv")
+let valid    = try verifier.verify(proof: proof)
+```
+</TabItem>
+<TabItem label="Kotlin">
+```kotlin
+import xyz.atheon.verity.*
+
+val verity   = Verity(Backend.PROVEKIT)
+val verifier = verity.loadVerifier("app.pkv")
+verifier.use { v -> check(v.verify(proof)) }
+```
+</TabItem>
+<TabItem label="HTTP">
+```sh
+curl -X POST http://verifier:3000/verify -d '{
+  "pkvUrl":  "https://example.com/app.pkv",
+  "r1csUrl": "https://example.com/r1cs.json",
+  "np":      { /* NoirProof JSON */ }
+}'
+```
+</TabItem>
+</Tabs>
+
+The same `.pkv` and proof artifact drive every path. Pick by where you want verification to live.
 
 ## Decision table
 
-| Path | Repo path | Use when | Primary artifacts |
+| Path | Repo location | Use when | Primary artifacts |
 | :--- | :--- | :--- | :--- |
-| CLI | `tooling/cli/` | You want command-line prepare/prove/verify workflow or CI artifact generation. | `.pkp`, `.pkv`, `proof.np`, `r1cs.json`, recursive params. |
-| Rust crates | `provekit/*`, `tooling/*` | You are embedding ProveKit in Rust services, tools, or tests. | Rust `Prover`, `Verifier`, `NoirProof` values plus `.pkp`/`.pkv` files. |
-| WASM | `tooling/provekit-wasm/` | You need browser or JavaScript proof/verification flows. | `.pkp`/`.pkv` bytes, witness map, JSON proof bytes/object. |
-| FFI | `tooling/provekit-ffi/` | You need C ABI bindings for Swift/iOS, Kotlin/Android, Python, or another host. | Native library, `provekit_ffi.h`, `.pkp`, TOML inputs, proof file or JSON buffer. |
-| Verifier server | `tooling/verifier-server/` | You need an HTTP API that downloads artifacts and orchestrates verification. | `pkvUrl`, `r1csUrl`, JSON `NoirProof`, optional Groth16 `pkUrl`/`vkUrl`. |
-| Recursive verifier | `recursive-verifier/` | You need Go/gnark recursive verification and Groth16 wrapping. | `params_for_recursive_verifier`, `r1cs.json`, optional proving/verifying keys. |
+| **CLI** | `tooling/cli/` | You want a command-line prepare/prove/verify workflow or CI artifact generation. | `.pkp`, `.pkv`, `proof.np`, `r1cs.json`, recursive params. |
+| **Rust crates** | `provekit/*`, `tooling/*` | You are embedding ProveKit in Rust services, tools, or tests. | Rust `Prover`, `Verifier`, `NoirProof` values plus `.pkp` / `.pkv` files. |
+| **WASM** | `tooling/provekit-wasm/` | You need proving or verification in a browser or Node.js application. | `.pkp` / `.pkv` bytes, witness map, JSON proof bytes/object. |
+| **FFI** | `tooling/provekit-ffi/` | You need C ABI bindings for Swift/iOS, Kotlin/Android, Python, or another host. | Native library, `provekit_ffi.h`, `.pkp`, TOML inputs, proof file or JSON buffer. |
+| **Verifier server** | `tooling/verifier-server/` | You need an HTTP API that downloads artifacts and orchestrates verification. | `pkvUrl`, `r1csUrl`, JSON `NoirProof`, optional Groth16 `pkUrl` / `vkUrl`. |
+| **Recursive verifier** | `recursive-verifier/` | You need Go/gnark recursive verification and Groth16 wrapping. | `params_for_recursive_verifier`, `r1cs.json`, optional proving/verifying keys. |
 
 ## Choose by runtime
 
@@ -25,34 +90,34 @@ ProveKit can run through the CLI, Rust crates, WASM, FFI/mobile bindings, a veri
     Use the CLI for auditable release artifact generation and CI checks.
   </Card>
   <Card title="Rust service">
-    Embed Rust crates when the service can own artifact loading, verification policy, and key/proof lifecycle directly.
+    Embed the crates when the service can own artifact loading, verification policy, and the proof/key lifecycle directly.
   </Card>
-  <Card title="Browser or Node.js app">
-    Use the WASM bindings when proof generation or verification must happen in JavaScript environments.
+  <Card title="Browser or Node.js">
+    Use the WASM bindings when proof generation or verification has to happen in JavaScript.
   </Card>
   <Card title="Mobile app">
-    Use the FFI-backed Swift/Kotlin path when native packaging, memory limits, and deterministic cleanup matter.
+    Use the FFI-backed Swift or Kotlin SDK when native packaging, memory limits, and deterministic cleanup matter.
   </Card>
 </CardGrid>
 
 ## Artifact rules
 
-Every integration path depends on the same artifact rules:
+Every integration path follows the same rules:
 
-1. Run `prepare` for the exact circuit source, branch, compiler backend, and hash configuration you plan to use.
-2. Keep the generated `.pkp` and `.pkv` together. Do not pair a prover key from one build with a verifier key from another build.
+1. Run `prepare` for the exact circuit source, branch, compiler backend, and hash configuration you plan to deploy.
+2. Keep the generated `.pkp` and `.pkv` together. Never pair a prover key from one build with a verifier key from another.
 3. Generate proofs from inputs intended for that circuit and key pair.
-4. Verify before crossing a trust boundary.
+4. Verify before crossing any trust boundary.
 5. Regenerate recursive-verifier artifacts after the verifier key, proof, circuit, or hash choice changes.
 6. Treat `.pkp`, `.pkv`, proofs, public inputs, `r1cs.json`, and recursive params as versioned deployment artifacts.
 
 <Aside type="caution" title="Branch-scoped artifacts">
-The `main` branch may change artifact formats. See [Project status and versioning](/reference/project-status/) before sharing artifacts across branches or releases.
+`main` may change artifact formats between commits. See [Project status and versioning](/reference/project-status/) before sharing artifacts across branches or releases.
 </Aside>
 
 ## CLI-driven services
 
-Use the CLI when CI or a server job is responsible for generating deployment artifacts.
+Use the CLI when CI or a build job is responsible for producing deployment artifacts.
 
 ```sh
 mkdir -p artifacts
@@ -69,27 +134,27 @@ cargo run --release --bin provekit-cli -- verify \
   --proof artifacts/proof.np
 ```
 
-Prefer explicit output paths in automation. Default key names depend on the enclosing Nargo package and can be surprising inside multi-package workspaces.
+Prefer explicit output paths in automation. Default key names depend on the enclosing Nargo package, which can be surprising in multi-package workspaces.
 
 ## Rust embedding
 
-Use Rust crates when your application can link ProveKit directly.
+Embed the crates when your application can link ProveKit directly.
 
-- `provekit-common` defines shared proof, key, R1CS, file, and serialization types.
-- `provekit-r1cs-compiler` lowers Noir ACIR or Mavros inputs into ProveKit proof schemes.
-- `provekit-prover` exposes the `Prove` trait for proof generation.
-- `provekit-verifier` exposes the `Verify` trait for proof verification.
-- `provekit-gnark` writes the Rust-side recursive-verifier bridge artifacts.
+- `provekit-common`, shared proof, key, R1CS, file, and serialization types.
+- `provekit-r1cs-compiler`, lowers Noir ACIR or Mavros inputs into ProveKit proof schemes.
+- `provekit-prover`, exposes the `Prove` trait for proof generation.
+- `provekit-verifier`, exposes the `Verify` trait for proof verification.
+- `provekit-gnark`, writes the Rust-side recursive-verifier bridge artifacts.
 
 Operational notes:
 
-- Native verifier values are consumed by the core `Verify` implementation; reload or clone verifier state when verifying multiple proofs in the same process.
-- Match CLI behavior in tests by reading/writing artifacts through `provekit_common::file` helpers.
-- Keep hash configuration explicit in services so deployments do not accidentally rely on a changed default.
+- Native verifier values are consumed by the `Verify` implementation; reload or clone verifier state when verifying multiple proofs in one process.
+- Match CLI behavior in tests by reading and writing artifacts through `provekit_common::file` helpers.
+- Keep the hash configuration explicit in services so deployments don't drift on a changed default.
 
 ## WASM / JavaScript
 
-`tooling/provekit-wasm` exports browser-facing bindings:
+`tooling/provekit-wasm` exports the browser-facing bindings:
 
 | Export | Purpose |
 | :--- | :--- |
@@ -105,23 +170,23 @@ Operational notes:
 | `Verifier.verifyBytes(proofJson)` | Verify proof JSON bytes. Verifier is reusable. |
 | `Verifier.verifyJs(proof)` | Verify a proof JavaScript value. Verifier is reusable. |
 
-Witness maps may be JavaScript `Map<number|string, string>` values or plain objects like `{ "0": "0x..." }`. Values must be hex strings that fit BN254 field elements.
+Witness maps may be `Map<number|string, string>` values or plain objects like `{ "0": "0x..." }`. Values must be hex strings that fit BN254 field elements.
 
 ## FFI / mobile hosts
 
-`tooling/provekit-ffi` provides a C ABI for hosts that cannot link Rust crates directly.
+`tooling/provekit-ffi` provides a C ABI for hosts that can't link Rust directly.
 
 | Function | Purpose |
 | :--- | :--- |
-| `pk_init()` | Initialize ProveKit before other FFI calls. |
+| `pk_init()` | Initialize ProveKit before any other FFI call. |
 | `pk_prove_to_file(prover_path, input_path, out_path)` | Generate a proof and write it to a file. |
 | `pk_prove_to_json(prover_path, input_path, out_buf)` | Generate a JSON proof buffer. |
 | `pk_free_buf(buf)` | Free buffers returned by FFI calls. |
 | `pk_set_allocator(alloc, dealloc)` | Configure host allocator callbacks before initialization. |
 | `pk_configure_memory(limit, file_backed, path)` | Configure the mmap allocator before `pk_init()`. |
-| `pk_get_memory_stats(...)` | Read RAM/swap/peak memory stats. |
+| `pk_get_memory_stats(...)` | Read RAM, swap, and peak memory statistics. |
 
-Build examples and Swift/Kotlin/Python snippets live in `tooling/provekit-ffi/README.md`. For mobile builds, compile the static library for each target architecture and package `tooling/provekit-ffi/include/provekit_ffi.h` with the resulting libraries.
+Swift, Kotlin, and Python examples live in `tooling/provekit-ffi/README.md`. For mobile builds, compile the static library for each target architecture and ship `tooling/provekit-ffi/include/provekit_ffi.h` alongside the resulting libraries.
 
 ## Verifier server
 
@@ -132,7 +197,7 @@ Build examples and Swift/Kotlin/Python snippets live in `tooling/provekit-ffi/RE
 | `/health` | `GET` | Return server health, version, and timestamp. |
 | `/verify` | `POST` | Verify a JSON proof using downloaded artifacts. |
 
-A verification request contains:
+A verification request looks like:
 
 ```json
 {
@@ -141,16 +206,12 @@ A verification request contains:
   "pkUrl": "https://example.com/proving_key.bin",
   "vkUrl": "https://example.com/verification_key.bin",
   "np": { "proof": "NoirProof JSON fields" },
-  "verificationParams": {
-    "maxVerificationTime": 300
-  },
-  "metadata": {
-    "requestId": "request-123"
-  }
+  "verificationParams": { "maxVerificationTime": 300 },
+  "metadata": { "requestId": "request-123" }
 }
 ```
 
-`pkUrl`, `vkUrl`, `verificationParams`, and `metadata` are optional. Artifact URLs must use HTTP or HTTPS. The server defaults to one concurrent verification and a 10 MiB request body limit; tune those with the `VERIFIER_*` environment variables documented in `tooling/verifier-server/README.md`.
+`pkUrl`, `vkUrl`, `verificationParams`, and `metadata` are optional. Artifact URLs must use HTTP or HTTPS. The server defaults to one concurrent verification and a 10 MiB request body limit, tune both through the `VERIFIER_*` environment variables documented in `tooling/verifier-server/README.md`.
 
 ## Recursive verifier / gnark
 
@@ -164,17 +225,17 @@ cargo run --release --bin provekit-cli -- generate-gnark-inputs \
   --r1cs artifacts/r1cs.json
 ```
 
-Then run the Go CLI or server from `recursive-verifier/` with those files. If recursive verifier proving or verifying keys are omitted, the Go tool can generate them for development; production deployments should manage trusted setup keys explicitly.
+Then run the Go CLI or server from `recursive-verifier/` with those files. If you omit the recursive proving and verifying keys, the Go tool can generate them for development, production deployments should manage trusted-setup keys explicitly.
 
 ## Production readiness
 
-Before shipping any integration, complete the [Production checklist](/reference/production-checklist/). At minimum, pin the branch or release, record artifact provenance, define who may generate keys, configure verifier-server limits, and add an end-to-end regeneration test in CI.
+Before shipping any integration, complete the [Production checklist](/reference/production-checklist/). At a minimum: pin the branch or release, record artifact provenance, define who may generate keys, configure verifier-server limits, and add an end-to-end regeneration test in CI.
 
 ## Platform guides
 
-The end-to-end platform pages show the supported API paths, default artifact flow, and build constraints. Run the snippets inside a real app or test target before relying on them.
+The platform pages cover the supported API paths, default artifact flow, and build constraints. Run the snippets inside a real app or test target before relying on them.
 
-- **[Rust](/e2e/rust/):** direct crate integration for services, tools, and tests.
-- **[JS / TypeScript](/e2e/js-typescript/):** browser and Node.js ProveKit WASM usage.
-- **[Swift](/e2e/swift/):** SPM integration with source-only, native, and release modes.
-- **[Kotlin](/e2e/kotlin/):** Android integration and ABI packaging caveats.
+- **[Rust](/e2e/rust/)**, direct crate integration for services, tools, and tests.
+- **[JS / TypeScript](/e2e/js-typescript/)**, browser and Node.js usage via the ProveKit WASM backend.
+- **[Swift](/e2e/swift/)**, Swift Package Manager integration with source-only, native, and release modes.
+- **[Kotlin](/e2e/kotlin/)**, Android integration with JNI packaging guidance.

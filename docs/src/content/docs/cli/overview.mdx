@@ -3,7 +3,14 @@ title: CLI overview
 description: Command reference for preparing keys, proving, verifying, inspecting circuits, and exporting recursive-verifier inputs.
 ---
 
-`provekit-cli` is the default entry point for preparing keys, proving, verifying, inspecting circuits, and exporting recursive-verifier inputs.
+`provekit-cli` is the primary entry point for preparing keys, proving, verifying, inspecting circuits, and exporting recursive-verifier inputs.
+
+**Rust API references:**
+[`provekit-common`](https://docs.rs/provekit-common) ·
+[`provekit-prover`](https://docs.rs/provekit-prover) ·
+[`provekit-verifier`](https://docs.rs/provekit-verifier) ·
+[`provekit-r1cs-compiler`](https://docs.rs/provekit-r1cs-compiler).
+Unfamiliar terms? See the [glossary](/reference/glossary/).
 
 From a source checkout, run commands through Cargo:
 
@@ -11,7 +18,7 @@ From a source checkout, run commands through Cargo:
 cargo run --release --bin provekit-cli -- <command> [options]
 ```
 
-Most examples below assume the current directory contains the Noir package's `Nargo.toml`. When in doubt, pass explicit artifact paths instead of relying on defaults.
+Most examples below assume the current directory contains a Noir package's `Nargo.toml`. When in doubt, pass explicit artifact paths instead of relying on defaults.
 
 ## Artifact defaults
 
@@ -21,10 +28,10 @@ Most examples below assume the current directory contains the Noir package's `Na
 | Verifier key | `<circuit>.pkv` | `prepare` | `verify`, `show-inputs`, `generate-gnark-inputs`, verifier server |
 | Proof | `./proof.np` | `prove` | `verify`, `show-inputs`, `generate-gnark-inputs` |
 | Noir inputs | `./Prover.toml` | User / Noir tooling | `prove` |
-| Recursive-verifier params | `./params_for_recursive_verifier` | `generate-gnark-inputs` | Go/gnark recursive verifier |
-| Recursive-verifier R1CS | `./r1cs.json` | `generate-gnark-inputs` | Go/gnark recursive verifier and verifier server |
+| Recursive params | `./params_for_recursive_verifier` | `generate-gnark-inputs` | Go/gnark recursive verifier |
+| Recursive R1CS | `./r1cs.json` | `generate-gnark-inputs` | Go/gnark recursive verifier, verifier server |
 
-Default key names come from the enclosing Nargo package name. If a command cannot infer the package, pass `--pkp`, `--pkv`, `--prover`, or `--verifier` explicitly.
+Default key names come from the enclosing Nargo package name. When a command can't infer the package, pass `--pkp`, `--pkv`, `--prover`, or `--verifier` explicitly.
 
 ## Primary workflow
 
@@ -54,11 +61,11 @@ cargo run --release --bin provekit-cli -- verify \
   --proof artifacts/proof.np
 ```
 
-Keep the `.pkp`, `.pkv`, proof, inputs, circuit source, compiler backend, and `--hash` choice aligned. Regenerate artifacts after circuit, input, branch, compiler, or hash changes.
+Keep the `.pkp`, `.pkv`, proof, inputs, circuit source, compiler backend, and `--hash` choice aligned. Regenerate artifacts after any change to the circuit, inputs, branch, compiler, or hash.
 
 ## `prepare`
 
-Compile a Noir package or Mavros artifact and write ProveKit key files.
+Compile a Noir package or Mavros artifact and write the ProveKit key files.
 
 ```sh
 provekit-cli prepare [program_path] [options]
@@ -66,11 +73,11 @@ provekit-cli prepare [program_path] [options]
 
 | Option | Purpose |
 | :--- | :--- |
-| `program_path` | Directory containing `Nargo.toml` for Noir, or basic artifacts JSON for Mavros. Defaults to `.`. |
-| `--compiler noir\|mavros` | Select the compiler backend. Defaults to `noir`. |
+| `program_path` | Directory containing `Nargo.toml` (Noir) or basic artifacts JSON (Mavros). Defaults to `.`. |
+| `--compiler noir\|mavros` | Compiler backend. Defaults to `noir`. |
 | `--r1cs <path>` | Required with `--compiler mavros`. |
-| `--package <name>` | Compile one Noir package from a workspace. |
-| `--workspace` | Compile every binary package in the Noir workspace. |
+| `--package <name>` | Compile a single Noir package from a workspace. |
+| `--workspace` | Compile every binary package in a Noir workspace. |
 | `--target-dir <path>` | Override the Noir target directory for compiled artifacts. |
 | `--deny-warnings` | Treat Noir warnings as errors. |
 | `--silence-warnings` | Suppress Noir warnings. |
@@ -86,7 +93,7 @@ Notes:
 
 - `--pkp` and `--pkv` cannot be used when compiling multiple binary packages.
 - `prepare --compiler mavros` requires both a Mavros artifacts JSON path and `--r1cs`.
-- Keys generated with one hash configuration must be used with proofs generated from the matching keys.
+- Keys generated with one hash configuration are only compatible with proofs generated from the matching keys.
 
 ## `prove`
 
@@ -117,7 +124,7 @@ provekit-cli verify [options]
 | `--verifier`, `-v <path>` | Verifier key path. Defaults to `<circuit>.pkv`. |
 | `--proof <path>` | Proof path. Defaults to `./proof.np`. |
 
-A verification failure usually means the proof, verifier key, public inputs, circuit, branch, or hash configuration do not match. Regenerate from `prepare` when any of those inputs change.
+A verification failure usually means the proof, verifier key, public inputs, circuit, branch, or hash configuration don't match. Regenerate from `prepare` when any of those inputs change.
 
 ## Inspection and export commands
 
@@ -145,7 +152,7 @@ The CLI prints span timing and memory statistics through its tracing layer. When
 | Flag | Purpose |
 | :--- | :--- |
 | `--tracy` | Enable Tracy profiling. |
-| `--tracy-allocations <depth>` | Track allocations with the requested stack depth, or `0` without stack traces. |
+| `--tracy-allocations <depth>` | Track allocations at the given stack depth (`0` for no stack traces). |
 | `--tracy-keepalive` | Keep the process alive after completion so Tracy can collect data. |
 
 Build with Tracy support before using those flags:
@@ -156,6 +163,6 @@ cargo run --release --features tracy --bin provekit-cli -- --tracy prepare
 
 ## Troubleshooting quick links
 
-- Use [Common errors](/troubleshooting/common-errors/) for setup, artifact mismatch, WASM, and verifier-server failures.
-- Use [Project status and versioning](/reference/project-status/) before mixing artifacts across branches.
-- Use [Production checklist](/reference/production-checklist/) before shipping a ProveKit-backed workflow.
+- [Common errors](/troubleshooting/common-errors/), setup, artifact mismatch, WASM, and verifier-server failures.
+- [Project status and versioning](/reference/project-status/), read before mixing artifacts across branches.
+- [Production checklist](/reference/production-checklist/), pre-launch checks for ProveKit-backed workflows.

@@ -37,8 +37,10 @@ export default defineConfig({
           label: 'Start here',
           items: [
             { label: 'Overview', link: '/' },
+            { slug: 'concepts/what-is-provekit', label: 'What is ProveKit?' },
             { slug: 'getting-started/installation' },
             { slug: 'getting-started/quickstart' },
+            { slug: 'getting-started/tutorial', label: 'Tutorial: prove without revealing' },
           ],
         },
         {
@@ -51,12 +53,14 @@ export default defineConfig({
             { slug: 'e2e/swift' },
             { slug: 'e2e/kotlin' },
             { slug: 'integrations/overview' },
+            { slug: 'reference/starter-template', label: 'Starter templates' },
           ],
         },
         {
           label: 'Concepts',
           items: [
             { slug: 'concepts/proving-flow' },
+            { slug: 'concepts/designing-circuits', label: 'Designing circuits for ProveKit' },
             { slug: 'concepts/artifact-lifecycle' },
             { slug: 'concepts/security-model' },
           ],
@@ -64,15 +68,23 @@ export default defineConfig({
         {
           label: 'Reference',
           items: [
-            { slug: 'cli/overview' },
-            { slug: 'reference/project-status' },
-            { slug: 'reference/production-checklist' },
+            { slug: 'cli/overview', label: 'CLI reference' },
+            { slug: 'reference/performance' },
+            { slug: 'reference/comparison', label: 'How ProveKit compares' },
+            { slug: 'reference/examples', label: 'Examples catalog' },
+            { slug: 'reference/error-codes', label: 'FFI error codes' },
+            { slug: 'reference/faq', label: 'FAQ' },
             { slug: 'reference/glossary' },
           ],
         },
         {
-          label: 'Troubleshooting',
-          items: [{ slug: 'troubleshooting/common-errors' }],
+          label: 'Operations',
+          items: [
+            { slug: 'reference/production-checklist' },
+            { slug: 'reference/project-status', label: 'Project status' },
+            { slug: 'reference/changelog' },
+            { slug: 'troubleshooting/common-errors', label: 'Troubleshooting' },
+          ],
         },
       ],
     }),
