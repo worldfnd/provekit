@@ -1,108 +1,418 @@
+/* ============================================================
+   PROVEKIT DESIGN SYSTEM — applied to Astro Starlight
+   Light-first. Borders, not shadows. Square corners. Outfit + Geist Mono.
+   Selectors verified against the rendered Starlight DOM.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
+
+/* ============================================================
+   1. Brand tokens
+   ============================================================ */
+
 :root {
-  --pk-brand: #0D74FF;
-  --pk-brand-strong: #0356D8;
-  --pk-brand-ink: #A2D0FC;
-  --pk-ink: #121826;
-  --pk-ink-soft: #2D3648;
-  --pk-canvas: #F8FEFF;
-  --pk-surface: #FFFFFF;
-  --pk-surface-raised: #F1F7FF;
-  --pk-border: #C9E1FA;
-  --pk-code: #0B1020;
+  --pk-ink:           #2D2D2B;
+  --pk-ink-alt:       #2D2D30;
+  --pk-mute:          #949494;
+  --pk-mute-soft:     #B7B7B7;
 
-  --sl-color-accent-low: #102542;
-  --sl-color-accent: var(--pk-brand-ink);
-  --sl-color-accent-high: #E3F2FF;
-  --sl-color-text: #EAF4FF;
-  --sl-color-text-accent: var(--pk-brand-ink);
-  --sl-color-text-invert: var(--pk-ink);
-  --sl-color-bg: #0B1020;
-  --sl-color-bg-nav: #0B1020;
-  --sl-color-bg-sidebar: #101827;
-  --sl-color-bg-inline-code: #17223A;
-  --sl-color-bg-accent: var(--pk-brand-ink);
-  --sl-color-hairline-light: #23324D;
-  --sl-color-hairline: #2F4261;
-  --sl-color-hairline-shade: #111B2D;
-  --sl-color-black: #0B1020;
-  --sl-color-white: #F8FEFF;
+  --pk-canvas:        #F8FEFF;
+  --pk-surface:       #FFFFFF;
+  --pk-surface-tint:  rgba(190, 225, 255, 0.04);
+
+  --pk-line:          #D1F5FF;
+  --pk-line-soft:     #EEF7FF;
+  --pk-line-mid:      #BCEEFF;
+
+  --pk-brand:         #0D74FF;
+  --pk-brand-hover:   #0A66E0;
+  --pk-brand-ink:     #A2D0FC;
+
+  --pk-font-sans:     "Outfit", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --pk-font-mono:     "Geist Mono", ui-monospace, "SF Mono", monospace;
 }
 
+/* ============================================================
+   2. Starlight token map — LIGHT (canonical brand mode)
+   ============================================================ */
+
+:root,
 :root[data-theme='light'] {
-  --sl-color-accent-low: #D7EBFF;
-  --sl-color-accent: var(--pk-brand);
-  --sl-color-accent-high: #053B91;
-  --sl-color-text: var(--pk-ink);
-  --sl-color-text-accent: var(--pk-brand-strong);
-  --sl-color-text-invert: var(--pk-surface);
-  --sl-color-bg: var(--pk-canvas);
-  --sl-color-bg-nav: var(--pk-ink);
-  --sl-color-bg-sidebar: var(--pk-surface);
-  --sl-color-bg-inline-code: #EAF4FF;
-  --sl-color-bg-accent: var(--pk-brand);
-  --sl-color-hairline-light: var(--pk-border);
-  --sl-color-hairline: var(--pk-border);
-  --sl-color-hairline-shade: #B8D7F7;
-  --sl-color-white: var(--pk-ink);
-  --sl-color-black: var(--pk-surface);
+  color-scheme: light;
+
+  --sl-font:                var(--pk-font-sans);
+  --sl-font-mono:           var(--pk-font-mono);
+
+  --sl-color-text:          var(--pk-ink);
+  --sl-color-text-accent:   var(--pk-brand);
+  --sl-color-text-invert:   #FFFFFF;
+
+  --sl-color-bg:            var(--pk-canvas);
+  --sl-color-bg-nav:        var(--pk-surface);
+  --sl-color-bg-sidebar:    var(--pk-surface);
+  --sl-color-bg-inline-code:var(--pk-line-soft);
+  --sl-color-bg-accent:     var(--pk-brand);
+
+  --sl-color-accent-low:    #EAF4FF;
+  --sl-color-accent:        var(--pk-brand);
+  --sl-color-accent-high:   var(--pk-brand-hover);
+
+  --sl-color-hairline-light:var(--pk-line);
+  --sl-color-hairline:      var(--pk-line);
+  --sl-color-hairline-shade:var(--pk-line-soft);
+
+  --sl-color-white:         var(--pk-ink);
+  --sl-color-black:         var(--pk-surface);
+
+  --sl-color-gray-1:        var(--pk-ink-alt);
+  --sl-color-gray-2:        var(--pk-mute);
+  --sl-color-gray-3:        var(--pk-mute);
+  --sl-color-gray-4:        var(--pk-mute-soft);
+  --sl-color-gray-5:        var(--pk-line-mid);
+  --sl-color-gray-6:        var(--pk-line);
+
+  --sl-shadow-sm:           none;
+  --sl-shadow-md:           none;
+  --sl-shadow-lg:           none;
 }
 
-html {
-  scroll-behavior: smooth;
+/* ============================================================
+   3. Starlight token map — DARK (derivative, kept for toggle users)
+   ============================================================ */
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --sl-color-text:          #EAF4FF;
+  --sl-color-text-accent:   var(--pk-brand-ink);
+  --sl-color-text-invert:   var(--pk-ink);
+
+  --sl-color-bg:            #14171C;
+  --sl-color-bg-nav:        #1A1E25;
+  --sl-color-bg-sidebar:    #1A1E25;
+  --sl-color-bg-inline-code:#1E242F;
+  --sl-color-bg-accent:     var(--pk-brand-ink);
+
+  --sl-color-accent-low:    #102542;
+  --sl-color-accent:        var(--pk-brand-ink);
+  --sl-color-accent-high:   #E3F2FF;
+
+  --sl-color-hairline-light:#2D3648;
+  --sl-color-hairline:      #2D3648;
+  --sl-color-hairline-shade:#1F2A3A;
+
+  --sl-color-white:         #EAF4FF;
+  --sl-color-black:         #14171C;
+
+  --sl-color-gray-1:        #EAF4FF;
+  --sl-color-gray-2:        #9AA8BC;
+  --sl-color-gray-3:        #7B8CA3;
+  --sl-color-gray-4:        #4A5A73;
+  --sl-color-gray-5:        #2D3648;
+  --sl-color-gray-6:        #1F2A3A;
 }
+
+/* ============================================================
+   4. Body type
+   ============================================================ */
+
+html { scroll-behavior: smooth; }
 
 body {
-  letter-spacing: -0.006em;
+  font-family: var(--pk-font-sans);
+  font-weight: 400;
+  letter-spacing: -0.005em;
 }
 
-.site-title img {
-  max-width: min(12rem, 48vw);
-}
-
-.header {
-  border-bottom-color: var(--sl-color-hairline);
-  box-shadow: 0 1px 0 rgb(255 255 255 / 0.04);
-}
-
-:root[data-theme='light'] .sidebar-pane {
-  box-shadow: 1px 0 0 var(--sl-color-hairline);
-}
-
-:root[data-theme='light'] .main-pane {
-  background:
-    radial-gradient(circle at top left, rgb(13 116 255 / 0.08), transparent 24rem),
-    var(--pk-canvas);
-}
-
-.sl-markdown-content a:not(:where(.not-content *)) {
-  color: var(--sl-color-text-accent);
-  text-underline-offset: 0.16em;
-}
-
-.sl-markdown-content :is(h2, h3):not(:where(.not-content *)) {
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6):not(:where(.not-content *)) {
+  font-family: var(--pk-font-sans);
+  font-weight: 500;
   letter-spacing: -0.02em;
 }
 
-.sl-markdown-content table:not(:where(.not-content *)) {
-  font-size: 0.94rem;
-}
-
-.sl-markdown-content code:not(:where(pre code, .not-content *)) {
-  border: 1px solid var(--sl-color-hairline-light);
-  border-radius: 0.35rem;
-  padding: 0.08rem 0.32rem;
-}
+.sl-markdown-content h2:not(:where(.not-content *)) { font-size: 1.65rem; }
+.sl-markdown-content h3:not(:where(.not-content *)) { font-size: 1.22rem; }
 
 .sl-markdown-content .lead {
-  color: var(--sl-color-gray-2);
-  font-size: clamp(1.05rem, 0.98rem + 0.35vw, 1.22rem);
-  line-height: 1.65;
+  color: var(--sl-color-text);
+  font-weight: 400;
+  font-size: clamp(1.1rem, 1rem + 0.5vw, 1.32rem);
+  line-height: 1.55;
   margin-top: 0;
 }
 
-:root[data-theme='light'] .sl-markdown-content .lead {
-  color: var(--pk-ink-soft);
+:root[data-theme='dark'] .sl-markdown-content .lead {
+  color: #C5D6EE;
 }
+
+/* ============================================================
+   5. Sidebar — group labels in Geist Mono ALL CAPS
+   Actual DOM: <summary><span class="group-label"><span class="large">Title</span></span></summary>
+   ============================================================ */
+
+.sidebar-content .group-label,
+.sidebar-content .group-label .large {
+  font-family: var(--pk-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+  font-size: 0.78rem;
+}
+
+.sidebar-content .top-level > li > details > summary {
+  padding-block: 0.5rem;
+}
+
+/* Sidebar links */
+.sidebar-content ul a {
+  font-family: var(--pk-font-sans);
+  font-size: 0.95rem;
+}
+
+/* Current page indicator */
+.sidebar-content ul a[aria-current="page"] {
+  background: var(--pk-line-soft);
+  color: var(--pk-brand);
+  border-inline-start: 2px solid var(--pk-brand);
+}
+
+:root[data-theme='dark'] .sidebar-content ul a[aria-current="page"] {
+  background: #102542;
+  color: var(--pk-brand-ink);
+  border-inline-start-color: var(--pk-brand-ink);
+}
+
+/* ============================================================
+   6. Right sidebar — TOC heading in mono uppercase
+   ============================================================ */
+
+.right-sidebar-panel h2 {
+  font-family: var(--pk-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+  font-size: 0.74rem;
+  color: var(--pk-mute);
+}
+
+/* ============================================================
+   7. Header
+   ============================================================ */
+
+.header {
+  background: var(--sl-color-bg-nav);
+  border-bottom: 1px solid var(--sl-color-hairline);
+  box-shadow: none;
+}
+
+.header :is(a, button, select),
+.header .icon {
+  color: var(--sl-color-text);
+}
+
+.header [data-open-modal] {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0;
+  background: var(--sl-color-bg);
+}
+
+.header [data-open-modal] kbd {
+  background: var(--pk-line-soft);
+  color: var(--pk-brand);
+  border-radius: 0;
+}
+
+:root[data-theme='dark'] .header [data-open-modal] kbd {
+  background: #1F2A3A;
+  color: var(--pk-brand-ink);
+}
+
+.site-title img { max-width: min(12rem, 48vw); }
+
+/* ============================================================
+   8. Cards (both Card and LinkCard render as <article class="card">)
+   ============================================================ */
+
+.card {
+  border-radius: 0 !important;
+  border: 1px solid var(--sl-color-hairline) !important;
+  background: var(--sl-color-bg-nav) !important;
+  box-shadow: none !important;
+  transition: border-color 120ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              background    120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.card:hover {
+  border-color: var(--pk-brand);
+}
+
+:root[data-theme='dark'] .card:hover {
+  border-color: var(--pk-brand-ink);
+}
+
+/* The CardGrid wrapper */
+.card-grid { gap: 0.75rem; }
+
+/* ============================================================
+   9. Asides
+   ============================================================ */
+
+.starlight-aside {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  border-inline-start-width: 3px;
+}
+
+/* ============================================================
+   10. Hero CTAs — square, mono uppercase
+   Actual class: <a class="sl-link-button not-content primary">
+   ============================================================ */
+
+.sl-link-button {
+  border-radius: 0 !important;
+  font-family: var(--pk-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.sl-link-button.primary {
+  background: var(--pk-brand);
+  color: #FFFFFF;
+  border-color: var(--pk-brand);
+}
+
+.sl-link-button.primary:hover {
+  background: var(--pk-brand-hover);
+  border-color: var(--pk-brand-hover);
+  color: #FFFFFF;
+}
+
+.sl-link-button:not(.primary) {
+  border: 1px solid var(--sl-color-hairline);
+  color: var(--sl-color-text);
+  background: var(--sl-color-bg-nav);
+}
+
+.sl-link-button:not(.primary):hover {
+  background: var(--pk-line-soft);
+  border-color: var(--pk-line-mid);
+}
+
+:root[data-theme='dark'] .sl-link-button:not(.primary):hover {
+  background: #1F2A3A;
+  border-color: var(--pk-brand);
+}
+
+/* Hero text */
+.hero h1 {
+  font-family: var(--pk-font-sans);
+  font-weight: 500;
+  letter-spacing: -0.025em;
+}
+
+.hero .tagline {
+  font-family: var(--pk-font-sans);
+  color: var(--pk-mute);
+  font-weight: 400;
+}
+
+:root[data-theme='dark'] .hero .tagline {
+  color: #9AA8BC;
+}
+
+/* Subtle bloom behind hero */
+.hero { position: relative; }
+
+.hero::after {
+  content: '';
+  position: absolute;
+  inset-block-start: -3rem;
+  inset-inline-end: -3rem;
+  width: min(40vw, 28rem);
+  height: 22rem;
+  background: radial-gradient(circle, color-mix(in srgb, var(--pk-brand), transparent 88%), transparent 60%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+:root[data-theme='dark'] .hero::after {
+  background: radial-gradient(circle, color-mix(in srgb, var(--pk-brand-ink), transparent 85%), transparent 60%);
+}
+
+/* ============================================================
+   11. Links + inline code
+   ============================================================ */
+
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sl-color-text-accent);
+  text-decoration-color: color-mix(in srgb, var(--sl-color-text-accent), transparent 60%);
+  text-underline-offset: 0.18em;
+}
+
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  text-decoration-color: var(--sl-color-text-accent);
+}
+
+.sl-markdown-content code:not(:where(pre code, .not-content *)) {
+  background: var(--sl-color-bg-inline-code);
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0;
+  padding: 0.05rem 0.35rem;
+  font-family: var(--pk-font-mono);
+  font-size: 0.92em;
+}
+
+/* ============================================================
+   12. Tables — header row in mono uppercase
+   ============================================================ */
+
+.sl-markdown-content table:not(:where(.not-content *)) {
+  border-collapse: collapse;
+  font-size: 0.94rem;
+}
+
+.sl-markdown-content table:not(:where(.not-content *)) th,
+.sl-markdown-content table:not(:where(.not-content *)) td {
+  border-color: var(--sl-color-hairline);
+}
+
+.sl-markdown-content table:not(:where(.not-content *)) th {
+  background: var(--pk-line-soft);
+  color: var(--pk-ink);
+  font-family: var(--pk-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-weight: 500;
+  font-size: 0.78rem;
+}
+
+:root[data-theme='dark'] .sl-markdown-content table:not(:where(.not-content *)) th {
+  background: #1F2A3A;
+  color: #EAF4FF;
+}
+
+/* ============================================================
+   13. Code blocks (Expressive Code)
+   Actual structure: <figure class="expressive-code"> > <figure class="frame">
+   ============================================================ */
+
+.expressive-code .frame {
+  border-radius: 0 !important;
+}
+
+.expressive-code .frame pre {
+  border-radius: 0 !important;
+}
+
+.expressive-code .copy button {
+  border-radius: 0 !important;
+}
+
+/* ============================================================
+   14. pk-* components (legacy classes used in MDX content)
+   ============================================================ */
 
 .pk-pill-row {
   display: flex;
@@ -110,154 +420,72 @@ body {
   gap: 0.5rem;
   margin: 1rem 0 1.5rem;
 }
-
-.pk-pill-row > * {
-  margin-top: 0 !important;
-}
+.pk-pill-row > * { margin-top: 0 !important; }
 
 .pk-pill {
   border: 1px solid var(--sl-color-hairline);
-  border-radius: 999rem;
-  color: var(--sl-color-gray-2);
-  font-size: var(--sl-text-sm);
-  padding: 0.25rem 0.7rem;
-}
-
-:root[data-theme='light'] .pk-pill {
-  background: rgb(255 255 255 / 0.72);
-  color: var(--pk-ink-soft);
+  border-radius: 0;
+  color: var(--pk-mute);
+  font-family: var(--pk-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.72rem;
+  padding: 0.3rem 0.65rem;
+  background: var(--sl-color-bg-nav);
 }
 
 .pk-metric-grid {
-  align-items: stretch;
   display: grid;
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
   margin: 1.5rem 0;
 }
-
-.pk-metric-grid > * {
-  margin-top: 0 !important;
-}
+.pk-metric-grid > * { margin-top: 0 !important; }
 
 .pk-metric {
+  background: var(--sl-color-bg-nav);
   border: 1px solid var(--sl-color-hairline);
-  border-radius: 0.75rem;
-  background: rgb(255 255 255 / 0.035);
-  padding: 1rem;
+  border-radius: 0;
+  padding: 1.25rem;
 }
-
-.pk-metric > * {
-  margin-top: 0 !important;
-}
+.pk-metric > * { margin-top: 0 !important; }
 
 .pk-metric strong {
-  color: var(--sl-color-white);
   display: block;
-  font-size: 1.35rem;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
+  color: var(--sl-color-text);
+  font-family: var(--pk-font-mono);
+  font-weight: 500;
+  font-size: 1.05rem;
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.15;
 }
 
 .pk-metric span {
-  color: var(--sl-color-gray-3);
   display: block;
-  font-size: var(--sl-text-sm);
-  margin-top: 0.35rem;
+  color: var(--pk-mute);
+  font-size: 0.88rem;
+  margin-top: 0.4rem;
+  line-height: 1.4;
 }
 
-:root[data-theme='light'] .pk-metric {
-  background: rgb(255 255 255 / 0.82);
-}
-
-:root[data-theme='light'] .pk-metric strong {
-  color: var(--pk-ink);
-}
-
-:root[data-theme='light'] .pk-metric span {
-  color: var(--pk-ink-soft);
-}
-
-.card,
-.sl-link-card,
-.starlight-aside {
-  border-radius: 0.8rem;
-}
-
-:root[data-theme='light'] .card,
-:root[data-theme='light'] .sl-link-card {
-  background: rgb(255 255 255 / 0.84);
-}
-
-.sl-link-card {
-  transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
-}
-
-.sl-link-card:hover {
-  transform: translateY(-1px);
-}
-
-.hero {
-  position: relative;
-}
-
-.hero::after {
-  background: radial-gradient(circle, rgb(13 116 255 / 0.16), transparent 60%);
-  content: '';
-  height: 24rem;
-  inset-block-start: 0;
-  inset-inline-end: 0;
-  pointer-events: none;
-  position: absolute;
-  width: min(42vw, 28rem);
-  z-index: -1;
-}
-
-/* Keep Starlight's semantic light-mode variables intact while using a dark,
-   branded header in both themes. */
-.header {
-  background: var(--pk-ink);
-}
-
-.header :is(a, button, select),
-.header .icon {
-  color: var(--pk-brand-ink);
-}
-
-.header select {
-  background-color: transparent;
-}
-
-.header option {
-  color: var(--pk-ink);
-}
-
-.header [data-open-modal] {
-  border-color: color-mix(in srgb, var(--pk-brand-ink), transparent 30%);
-  background: color-mix(in srgb, var(--pk-ink), black 18%);
-}
-
-.header [data-open-modal] kbd {
-  background: var(--pk-canvas);
-  color: var(--pk-brand-strong);
-}
+/* ============================================================
+   15. pk-flow — multi-row pipeline diagram
+   ============================================================ */
 
 .pk-flow {
+  background: var(--sl-color-bg-nav);
   border: 1px solid var(--sl-color-hairline);
-  border-radius: 1rem;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--sl-color-bg), var(--sl-color-accent-low) 18%), var(--sl-color-bg));
-  box-shadow: var(--sl-shadow-sm);
+  border-radius: 0;
+  box-shadow: none;
   margin: 1.5rem 0 2rem;
   overflow-x: auto;
-  padding: 1rem;
+  padding: 1.25rem;
 }
 
 .pk-flow > *,
 .pk-flow-row > *,
-.pk-flow-node > * {
-  margin-top: 0 !important;
-}
+.pk-flow-node > * { margin-top: 0 !important; }
 
 .pk-flow-row {
   align-items: stretch;
@@ -269,28 +497,20 @@ body {
   width: 100%;
 }
 
-.pk-flow-row--two {
-  grid-template-columns: minmax(10rem, 12rem) 2rem minmax(10rem, 13rem);
-}
-
-.pk-flow-row--three {
-  grid-template-columns: minmax(9rem, 10.5rem) 2rem minmax(9rem, 10.5rem) 2rem minmax(9rem, 10.5rem);
-}
-
-.pk-flow-row--wide {
-  grid-template-columns: minmax(10rem, 12rem) 2rem minmax(11rem, 13.5rem) 2rem minmax(10rem, 13rem);
-}
+.pk-flow-row--two   { grid-template-columns: minmax(10rem, 12rem) 2rem minmax(10rem, 13rem); }
+.pk-flow-row--three { grid-template-columns: minmax(9rem, 10.5rem) 2rem minmax(9rem, 10.5rem) 2rem minmax(9rem, 10.5rem); }
+.pk-flow-row--wide  { grid-template-columns: minmax(10rem, 12rem) 2rem minmax(11rem, 13.5rem) 2rem minmax(10rem, 13rem); }
 
 .pk-flow-node {
   align-items: center;
-  border: 1px solid var(--sl-color-hairline-light);
-  border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--sl-color-bg), var(--sl-color-bg-accent) 8%);
-  box-sizing: border-box;
-  color: var(--sl-color-white);
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0;
+  background: var(--sl-color-bg-nav);
+  color: var(--sl-color-text);
   display: flex;
   flex-direction: column;
-  font-weight: 650;
+  font-family: var(--pk-font-sans);
+  font-weight: 500;
   justify-content: center;
   line-height: 1.25;
   min-height: 4.1rem;
@@ -301,52 +521,45 @@ body {
 }
 
 .pk-flow-node--accent {
-  border-color: color-mix(in srgb, var(--sl-color-accent), transparent 25%);
-  background: color-mix(in srgb, var(--sl-color-accent-low), var(--sl-color-bg) 28%);
+  background: var(--pk-line-soft);
+  border-color: var(--pk-brand-ink);
+}
+
+:root[data-theme='dark'] .pk-flow-node--accent {
+  background: #1F2A3A;
+  border-color: var(--pk-brand);
 }
 
 .pk-flow-node--output {
-  border-color: color-mix(in srgb, var(--sl-color-accent), transparent 10%);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sl-color-accent), transparent 70%);
+  border-color: var(--pk-brand);
 }
 
 .pk-flow-arrow {
   align-items: center;
-  color: var(--sl-color-text-accent);
+  color: var(--pk-brand);
   display: flex;
   font-size: 1.35rem;
-  font-weight: 800;
+  font-weight: 600;
   justify-content: center;
   line-height: 1;
   min-width: 2rem;
 }
 
 .pk-flow-split {
-  border-top: 1px solid var(--sl-color-hairline-light);
+  border-top: 1px solid var(--sl-color-hairline);
   margin-top: 1rem;
   padding-top: 1rem;
 }
 
 .pk-flow-caption {
-  color: var(--sl-color-gray-3);
+  color: var(--pk-mute);
   display: block;
-  font-size: var(--sl-text-xs);
-  font-weight: 500;
-  margin-top: 0.25rem;
-}
-
-:root[data-theme='light'] .pk-flow {
-  background:
-    radial-gradient(circle at top left, rgb(13 116 255 / 0.10), transparent 16rem),
-    rgb(255 255 255 / 0.72);
-}
-
-:root[data-theme='light'] .pk-flow-node {
-  background: rgb(255 255 255 / 0.86);
-}
-
-:root[data-theme='light'] .pk-flow-node--accent {
-  background: color-mix(in srgb, var(--sl-color-accent-low), white 45%);
+  font-family: var(--pk-font-mono);
+  font-size: 0.65rem;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-top: 0.3rem;
 }
 
 @media (max-width: 42rem) {
@@ -359,9 +572,7 @@ body {
     flex-direction: column;
   }
 
-  .pk-flow-node {
-    width: 100%;
-  }
+  .pk-flow-node { width: 100%; }
 
   .pk-flow-arrow {
     align-self: center;
@@ -370,14 +581,15 @@ body {
   }
 }
 
-/* Architecture overview SVG ------------------------------------------- */
+/* ============================================================
+   16. pk-arch SVG — architecture overview
+   ============================================================ */
 
 .pk-arch-svg {
   border: 1px solid var(--sl-color-hairline);
-  border-radius: 1rem;
-  background:
-    linear-gradient(135deg, color-mix(in srgb, var(--sl-color-bg), var(--sl-color-accent-low) 22%), var(--sl-color-bg));
-  box-shadow: var(--sl-shadow-sm);
+  border-radius: 0;
+  background: var(--sl-color-bg-nav);
+  box-shadow: none;
   display: block;
   height: auto;
   margin: 1.5rem 0 1.75rem;
@@ -387,94 +599,364 @@ body {
 
 .pk-arch-edges path {
   fill: none;
-  stroke: color-mix(in srgb, var(--sl-color-accent), transparent 30%);
+  stroke: var(--pk-brand);
   stroke-width: 1.6;
 }
 
 .pk-arch-edges marker path,
 .pk-arch-svg marker path {
-  fill: color-mix(in srgb, var(--sl-color-accent), transparent 30%);
+  fill: var(--pk-brand);
   stroke: none;
 }
 
 .pk-arch-node {
-  fill: color-mix(in srgb, var(--sl-color-bg), var(--sl-color-accent-low) 8%);
-  stroke: var(--sl-color-hairline);
+  fill: var(--sl-color-bg-nav);
+  stroke: var(--pk-line-mid);
   stroke-width: 1.25;
 }
 
+:root[data-theme='dark'] .pk-arch-node {
+  stroke: #2D3648;
+}
+
 .pk-arch-node--source {
-  fill: color-mix(in srgb, var(--sl-color-accent-low), var(--sl-color-bg) 30%);
-  stroke: color-mix(in srgb, var(--sl-color-accent), transparent 25%);
+  fill: var(--pk-line-soft);
+  stroke: var(--pk-brand);
 }
 
-.pk-arch-node--cmd {
-  fill: color-mix(in srgb, var(--sl-color-bg), var(--sl-color-accent-low) 22%);
-  stroke: color-mix(in srgb, var(--sl-color-accent), transparent 40%);
+:root[data-theme='dark'] .pk-arch-node--source {
+  fill: #1F2A3A;
 }
 
+.pk-arch-node--cmd { stroke: var(--pk-brand); }
 .pk-arch-node--artifact {
-  fill: color-mix(in srgb, var(--sl-color-bg), transparent 0%);
-  stroke: color-mix(in srgb, var(--sl-color-accent), transparent 20%);
+  stroke: var(--pk-brand);
   stroke-dasharray: 4 3;
 }
-
 .pk-arch-node--optional {
-  fill: color-mix(in srgb, var(--sl-color-bg), var(--sl-color-accent-low) 6%);
-  stroke: color-mix(in srgb, var(--sl-color-accent), transparent 60%);
+  stroke: var(--pk-brand-ink);
   stroke-dasharray: 2 3;
 }
 
 .pk-arch-label {
-  fill: var(--sl-color-white);
-  font: 600 13.5px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  fill: var(--sl-color-text);
+  font-family: var(--pk-font-sans);
+  font-weight: 500;
+  font-size: 13.5px;
   letter-spacing: -0.005em;
   text-anchor: middle;
 }
 
 .pk-arch-sub {
-  fill: var(--sl-color-gray-3);
-  font: 500 11px ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  fill: var(--pk-mute);
+  font-family: var(--pk-font-mono);
+  font-weight: 400;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
   text-anchor: middle;
 }
 
-:root[data-theme='light'] .pk-arch-svg {
-  background:
-    radial-gradient(circle at top left, rgb(13 116 255 / 0.10), transparent 18rem),
-    rgb(255 255 255 / 0.78);
+/* ============================================================
+   17. Pagination — bordered prev/next blocks, mono "Next/Prev"
+   ============================================================ */
+
+.pagination-links {
+  gap: 0.75rem;
 }
 
-:root[data-theme='light'] .pk-arch-node {
-  fill: rgb(255 255 255 / 0.92);
-  stroke: var(--pk-border);
+.pagination-links a {
+  border: 1px solid var(--sl-color-hairline) !important;
+  border-radius: 0 !important;
+  background: var(--sl-color-bg-nav) !important;
+  padding: 1rem 1.25rem !important;
+  transition: border-color 120ms cubic-bezier(0.2, 0.8, 0.2, 1),
+              background    120ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-:root[data-theme='light'] .pk-arch-node--source {
-  fill: color-mix(in srgb, var(--pk-brand-ink), white 60%);
-  stroke: var(--pk-brand);
+.pagination-links a:hover {
+  border-color: var(--pk-brand) !important;
+  background: var(--pk-line-soft) !important;
 }
 
-:root[data-theme='light'] .pk-arch-node--cmd {
-  fill: color-mix(in srgb, var(--pk-brand-ink), white 78%);
-  stroke: var(--pk-brand);
+:root[data-theme='dark'] .pagination-links a:hover {
+  background: #1F2A3A !important;
+  border-color: var(--pk-brand-ink) !important;
 }
 
-:root[data-theme='light'] .pk-arch-node--artifact {
-  stroke: var(--pk-brand);
+.pagination-links a > span > br + .link-title {
+  font-family: var(--pk-font-sans);
+  font-weight: 500;
+  letter-spacing: -0.005em;
 }
 
-:root[data-theme='light'] .pk-arch-label {
-  fill: var(--pk-ink);
+.pagination-links .link-title {
+  font-family: var(--pk-font-sans);
+  font-weight: 500;
+  letter-spacing: -0.005em;
 }
 
-:root[data-theme='light'] .pk-arch-sub {
-  fill: var(--pk-ink-soft);
+/* "Next" / "Previous" label */
+.pagination-links a > span {
+  font-family: var(--pk-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.72rem;
+  color: var(--pk-mute);
 }
 
-:root[data-theme='light'] .pk-arch-edges path {
-  stroke: var(--pk-brand);
+.pagination-links a > span > .link-title {
+  text-transform: none;
+  letter-spacing: -0.005em;
+  font-size: 1rem;
+  color: var(--sl-color-text);
+  font-family: var(--pk-font-sans);
 }
 
-:root[data-theme='light'] .pk-arch-svg marker path {
-  fill: var(--pk-brand);
+/* ============================================================
+   18. Right-sidebar TOC items — active highlight
+   ============================================================ */
+
+.right-sidebar-panel a {
+  font-family: var(--pk-font-sans);
+  font-size: 0.85rem;
+}
+
+.right-sidebar-panel a[aria-current="true"],
+.right-sidebar-panel a.display-current {
+  color: var(--pk-brand) !important;
+  font-weight: 500;
+}
+
+:root[data-theme='dark'] .right-sidebar-panel a[aria-current="true"],
+:root[data-theme='dark'] .right-sidebar-panel a.display-current {
+  color: var(--pk-brand-ink) !important;
+}
+
+/* ============================================================
+   19. Asides — brand-palette accent overrides
+   Default Starlight: note=blue, tip=green, caution=yellow, danger=red
+   Brand:             note=brand, tip=cyan-ink, caution=orange, danger=pink
+   ============================================================ */
+
+.starlight-aside--note {
+  --sl-color-asides-text-accent: var(--pk-brand);
+  --sl-color-asides-border:      var(--pk-brand);
+  background: color-mix(in srgb, var(--pk-brand), white 92%);
+  border-color: var(--pk-brand);
+}
+
+.starlight-aside--tip {
+  --sl-color-asides-text-accent: var(--pk-brand);
+  --sl-color-asides-border:      var(--pk-brand-ink);
+  background: var(--pk-line-soft);
+  border-color: var(--pk-brand-ink);
+}
+
+.starlight-aside--caution {
+  --sl-color-asides-text-accent: #B5651D;
+  --sl-color-asides-border:      var(--pk-bloom-orange, #FDCC91);
+  background: color-mix(in srgb, var(--pk-bloom-orange, #FDCC91), white 70%);
+  border-color: var(--pk-bloom-orange, #FDCC91);
+}
+
+.starlight-aside--danger {
+  --sl-color-asides-text-accent: #C53030;
+  --sl-color-asides-border:      var(--pk-bloom-pink, #FF9AA0);
+  background: color-mix(in srgb, var(--pk-bloom-pink, #FF9AA0), white 78%);
+  border-color: var(--pk-bloom-pink, #FF9AA0);
+}
+
+:root[data-theme='dark'] .starlight-aside--note {
+  background: color-mix(in srgb, var(--pk-brand), #15171B 80%);
+}
+:root[data-theme='dark'] .starlight-aside--tip {
+  background: #1F2A3A;
+}
+:root[data-theme='dark'] .starlight-aside--caution {
+  background: color-mix(in srgb, var(--pk-bloom-orange, #FDCC91), #15171B 80%);
+}
+:root[data-theme='dark'] .starlight-aside--danger {
+  background: color-mix(in srgb, var(--pk-bloom-pink, #FF9AA0), #15171B 82%);
+}
+
+.starlight-aside__title {
+  font-family: var(--pk-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+/* ============================================================
+   20. Code frame — explicit brand background + cyan border
+   ============================================================ */
+
+.expressive-code {
+  margin-block: 1.25rem;
+}
+
+.expressive-code .frame {
+  border: 1px solid var(--sl-color-hairline) !important;
+  background: var(--sl-color-bg-nav) !important;
+  box-shadow: none !important;
+}
+
+.expressive-code .frame pre {
+  background: var(--sl-color-bg-nav) !important;
+}
+
+.expressive-code .frame .header {
+  background: var(--pk-line-soft) !important;
+  border-bottom: 1px solid var(--sl-color-hairline) !important;
+}
+
+:root[data-theme='dark'] .expressive-code .frame .header {
+  background: #1F2A3A !important;
+}
+
+.expressive-code .frame .title {
+  font-family: var(--pk-font-mono) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.02em !important;
+  font-size: 0.72rem !important;
+  color: var(--pk-mute) !important;
+}
+
+.expressive-code .copy button {
+  border: 1px solid var(--sl-color-hairline) !important;
+  background: var(--sl-color-bg-nav) !important;
+}
+
+/* ============================================================
+   21. Dialog / search modal — square + cyan border
+   ============================================================ */
+
+.dialog-frame,
+dialog.dialog-frame,
+[role="dialog"] {
+  border-radius: 0 !important;
+  border: 1px solid var(--sl-color-hairline) !important;
+  box-shadow: none !important;
+  background: var(--sl-color-bg-nav) !important;
+}
+
+/* Pagefind search results inside dialog */
+.dialog-frame input,
+.dialog-frame [role="listbox"],
+.dialog-frame [role="option"] {
+  border-radius: 0 !important;
+}
+
+.dialog-frame [role="option"][aria-selected="true"] {
+  background: var(--pk-line-soft) !important;
+  color: var(--pk-brand) !important;
+}
+
+/* ============================================================
+   22. Misc content — hr, kbd, blockquote, mark
+   ============================================================ */
+
+.sl-markdown-content hr {
+  border: 0;
+  border-top: 1px solid var(--sl-color-hairline);
+  margin-block: 2rem;
+}
+
+.sl-markdown-content kbd {
+  background: var(--pk-line-soft);
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0;
+  padding: 0.05rem 0.4rem;
+  font-family: var(--pk-font-mono);
+  font-size: 0.85em;
+  color: var(--pk-brand);
+}
+
+:root[data-theme='dark'] .sl-markdown-content kbd {
+  background: #1F2A3A;
+  color: var(--pk-brand-ink);
+}
+
+.sl-markdown-content blockquote {
+  border-inline-start: 3px solid var(--pk-brand);
+  padding-inline-start: 1.25rem;
+  color: var(--sl-color-text);
+  background: var(--pk-line-soft);
+  padding-block: 0.5rem;
+  border-radius: 0;
+}
+
+:root[data-theme='dark'] .sl-markdown-content blockquote {
+  background: #1F2A3A;
+}
+
+.sl-markdown-content mark {
+  background: color-mix(in srgb, var(--pk-bloom-orange, #FDCC91), white 30%);
+  color: var(--pk-ink);
+  padding: 0 0.2em;
+  border-radius: 0;
+}
+
+/* ============================================================
+   23. Scrollbars (Chromium / WebKit)
+   ============================================================ */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--sl-color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--sl-color-hairline);
+  border-radius: 0;
+  border: 2px solid var(--sl-color-bg);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--pk-brand-ink);
+}
+
+:root[data-theme='dark'] ::-webkit-scrollbar-thumb:hover {
+  background: var(--pk-brand);
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sl-color-hairline) var(--sl-color-bg);
+}
+
+/* ============================================================
+   24. Sidebar caret — explicit brand-aware coloring
+   ============================================================ */
+
+.sidebar-content .caret {
+  color: var(--pk-mute);
+  transition: transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+details[open] > summary .caret {
+  transform: rotate(90deg);
+}
+
+/* ============================================================
+   25. Footer / meta line
+   ============================================================ */
+
+footer .meta a,
+footer .meta p {
+  font-family: var(--pk-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.72rem;
+  color: var(--pk-mute);
+}
+
+footer .meta a:hover {
+  color: var(--pk-brand);
 }
