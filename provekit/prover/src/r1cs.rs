@@ -1,77 +1,17 @@
+#[cfg(test)]
+use provekit_common::R1CS;
 use {
     crate::witness::witness_builder::WitnessBuilderSolver,
     acir::native_types::WitnessMap,
-    anyhow::{Context, Result},
+    anyhow::Result,
     provekit_common::{
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
-        FieldElement, NoirElement, TranscriptSponge, R1CS,
+        FieldElement, NoirElement, TranscriptSponge,
     },
     tracing::instrument,
     whir::transcript::ProverState,
 };
-
-/// Serialized R1CS matrices held as a compact postcard blob.
-///
-/// The R1CS is only needed during the sumcheck phase. Compressing it
-/// into a serialized blob frees that memory during the commit phase,
-/// then decompresses when the sumcheck begins.
-pub struct CompressedR1CS {
-    num_constraints: usize,
-    num_witnesses:   usize,
-    blob:            Vec<u8>,
-}
-
-/// Serialized witness builder layers held as a compact postcard blob.
-///
-/// Same strategy as [`CompressedR1CS`]: the w2 layers are not needed
-/// until challenge-dependent witness solving, so we compress them to
-/// free memory during the w1 commit.
-pub struct CompressedLayers {
-    blob: Vec<u8>,
-}
-
-impl CompressedLayers {
-    pub fn compress(layers: LayeredWitnessBuilders) -> Result<Self> {
-        let blob = postcard::to_allocvec(&layers)
-            .context("LayeredWitnessBuilders serialization failed")?;
-        Ok(Self { blob })
-    }
-
-    pub fn decompress(self) -> Result<LayeredWitnessBuilders> {
-        postcard::from_bytes(&self.blob).context("LayeredWitnessBuilders deserialization failed")
-    }
-}
-
-impl CompressedR1CS {
-    pub fn compress(r1cs: R1CS) -> Result<Self> {
-        let num_constraints = r1cs.num_constraints();
-        let num_witnesses = r1cs.num_witnesses();
-        let blob = postcard::to_allocvec(&r1cs).context("R1CS serialization failed")?;
-        drop(r1cs);
-        Ok(Self {
-            num_constraints,
-            num_witnesses,
-            blob,
-        })
-    }
-
-    pub fn decompress(self) -> Result<R1CS> {
-        postcard::from_bytes(&self.blob).context("R1CS deserialization failed")
-    }
-
-    pub const fn num_constraints(&self) -> usize {
-        self.num_constraints
-    }
-
-    pub const fn num_witnesses(&self) -> usize {
-        self.num_witnesses
-    }
-
-    pub fn blob_len(&self) -> usize {
-        self.blob.len()
-    }
-}
 
 #[cfg(test)]
 pub trait R1CSSolver {
