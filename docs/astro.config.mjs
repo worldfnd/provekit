@@ -12,7 +12,9 @@ export default defineConfig({
       tagline: 'Noir to WHIR proofs, from first proof to production integration.',
       favicon: '/favicon.svg',
       logo: {
-        src: './src/assets/logo.svg',
+        // Dark wordmark for light mode (ink #2D2D2B), pale brand-ink for dark mode.
+        light: './src/assets/logo-light.svg',
+        dark: './src/assets/logo.svg',
         alt: 'ProveKit',
         replacesTitle: true,
       },

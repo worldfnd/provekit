@@ -26,8 +26,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-provekit-common   = "0.1.4"
-provekit-verifier = "0.1.4"
+provekit-common   = "1.0.0"
+provekit-verifier = "1.0.0"
 axum              = "0.7"      # or actix, tonic, etc.
 serde             = { version = "1", features = ["derive"] }
 tokio             = { version = "1", features = ["full"] }
@@ -63,7 +63,7 @@ Use this when the user is on iOS or Android and the secret never leaves their de
 
 | Platform | Starting point |
 | :--- | :--- |
-| iOS / macOS | [Swift end-to-end](/e2e/swift/), SPM package, three build modes. |
+| iOS | [Swift end-to-end](/e2e/swift/), SPM package, three build modes. macOS is not supported. |
 | Android | [Kotlin end-to-end](/e2e/kotlin/), AAR + JNI, ABI packaging guidance. |
 
 Plan ahead for memory configuration (`pk_configure_memory` / `Verity.configureMemory`) before backend initialization, mobile circuits routinely require file-backed mmap.

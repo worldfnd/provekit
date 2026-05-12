@@ -18,6 +18,8 @@ Headline performance numbers from any single proof system rarely generalize. Mea
 | **Frontend** | Noir | Rust DSL (in-circuit `Region`/`Gate` API) | Rust DSL | Circom | Rust binary (zkVM) |
 | **Proof system** | WHIR + Spartan-style sumcheck | Plonkish + IPA / KZG | FRI-based PLONK | Groth16 (default) | STARK + Groth16 wrap |
 | **Trusted setup (base proof)** | None | None (IPA) / per-circuit (KZG) | None | Per-circuit ceremony | None |
+| **Post-quantum secure (base proof)** | Yes (hash-based WHIR) | No (IPA = discrete log; KZG = pairings) | Yes (FRI / hash-based) | No (pairings) | Yes (FRI-based STARK) |
+| **Post-quantum secure (on-chain wrap)** | No (Groth16 over BN254) | KZG: no; direct IPA verification not standard on Ethereum | No (Groth16 wrap) | No | No (Groth16 wrap) |
 | **Field** | BN254 | BN254 / Pasta | Goldilocks | BN254 / BLS12-381 | Baby Bear → BN254 wrap |
 | **On-chain target** | Groth16 wrap via Go/gnark | Direct on Ethereum (KZG mode) | Wrap to Groth16 | Direct on Ethereum | Groth16 wrap |
 | **Native host support** | CLI, Rust, WASM, FFI, HTTP server, recursive | Rust | Rust | JS/WASM, native binary | Rust, WASM |

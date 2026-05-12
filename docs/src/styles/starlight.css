@@ -13,6 +13,9 @@
 :root {
   --pk-ink:           #2D2D2B;
   --pk-ink-alt:       #2D2D30;
+  /* Mid-tone between ink (#2D2D2B) and mute (#949494). ~6.4:1 contrast on white,
+     passes WCAG AA for body text without reading as jet-black. Used for nav items. */
+  --pk-ink-soft:      #5C5C5A;
   --pk-mute:          #949494;
   --pk-mute-soft:     #B7B7B7;
 
@@ -163,10 +166,23 @@ body {
   padding-block: 0.5rem;
 }
 
-/* Sidebar links */
+/* Sidebar links — mid-tone ink, readable but not pitch black. */
 .sidebar-content ul a {
   font-family: var(--pk-font-sans);
   font-size: 0.95rem;
+  color: var(--pk-ink-soft);
+}
+
+:root[data-theme='dark'] .sidebar-content ul a {
+  color: #BFC9D8;
+}
+
+.sidebar-content ul a:hover {
+  color: var(--pk-brand);
+}
+
+:root[data-theme='dark'] .sidebar-content ul a:hover {
+  color: var(--pk-brand-ink);
 }
 
 /* Current page indicator */
@@ -199,24 +215,32 @@ body {
    7. Header
    ============================================================ */
 
-.header {
+/* Scoped to the semantic <header> element to avoid double-bordering
+   the inner <div class="header"> wrapper Starlight nests. */
+header.header {
   background: var(--sl-color-bg-nav);
   border-bottom: 1px solid var(--sl-color-hairline);
   box-shadow: none;
 }
 
-.header :is(a, button, select),
-.header .icon {
+/* Inner header wrapper carries no border; just layout. */
+header.header > .header {
+  background: transparent;
+  border: 0;
+}
+
+header.header :is(a, button, select),
+header.header .icon {
   color: var(--sl-color-text);
 }
 
-.header [data-open-modal] {
+header.header [data-open-modal] {
   border: 1px solid var(--sl-color-hairline);
   border-radius: 0;
   background: var(--sl-color-bg);
 }
 
-.header [data-open-modal] kbd {
+header.header [data-open-modal] kbd {
   background: var(--pk-line-soft);
   color: var(--pk-brand);
   border-radius: 0;
@@ -386,6 +410,19 @@ body {
   letter-spacing: 0.02em;
   font-weight: 500;
   font-size: 0.78rem;
+}
+
+/* Inline <code> identifiers inside table cells should not break at hyphens.
+   Crate names like `provekit-r1cs-compiler` look broken when wrapped. */
+.sl-markdown-content table:not(:where(.not-content *)) code {
+  white-space: nowrap;
+}
+
+/* Make sure the table can scroll horizontally if a row gets too wide for the column. */
+.sl-markdown-content table:not(:where(.not-content *)) {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 :root[data-theme='dark'] .sl-markdown-content table:not(:where(.not-content *)) th {
@@ -720,6 +757,19 @@ body {
 .right-sidebar-panel a {
   font-family: var(--pk-font-sans);
   font-size: 0.85rem;
+  color: var(--pk-ink-soft);
+}
+
+:root[data-theme='dark'] .right-sidebar-panel a {
+  color: #BFC9D8;
+}
+
+.right-sidebar-panel a:hover {
+  color: var(--pk-brand);
+}
+
+:root[data-theme='dark'] .right-sidebar-panel a:hover {
+  color: var(--pk-brand-ink);
 }
 
 .right-sidebar-panel a[aria-current="true"],

@@ -3,15 +3,13 @@ title: What is ProveKit?
 description: A developer-friendly introduction to ProveKit, the WHIR proof system it builds on, and the problems it's designed to solve.
 ---
 
-import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+import { Aside, Card, CardGrid } from "@astrojs/starlight/components";
 
-ProveKit is a Noir-to-WHIR proof system and runtime. You write a circuit in [Noir](https://noir-lang.org/); ProveKit compiles it to R1CS, generates [WHIR](https://eprint.iacr.org/2024/1586.pdf) proofs from your inputs, and verifies those proofs from Rust, WebAssembly, mobile FFI, an HTTP service, or via a Groth16 outer proof for on-chain settlement.
-
-If you've never used a ZK proof system before, this page is the right place to start. You don't need to know cryptography to use ProveKit. You do need to understand what kind of guarantee a proof gives you, and where ProveKit fits in your stack.
+ProveKit is a zero knowledge Spartan + WHIR based proof system. You write a circuit in [Noir](https://noir-lang.org/); ProveKit compiles it to R1CS, generates [WHIR](https://eprint.iacr.org/2024/1586.pdf) proofs from your inputs, and verifies those proofs from Rust, WebAssembly, mobile FFI, an HTTP service, or via a Groth16 outer proof for on-chain settlement.
 
 ## The problem ProveKit solves
 
-A zero-knowledge proof lets one party (the **prover**) convince another (the **verifier**) that a statement is true, *without revealing the data that makes the statement true*.
+A zero-knowledge proof lets one party (the **prover**) convince another (the **verifier**) that a statement is true, _without revealing the data that makes the statement true_.
 
 A few statements ProveKit can help you prove:
 
@@ -22,7 +20,7 @@ A few statements ProveKit can help you prove:
 
 The workflow is the same shape every time:
 
-1. **Author a circuit** in Noir. A small program defining what counts as "true."
+1. **Write a circuit** in Noir. A small program defining what counts as "true."
 2. **Prepare** prover and verifier keys from the compiled circuit.
 3. **Prove** a specific instance using your real (private) inputs and the prover key.
 4. **Verify** the proof anywhere using the verifier key and the public inputs.
@@ -33,58 +31,26 @@ ProveKit owns steps 2–4 and the runtime that runs them on every platform you s
 
 ProveKit is a workspace of focused Rust crates plus tooling. Each piece has one job:
 
-| Crate / tool | Job |
-| :--- | :--- |
-| [`provekit-r1cs-compiler`](https://github.com/worldfnd/provekit/tree/main/provekit/r1cs-compiler) | Lower Noir's ACIR (and optionally Mavros) into R1CS, with specialized handling for Poseidon2, SHA-256 compression, range checks, multi-scalar multiplication, and Spartan-shaped uints. |
-| [`provekit-prover`](https://github.com/worldfnd/provekit/tree/main/provekit/prover) | Solve the witness in layers, compress the R1CS for low-memory proving, commit via Merkle hashing, and produce the WHIR proof via Spartan-style sumcheck. |
-| [`provekit-verifier`](https://github.com/worldfnd/provekit/tree/main/provekit/verifier) | Replay the Fiat-Shamir transcript, run sumcheck verification, and bind the public inputs. |
-| [`provekit-cli`](https://github.com/worldfnd/provekit/tree/main/tooling/cli) | The command-line entry point — `prepare`, `prove`, `verify`, plus inspection and recursive-verifier export. |
-| [`provekit-wasm`](https://github.com/worldfnd/provekit/tree/main/tooling/provekit-wasm) | Browser and Node.js bindings using `wasm-bindgen-rayon` for in-browser parallel proving when `SharedArrayBuffer` is available. |
-| [`provekit-ffi`](https://github.com/worldfnd/provekit/tree/main/tooling/provekit-ffi) | C ABI for Swift, Kotlin, Python, and any host that can call a shared library. Includes an mmap-backed allocator for mobile circuits that exceed RAM. |
-| [`verifier-server`](https://github.com/worldfnd/provekit/tree/main/tooling/verifier-server) | An Axum HTTP service that downloads artifacts and orchestrates verification with configurable concurrency and timeouts. |
-| [`recursive-verifier/`](https://github.com/worldfnd/provekit/tree/main/recursive-verifier) | A Go/gnark module that wraps a ProveKit proof in Groth16 so it can be verified by an EVM contract. |
-| [`skyscraper`](https://github.com/worldfnd/provekit/tree/main/skyscraper) | A custom BN254 hash engine with SIMD-accelerated field arithmetic on `aarch64`. The default Merkle commitment and Fiat-Shamir transcript hash. |
+| Crate / tool                                                                                      | Job                                                                                                                                                  |
+| :------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`provekit-r1cs-compiler`](https://github.com/worldfnd/provekit/tree/main/provekit/r1cs-compiler) | Lower Noir's ACIR into R1CS, with specialized handling for Poseidon2, SHA-256 compression, range checks, multi-scalar multiplication.                |
+| [`provekit-prover`](https://github.com/worldfnd/provekit/tree/main/provekit/prover)               | Solve the witness in layers, commit via Merkle hashing, and produce the WHIR proof via Spartan-style sumcheck.                                       |
+| [`provekit-verifier`](https://github.com/worldfnd/provekit/tree/main/provekit/verifier)           | Replay the Fiat-Shamir transcript, run sumcheck verification, and bind the public inputs.                                                            |
+| [`provekit-cli`](https://github.com/worldfnd/provekit/tree/main/tooling/cli)                      | The command-line entry point. Subcommands: `prepare`, `prove`, `verify`, plus inspection and recursive-verifier export.                              |
+| [`provekit-wasm`](https://github.com/worldfnd/provekit/tree/main/tooling/provekit-wasm)           | Browser and Node.js bindings using `wasm-bindgen-rayon` for in-browser parallel proving when `SharedArrayBuffer` is available.                       |
+| [`provekit-ffi`](https://github.com/worldfnd/provekit/tree/main/tooling/provekit-ffi)             | C ABI for Swift, Kotlin, Python, and any host that can call a shared library. Includes an mmap-backed allocator for mobile circuits that exceed RAM. |
+| [`verifier-server`](https://github.com/worldfnd/provekit/tree/main/tooling/verifier-server)       | An Axum HTTP service that downloads artifacts and orchestrates verification with configurable concurrency and timeouts.                              |
+| [`recursive-verifier/`](https://github.com/worldfnd/provekit/tree/main/recursive-verifier)        | A Go/gnark module that wraps a ProveKit proof in Groth16 so it can be verified by an EVM contract.                                                   |
+| [`skyscraper`](https://github.com/worldfnd/provekit/tree/main/skyscraper)                         | A custom BN254 hash engine with SIMD-accelerated field arithmetic.                                                                                   |
 
 ## What makes ProveKit specifically different
 
-If you've seen other ZK proof systems before, the differentiators are:
+- **No trusted setup.** WHIR's commitment scheme is hash-based. The base proof needs no per-circuit ceremony and no toxic-waste handling. You compile a circuit and ship.
+- **Post-quantum secure base proof.** WHIR inherits PQ-security from the chosen hash function (Skyscraper, SHA-256, Keccak, Blake3, or Poseidon2), so its hardness assumptions survive Shor-style attacks. The optional Groth16 wrapper for on-chain settlement uses pairing-based crypto (BN254) and is **not** post-quantum secure, scope on-chain proofs accordingly.
 
-- **WHIR backend.** Modern polynomial commitment scheme with no trusted setup for the base proof. Spartan-style sumcheck for fast verification.
-- **BN254 field.** Lines up with EVM contracts when settlement on-chain is needed via the Groth16 wrapper.
-- **Memory-conscious proving.** Witness builders execute in layers; the R1CS is compressed to a postcard blob during proving to keep peak memory low. Mobile FFI ships with a file-backed mmap allocator so circuits exceeding device RAM still prove.
-- **Multi-host runtime from one codebase.** The same `.pkp` and `.pkv` artifacts drive native Rust, WASM (browser and Node), iOS, Android, an HTTP service, and the recursive verifier. Most ZK toolkits leave this integration story to you.
-- **Hash choice as a first-class artifact property.** `--hash` selects Skyscraper, SHA-256, Keccak, Blake3, or Poseidon2 for Merkle commitments and the Fiat-Shamir transcript. The chosen hash is part of the artifact's identity.
+## Before you build
 
-## When to use ProveKit
-
-| You're doing this... | ProveKit fits when... |
-| :--- | :--- |
-| Building a ZK app from a Noir circuit | You want one proving pipeline that works on server, browser, and mobile. |
-| Proving things about identity / credentials | Your verifier may run in many places (phone, server, chain). |
-| Pushing computation off-chain | You want to verify cheaply on-chain via a Groth16 wrapper. |
-| Privacy-preserving data attestation | You need to ship the verifier to untrusted devices. |
-| Prototyping a ZK feature | The CLI lets you iterate on circuits without writing host integration code. |
-
-## When *not* to use ProveKit
-
-- **You haven't decided on Noir.** ProveKit is Noir-first. If you're committed to Circom, Halo2, or another DSL, look elsewhere.
-- **You need a battle-tested production system today.** ProveKit is under active development. `main` may change formats; pin `v1` and read [Project status](/reference/project-status/) before shipping.
-- **You need direct on-chain verification (no wrapper).** Today, on-chain settlement requires the Groth16 wrapper via the [recursive verifier](/integrations/overview/#recursive-verifier--gnark).
-
-## You don't need to know
-
-You can use ProveKit without ever touching:
-
-- **Field arithmetic.** Noir hides the BN254 field. Public inputs are typed values, not raw field elements.
-- **WHIR internals.** ProveKit picks the polynomial commitment, sumcheck protocol, and Fiat-Shamir transcript. You pick the hash configuration via `--hash`.
-- **R1CS.** Noir compiles to ACIR; ProveKit lowers ACIR to R1CS. You never write a constraint by hand unless you want to (see the Mavros backend).
-- **Recursive verifier internals.** If you need on-chain settlement, ProveKit exports the inputs and the Go/gnark wrapper handles the rest.
-
-## You do need to know
-
-- **What's public and what's private.** Public inputs are part of the proof contract — they're bound into verification. Your application decides what those inputs mean.
-- **That artifacts are versioned.** A `.pkp` and `.pkv` from one preparation run are not compatible with proofs from another run. ProveKit treats them as deployment artifacts. See [Artifact lifecycle](/concepts/artifact-lifecycle/).
-- **That verification proves the proof, not your policy.** A successful verification says the proof is valid against the verifier key and public inputs. Your application still owns the decision about whether those inputs *authorize* the requested action. See [Security and trust model](/concepts/security-model/).
+Two pages matter on day one: [Artifact lifecycle](/concepts/artifact-lifecycle/) for how `.pkp` / `.pkv` / `proof.np` are paired and versioned, and [Security and trust model](/concepts/security-model/) for what verification does and doesn't say about authorization.
 
 ## A worked picture
 
@@ -99,7 +65,7 @@ fn main(plains: [Field; 2], result: pub Field) {
 }
 ```
 
-`plains` is private — only the prover sees it. `result` is public — it goes into the proof. A successful verification means *the prover knows two field elements that hash to `result`*, and the verifier learns the prover does, without learning `plains`.
+`plains` stays private; only the prover sees it. `result` is the public input that goes into the proof. A successful verification means _the prover knows two field elements that hash to `result`_, and the verifier learns the prover does, without learning `plains`.
 
 That tiny circuit is the same shape as much bigger ones: identity attestation, set membership, off-chain computation, range proofs. Once you can build, prove, and verify this one, every other circuit follows the same workflow.
 
@@ -110,20 +76,24 @@ That tiny circuit is the same shape as much bigger ones: identity attestation, s
     Five-minute path: prepare, prove, verify the basic example on your machine.
 
     [Quickstart →](/getting-started/quickstart/)
+
   </Card>
   <Card title="See the pipeline">
     The full proving and verification flow from Noir source to recursive export.
 
     [Proving flow →](/concepts/proving-flow/)
+
   </Card>
   <Card title="Pick an integration">
     Decide where ProveKit runs in your system: CLI, Rust, WASM, FFI, HTTP service, or recursive.
 
     [Integrations overview →](/integrations/overview/)
+
   </Card>
   <Card title="Browse examples">
     A catalog of Noir circuits shipped with the repo, from hash primitives to passport verification.
 
     [Examples catalog →](/reference/examples/)
+
   </Card>
 </CardGrid>

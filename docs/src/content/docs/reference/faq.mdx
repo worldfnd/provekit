@@ -31,7 +31,13 @@ There is no public audit certification yet. Treat ProveKit as alpha-grade crypto
 
 ### What proof system does ProveKit use?
 
-[WHIR](https://github.com/WizardOfMenlo/whir), a polynomial commitment scheme paired with a Spartan-style sumcheck. WHIR is plausibly post-quantum-friendly and requires no trusted setup for the base proof. The optional recursive verifier wraps proofs in Groth16 for on-chain settlement.
+A **Spartan-based protocol** with [WHIR](https://github.com/WizardOfMenlo/whir) as the polynomial commitment scheme. Spartan is a SNARK for R1CS that uses sumcheck rounds; WHIR backs those rounds with a hash-based polynomial commitment. No trusted setup for the base proof. The optional recursive verifier wraps proofs in Groth16 for on-chain settlement.
+
+### Is ProveKit post-quantum secure?
+
+The **base proof is post-quantum secure** under conjectured hash-function PQ-security. WHIR's commitment scheme is hash-based, so soundness reduces to the collision resistance of the chosen `--hash` (Skyscraper, SHA-256, Keccak, Blake3, or Poseidon2). Grover's algorithm imposes a quadratic speedup on preimage finding, so 256-bit hashes still retain roughly 128-bit security against a quantum adversary.
+
+The **optional Groth16 recursive wrapper is not post-quantum secure**. It uses pairing-based cryptography over BN254, which Shor's algorithm breaks. If long-term post-quantum security matters in your threat model, verify the base WHIR proof off-chain instead of relying on the Groth16 outer proof as your cryptographic anchor. See [Security and trust model](/concepts/security-model/#cryptographic-assumptions) for the breakdown.
 
 ### What's the BN254 curve doing here?
 
@@ -44,13 +50,6 @@ Yes, through the [recursive verifier](/integrations/overview/#recursive-verifier
 ### What hash functions are available?
 
 `--hash` accepts `skyscraper` (default, custom-optimized for BN254), `sha256`, `keccak`, `blake3`, and `poseidon2`. The hash is part of the artifact's identity, keys, proofs, and recursive exports made with one hash are not interchangeable with another. See the [CLI overview](/cli/overview/#prepare) for details.
-
-### Which compiler backends are supported?
-
-Two:
-
-- **`noir` (default)**, compiles a Noir package via ACIR.
-- **`mavros`**, accepts an explicit R1CS file alongside basic artifacts JSON. Use when you have a circuit lowered through Reilabs' Mavros compiler.
 
 ## Performance and limits
 
@@ -121,4 +120,4 @@ The [Repository Map](https://github.com/worldfnd/provekit#repository-map) in the
 
 ### Is there a changelog?
 
-There is no per-release changelog yet. Until one is published, treat the Git history of the chosen branch as the canonical record of changes. See [Project status](/reference/project-status/) for the gaps still being filled.
+Yes. Tagged releases live on [GitHub Releases](https://github.com/worldfnd/provekit/releases); each release page is the authoritative record of what changed. The [Changelog](/reference/changelog/) page in these docs summarizes major themes alongside the release notes.

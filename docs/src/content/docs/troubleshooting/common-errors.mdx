@@ -55,19 +55,6 @@ find .. -name Nargo.toml -maxdepth 4
 
 **Fix.** Either compile one package with `--package <name>`, or omit `--pkp`/`--pkv` so each binary package uses its package-derived output names.
 
-## Mavros compile missing `--r1cs`
-
-**Symptom.** `prepare --compiler mavros ...` fails before key generation.
-
-**Fix.** Pass both the Mavros artifacts JSON path and the matching R1CS path:
-
-```sh
-cargo run --release --bin provekit-cli -- prepare \
-  --compiler mavros \
-  path/to/artifacts.json \
-  --r1cs path/to/r1cs.bin
-```
-
 ## Unsupported hash choice
 
 **Symptom.** `prepare --hash <name>` rejects the hash argument.

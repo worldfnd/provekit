@@ -28,7 +28,7 @@ Regenerate every affected artifact after changing any of:
 
 - Git branch, commit, or dependency lockfile.
 - Noir circuit source, package selection, or workspace layout.
-- Compiler backend (`noir` vs. `mavros`).
+- Compiler version or lockfile pins for Noir dependencies.
 - `prepare --hash` value.
 - Prover inputs (when a new proof is expected).
 - Recursive-verifier export settings or the proof/verifier pair.
@@ -59,9 +59,8 @@ The safest deployment record includes the Git commit, `rust-toolchain.toml`, `Ca
 
 Resolve or explicitly accept each of these before recommending ProveKit for external production users:
 
-- Published release notes for proof, key, and recursive-verifier artifact format compatibility.
 - Hosted API docs for the Rust crates and the generated C header.
-- Release-specific binary distribution and installation guidance for `provekit-cli`.
+- Pre-built binary artifacts for `provekit-cli` attached to GitHub Releases (currently `cargo install` only).
 - Executable app templates or CI-backed fixtures for each supported host language and platform.
 - Release-specific security review notes, audit status, and trusted-setup key handling guidance.
 - A support policy for branch-specific docs and migration notes.

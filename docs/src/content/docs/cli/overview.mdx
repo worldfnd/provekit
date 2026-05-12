@@ -65,7 +65,7 @@ Keep the `.pkp`, `.pkv`, proof, inputs, circuit source, compiler backend, and `-
 
 ## `prepare`
 
-Compile a Noir package or Mavros artifact and write the ProveKit key files.
+Compile a Noir package and write the ProveKit key files.
 
 ```sh
 provekit-cli prepare [program_path] [options]
@@ -73,9 +73,7 @@ provekit-cli prepare [program_path] [options]
 
 | Option | Purpose |
 | :--- | :--- |
-| `program_path` | Directory containing `Nargo.toml` (Noir) or basic artifacts JSON (Mavros). Defaults to `.`. |
-| `--compiler noir\|mavros` | Compiler backend. Defaults to `noir`. |
-| `--r1cs <path>` | Required with `--compiler mavros`. |
+| `program_path` | Directory containing `Nargo.toml`. Defaults to `.`. |
 | `--package <name>` | Compile a single Noir package from a workspace. |
 | `--workspace` | Compile every binary package in a Noir workspace. |
 | `--target-dir <path>` | Override the Noir target directory for compiled artifacts. |
@@ -92,7 +90,6 @@ provekit-cli prepare [program_path] [options]
 Notes:
 
 - `--pkp` and `--pkv` cannot be used when compiling multiple binary packages.
-- `prepare --compiler mavros` requires both a Mavros artifacts JSON path and `--r1cs`.
 - Keys generated with one hash configuration are only compatible with proofs generated from the matching keys.
 
 ## `prove`

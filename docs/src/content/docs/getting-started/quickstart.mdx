@@ -5,16 +5,11 @@ description: Run the end-to-end ProveKit proof flow against the checked-in examp
 
 import { Aside, Steps } from '@astrojs/starlight/components';
 
-This quickstart takes you through the shortest reliable path through ProveKit: compile the checked-in `noir-examples/basic` circuit, generate a proof from its prover inputs, and verify the proof locally. You should be able to complete it in under five minutes on a fresh checkout.
+This quickstart takes you through the shortest reliable path through ProveKit: compile the checked-in `noir-examples/basic` circuit, generate a proof from its prover inputs, and verify the proof locally. About five minutes.
 
-## Prerequisites
+You'll need `provekit-cli` available (`cargo install provekit-cli` or a source checkout) and a copy of `noir-examples/basic/` to run against. See [Installation and setup](/getting-started/installation/) if either is missing.
 
-- A local ProveKit checkout.
-- Rust installed through `rustup`.
-- Network access for the first Cargo build.
-- A shell open at the repository root.
-
-If any of these are missing, work through [Installation and setup](/getting-started/installation/) first.
+The commands below assume `provekit-cli` is on your PATH. **Source-checkout users:** substitute `cargo run --release --bin provekit-cli --` for `provekit-cli` in every command.
 
 ## Run your first proof
 
@@ -28,26 +23,24 @@ If any of these are missing, work through [Installation and setup](/getting-star
 2. Prepare the prover and verifier keys.
 
    ```sh
-   cargo run --release --bin provekit-cli -- prepare
+   provekit-cli prepare
    ```
 
 3. Generate a proof from `Prover.toml`.
 
    ```sh
-   cargo run --release --bin provekit-cli -- prove
+   provekit-cli prove
    ```
 
 4. Verify the proof locally.
 
    ```sh
-   cargo run --release --bin provekit-cli -- verify
+   provekit-cli verify
    ```
 </Steps>
 
-The `--` before each subcommand separates Cargo flags from arguments passed to `provekit-cli`.
-
 <Aside type="tip" title="What success looks like">
-`verify` exits with status code `0` when the proof is valid. If it fails, re-run `prepare` in the same package directory before troubleshooting, a stale `.pkp` / `.pkv` pair is the most common cause of verification errors.
+`verify` returns exit code `0` when the proof is valid. If verification fails, re-run `prepare` in the same package directory before investigating further. A stale `.pkp` / `.pkv` pair is the most common cause.
 </Aside>
 
 ## What each command reads and writes

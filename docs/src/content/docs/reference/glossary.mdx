@@ -13,7 +13,7 @@ Use this glossary when reading ProveKit docs, debugging artifacts, or writing in
 | <span id="artifact-provenance">**Artifact provenance**</span> | The branch, commit, toolchain, lockfile, command line, feature flags, hash choice, and checksum record for a generated file. |
 | <span id="bn254">**BN254**</span> | Elliptic-curve scalar field used by the current field-element and witness encoding paths. |
 | <span id="circuit">**Circuit**</span> | The constrained computation being proven. In the default flow it is authored as a Noir package. |
-| <span id="compiler-backend">**Compiler backend**</span> | The path used by `prepare` to derive a ProveKit proof scheme, `noir` or `mavros`. |
+| <span id="compiler-backend">**Compiler backend**</span> | The path used by `prepare` to derive a ProveKit proof scheme from Noir source. |
 
 ## D–P
 
@@ -21,7 +21,6 @@ Use this glossary when reading ProveKit docs, debugging artifacts, or writing in
 | :--- | :--- |
 | <span id="ffi">**FFI**</span> | Foreign Function Interface. ProveKit exposes a C ABI for mobile and native hosts that cannot link Rust directly. |
 | <span id="hash-choice">**Hash choice**</span> | The Merkle commitment hash selected by `prepare --hash`: `skyscraper`, `sha256`, `keccak`, `blake3`, or `poseidon2`. |
-| <span id="mavros">**Mavros**</span> | Alternate compiler path accepted by `prepare --compiler mavros` with an explicit R1CS file. |
 | <span id="noir">**Noir**</span> | Circuit language used by ProveKit's primary authoring flow. |
 | <span id="pkp">**PKP**</span> | ProveKit prover key file (`.pkp`), produced by `prepare`, consumed by provers. |
 | <span id="pkv">**PKV**</span> | ProveKit verifier key file (`.pkv`), produced by `prepare`, consumed by verifiers. |

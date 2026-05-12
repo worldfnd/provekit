@@ -5,11 +5,17 @@ description: A curated record of substantive changes to ProveKit. Grouped by the
 
 import { Aside } from '@astrojs/starlight/components';
 
-ProveKit has not yet cut tagged releases. Until it does, this page is the canonical curated record of meaningful changes. For the exhaustive log, use the [GitHub commit history](https://github.com/worldfnd/provekit/commits/main).
+Tagged releases live on [GitHub Releases](https://github.com/worldfnd/provekit/releases) — that's the authoritative record of what's in each version. This page summarizes themes alongside the release notes, plus the rolling work on `main` between tags. For the exhaustive log, use the [GitHub commit history](https://github.com/worldfnd/provekit/commits/main).
 
 <Aside type="caution" title="No SemVer guarantees on `main`">
-Until a tagged release exists, treat any change on `main` as potentially breaking. The `v1` branch is the closest thing to a stable target, see [Project status](/reference/project-status/) for the policy.
+`main` is the rolling-development branch and may break between commits. Pin a release tag (or the `v1` branch) when reproducibility matters; see [Project status](/reference/project-status/) for the policy.
 </Aside>
+
+## v1.0.0
+
+The first tagged release of ProveKit. Crates published to crates.io: `provekit-cli`, `provekit-common`, `provekit-prover`, `provekit-verifier`, `provekit-r1cs-compiler`, `provekit-gnark`, `provekit-ffi`, `provekit-wasm`.
+
+See the [v1.0.0 release notes](https://github.com/worldfnd/provekit/releases/tag/v1.0.0) for the full change list.
 
 ## Unreleased (rolling, `main`)
 
@@ -45,7 +51,6 @@ Until a tagged release exists, treat any change on `main` as potentially breakin
 
 - **Noir blackbox hash paths** are preferred where ProveKit lowers them efficiently. The CSP suite documents where native Noir paths win instead.
 - **Verifier-visible public input equalities** are preserved by Noir prepare.
-- Mavros comparison harness was added then removed in favor of the CSP benchmarks.
 
 ### Documentation
 
@@ -79,6 +84,6 @@ See [Project status and versioning](/reference/project-status/) for the full pol
 
 ## Where this changelog comes from
 
-Until tagged releases exist, this page is curated from substantive commits on `main` and `v1`. It is *not* a complete log, every change is in Git, but most don't belong in a user-facing changelog. The selection criterion: would a user who upgraded benefit from knowing this?
+Per-release content comes from [GitHub Releases](https://github.com/worldfnd/provekit/releases). The "Unreleased" section above is curated from substantive commits on `main` between tags. It is *not* a complete log; every change is in Git, but most don't belong in a user-facing changelog. The selection criterion: would a user who upgraded benefit from knowing this?
 
 If you spot a missing change that affects users, open an issue or PR against `docs/src/content/docs/reference/changelog.mdx`.
