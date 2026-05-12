@@ -1,6 +1,6 @@
 [package]
 name = "provekit-verifier"
-version = "0.1.4"
+version = "1.0.0"
 description = "ProveKit verifier for zero-knowledge proofs"
 edition.workspace = true
 rust-version.workspace = true
