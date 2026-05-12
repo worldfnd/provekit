@@ -1,0 +1,127 @@
+---
+title: Designing circuits for ProveKit
+description: ProveKit-specific mechanics that shape how you author circuits, hash arities, public-input ABI, verifier lifecycle, and artifact compatibility.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+ProveKit doesn't constrain how you build circuits, that's Noir's job. But a handful of mechanics are specific to *this* proof system, and getting them right saves real debugging time. This page covers them.
+
+For general zero-knowledge design patterns (Merkle membership, nullifiers, public-input binding theory), see the [external references](#external-references-for-general-zk-design) below.
+
+## Hash arities in `poseidon2::bn254`
+
+The `poseidon2` Noir dependency exposes a fixed set of arities:
+
+| Function | Arity |
+| :--- | :--- |
+| `hash_2` | 2 field elements |
+| `hash_4` | 4 field elements |
+| `hash_8` | 8 |
+| `hash_12` | 12 |
+| `hash_16` | 16 |
+
+No `hash_1`, no `hash_3`. For an arity that isn't in the list, chain `hash_2` calls or pad to the next supported size:
+
+```rust
+// 3 inputs → chain two hash_2 calls.
+let mid = poseidon2::bn254::hash_2([a, b]);
+let h   = poseidon2::bn254::hash_2([mid, c]);
+```
+
+This is the most common ProveKit-specific surprise, the `hash_3` you'd expect from other Poseidon libraries doesn't exist here.
+
+## In-circuit hash ≠ transcript hash
+
+ProveKit uses hashes in two independent places:
+
+- **Inside the circuit**, whatever your Noir code calls (`poseidon2::bn254::hash_*`, `sha256`, etc.).
+- **Outside the circuit, for Merkle commitments and the Fiat-Shamir transcript**, controlled by `prepare --hash`.
+
+They are independent choices. The default `prepare --hash skyscraper` works for almost every circuit because Skyscraper is BN254-tuned and fastest in the transcript role. You typically only override `--hash` when a downstream consumer (an EVM contract checking the transcript hash, for example) demands a specific algorithm.
+
+Available `--hash` values: `skyscraper` *(default)*, `sha256`, `keccak`, `blake3`, `poseidon2`.
+
+<Aside type="caution" title="Hash choice is part of artifact identity">
+Keys and proofs are bound to the transcript hash chosen at `prepare`. Switching `--hash` requires regenerating `.pkp`, `.pkv`, and every proof, there is no in-place migration.
+</Aside>
+
+## Public-input ABI is a contract
+
+Public inputs are exposed to the verifier and are *part of the artifact ABI*. Two things follow:
+
+**1. Order matters.** Reordering public inputs in the Noir signature changes the ABI and invalidates every existing `.pkv` and proof. Treat the public-input list like a versioned API.
+
+**2. Verification ≠ authorization.** A successful `verify()` says the proof is valid against *these* public inputs. Your application code must then check that "these" are the ones it expected, same election ID, same chain, same account. Skipping this check is the most common ZK-app authorization bug.
+
+After `verify()` returns success:
+
+```rust
+let public_inputs = proof.public_inputs.0;
+assert_eq!(public_inputs[0], expected_election_id, "wrong election");
+assert_eq!(public_inputs[1], expected_chain_id, "wrong chain");
+```
+
+To confirm what your circuit actually exposes:
+
+```sh
+cargo run --release --bin provekit-cli -- show-inputs --hex \
+  circuit.pkv proof.np
+```
+
+Record this output alongside released artifacts. It's the ground truth of what your verifier sees.
+
+## Verifier state is consumed per call
+
+ProveKit's native `Verify::verify(&mut self, ...)` consumes internal verifier state on each call. To verify multiple proofs in one process, reload or clone fresh verifier state per attempt:
+
+```rust
+// Reload for each proof.
+let mut verifier: Verifier = read(pkv_path)?;
+verifier.verify(&proof_a)?;
+
+let mut verifier: Verifier = read(pkv_path)?;
+verifier.verify(&proof_b)?;
+```
+
+The error message on the second use of a stale verifier is `Verifier has already been consumed; cannot verify twice`. The WASM `Verifier` is reusable because its binding handles the consumption differently, but its `Prover` *is* consumed after one `proveBytes()` / `proveJs()` call. Plan the lifecycle explicitly per host.
+
+## Artifact compatibility is by construction
+
+ProveKit doesn't need a circuit-version field in your proof, the `.pkp` and `.pkv` pair is bound to the exact circuit, branch, compiler backend, hash choice, and lockfile from one `prepare` run. Cross-circuit replay is impossible: a proof made with `circuit_v1.pkp` cannot verify against `circuit_v2.pkv`, even if both came from "the same Noir source" with a comma changed.
+
+This means:
+
+- You cannot accidentally accept a proof from a different circuit version.
+- You *can* accidentally produce a workflow where new artifacts get deployed without matching the proofs already in flight, match `.pkv` to the proof set being verified.
+
+See [Artifact lifecycle](/concepts/artifact-lifecycle/) for the full pairing rules.
+
+## Recursive verifier exposes public inputs
+
+`provekit-cli generate-gnark-inputs` produces `params_for_recursive_verifier` and `r1cs.json` from a matching `.pkv` and proof. When wrapped in Groth16 by the Go/gnark recursive verifier, those public inputs become the on-chain public inputs of the outer proof. Two implications:
+
+- **Anything in public inputs gets stored on-chain** after Groth16 wrapping. Don't put privacy-sensitive values there.
+- **Match the `--hash` between base proof and recursive verifier expectations.** If the recursive verifier was built against a different transcript hash, the wrap fails.
+
+## Skyscraper as default
+
+`skyscraper` is ProveKit's BN254-tuned hash engine (lives in [`skyscraper/`](https://github.com/worldfnd/provekit/tree/main/skyscraper)). It's the default for `--hash` because it produces the smallest transcript-side overhead with SIMD-accelerated BN254 arithmetic on `aarch64`. Use it unless a downstream consumer requires a specific alternative, there is no realistic "wrong" default here for ProveKit-internal flows.
+
+## External references for general ZK design
+
+The patterns below show up in every ZK application. They aren't ProveKit-specific, so we link rather than duplicate:
+
+- **Merkle membership proofs**, prove "this leaf is in a set with this root." See the [Aztec Noir tutorials](https://noir-lang.org/docs/) and the [`noir-passport`](https://github.com/worldfnd/provekit/tree/main/noir-examples/noir-passport) example for production-scale instances.
+- **Nullifiers**, public, deterministic, one-way functions of a secret bound to a context, used to prevent replay. Common in vote schemes, airdrops, and credential systems. See [ZK Hack write-ups](https://zkhack.dev/) and the [Aztec privacy docs](https://docs.aztec.network/) for canonical treatments.
+- **Public-input binding**, binding context like `chain_id`, `session_id`, or `epoch` into the proof. Every ZK app needs this; the principle is universal across proof systems.
+- **Hash selection for in-circuit work**, Poseidon2 is cheapest in-circuit on BN254; SHA-256 and Keccak cost roughly 100× more constraints but match what EVM contracts already expect. See the [Ethproofs CSP benchmarks](https://ethproofs.org/csp-benchmarks) for measured comparisons across hashes and proof systems.
+
+If your circuit pulls one of these patterns from a published library (e.g., a Noir Merkle tree crate, a nullifier helper), prefer the published implementation over copying a sketch from any documentation, including this site.
+
+## Related pages
+
+- [Proving flow](/concepts/proving-flow/), the conceptual pipeline.
+- [Artifact lifecycle](/concepts/artifact-lifecycle/), pairing and regeneration rules.
+- [Security and trust model](/concepts/security-model/), what verification proves and what it doesn't.
+- [CLI reference](/cli/overview/), `prepare --hash`, `show-inputs`, `generate-gnark-inputs`.

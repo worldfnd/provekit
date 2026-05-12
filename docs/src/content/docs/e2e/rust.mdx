@@ -1,0 +1,112 @@
+---
+title: Rust end-to-end
+description: Drive ProveKit directly from Rust, load prepared artifacts, prove from TOML inputs, and verify in process.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Use the Rust path when a service, test harness, or release pipeline can link the ProveKit crates and own artifact loading directly, instead of shelling out to `provekit-cli`.
+
+<Aside type="caution" title="Pin crate and artifact versions">
+Pin the ProveKit crate versions, `Cargo.lock`, compiler backend, and `prepare --hash` value for every artifact set you load from Rust. When testing against a local checkout, also pin the ProveKit commit and `rust-toolchain.toml`.
+</Aside>
+
+## Flow at a glance
+
+The Rust path mirrors the CLI:
+
+1. Generate `.pkp` and `.pkv` via the CLI (or the compiler APIs).
+2. Load `.pkp` into `provekit_common::Prover`.
+3. Generate a `NoirProof` with `provekit_prover::Prove::prove_with_toml`.
+4. Persist the proof with `provekit_common::file::write` when needed.
+5. Load `.pkv` into `provekit_common::Verifier`.
+6. Verify with `provekit_verifier::Verify::verify`.
+
+## Prepare artifacts
+
+Start from the checked-in basic Noir package:
+
+```sh
+cd noir-examples/basic
+mkdir -p artifacts
+
+cargo run --release --bin provekit-cli -- prepare . \
+  --pkp artifacts/basic.pkp \
+  --pkv artifacts/basic.pkv
+```
+
+The Rust program below reads these `.pkp` and `.pkv` files.
+
+## Cargo dependencies
+
+The crates are published on crates.io. Pin exact versions; the current release is `1.0.0` (see [GitHub Releases](https://github.com/worldfnd/provekit/releases) for newer tags).
+
+```toml
+[dependencies]
+provekit-common   = "1.0.0"
+provekit-prover   = "1.0.0"
+provekit-verifier = "1.0.0"
+```
+
+Use path or Git dependencies only when you are deliberately testing an unpublished checkout.
+
+## Minimal program
+
+Run the program from the repository root so the example paths resolve to `noir-examples/basic/...`.
+
+```rust
+use std::{error::Error, path::Path};
+
+use provekit_common::{
+    file::{read, write},
+    NoirProof, Prover, Verifier,
+};
+use provekit_prover::Prove;
+use provekit_verifier::Verify;
+
+fn main() -> Result<(), Box<dyn Error>> {
+    let prover_path   = Path::new("noir-examples/basic/artifacts/basic.pkp");
+    let verifier_path = Path::new("noir-examples/basic/artifacts/basic.pkv");
+    let input_path    = Path::new("noir-examples/basic/Prover.toml");
+    let proof_path    = Path::new("noir-examples/basic/artifacts/proof.np");
+
+    let prover: Prover = read(prover_path)?;
+    let proof = prover.prove_with_toml(input_path)?;
+    write(&proof, proof_path)?;
+
+    let mut verifier: Verifier = read(verifier_path)?;
+    verifier.verify(&proof)?;
+
+    // Optional: confirm the serialized proof round-trips through the same
+    // file format used by the CLI.
+    let persisted_proof: NoirProof = read(proof_path)?;
+    let mut fresh_verifier: Verifier = read(verifier_path)?;
+    fresh_verifier.verify(&persisted_proof)?;
+
+    Ok(())
+}
+```
+
+## Verifier lifecycle
+
+<Aside type="tip" title="Reload verifier state per verification">
+The native `Verify` implementation consumes internal verifier state. To verify multiple proofs in one process, load or clone fresh verifier state for each attempt, don't share one mutable verifier across unrelated requests.
+</Aside>
+
+The sample above intentionally loads `fresh_verifier` for the round-trip check. A long-lived service should make that lifecycle explicit.
+
+## Production notes
+
+- Use absolute, explicit artifact paths. Don't depend on the process current directory in services.
+- Treat `.pkp`, `.pkv`, and `proof.np` as versioned deployment artifacts.
+- Validate public inputs with `show-inputs` during integration testing.
+- Add negative tests for mismatched `.pkv` / proof pairs.
+- Regenerate keys and proofs after any change to circuit, branch, compiler backend, lockfile, toolchain, or `prepare --hash`.
+- Walk through the [Production checklist](/reference/production-checklist/) before shipping a Rust prover or verifier service.
+
+## Related pages
+
+- [End-to-end overview](/e2e/overview/)
+- [Generate artifacts](/e2e/generate-artifacts/)
+- [CLI overview](/cli/overview/)
+- [Artifact lifecycle](/concepts/artifact-lifecycle/)

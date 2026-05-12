@@ -1,0 +1,102 @@
+---
+title: ProveKit Documentation
+description: Compile Noir circuits to R1CS, generate WHIR proofs, and verify them anywhere, from the CLI to browsers, mobile apps, services, and on-chain via a recursive verifier.
+template: splash
+hero:
+  tagline: A zero-knowledge proof toolkit for shipping Noir circuits to production, across native, browser, mobile, server, and on-chain verification.
+  actions:
+    - text: Run the quickstart
+      link: /getting-started/quickstart/
+      icon: right-arrow
+      variant: primary
+    - text: What is ProveKit?
+      link: /concepts/what-is-provekit/
+      icon: open-book
+    - text: View on GitHub
+      link: https://github.com/worldfnd/provekit
+      icon: external
+---
+
+import { Aside, Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+<p class="lead">
+ProveKit turns a Noir circuit into a verifiable WHIR proof, then lets you verify that proof wherever you need it, locally, in a Rust service, in the browser, on iOS or Android, or on-chain through a Groth16 recursive verifier.
+</p>
+
+## See it in three commands
+
+From a fresh checkout of the [ProveKit repository](https://github.com/worldfnd/provekit):
+
+```sh
+cd noir-examples/basic
+cargo run --release --bin provekit-cli -- prepare   # compile circuit → .pkp + .pkv
+cargo run --release --bin provekit-cli -- prove     # .pkp + Prover.toml → proof.np
+cargo run --release --bin provekit-cli -- verify    # .pkv + proof.np → exit 0
+```
+
+That's the whole proving pipeline. Every other integration, Rust, WASM, mobile, is the same flow against the same artifacts. [Walk through it step by step →](/getting-started/quickstart/)
+
+## Get started
+
+<CardGrid>
+  <Card title="Quickstart">
+    Prepare keys, generate `proof.np`, and verify it locally using the `noir-examples/basic` circuit.
+
+    [Run the quickstart →](/getting-started/quickstart/)
+  </Card>
+  <Card title="What is ProveKit?">
+    A developer-friendly introduction to zero-knowledge proofs and the problems this toolkit solves.
+
+    [Read the overview →](/concepts/what-is-provekit/)
+  </Card>
+  <Card title="Pick an integration">
+    Choose where ProveKit runs in your system, CLI, Rust, WASM, mobile, or recursive.
+
+    [Integrations overview →](/integrations/overview/)
+  </Card>
+  <Card title="Deployment checklist">
+    The provenance, evidence, and operational controls required before accepting proofs in production.
+
+    [Review the checklist →](/reference/production-checklist/)
+  </Card>
+</CardGrid>
+
+## Host integrations
+
+ProveKit runs the same proof artifacts across server, browser, and mobile. For the full menu, including CLI, HTTP verifier, and recursive paths, see [Integrations overview](/integrations/overview/).
+
+<LinkCard
+  href="/e2e/rust/"
+  title="Rust service or library"
+  description="Load .pkp / .pkv, prove from TOML, persist proof.np, and verify directly through the ProveKit crates."
+/>
+<LinkCard
+  href="/e2e/js-typescript/"
+  title="Browser or Node.js application"
+  description="Drive proving and verification from JavaScript or TypeScript through WASM-backed bindings."
+/>
+<LinkCard
+  href="/e2e/swift/"
+  title="iOS app"
+  description="Integrate via the Swift SDK with SPM source-only, native, or release modes."
+/>
+<LinkCard
+  href="/e2e/kotlin/"
+  title="Android app"
+  description="Integrate via the Kotlin SDK with the JNI bridge and ABI packaging guidance."
+/>
+
+## Core artifacts at a glance
+
+<div class="pk-metric-grid">
+  <div class="pk-metric"><strong>.pkp</strong><span>Prover key, produced by `prepare`, consumed by `prove`.</span></div>
+  <div class="pk-metric"><strong>.pkv</strong><span>Verifier key, produced by `prepare`, consumed by `verify` and recursive export.</span></div>
+  <div class="pk-metric"><strong>proof.np</strong><span>WHIR proof, produced by `prove`, consumed by every verification path.</span></div>
+  <div class="pk-metric"><strong>r1cs.json</strong><span>Recursive-verifier R1CS, exported from a matching `.pkv` and proof.</span></div>
+</div>
+
+Every artifact is bound to a specific circuit, commit, compiler backend, and hash choice. Treat them as versioned deployment objects. See [Artifact lifecycle](/concepts/artifact-lifecycle/) for the full pairing rules.
+
+<Aside type="caution" title="Active development">
+The first tagged release is **[v1.0.0](https://github.com/worldfnd/provekit/releases/tag/v1.0.0)**, available on crates.io. Pin a release tag (or the `v1` branch) for reproducible artifacts; the `main` branch may change proof formats, key formats, recursive-verifier inputs, or integration APIs between commits. See [Project status](/reference/project-status/).
+</Aside>

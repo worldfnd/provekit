@@ -1,0 +1,109 @@
+---
+title: Examples catalog
+description: Noir circuits shipped with ProveKit, grouped by what they demonstrate.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The [`noir-examples/`](https://github.com/worldfnd/provekit/tree/main/noir-examples) directory contains circuits that exercise ProveKit's compiler and proving pipeline. Some are minimal demos; others are real-world primitives used to benchmark and validate the system end-to-end.
+
+Each example is a self-contained Noir package. To run any of them:
+
+```sh
+cd noir-examples/<name>
+cargo run --release --bin provekit-cli -- prepare
+cargo run --release --bin provekit-cli -- prove
+cargo run --release --bin provekit-cli -- verify
+```
+
+<Aside type="tip" title="Start with `basic`">
+If you're new, the [Quickstart](/getting-started/quickstart/) walks through `noir-examples/basic`. Once you have that running, the examples below show how Noir scales to larger primitives.
+</Aside>
+
+## Hash primitives
+
+Circuits demonstrating the hash functions ProveKit can prove over.
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`basic`** | Poseidon2 BN254 preimage proof, the canonical "hello world" circuit. |
+| **`basic-2`, `basic-3`, `basic-4`** | Progressive Poseidon variations for compiler testing. |
+| **`poseidon2`** | Direct Poseidon2 hashing primitive in isolation. |
+| **`many_poseidons`** | Stress test with many Poseidon hash calls in one circuit. |
+| **`poseidon-rounds`** | Single-round Poseidon decomposition, useful for understanding round structure. |
+| **`sha256`, `noir_sha256`, `noir-native-sha256`** | SHA-256 variants compiled through Noir's black-box and native paths. |
+| **`partial_sha256`** | SHA-256 with a partial preimage, common for incremental hashing patterns. |
+
+## Elliptic curves and signatures
+
+Circuits exercising scalar multiplication, signature schemes, and curve arithmetic.
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`babyjubjub`** | Baby Jubjub curve operations, the standard curve for in-circuit ECC over BN254. |
+| **`eddsa_poseidon2`** | EdDSA signature verification using Poseidon2 for hashing. |
+| **`embedded_curve_msm`** | Multi-scalar multiplication on the embedded curve via Noir's intrinsic. |
+| **`native_msm`** | MSM expressed without the embedded-curve intrinsic, heavier circuit, useful for comparisons. |
+| **`msm_conditional`** | Conditional MSM, pick scalars or points at runtime inside the circuit. |
+| **`msm_conditional_nested`** | Nested conditional MSM, demonstrating composition. |
+| **`p256_std`** | P-256 (secp256r1) signature verification over the standard curve. |
+| **`p256_bigcurve`** | P-256 with bigcurve representation, relevant when proving WebAuthn or hardware-attestation signatures. |
+
+## Identity and credentials
+
+Circuits demonstrating real-world identity workflows.
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`noir-passport`** | Passport-style credential verification, the foundation for selective disclosure. |
+| **`noir-passport-examples`** | Variations of the passport flow used for testing different selective-disclosure patterns. |
+| **`noir-passport-monolithic`** | Single-circuit version of the passport workflow, useful for understanding the full constraint cost. |
+| **`oprf`** | Oblivious Pseudorandom Function, a primitive used in private set intersection and de-anonymization defenses. |
+
+## Arithmetic primitives
+
+Small circuits that ProveKit uses internally for testing and benchmarking.
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`power`** | Modular exponentiation inside a circuit. |
+| **`rangechecks`** | Range constraints, the building block for bounded arithmetic. |
+| **`noir-r1cs-test-programs`** | A suite of programs used by the R1CS compiler's own test harness. |
+
+## Applications
+
+Larger circuits modeled after real applications.
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`zkchase`** | A small game-like circuit demonstrating state transitions and rule enforcement. |
+
+## Benchmarks
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`csp-benchmarks`** | Constraint system performance benchmarks. Use these as a baseline when measuring circuit cost. |
+
+## Reading an example
+
+Every example follows the same layout:
+
+```
+noir-examples/basic/
+├── Nargo.toml        # Noir package metadata + dependencies
+├── Prover.toml       # Witness inputs (private + public)
+└── src/
+    └── main.nr       # Circuit definition
+```
+
+The `Prover.toml` is the only file you typically edit to change what's being proven, the circuit is fixed; the inputs vary per proof. To inspect what a verified proof actually exposes:
+
+```sh
+cargo run --release --bin provekit-cli -- show-inputs --hex \
+  <example>.pkv \
+  proof.np
+```
+
+## Contributing examples
+
+Pull requests adding new example circuits are welcome. Keep them minimal, focused on one primitive, and accompanied by a `Prover.toml` that produces a verifiable proof out of the box.

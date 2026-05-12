@@ -1,0 +1,165 @@
+---
+title: CLI overview
+description: Command reference for preparing keys, proving, verifying, inspecting circuits, and exporting recursive-verifier inputs.
+---
+
+`provekit-cli` is the primary entry point for preparing keys, proving, verifying, inspecting circuits, and exporting recursive-verifier inputs.
+
+**Rust API references:**
+[`provekit-common`](https://docs.rs/provekit-common) ·
+[`provekit-prover`](https://docs.rs/provekit-prover) ·
+[`provekit-verifier`](https://docs.rs/provekit-verifier) ·
+[`provekit-r1cs-compiler`](https://docs.rs/provekit-r1cs-compiler).
+Unfamiliar terms? See the [glossary](/reference/glossary/).
+
+From a source checkout, run commands through Cargo:
+
+```sh
+cargo run --release --bin provekit-cli -- <command> [options]
+```
+
+Most examples below assume the current directory contains a Noir package's `Nargo.toml`. When in doubt, pass explicit artifact paths instead of relying on defaults.
+
+## Artifact defaults
+
+| Artifact | Default path | Produced by | Consumed by |
+| :--- | :--- | :--- | :--- |
+| Prover key | `<circuit>.pkp` | `prepare` | `prove`, `analyze-pkp`, FFI/WASM provers |
+| Verifier key | `<circuit>.pkv` | `prepare` | `verify`, `show-inputs`, `generate-gnark-inputs`, verifier server |
+| Proof | `./proof.np` | `prove` | `verify`, `show-inputs`, `generate-gnark-inputs` |
+| Noir inputs | `./Prover.toml` | User / Noir tooling | `prove` |
+| Recursive params | `./params_for_recursive_verifier` | `generate-gnark-inputs` | Go/gnark recursive verifier |
+| Recursive R1CS | `./r1cs.json` | `generate-gnark-inputs` | Go/gnark recursive verifier, verifier server |
+
+Default key names come from the enclosing Nargo package name. When a command can't infer the package, pass `--pkp`, `--pkv`, `--prover`, or `--verifier` explicitly.
+
+## Primary workflow
+
+```sh
+cd noir-examples/basic
+cargo run --release --bin provekit-cli -- prepare
+cargo run --release --bin provekit-cli -- prove
+cargo run --release --bin provekit-cli -- verify
+```
+
+The same workflow with explicit paths:
+
+```sh
+cargo run --release --bin provekit-cli -- prepare \
+  . \
+  --pkp artifacts/basic.pkp \
+  --pkv artifacts/basic.pkv \
+  --hash skyscraper
+
+cargo run --release --bin provekit-cli -- prove \
+  --prover artifacts/basic.pkp \
+  --input Prover.toml \
+  --out artifacts/proof.np
+
+cargo run --release --bin provekit-cli -- verify \
+  --verifier artifacts/basic.pkv \
+  --proof artifacts/proof.np
+```
+
+Keep the `.pkp`, `.pkv`, proof, inputs, circuit source, compiler backend, and `--hash` choice aligned. Regenerate artifacts after any change to the circuit, inputs, branch, compiler, or hash.
+
+## `prepare`
+
+Compile a Noir package and write the ProveKit key files.
+
+```sh
+provekit-cli prepare [program_path] [options]
+```
+
+| Option | Purpose |
+| :--- | :--- |
+| `program_path` | Directory containing `Nargo.toml`. Defaults to `.`. |
+| `--package <name>` | Compile a single Noir package from a workspace. |
+| `--workspace` | Compile every binary package in a Noir workspace. |
+| `--target-dir <path>` | Override the Noir target directory for compiled artifacts. |
+| `--deny-warnings` | Treat Noir warnings as errors. |
+| `--silence-warnings` | Suppress Noir warnings. |
+| `--print-acir` | Print the compiled ACIR. |
+| `--skip-underconstrained-check` | Skip Noir's under-constrained-values check. |
+| `--skip-brillig-constraints-check` | Skip the Brillig call-constraints check. |
+| `--force` | Force recompilation, ignoring cached artifacts. |
+| `--pkp`, `-p <path>` | Output prover key path. Defaults to `<circuit>.pkp`. |
+| `--pkv`, `-v <path>` | Output verifier key path. Defaults to `<circuit>.pkv`. |
+| `--hash <name>` | Merkle commitment hash: `skyscraper`, `sha256`, `keccak`, `blake3`, or `poseidon2`. Defaults to `skyscraper`. |
+
+Notes:
+
+- `--pkp` and `--pkv` cannot be used when compiling multiple binary packages.
+- Keys generated with one hash configuration are only compatible with proofs generated from the matching keys.
+
+## `prove`
+
+Read a prover key plus input TOML and write a proof.
+
+```sh
+provekit-cli prove [options]
+```
+
+| Option | Purpose |
+| :--- | :--- |
+| `--prover`, `-p <path>` | Prover key path. Defaults to `<circuit>.pkp`. |
+| `--input`, `-i <path>` | Noir input file. Defaults to `./Prover.toml`. |
+| `--out`, `-o <path>` | Proof output path. Defaults to `./proof.np`. |
+
+`prove` consumes the prepared key material and writes a serialized `NoirProof`. For browser, mobile, or service integrations, treat the proof as an artifact that must stay paired with its verifier key and public inputs.
+
+## `verify`
+
+Read a verifier key plus proof and verify the proof.
+
+```sh
+provekit-cli verify [options]
+```
+
+| Option | Purpose |
+| :--- | :--- |
+| `--verifier`, `-v <path>` | Verifier key path. Defaults to `<circuit>.pkv`. |
+| `--proof <path>` | Proof path. Defaults to `./proof.np`. |
+
+A verification failure usually means the proof, verifier key, public inputs, circuit, branch, or hash configuration don't match. Regenerate from `prepare` when any of those inputs change.
+
+## Inspection and export commands
+
+| Command | Purpose |
+| :--- | :--- |
+| `circuit-stats <target/*.json>` | Analyze Noir ACIR circuit statistics and R1CS complexity. Noir only. |
+| `analyze-pkp <file.pkp>` | Print the size breakdown of a Noir prover key. Noir only. |
+| `show-inputs [--hex] <verifier.pkv> <proof.np>` | Display public inputs from a proof using ABI variable names. |
+| `generate-gnark-inputs <verifier.pkv> <proof.np> [--params <path>] [--r1cs <path>]` | Export recursive-verifier parameters and an R1CS JSON file. |
+
+Example recursive-verifier export:
+
+```sh
+cargo run --release --bin provekit-cli -- generate-gnark-inputs \
+  artifacts/basic.pkv \
+  artifacts/proof.np \
+  --params artifacts/params_for_recursive_verifier \
+  --r1cs artifacts/r1cs.json
+```
+
+## Profiling flags
+
+The CLI prints span timing and memory statistics through its tracing layer. When built with the `tracy` feature, these global flags are also available:
+
+| Flag | Purpose |
+| :--- | :--- |
+| `--tracy` | Enable Tracy profiling. |
+| `--tracy-allocations <depth>` | Track allocations at the given stack depth (`0` for no stack traces). |
+| `--tracy-keepalive` | Keep the process alive after completion so Tracy can collect data. |
+
+Build with Tracy support before using those flags:
+
+```sh
+cargo run --release --features tracy --bin provekit-cli -- --tracy prepare
+```
+
+## Troubleshooting quick links
+
+- [Common errors](/troubleshooting/common-errors/), setup, artifact mismatch, WASM, and verifier-server failures.
+- [Project status and versioning](/reference/project-status/), read before mixing artifacts across branches.
+- [Production checklist](/reference/production-checklist/), pre-launch checks for ProveKit-backed workflows.

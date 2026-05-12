@@ -1,0 +1,165 @@
+---
+title: Starter templates
+description: Cloneable starting points and deployment recipes for shipping a ProveKit-backed application.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A ZK application typically has three moving parts: a Noir circuit, a prover that runs near the user (server, browser, or mobile), and a verifier that runs wherever the trust boundary sits (your backend, a chain, or both). This page collects starting points and deployment patterns for each.
+
+<Aside type="caution" title="Templates are evolving">
+There is no single official starter repository yet. The recipes below assemble building blocks from the ProveKit and `noir-examples/` directories. Expect this page to grow as canonical templates are published.
+</Aside>
+
+## Starting points by shape
+
+### A Rust service that verifies proofs
+
+Use this when verification happens in your backend (HTTP API, gRPC service, job worker).
+
+**Skeleton:**
+
+```toml title="Cargo.toml"
+[package]
+name = "my-verifier"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+provekit-common   = "1.0.0"
+provekit-verifier = "1.0.0"
+axum              = "0.7"      # or actix, tonic, etc.
+serde             = { version = "1", features = ["derive"] }
+tokio             = { version = "1", features = ["full"] }
+anyhow            = "1"
+```
+
+**Implementation guide:** [Rust end-to-end](/e2e/rust/) shows the verifier setup. Wrap `verify()` behind your transport layer; refer to [Common errors](/troubleshooting/common-errors/) for failure modes to translate into HTTP statuses.
+
+### A browser app that proves locally
+
+Use this when the user's device holds the secret and proves on-device, the canonical privacy-preserving pattern.
+
+**Skeleton:**
+
+```ts title="package.json (dependencies)"
+{
+  "dependencies": {
+    "@atheon/verity": "^0.3.2",
+    "@noir-lang/noir_js": "^0.x",
+    "@noir-lang/acvm_js": "^0.x"
+  }
+}
+```
+
+**Implementation guide:** [JS / TypeScript end-to-end](/e2e/js-typescript/). Notes:
+
+- For Next.js, place WASM artifacts under `public/` and configure headers for `SharedArrayBuffer` (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`).
+- For Vite, copy WASM artifacts via `assetsInclude` or a plugin and serve with the same headers.
+
+### A mobile app that proves on-device
+
+Use this when the user is on iOS or Android and the secret never leaves their device.
+
+| Platform | Starting point |
+| :--- | :--- |
+| iOS | [Swift end-to-end](/e2e/swift/), SPM package, three build modes. macOS is not supported. |
+| Android | [Kotlin end-to-end](/e2e/kotlin/), AAR + JNI, ABI packaging guidance. |
+
+Plan ahead for memory configuration (`pk_configure_memory` / `Verity.configureMemory`) before backend initialization, mobile circuits routinely require file-backed mmap.
+
+### A verifier service behind HTTP
+
+Use the bundled HTTP service when you want artifact-driven verification without writing transport glue.
+
+```sh
+# From the repo root.
+cd tooling/verifier-server
+cargo run --release
+```
+
+Configure with the `VERIFIER_*` environment variables documented in `tooling/verifier-server/README.md`. The service downloads `.pkv` and `r1cs.json` from URLs in each request, restrict those URL sources for production.
+
+### An on-chain Groth16 verifier
+
+Use when the verification result needs to settle on-chain.
+
+```sh
+# 1. Produce the recursive-verifier inputs.
+cargo run --release --bin provekit-cli -- generate-gnark-inputs \
+  circuit.pkv proof.np \
+  --params recursive/params --r1cs recursive/r1cs.json
+
+# 2. Run the Go/gnark wrapper.
+cd recursive-verifier
+go run ./cmd/cli ...
+```
+
+Manage Groth16 proving and verifying keys explicitly. Development-time key generation should not be reused in production. The Go module lives in `recursive-verifier/`, its CLI is the entry point for one-shot wrapping; its server mode is the entry point for batched workflows.
+
+## Deployment recipes
+
+### Docker for the verifier server
+
+```dockerfile title="Dockerfile (sketch)"
+FROM rust:1.85 AS build
+WORKDIR /src
+COPY . .
+RUN cargo build --release -p verifier-server
+
+FROM debian:bookworm-slim
+COPY --from=build /src/target/release/verifier-server /usr/local/bin/
+EXPOSE 3000
+ENV VERIFIER_SEMAPHORE_LIMIT=2 \
+    VERIFIER_REQUEST_TIMEOUT=60 \
+    VERIFIER_TIMEOUT_SECONDS=120
+ENTRYPOINT ["/usr/local/bin/verifier-server"]
+```
+
+Adjust the `VERIFIER_*` envs for your circuit profile. The defaults (one concurrent verification, 10 MiB request body) are conservative.
+
+### CI pipeline for artifact generation
+
+A minimal release-producing job (GitHub Actions, GitLab CI, or equivalent):
+
+```yaml
+- name: Prepare keys
+  run: cargo run --release --bin provekit-cli -- prepare . --pkp out/app.pkp --pkv out/app.pkv
+
+- name: Generate test proof
+  run: cargo run --release --bin provekit-cli -- prove --prover out/app.pkp --input fixtures/Prover.toml --out out/proof.np
+
+- name: Verify locally
+  run: cargo run --release --bin provekit-cli -- verify --verifier out/app.pkv --proof out/proof.np
+
+- name: Record public inputs
+  run: cargo run --release --bin provekit-cli -- show-inputs --hex out/app.pkv out/proof.np > out/public_inputs.txt
+
+- name: Publish artifacts with provenance
+  run: sha256sum out/* > out/CHECKSUMS && upload out/
+```
+
+See [Generate artifacts](/e2e/generate-artifacts/) for the full CI evidence template.
+
+### Distributing the verifier key
+
+`.pkv` is typically shipped *with* the application that verifies. Options:
+
+- **Embedded in the binary.** Smallest deployment footprint; requires a release per circuit version.
+- **Loaded from CDN at startup.** Decouples circuit upgrades from app releases; requires integrity checks (subresource integrity or signed manifests).
+- **Pinned per request.** Verifier server pattern: the client supplies the `.pkv` URL alongside the proof. Restrict URL sources or proxy through trusted storage.
+
+## Anti-patterns
+
+Avoid these shortcuts, they cause production incidents:
+
+- **Reusing `.pkp` across circuit versions.** Keys are bound to the circuit; mixing breaks verification silently.
+- **Logging private witnesses or `Prover.toml` contents.** They are secrets by default.
+- **Verifying without checking public inputs.** Verification proves the proof; *your code* proves the proof authorizes the action.
+- **Shipping `main`-branch artifacts without a regeneration plan.** Format changes are possible between commits.
+
+## Related pages
+
+- [Production checklist](/reference/production-checklist/), pre-launch checks for every host.
+- [Integrations overview](/integrations/overview/), the menu of where ProveKit can run.
+- [Security and trust model](/concepts/security-model/), what verification proves and what it doesn't.
