@@ -1,6 +1,6 @@
 [package]
 name = "provekit-gnark"
-version = "0.1.2"
+version = "1.0.0"
 description = "Gnark integration for ProveKit"
 edition.workspace = true
 rust-version.workspace = true
