@@ -1,3 +1,5 @@
+#![deny(unsafe_op_in_unsafe_fn)]
+
 pub mod file;
 pub use file::binary_format;
 pub mod hash_config;

@@ -60,7 +60,9 @@ xz2.workspace = true
 ignored = ["keccak"] # Intentionally anchored to keep Noir beta.19-compatible RC version
 
 [target.'cfg(target_os = "macos")'.dependencies]
-metal.workspace = true
+objc2.workspace = true
+objc2-foundation.workspace = true
+objc2-metal.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 cudarc.workspace = true

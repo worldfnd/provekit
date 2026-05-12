@@ -2,15 +2,21 @@ use {
     super::{field::fr_to_gpu, logging::trace_event},
     ark_bn254::Fr,
     ark_ff::{FftField, Field},
-    metal::{
-        objc::rc::autoreleasepool, Buffer, CommandQueue, CompileOptions, ComputePipelineState,
-        Device, Library, MTLResourceOptions, MTLSize, NSUInteger,
+    objc2::{
+        rc::{autoreleasepool, Retained},
+        runtime::ProtocolObject,
+    },
+    objc2_foundation::NSString,
+    objc2_metal::{
+        MTLBuffer, MTLCommandBuffer, MTLCommandQueue, MTLComputeCommandEncoder,
+        MTLComputePipelineState, MTLCreateSystemDefaultDevice, MTLDevice, MTLLibrary,
+        MTLResourceOptions, MTLSize,
     },
     std::{
         collections::HashMap,
         ffi::c_void,
         mem::size_of,
-        ptr,
+        ptr::{self, NonNull},
         sync::{Arc, Mutex},
     },
 };
@@ -28,10 +34,18 @@ const SHADER_SOURCE: &str = concat!(
     "\n",
 );
 
+pub type Buffer = ProtocolObject<dyn MTLBuffer>;
+pub type CommandBuffer = ProtocolObject<dyn MTLCommandBuffer>;
+pub type CommandQueue = ProtocolObject<dyn MTLCommandQueue>;
+pub type ComputeCommandEncoder = ProtocolObject<dyn MTLComputeCommandEncoder>;
+pub type ComputePipelineState = ProtocolObject<dyn MTLComputePipelineState>;
+pub type Device = ProtocolObject<dyn MTLDevice>;
+pub type Library = ProtocolObject<dyn MTLLibrary>;
+
 struct PooledBufferInner {
     runtime:      Arc<MetalRuntime>,
     bucket_bytes: usize,
-    buffer:       Buffer,
+    buffer:       Retained<Buffer>,
 }
 
 #[derive(Clone)]
@@ -42,6 +56,12 @@ impl PooledBuffer {
         &self.0.buffer
     }
 }
+
+// SAFETY: Metal buffers are Objective-C resources intended to be referenced
+// across command submission threads; buffer contents access remains explicitly
+// synchronized by command buffer completion in this backend.
+unsafe impl Send for PooledBufferInner {}
+unsafe impl Sync for PooledBufferInner {}
 
 impl std::fmt::Debug for PooledBuffer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -68,44 +88,54 @@ impl AsRef<Buffer> for PooledBuffer {
 impl Drop for PooledBufferInner {
     fn drop(&mut self) {
         self.runtime
-            .recycle_buffer(self.bucket_bytes, self.buffer.to_owned());
+            .recycle_buffer(self.bucket_bytes, self.buffer.clone());
     }
 }
 
 pub struct MetalRuntime {
-    pub device:                    Device,
-    pub queue:                     CommandQueue,
-    pub bit_reverse_pipeline:      ComputePipelineState,
-    pub ntt_stage_pipeline:        ComputePipelineState,
-    pub replicate_cosets_pipeline: ComputePipelineState,
-    pub transpose_pipeline:        ComputePipelineState,
-    pub encode_bytes_pipeline:     ComputePipelineState,
-    pub sha256_pipeline:           ComputePipelineState,
-    roots_cache:                   Mutex<HashMap<usize, Arc<Buffer>>>,
-    buffer_pool:                   Mutex<HashMap<usize, Vec<Buffer>>>,
+    pub device:                    Retained<Device>,
+    pub queue:                     Retained<CommandQueue>,
+    pub bit_reverse_pipeline:      Retained<ComputePipelineState>,
+    pub ntt_stage_pipeline:        Retained<ComputePipelineState>,
+    pub replicate_cosets_pipeline: Retained<ComputePipelineState>,
+    pub transpose_pipeline:        Retained<ComputePipelineState>,
+    pub encode_bytes_pipeline:     Retained<ComputePipelineState>,
+    pub sha256_pipeline:           Retained<ComputePipelineState>,
+    roots_cache:                   Mutex<HashMap<usize, Arc<Retained<Buffer>>>>,
+    buffer_pool:                   Mutex<HashMap<usize, Vec<Retained<Buffer>>>>,
 }
+
+// SAFETY: Metal device, queue, pipeline, and buffer handles are thread-safe
+// Objective-C resources. Mutable Rust state is protected by mutexes.
+unsafe impl Send for MetalRuntime {}
+unsafe impl Sync for MetalRuntime {}
 
 impl MetalRuntime {
     pub fn new() -> Result<Self, String> {
-        autoreleasepool(|| {
-            let device = Device::system_default()
-                .or_else(|| Device::all().into_iter().next())
-                .ok_or_else(|| {
-                    "no Metal device found; sandboxed macOS processes may not expose Metal"
-                        .to_string()
+        autoreleasepool(|_| {
+            let device = MTLCreateSystemDefaultDevice().ok_or_else(|| {
+                "no Metal device found; sandboxed macOS processes may not expose Metal".to_string()
+            })?;
+            let shader_source = NSString::from_str(SHADER_SOURCE);
+            let library = device
+                .newLibraryWithSource_options_error(&shader_source, None)
+                .map_err(|error| {
+                    format!(
+                        "failed to compile Metal shader: {}",
+                        error.localizedDescription()
+                    )
                 })?;
-            let options = CompileOptions::new();
-            let library = device.new_library_with_source(SHADER_SOURCE, &options)?;
 
             Ok(Self {
-                device:                    device.to_owned(),
-                queue:                     device.new_command_queue(),
-                bit_reverse_pipeline:      Self::new_pipeline(
+                queue: device
+                    .newCommandQueue()
+                    .ok_or_else(|| "Metal device did not create a command queue".to_string())?,
+                bit_reverse_pipeline: Self::new_pipeline(
                     &device,
                     &library,
                     "bit_reverse_permute_rows_in_place",
                 )?,
-                ntt_stage_pipeline:        Self::new_pipeline(
+                ntt_stage_pipeline: Self::new_pipeline(
                     &device,
                     &library,
                     "radix2_ntt_stage_rows_in_place",
@@ -115,29 +145,39 @@ impl MetalRuntime {
                     &library,
                     "replicate_first_coset",
                 )?,
-                transpose_pipeline:        Self::new_pipeline(
-                    &device,
-                    &library,
-                    "transpose_matrix",
-                )?,
-                encode_bytes_pipeline:     Self::new_pipeline(
+                transpose_pipeline: Self::new_pipeline(&device, &library, "transpose_matrix")?,
+                encode_bytes_pipeline: Self::new_pipeline(
                     &device,
                     &library,
                     "encode_field_rows_le",
                 )?,
-                sha256_pipeline:           Self::new_pipeline(&device, &library, "sha256_many")?,
-                roots_cache:               Mutex::new(HashMap::new()),
-                buffer_pool:               Mutex::new(HashMap::new()),
+                sha256_pipeline: Self::new_pipeline(&device, &library, "sha256_many")?,
+                device,
+                roots_cache: Mutex::new(HashMap::new()),
+                buffer_pool: Mutex::new(HashMap::new()),
             })
         })
     }
 
-    pub fn buffer_with_data<T: Copy>(&self, values: &[T]) -> Buffer {
-        self.device.new_buffer_with_data(
-            values.as_ptr().cast::<c_void>(),
-            std::mem::size_of_val(values) as NSUInteger,
-            MTLResourceOptions::StorageModeShared,
-        )
+    pub fn buffer_with_data<T: Copy>(&self, values: &[T]) -> Retained<Buffer> {
+        if values.is_empty() {
+            return self
+                .device
+                .newBufferWithLength_options(0, MTLResourceOptions::StorageModeShared)
+                .expect("Metal device must create an empty input buffer");
+        }
+
+        let pointer = NonNull::new(values.as_ptr() as *mut c_void)
+            .expect("non-empty slice pointer is not null");
+        unsafe {
+            self.device
+                .newBufferWithBytes_length_options(
+                    pointer,
+                    std::mem::size_of_val(values),
+                    MTLResourceOptions::StorageModeShared,
+                )
+                .expect("Metal device must create an input buffer")
+        }
     }
 
     pub fn pooled_buffer<T>(self: &Arc<Self>, len: usize) -> PooledBuffer {
@@ -155,12 +195,12 @@ impl MetalRuntime {
     }
 
     pub fn buffer_slice<'a, T>(&self, buffer: &'a Buffer, len: usize) -> &'a [T] {
-        let ptr = buffer.contents().cast::<T>();
+        let ptr = buffer.contents().as_ptr().cast::<T>();
         unsafe { std::slice::from_raw_parts(ptr, len) }
     }
 
     pub fn buffer_slice_mut<'a, T>(&self, buffer: &'a Buffer, len: usize) -> &'a mut [T] {
-        let ptr = buffer.contents().cast::<T>();
+        let ptr = buffer.contents().as_ptr().cast::<T>();
         unsafe { std::slice::from_raw_parts_mut(ptr, len) }
     }
 
@@ -169,7 +209,7 @@ impl MetalRuntime {
             return;
         }
         unsafe {
-            ptr::write_bytes(buffer.contents(), 0, len * size_of::<T>());
+            ptr::write_bytes(buffer.contents().as_ptr(), 0, len * size_of::<T>());
         }
     }
 
@@ -179,9 +219,9 @@ impl MetalRuntime {
         work_items: usize,
     ) -> MTLSize {
         let width = pipeline
-            .thread_execution_width()
-            .min(pipeline.max_total_threads_per_threadgroup())
-            .min(work_items as u64)
+            .threadExecutionWidth()
+            .min(pipeline.maxTotalThreadsPerThreadgroup())
+            .min(work_items)
             .max(1);
         MTLSize {
             width,
@@ -190,7 +230,7 @@ impl MetalRuntime {
         }
     }
 
-    pub fn roots_buffer(&self, codeword_length: usize) -> Result<Arc<Buffer>, String> {
+    pub fn roots_buffer(&self, codeword_length: usize) -> Result<Arc<Retained<Buffer>>, String> {
         let mut cache = self.roots_cache.lock().unwrap();
         if let Some(buffer) = cache.get(&codeword_length) {
             trace_event(format_args!(
@@ -221,11 +261,12 @@ impl MetalRuntime {
         Ok(buffer)
     }
 
-    fn take_buffer(&self, bucket_bytes: usize) -> Buffer {
+    fn take_buffer(&self, bucket_bytes: usize) -> Retained<Buffer> {
         if bucket_bytes == 0 {
             return self
                 .device
-                .new_buffer(0, MTLResourceOptions::StorageModeShared);
+                .newBufferWithLength_options(0, MTLResourceOptions::StorageModeShared)
+                .expect("Metal device must create an empty pooled buffer");
         }
 
         let mut pool = self.buffer_pool.lock().unwrap();
@@ -235,10 +276,11 @@ impl MetalRuntime {
         drop(pool);
 
         self.device
-            .new_buffer(bucket_bytes as u64, MTLResourceOptions::StorageModeShared)
+            .newBufferWithLength_options(bucket_bytes, MTLResourceOptions::StorageModeShared)
+            .expect("Metal device must create a pooled buffer")
     }
 
-    fn recycle_buffer(&self, bucket_bytes: usize, buffer: Buffer) {
+    fn recycle_buffer(&self, bucket_bytes: usize, buffer: Retained<Buffer>) {
         if bucket_bytes == 0 {
             return;
         }
@@ -251,11 +293,60 @@ impl MetalRuntime {
         device: &Device,
         library: &Library,
         function_name: &str,
-    ) -> Result<ComputePipelineState, String> {
-        library
-            .get_function(function_name, None)
-            .map_err(|err| err.to_string())
-            .and_then(|function| device.new_compute_pipeline_state_with_function(&function))
+    ) -> Result<Retained<ComputePipelineState>, String> {
+        let function_name = NSString::from_str(function_name);
+        let function = library
+            .newFunctionWithName(&function_name)
+            .ok_or_else(|| format!("Metal shader function `{function_name}` not found"))?;
+        device
+            .newComputePipelineStateWithFunction_error(&function)
+            .map_err(|error| {
+                format!(
+                    "failed to create Metal compute pipeline `{function_name}`: {}",
+                    error.localizedDescription()
+                )
+            })
+    }
+}
+
+pub fn new_command_buffer(queue: &CommandQueue) -> Result<Retained<CommandBuffer>, String> {
+    queue
+        .commandBuffer()
+        .ok_or_else(|| "Metal command queue did not create a command buffer".to_string())
+}
+
+pub fn new_compute_encoder(
+    command_buffer: &CommandBuffer,
+) -> Result<Retained<ComputeCommandEncoder>, String> {
+    command_buffer.computeCommandEncoder().ok_or_else(|| {
+        "Metal command buffer did not create a compute command encoder".to_string()
+    })
+}
+
+pub fn set_buffer(encoder: &ComputeCommandEncoder, index: usize, buffer: &Buffer, offset: usize) {
+    unsafe {
+        encoder.setBuffer_offset_atIndex(Some(buffer), offset, index);
+    }
+}
+
+pub fn set_bytes<T>(encoder: &ComputeCommandEncoder, index: usize, value: &T) {
+    unsafe {
+        encoder.setBytes_length_atIndex(
+            NonNull::from(value).cast::<c_void>(),
+            size_of::<T>(),
+            index,
+        );
+    }
+}
+
+pub fn check_command_buffer(command_buffer: &CommandBuffer) -> Result<(), String> {
+    if let Some(error) = command_buffer.error() {
+        Err(format!(
+            "Metal command buffer failed: {}",
+            error.localizedDescription()
+        ))
+    } else {
+        Ok(())
     }
 }
 

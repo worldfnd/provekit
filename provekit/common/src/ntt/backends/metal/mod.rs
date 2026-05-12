@@ -13,6 +13,8 @@ mod types;
 #[cfg(target_os = "macos")]
 use self::engine::MetalRuntime;
 #[cfg(target_os = "macos")]
+use objc2_metal::{MTLComputePipelineState, MTLDevice};
+#[cfg(target_os = "macos")]
 use std::{
     env,
     sync::{Arc, OnceLock},
@@ -49,20 +51,18 @@ impl MetalBn254Ntt {
         match RUNTIME.get_or_init(|| MetalRuntime::new().map(Arc::new)) {
             Ok(runtime) => {
                 info!(
-                    device = runtime.device.name(),
-                    thread_execution_width = runtime.ntt_stage_pipeline.thread_execution_width(),
+                    device = %runtime.device.name(),
+                    thread_execution_width = runtime.ntt_stage_pipeline.threadExecutionWidth(),
                     max_total_threads_per_threadgroup = runtime
                         .ntt_stage_pipeline
-                        .max_total_threads_per_threadgroup(),
+                        .maxTotalThreadsPerThreadgroup(),
                     "initialized Metal BN254 NTT backend"
                 );
                 trace_event(format_args!(
                     "init device={} thread_execution_width={} max_total_threads_per_threadgroup={}",
                     runtime.device.name(),
-                    runtime.ntt_stage_pipeline.thread_execution_width(),
-                    runtime
-                        .ntt_stage_pipeline
-                        .max_total_threads_per_threadgroup(),
+                    runtime.ntt_stage_pipeline.threadExecutionWidth(),
+                    runtime.ntt_stage_pipeline.maxTotalThreadsPerThreadgroup(),
                 ));
                 Ok(Self)
             }

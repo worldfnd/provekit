@@ -1,19 +1,20 @@
 use {
     super::{
+        engine::{
+            check_command_buffer, new_command_buffer, new_compute_encoder, set_buffer, set_bytes,
+        },
         field::{fr_to_gpu, gpu_to_fr},
         logging::trace_event,
         types::{
             BitReverseParams, DeviceMatrix, EncodeShape, GpuField, NttStageParams,
-            ReplicateCosetsParams,
-            TransposeParams,
+            ReplicateCosetsParams, TransposeParams,
         },
         MetalBn254Ntt,
     },
     ark_bn254::Fr,
     ark_ff::AdditiveGroup,
-    metal::{MTLSize, NSUInteger},
+    objc2_metal::{MTLCommandBuffer, MTLCommandEncoder, MTLComputeCommandEncoder, MTLSize},
     rayon::prelude::*,
-    std::{ffi::c_void, mem::size_of},
     tracing::instrument,
     whir::algebra::ntt::ReedSolomon,
 };
@@ -100,8 +101,8 @@ impl MetalBn254Ntt {
         let stage_count = codeword_length.trailing_zeros() as usize;
         let skipped_stage_count = shape.num_cosets.trailing_zeros() as usize;
         let total_butterflies = shape.total_elements / 2;
-        let bit_reverse_threads = runtime
-            .threads_per_threadgroup(&runtime.bit_reverse_pipeline, shape.total_elements);
+        let bit_reverse_threads =
+            runtime.threads_per_threadgroup(&runtime.bit_reverse_pipeline, shape.total_elements);
         let stage_threads =
             runtime.threads_per_threadgroup(&runtime.ntt_stage_pipeline, total_butterflies);
         let transpose_threads =
@@ -118,7 +119,7 @@ impl MetalBn254Ntt {
             total_elements: shape.total_elements as u32,
         };
 
-        let command_buffer = runtime.queue.new_command_buffer();
+        let command_buffer = new_command_buffer(&runtime.queue)?;
         let replicate_params = ReplicateCosetsParams {
             row_len:           shape.codeword_length as u32,
             coset_size:        shape.coset_size as u32,
@@ -128,48 +129,40 @@ impl MetalBn254Ntt {
                 as u32,
         };
         if replicate_params.trailing_elements != 0 {
-            let replicate_encoder = command_buffer.new_compute_command_encoder();
-            replicate_encoder.set_compute_pipeline_state(&runtime.replicate_cosets_pipeline);
-            replicate_encoder.set_buffer(0, Some(current.as_ref()), 0);
-            replicate_encoder.set_bytes(
-                1,
-                size_of::<ReplicateCosetsParams>() as u64,
-                (&replicate_params as *const ReplicateCosetsParams).cast::<c_void>(),
-            );
+            let replicate_encoder = new_compute_encoder(&command_buffer)?;
+            replicate_encoder.setComputePipelineState(&runtime.replicate_cosets_pipeline);
+            set_buffer(&replicate_encoder, 0, current.as_ref(), 0);
+            set_bytes(&replicate_encoder, 1, &replicate_params);
             let replicate_threads = runtime.threads_per_threadgroup(
                 &runtime.replicate_cosets_pipeline,
                 replicate_params.trailing_elements as usize,
             );
-            replicate_encoder.dispatch_threads(
+            replicate_encoder.dispatchThreads_threadsPerThreadgroup(
                 MTLSize {
-                    width:  replicate_params.trailing_elements as u64,
+                    width:  replicate_params.trailing_elements as usize,
                     height: 1,
                     depth:  1,
                 },
                 replicate_threads,
             );
-            replicate_encoder.end_encoding();
+            replicate_encoder.endEncoding();
         }
-        let bit_reverse_encoder = command_buffer.new_compute_command_encoder();
-        bit_reverse_encoder.set_compute_pipeline_state(&runtime.bit_reverse_pipeline);
-        bit_reverse_encoder.set_buffer(0, Some(current.as_ref()), 0);
-        bit_reverse_encoder.set_bytes(
-            1,
-            size_of::<BitReverseParams>() as NSUInteger,
-            (&bit_reverse_params as *const BitReverseParams).cast::<c_void>(),
-        );
-        bit_reverse_encoder.dispatch_threads(
+        let bit_reverse_encoder = new_compute_encoder(&command_buffer)?;
+        bit_reverse_encoder.setComputePipelineState(&runtime.bit_reverse_pipeline);
+        set_buffer(&bit_reverse_encoder, 0, current.as_ref(), 0);
+        set_bytes(&bit_reverse_encoder, 1, &bit_reverse_params);
+        bit_reverse_encoder.dispatchThreads_threadsPerThreadgroup(
             MTLSize {
-                width:  shape.total_elements as u64,
+                width:  shape.total_elements,
                 height: 1,
                 depth:  1,
             },
             bit_reverse_threads,
         );
-        bit_reverse_encoder.end_encoding();
+        bit_reverse_encoder.endEncoding();
 
-        let stage_encoder = command_buffer.new_compute_command_encoder();
-        stage_encoder.set_compute_pipeline_state(&runtime.ntt_stage_pipeline);
+        let stage_encoder = new_compute_encoder(&command_buffer)?;
+        stage_encoder.setComputePipelineState(&runtime.ntt_stage_pipeline);
 
         let mut twiddle_offset = (1usize << skipped_stage_count).saturating_sub(1);
         for stage in skipped_stage_count..stage_count {
@@ -180,16 +173,12 @@ impl MetalBn254Ntt {
                 twiddle_offset: twiddle_offset as u32,
                 _pad0:          0,
             };
-            stage_encoder.set_buffer(0, Some(current.as_ref()), 0);
-            stage_encoder.set_buffer(1, Some(roots.as_ref()), 0);
-            stage_encoder.set_bytes(
-                2,
-                size_of::<NttStageParams>() as NSUInteger,
-                (&params as *const NttStageParams).cast::<c_void>(),
-            );
-            stage_encoder.dispatch_threads(
+            set_buffer(&stage_encoder, 0, current.as_ref(), 0);
+            set_buffer(&stage_encoder, 1, roots.as_ref(), 0);
+            set_bytes(&stage_encoder, 2, &params);
+            stage_encoder.dispatchThreads_threadsPerThreadgroup(
                 MTLSize {
-                    width:  total_butterflies as u64,
+                    width:  total_butterflies,
                     height: 1,
                     depth:  1,
                 },
@@ -197,29 +186,26 @@ impl MetalBn254Ntt {
             );
             twiddle_offset += 1usize << stage;
         }
-        stage_encoder.end_encoding();
+        stage_encoder.endEncoding();
 
-        let transpose_encoder = command_buffer.new_compute_command_encoder();
-        transpose_encoder.set_compute_pipeline_state(&runtime.transpose_pipeline);
-        transpose_encoder.set_buffer(0, Some(current.as_ref()), 0);
-        transpose_encoder.set_buffer(1, Some(transposed.as_ref()), 0);
-        transpose_encoder.set_bytes(
-            2,
-            size_of::<TransposeParams>() as NSUInteger,
-            (&transpose_params as *const TransposeParams).cast::<c_void>(),
-        );
-        transpose_encoder.dispatch_threads(
+        let transpose_encoder = new_compute_encoder(&command_buffer)?;
+        transpose_encoder.setComputePipelineState(&runtime.transpose_pipeline);
+        set_buffer(&transpose_encoder, 0, current.as_ref(), 0);
+        set_buffer(&transpose_encoder, 1, transposed.as_ref(), 0);
+        set_bytes(&transpose_encoder, 2, &transpose_params);
+        transpose_encoder.dispatchThreads_threadsPerThreadgroup(
             MTLSize {
-                width:  shape.total_elements as u64,
+                width:  shape.total_elements,
                 height: 1,
                 depth:  1,
             },
             transpose_threads,
         );
-        transpose_encoder.end_encoding();
+        transpose_encoder.endEncoding();
 
         command_buffer.commit();
-        command_buffer.wait_until_completed();
+        command_buffer.waitUntilCompleted();
+        check_command_buffer(&command_buffer)?;
 
         Ok(DeviceMatrix {
             rows:   shape.codeword_length,
@@ -285,7 +271,6 @@ impl MetalBn254Ntt {
             total_elements,
         })
     }
-
 }
 
 fn pack_messages_and_masks_into_buffer(

@@ -70,6 +70,7 @@ mod tests {
         super::{MetalBn254Ntt, RSFr},
         ark_bn254::Fr,
         ark_ff::UniformRand,
+        objc2_metal::MTLDevice,
         whir::algebra::ntt::ReedSolomon,
     };
 

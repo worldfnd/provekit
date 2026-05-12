@@ -1,6 +1,9 @@
 use {
     super::{
-        engine::PooledBuffer,
+        engine::{
+            check_command_buffer, new_command_buffer, new_compute_encoder, set_buffer, set_bytes,
+            PooledBuffer,
+        },
         field::gpu_to_fr,
         types::{
             DeviceMatrix, DeviceMerkleWitness, DeviceRows, EncodeFieldBytesParams, GpuField,
@@ -9,8 +12,12 @@ use {
         MetalBn254Ntt,
     },
     ark_bn254::Fr,
-    metal::{MTLSize, NSRange, NSUInteger},
-    std::{ffi::c_void, mem::size_of, sync::Arc},
+    objc2_foundation::NSRange,
+    objc2_metal::{
+        MTLBlitCommandEncoder, MTLBuffer, MTLCommandBuffer, MTLCommandEncoder,
+        MTLComputeCommandEncoder, MTLSize,
+    },
+    std::{mem::size_of, sync::Arc},
     whir::{
         hash::Hash,
         protocols::{
@@ -93,51 +100,45 @@ impl MetalBn254Ntt {
             size:  message_size as u32,
             count: matrix.rows as u32,
         };
-        let command_buffer = runtime.queue.new_command_buffer();
+        let command_buffer = new_command_buffer(&runtime.queue)?;
 
-        let encode_encoder = command_buffer.new_compute_command_encoder();
-        encode_encoder.set_compute_pipeline_state(&runtime.encode_bytes_pipeline);
-        encode_encoder.set_buffer(0, Some(matrix.buffer.as_ref()), 0);
-        encode_encoder.set_buffer(1, Some(encoded.as_ref()), 0);
-        encode_encoder.set_bytes(
-            2,
-            size_of::<EncodeFieldBytesParams>() as NSUInteger,
-            (&encode_params as *const EncodeFieldBytesParams).cast::<c_void>(),
-        );
+        let encode_encoder = new_compute_encoder(&command_buffer)?;
+        encode_encoder.setComputePipelineState(&runtime.encode_bytes_pipeline);
+        set_buffer(&encode_encoder, 0, matrix.buffer.as_ref(), 0);
+        set_buffer(&encode_encoder, 1, encoded.as_ref(), 0);
+        set_bytes(&encode_encoder, 2, &encode_params);
         let encode_threads =
             runtime.threads_per_threadgroup(&runtime.encode_bytes_pipeline, total_elements);
-        encode_encoder.dispatch_threads(
+        encode_encoder.dispatchThreads_threadsPerThreadgroup(
             MTLSize {
-                width:  total_elements as u64,
+                width:  total_elements,
                 height: 1,
                 depth:  1,
             },
             encode_threads,
         );
-        encode_encoder.end_encoding();
+        encode_encoder.endEncoding();
 
-        let hash_encoder = command_buffer.new_compute_command_encoder();
-        hash_encoder.set_compute_pipeline_state(&runtime.sha256_pipeline);
-        hash_encoder.set_buffer(0, Some(encoded.as_ref()), 0);
-        hash_encoder.set_buffer(1, Some(hashes.as_ref()), 0);
-        hash_encoder.set_bytes(
-            2,
-            size_of::<HashManyParams>() as NSUInteger,
-            (&hash_params as *const HashManyParams).cast::<c_void>(),
-        );
-        let hash_threads = runtime.threads_per_threadgroup(&runtime.sha256_pipeline, matrix.rows);
-        hash_encoder.dispatch_threads(
+        let hash_encoder = new_compute_encoder(&command_buffer)?;
+        hash_encoder.setComputePipelineState(&runtime.sha256_pipeline);
+        set_buffer(&hash_encoder, 0, encoded.as_ref(), 0);
+        set_buffer(&hash_encoder, 1, hashes.as_ref(), 0);
+        set_bytes(&hash_encoder, 2, &hash_params);
+        let hash_threads =
+            runtime.threads_per_threadgroup(&runtime.sha256_pipeline, matrix.rows);
+        hash_encoder.dispatchThreads_threadsPerThreadgroup(
             MTLSize {
-                width:  matrix.rows as u64,
+                width:  matrix.rows,
                 height: 1,
                 depth:  1,
             },
             hash_threads,
         );
-        hash_encoder.end_encoding();
+        hash_encoder.endEncoding();
 
         command_buffer.commit();
-        command_buffer.wait_until_completed();
+        command_buffer.waitUntilCompleted();
+        check_command_buffer(&command_buffer)?;
 
         Ok(hashes)
     }
@@ -165,23 +166,27 @@ impl MetalBn254Ntt {
         }
 
         let tree = runtime.pooled_buffer::<Hash>(num_nodes);
-        let command_buffer = runtime.queue.new_command_buffer();
-        let blit = command_buffer.new_blit_command_encoder();
-        blit.fill_buffer(
+        let command_buffer = new_command_buffer(&runtime.queue)?;
+        let blit = command_buffer.blitCommandEncoder().ok_or_else(|| {
+            "Metal command buffer did not create a blit command encoder".to_string()
+        })?;
+        blit.fillBuffer_range_value(
             tree.as_ref(),
-            NSRange::new(0, (num_nodes * size_of::<Hash>()) as u64),
+            NSRange::new(0, num_nodes * size_of::<Hash>()),
             0,
         );
         if num_leaves != 0 {
-            blit.copy_from_buffer(
-                leaf_hashes.as_ref(),
-                0,
-                tree.as_ref(),
-                0,
-                (num_leaves * size_of::<Hash>()) as u64,
-            );
+            unsafe {
+                blit.copyFromBuffer_sourceOffset_toBuffer_destinationOffset_size(
+                    leaf_hashes.as_ref(),
+                    0,
+                    tree.as_ref(),
+                    0,
+                    num_leaves * size_of::<Hash>(),
+                );
+            }
         }
-        blit.end_encoding();
+        blit.endEncoding();
 
         let mut previous_offset = 0usize;
         let mut previous_len = leaf_capacity;
@@ -199,39 +204,39 @@ impl MetalBn254Ntt {
                 count: current_len as u32,
             };
             let current_offset = previous_offset + previous_len;
-            let encoder = command_buffer.new_compute_command_encoder();
-            encoder.set_compute_pipeline_state(&runtime.sha256_pipeline);
-            encoder.set_buffer(
+            let encoder = new_compute_encoder(&command_buffer)?;
+            encoder.setComputePipelineState(&runtime.sha256_pipeline);
+            set_buffer(
+                &encoder,
                 0,
-                Some(tree.as_ref()),
-                (previous_offset * size_of::<Hash>()) as u64,
+                tree.as_ref(),
+                previous_offset * size_of::<Hash>(),
             );
-            encoder.set_buffer(
+            set_buffer(
+                &encoder,
                 1,
-                Some(tree.as_ref()),
-                (current_offset * size_of::<Hash>()) as u64,
+                tree.as_ref(),
+                current_offset * size_of::<Hash>(),
             );
-            encoder.set_bytes(
-                2,
-                size_of::<HashManyParams>() as NSUInteger,
-                (&params as *const HashManyParams).cast::<c_void>(),
-            );
-            let threads = runtime.threads_per_threadgroup(&runtime.sha256_pipeline, current_len);
-            encoder.dispatch_threads(
+            set_bytes(&encoder, 2, &params);
+            let threads =
+                runtime.threads_per_threadgroup(&runtime.sha256_pipeline, current_len);
+            encoder.dispatchThreads_threadsPerThreadgroup(
                 MTLSize {
-                    width:  current_len as u64,
+                    width:  current_len,
                     height: 1,
                     depth:  1,
                 },
                 threads,
             );
-            encoder.end_encoding();
+            encoder.endEncoding();
             previous_offset = current_offset;
             previous_len = current_len;
         }
 
         command_buffer.commit();
-        command_buffer.wait_until_completed();
+        command_buffer.waitUntilCompleted();
+        check_command_buffer(&command_buffer)?;
 
         let root = runtime.buffer_slice::<Hash>(tree.as_ref(), num_nodes)[num_nodes - 1];
 
@@ -251,7 +256,7 @@ impl WitnessTrait for DeviceMerkleWitness {
     fn read_nodes(&self, indices: &[usize]) -> Vec<Hash> {
         let nodes = unsafe {
             std::slice::from_raw_parts(
-                self.buffer.as_ref().contents().cast::<Hash>(),
+                self.buffer.as_ref().contents().as_ptr().cast::<Hash>(),
                 self.num_nodes,
             )
         };
@@ -286,7 +291,7 @@ impl MatrixRows<Fr> for DeviceRows {
         let mut out = Vec::with_capacity(indices.len() * self.cols);
         let fields = unsafe {
             std::slice::from_raw_parts(
-                self.buffer.as_ref().contents().cast::<GpuField>(),
+                self.buffer.as_ref().contents().as_ptr().cast::<GpuField>(),
                 self.rows * self.cols,
             )
         };
