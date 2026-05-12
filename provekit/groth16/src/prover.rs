@@ -31,7 +31,7 @@ use {
 /// parallel with [`compute_h`].
 #[instrument(skip_all)]
 pub fn bsb22_pok(
-    commitment_keys: &[pedersen::ProvingKey],
+    commitment_keys: &[pedersen::ProvingKeyView<'_>],
     committed_values: &[Vec<Fr>],
     challenge_wire_indices: &[usize],
     wire_values: &[Fr],

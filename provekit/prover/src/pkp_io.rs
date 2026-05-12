@@ -92,18 +92,58 @@ fn write_pkp_to_writer<W: Write>(prover: &Prover, mut writer: W) -> Result<W> {
     // For Groth16, append the raw arkworks PK directly into the same zstd
     // stream. arkworks writes incrementally so we never materialize the full
     // PK as a `Vec<u8>`.
+
+    // Only the `Owned` PK source is serializable through this path — the
+    // `Mmap` source has its own writer (`pkp_mmap_io::write_pkp_mmap`) and
+    // calling the legacy `write_pkp` on a mmap-backed prover is a usage
+    // error.
     if let Prover::Groth16(g) = prover {
-        g.groth16_pk
-            .serialize_uncompressed(&mut encoder)
+        let pk = g.groth16_pk.as_owned().ok_or_else(|| {
+            anyhow::anyhow!(
+                "write_pkp: groth16_pk is mmap-backed; use write_pkp_mmap for that path"
+            )
+        })?;
+        pk.serialize_uncompressed(&mut encoder)
             .context("while writing arkworks-encoded ProvingKey")?;
+
+        // As of PROVER_VERSION (1, 5), `r1cs` and `commitment_info` are
+        // `#[serde(skip)]` on `Groth16Prover` — postcard no longer
+        // carries them. Append them after the PK as length-prefixed
+        // postcard blobs so the legacy reader can pull them back.
+        let r1cs_bytes =
+            postcard::to_allocvec(&g.r1cs).context("while postcard-encoding r1cs (legacy path)")?;
+        encoder
+            .write_all(&(r1cs_bytes.len() as u64).to_le_bytes())
+            .context("while writing r1cs length")?;
+        encoder
+            .write_all(&r1cs_bytes)
+            .context("while writing r1cs bytes")?;
+
+        let ci_bytes = postcard::to_allocvec(&g.commitment_info)
+            .context("while postcard-encoding commitment_info (legacy path)")?;
+        encoder
+            .write_all(&(ci_bytes.len() as u64).to_le_bytes())
+            .context("while writing commitment_info length")?;
+        encoder
+            .write_all(&ci_bytes)
+            .context("while writing commitment_info bytes")?;
     }
 
     encoder.finish().context("while finishing zstd stream")
 }
 
 /// Read a `Prover` from disk in the .pkp format.
+///
+/// Auto-detects the underlying layout: legacy zstd / xz, or mmap. The mmap
+/// path delegates to [`crate::pkp_mmap_io::read_pkp_mmap`], which mmaps the
+/// file and returns a `Prover` whose Groth16 PK source is
+/// [`crate::prover_types::Groth16PkSource::Mmap`]. The legacy path is byte
+/// compatible with everything `write_pkp` has ever produced.
 #[instrument(fields(path = %path.display(), size = path.metadata().map(|m| m.len()).ok()))]
 pub fn read_pkp(path: &Path) -> Result<Prover> {
+    if crate::pkp_mmap_io::is_mmap_pkp(path).unwrap_or(false) {
+        return crate::pkp_mmap_io::read_pkp_mmap(path);
+    }
     let file = BufReader::new(File::open(path).context("while opening input file")?);
     read_pkp_from_reader(file)
 }
@@ -187,11 +227,39 @@ fn read_split_stream<R: Read>(decoder: R) -> Result<Prover> {
             .context("while postcard-decoding Prover")?;
 
     // Phase 2: for Groth16, fill in the real PK by streaming arkworks bytes
-    // directly off the same decoder.
+    // directly off the same decoder. The placeholder created by
+    // `Groth16PkSource::default()` (which is `Owned(ProvingKey::empty())`) is
+    // overwritten in place.
     if let Prover::Groth16(ref mut g) = prover {
-        let pk = provekit_groth16::ProvingKey::deserialize_uncompressed_unchecked(buffered)
+        let mut buffered = buffered;
+        let pk = provekit_groth16::ProvingKey::deserialize_uncompressed_unchecked(&mut buffered)
             .context("while reading arkworks-encoded ProvingKey")?;
-        g.groth16_pk = pk;
+        g.groth16_pk = crate::prover_types::Groth16PkSource::Owned(pk);
+
+        // Read r1cs and commitment_info length-prefixed postcard blobs
+        // (PROVER_VERSION (1, 5) split).
+        let mut len_buf = [0u8; 8];
+        buffered
+            .read_exact(&mut len_buf)
+            .context("while reading r1cs length")?;
+        let r1cs_len = u64::from_le_bytes(len_buf) as usize;
+        let mut r1cs_bytes = vec![0u8; r1cs_len];
+        buffered
+            .read_exact(&mut r1cs_bytes)
+            .context("while reading r1cs bytes")?;
+        g.r1cs = postcard::from_bytes(&r1cs_bytes)
+            .context("while postcard-decoding r1cs (legacy path)")?;
+
+        buffered
+            .read_exact(&mut len_buf)
+            .context("while reading commitment_info length")?;
+        let ci_len = u64::from_le_bytes(len_buf) as usize;
+        let mut ci_bytes = vec![0u8; ci_len];
+        buffered
+            .read_exact(&mut ci_bytes)
+            .context("while reading commitment_info bytes")?;
+        g.commitment_info = postcard::from_bytes(&ci_bytes)
+            .context("while postcard-decoding commitment_info (legacy path)")?;
     }
 
     Ok(prover)

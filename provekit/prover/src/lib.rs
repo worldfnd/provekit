@@ -33,6 +33,10 @@ pub mod input_utils;
 // `pkp_io` depends on `xz2`/`zstd`/`bytes`, none of which build on wasm32.
 #[cfg(not(target_arch = "wasm32"))]
 pub mod pkp_io;
+// Mmap-backed `.pkp` I/O (rapidsnark-style). Same extension as legacy `.pkp`,
+// distinguished by an in-file sentinel; see `pkp_mmap_io` module docs.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod pkp_mmap_io;
 pub mod prover_types;
 pub(crate) mod r1cs;
 mod whir_r1cs;
@@ -41,9 +45,11 @@ mod witness;
 // Public re-exports for items used by integration tests and benchmarks.
 #[cfg(not(target_arch = "wasm32"))]
 pub use pkp_io::{deserialize_pkp, read_pkp, serialize_pkp, write_pkp};
+#[cfg(not(target_arch = "wasm32"))]
+pub use pkp_mmap_io::{is_mmap_pkp, read_pkp_mmap, write_pkp_mmap};
 pub use {
     ec_arith::ec_scalar_mul,
-    prover_types::{Groth16CommitmentInfo, Groth16Prover, Prover},
+    prover_types::{Groth16CommitmentInfo, Groth16PkSource, Groth16Prover, Prover},
     r1cs::solve_witness_vec,
 };
 
@@ -535,7 +541,7 @@ impl Prove for Groth16Prover {
                 .collect::<Result<Vec<_>>>()?;
 
             // Compute Pedersen commitment: C = Σ vᵢ · Basis[i]
-            let commitment = pk.commitment_keys[0].commit(&private_vals)?;
+            let commitment = pk.view().commitment_keys[0].commit(&private_vals)?;
 
             // Gather public values for hashing
             let public_vals: Vec<FieldElement> = ci
@@ -630,27 +636,17 @@ impl Prove for Groth16Prover {
         drop(r1cs);
         drop(commitment_info);
 
-        // Destructure the PK so each base vector can be dropped as soon as
-        // its MSM is done.
-        let provekit_groth16::ProvingKey {
-            domain_size,
-            domain_gen: _,
-            g1_alpha,
-            g1_beta,
-            g1_delta,
-            g1_a,
-            g1_b,
-            g1_k,
-            g1_z,
-            g2_beta,
-            g2_delta,
-            g2_b,
-            infinity_a,
-            infinity_b,
-            nb_infinity_a: _,
-            nb_infinity_b: _,
-            commitment_keys,
-        } = pk;
+        // Borrowed view over the PK. Uniform across owned and mmap-backed
+        // sources — the mmap variant exposes the same slice shape, just
+        // pointing at file pages. Note: per-field early `drop()` calls that
+        // existed in the previous owned-only implementation are gone — for
+        // the mmap source the slices are non-owning, and for the owned
+        // source the whole PK now drops at function return. The peak-memory
+        // bump is bounded by the PK size and was deemed acceptable in
+        // exchange for sharing the prove path between sources.
+        let pk_view = pk.view();
+        let domain_size = pk_view.domain_size;
+        let g1_delta = pk_view.g1_delta;
 
         // r/s and the δ multiples are needed by both the H-independent stages
         // and `prove_krs`, so sample them before the rayon::join below.
@@ -681,23 +677,23 @@ impl Prove for Groth16Prover {
                 ark_bn254::G1Projective,
             )> {
                 let pok = provekit_groth16::prover::bsb22_pok(
-                    &commitment_keys,
+                    &pk_view.commitment_keys,
                     &committed_values,
                     &challenge_wire_indices,
                     &full_witness,
                 )
                 .context("while computing BSB22 proof of knowledge")?;
                 let (ar, bs, bs1) = provekit_groth16::prover::prove_ar_bs_bs1(
-                    &g1_a,
-                    &g1_b,
-                    &g2_b,
-                    &infinity_a,
-                    &infinity_b,
+                    pk_view.g1_a,
+                    pk_view.g1_b,
+                    pk_view.g2_b,
+                    pk_view.infinity_a,
+                    pk_view.infinity_b,
                     &full_witness,
-                    g1_alpha,
-                    g1_beta,
-                    g2_beta,
-                    g2_delta,
+                    pk_view.g1_alpha,
+                    pk_view.g1_beta,
+                    pk_view.g2_beta,
+                    pk_view.g2_delta,
                     r_delta,
                     s_delta,
                     s_scalar,
@@ -710,19 +706,9 @@ impl Prove for Groth16Prover {
         let h = h.context("while computing quotient polynomial H")?;
         let (commitment_pok, ar, bs, bs1) = branch_b?;
 
-        // PK fields used only by `bsb22_pok` / `prove_ar_bs_bs1` are dropped
-        // before `prove_krs` so its MSMs run from a low memory baseline.
-        drop(commitment_keys);
-        drop(committed_values);
-        drop(g1_a);
-        drop(g1_b);
-        drop(g2_b);
-        drop(infinity_a);
-        drop(infinity_b);
-
         let krs = provekit_groth16::prover::prove_krs(
-            &g1_k,
-            &g1_z,
+            pk_view.g1_k,
+            pk_view.g1_z,
             &h,
             &full_witness,
             nb_public,
@@ -736,9 +722,6 @@ impl Prove for Groth16Prover {
             s_scalar,
         )
         .context("while computing Krs")?;
-
-        drop(g1_k);
-        drop(g1_z);
 
         let proof = provekit_groth16::Proof {
             ar,

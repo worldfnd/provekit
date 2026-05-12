@@ -157,6 +157,7 @@ parking_lot = "0.12"
 # and calls keccak::f1600(), which was removed in keccak 0.2.0 stable. Pinning to
 # the RC prevents `cargo update` from bumping acvm_blackbox_solver's keccak to stable.
 keccak = "=0.2.0-rc.2"
+memmap2 = "0.9.5"
 xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"

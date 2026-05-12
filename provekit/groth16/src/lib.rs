@@ -11,6 +11,11 @@ pub mod setup;
 pub mod types;
 pub mod verifier;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod mmap_pk;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use mmap_pk::{MmapProvingKey, MMAP_SENTINEL};
 pub use types::{Proof, ProvingKey, VerifyingKey};
 
 /// Domain separator for BSB22 commitment hashing.

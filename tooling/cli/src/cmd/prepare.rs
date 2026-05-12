@@ -3,7 +3,7 @@ use {
     anyhow::{Context as _, Result},
     argh::FromArgs,
     provekit_common::{file::write, HashConfig, Verifier},
-    provekit_prover::{write_pkp, Groth16CommitmentInfo, Groth16Prover, Prover},
+    provekit_prover::{write_pkp, write_pkp_mmap, Groth16CommitmentInfo, Groth16Prover, Prover},
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     std::{path::PathBuf, str::FromStr},
     tracing::{info, instrument},
@@ -80,6 +80,12 @@ pub struct Args {
     /// blake3, poseidon2)
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
     hash: String,
+
+    /// use the mmap-friendly .pkp layout (Groth16 only). The file uses the
+    /// same .pkp extension as the legacy zstd format; readers auto-detect.
+    /// Larger artifact, near-instant load (rapidsnark-style).
+    #[argh(switch, long = "mmap")]
+    mmap: bool,
 }
 
 impl Command for Args {
@@ -112,6 +118,10 @@ impl Command for Args {
         };
         let pkp_path = resolve_path(self.pkp_path.as_ref(), "pkp")?;
         let pkv_path = resolve_path(self.pkv_path.as_ref(), "pkv")?;
+
+        if self.mmap && self.backend != Backend::Groth16 {
+            anyhow::bail!("--mmap is only supported with --backend groth16");
+        }
 
         match self.backend {
             Backend::Whir => {
@@ -245,7 +255,7 @@ impl Command for Args {
                     r1cs: r1cs.clone(),
                     split_witness_builders,
                     witness_generator,
-                    groth16_pk: pk,
+                    groth16_pk: pk.into(),
                     commitment_info,
                 });
 
@@ -257,7 +267,12 @@ impl Command for Args {
                     groth16_vk: Some(vk_bytes),
                 };
 
-                write_pkp(&prover, &pkp_path).context("while writing Provekit Prover")?;
+                if self.mmap {
+                    write_pkp_mmap(&prover, &pkp_path)
+                        .context("while writing mmap-format Provekit Prover")?;
+                } else {
+                    write_pkp(&prover, &pkp_path).context("while writing Provekit Prover")?;
+                }
                 write(&verifier, &pkv_path).context("while writing Provekit Verifier")?;
             }
         }

@@ -102,10 +102,19 @@ fn chunked_g1_msm(bases: &[G1Affine], values: &[Fr]) -> Result<G1Projective> {
     Ok(acc)
 }
 
-impl ProvingKey {
+/// Borrowed view over a Pedersen `ProvingKey`'s bases. Same `commit` /
+/// `prove_knowledge` API as [`ProvingKey`], but the basis slices can point
+/// at either owned `Vec<G1Affine>`s (legacy path) or mmap'd file pages
+/// (rapidsnark-style raw layout). Lets callers be polymorphic over the
+/// backing store without a runtime indirection or memcpy.
+#[derive(Clone, Copy)]
+pub struct ProvingKeyView<'a> {
+    pub basis:           &'a [G1Affine],
+    pub basis_exp_sigma: &'a [G1Affine],
+}
+
+impl<'a> ProvingKeyView<'a> {
     /// Compute Pedersen commitment: `C = Σ vᵢ · Basis[i]`.
-    ///
-    /// Ported from gnark-crypto `ProvingKey.Commit()`.
     pub fn commit(&self, values: &[Fr]) -> Result<G1Affine> {
         ensure!(
             values.len() == self.basis.len(),
@@ -118,16 +127,11 @@ impl ProvingKey {
             return Ok(G1Affine::zero());
         }
 
-        let commitment = chunked_g1_msm(&self.basis, values)?;
+        let commitment = chunked_g1_msm(self.basis, values)?;
         Ok(commitment.into_affine())
     }
 
     /// Generate proof of knowledge: `PoK = Σ vᵢ · BasisExpSigma[i]`.
-    ///
-    /// Proves the prover knows the values inside the commitment without
-    /// revealing them. The verifier checks e(C, G^(-σ)) · e(PoK, G) == 1.
-    ///
-    /// Ported from gnark-crypto `ProvingKey.ProveKnowledge()`.
     pub fn prove_knowledge(&self, values: &[Fr]) -> Result<G1Affine> {
         ensure!(
             values.len() == self.basis_exp_sigma.len(),
@@ -140,8 +144,35 @@ impl ProvingKey {
             return Ok(G1Affine::zero());
         }
 
-        let pok = chunked_g1_msm(&self.basis_exp_sigma, values)?;
+        let pok = chunked_g1_msm(self.basis_exp_sigma, values)?;
         Ok(pok.into_affine())
+    }
+}
+
+impl ProvingKey {
+    /// Borrow this owned key as a view. Cheap — just two slice references.
+    pub fn view(&self) -> ProvingKeyView<'_> {
+        ProvingKeyView {
+            basis:           &self.basis,
+            basis_exp_sigma: &self.basis_exp_sigma,
+        }
+    }
+
+    /// Compute Pedersen commitment: `C = Σ vᵢ · Basis[i]`.
+    ///
+    /// Ported from gnark-crypto `ProvingKey.Commit()`.
+    pub fn commit(&self, values: &[Fr]) -> Result<G1Affine> {
+        self.view().commit(values)
+    }
+
+    /// Generate proof of knowledge: `PoK = Σ vᵢ · BasisExpSigma[i]`.
+    ///
+    /// Proves the prover knows the values inside the commitment without
+    /// revealing them. The verifier checks e(C, G^(-σ)) · e(PoK, G) == 1.
+    ///
+    /// Ported from gnark-crypto `ProvingKey.ProveKnowledge()`.
+    pub fn prove_knowledge(&self, values: &[Fr]) -> Result<G1Affine> {
+        self.view().prove_knowledge(values)
     }
 }
 

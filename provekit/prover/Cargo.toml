@@ -49,6 +49,7 @@ noir_artifact_cli = { workspace = true, optional = true }
 mavros-vm.workspace = true
 mavros-artifacts.workspace = true
 bytes.workspace = true
+memmap2 = { workspace = true }
 xz2.workspace = true
 zstd.workspace = true
 

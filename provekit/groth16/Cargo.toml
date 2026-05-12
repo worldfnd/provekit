@@ -21,5 +21,12 @@ tracing = { workspace = true }
 zeroize = { workspace = true, features = ["derive"] }
 provekit-common = { workspace = true }
 
+# Target-specific: mmap-backed proving key loader is non-WASM only.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+memmap2 = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tempfile = { workspace = true }
+
 [lints]
 workspace = true

@@ -44,7 +44,7 @@ cargo run --release --bin provekit-cli verify
 
 | Command | Purpose | Key options |
 | :--- | :--- | :--- |
-| `prepare` | Compile a Noir package and write prover/verifier keys | `--pkp`/`-p`, `--pkv`/`-v`, `--hash`, `--backend`; default hash: `skyscraper`, default backend: `whir` |
+| `prepare` | Compile a Noir package and write prover/verifier keys | `--pkp`/`-p`, `--pkv`/`-v`, `--hash`, `--backend`, `--mmap` (Groth16 only); default hash: `skyscraper`, default backend: `whir` |
 | `prove` | Produce `proof.np` from a prover key and inputs | `--prover`/`-p`, `--input`/`-i`, `--out`/`-o` |
 | `verify` | Verify a proof against a verifier key | `--verifier`/`-v`, `--proof` |
 
@@ -111,6 +111,7 @@ For larger circuits and integration experiments, see [`noir-examples/`](./noir-e
 
 ## Advanced Usage
 
+- **Mmap-format `.pkp`** (Groth16 only): pass `--mmap` to `prepare` to write an mmap-friendly `.pkp` instead of the zstd-compressed default. Larger artifact (no compression, raw in-memory layout for curve-point and R1CS arrays), but near-instant load — the kernel pages bytes in lazily as the MSM touches them, matching rapidsnark's zkey-loading model. Both layouts share the `.pkp` extension; `prove` auto-detects via the file's `MMAP` sentinel.
 - **Direct R1CS frontend:** after generating Mavros artifacts, call `provekit-cli prepare --compiler mavros <artifacts.json> --r1cs <r1cs.bin>`.
 - **Recursive verifier inputs:** `provekit-cli generate-gnark-inputs <verifier.pkv> <proof.np>` writes `params_for_recursive_verifier` and `r1cs.json` by default; use `--params` and `--r1cs` to override those paths.
 - **Inspection commands:** use `circuit-stats` for Noir ACIR/R1CS structure, `analyze-pkp` for Noir prover-key size breakdowns, and `show-inputs` for public inputs.
