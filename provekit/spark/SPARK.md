@@ -73,40 +73,40 @@ nargo compile
 # 1. Prepare the circuit (compiles and writes prover/verifier artifacts plus
 #    the SPARK setup transcript).
 cargo run --release --bin provekit-cli -- prepare ./target/complete_age_check.json \
-  --pkp ./benchmark-inputs/power.pkp \
-  --pkv ./benchmark-inputs/power.pkv \
+  --pkp ./benchmark-inputs/complete-age-check.pkp \
+  --pkv ./benchmark-inputs/complete-age-check.pkv \
   --spark \
-  --spc ./benchmark-inputs/power.spc
+  --spc ./benchmark-inputs/complete-age-check.spc
 
 # 2. Prove (generates Noir proof + writes SPARK queries to disk).
 #    `--produce-spark-query` is required, otherwise no queries are written.
-cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/power.pkp ./Prover.toml \
-  -o ./benchmark-inputs/power-proof.np \
+cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/complete-age-check.pkp ./Prover.toml \
+  -o ./benchmark-inputs/complete-age-check-proof.np \
   --spark-queries-dir ./spark_proofs \
   --produce-spark-query
 
 # 3. Generate one batched SPARK proof covering every query written in step 2.
 #    The prover reads all `spark_query_*.json` files in --spark-dir, batches
 #    them, and writes a single ./spark_proofs/spark_proof.sp.
-cargo run --release --bin provekit-cli -- prove-spark ./benchmark-inputs/power.pkp \
+cargo run --release --bin provekit-cli -- prove-spark ./benchmark-inputs/complete-age-check.pkp \
   --spark-dir ./spark_proofs
 
 # 4. Natively verify the Noir proof. Native verification evaluates MLE directly. Spark proofs are useful only in the recursive verifier.
-cargo run --release --bin provekit-cli -- verify ./benchmark-inputs/power.pkv ./benchmark-inputs/power-proof.np
+cargo run --release --bin provekit-cli -- verify ./benchmark-inputs/complete-age-check.pkv ./benchmark-inputs/complete-age-check-proof.np
 
 # 5. Verify the batched SPARK proof. Pass every query that the prover saw, in
 #    index order (`_0`, `_1`, ...). The order matters because the transcript
 #    instance is bound to the postcard-serialized query slice.
 cargo run --release --bin provekit-cli -- verify-spark \
   ./spark_proofs/spark_proof.sp \
-  ./benchmark-inputs/power.spc \
+  ./benchmark-inputs/complete-age-check.spc \
   ./spark_proofs/spark_query_0.json \
   ./spark_proofs/spark_query_1.json
 
 # Or, equivalently, with a glob (single-digit indices sort lexically):
 # cargo run --release --bin provekit-cli -- verify-spark \
 #   ./spark_proofs/spark_proof.sp \
-#   ./benchmark-inputs/power.spc \
+#   ./benchmark-inputs/complete-age-check.spc \
 #   ./spark_proofs/spark_query_*.json
 
 # TODO: 6. Recursively verify the Noir proof and SPARK.

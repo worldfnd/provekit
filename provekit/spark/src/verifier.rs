@@ -53,7 +53,7 @@ impl SPARKVerifier for SPARKScheme {
             pattern: proof.0.pattern,
         };
         let mut arthur = VerifierState::new(
-            &DomainSeparator::protocol(&setup.whir_params)
+            &DomainSeparator::protocol(&setup.whir_configs)
                 .session(&setup.transcript.narg_string)
                 .instance(&hash_query_set(requests)),
             &whir_proof,
@@ -75,10 +75,11 @@ impl SPARKVerifier for SPARKScheme {
             }
 
             let domain_size = setup.matrix_dimensions.num_cols / 2;
-            let variable_count = domain_size
-                .checked_ilog2()
-                .expect("domain_size must be a power of two")
-                as usize;
+            ensure!(
+                domain_size.is_power_of_two(),
+                "SPARK domain_size must be a power of two (got {domain_size})"
+            );
+            let variable_count = domain_size.ilog2() as usize;
             let (final_claims, folded, folding_randomness) =
                 run_parallel_sumchecks_verifier(&mut arthur, variable_count, claimed_evals)
                     .context("verifying parallel sumchecks")?;
@@ -133,7 +134,7 @@ impl SPARKVerifier for SPARKScheme {
             .collect();
 
         verify_spark_single_matrix(
-            &setup.whir_params,
+            &setup.whir_configs,
             setup.matrix_dimensions.clone(),
             &mut arthur,
             &precomputed_commitments,
@@ -145,14 +146,14 @@ impl SPARKVerifier for SPARKScheme {
 
 #[instrument(skip_all)]
 pub(crate) fn verify_spark_single_matrix(
-    whir_params: &SPARKWHIRConfigs,
+    whir_configs: &SPARKWHIRConfigs,
     matrix_dimensions: MatrixDimensions,
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     precomputed_commitments: &PrecomputedCommitments,
     request: &R1CSSparkQuery,
     claimed_value: &FieldElement,
 ) -> Result<()> {
-    let e_values_commitment = whir_params
+    let e_values_commitment = whir_configs
         .num_terms_2batched
         .receive_commitment(arthur)
         .map_err(|e| anyhow::anyhow!("Failed to receive e_values commitment: {e}"))?;
@@ -167,9 +168,12 @@ pub(crate) fn verify_spark_single_matrix(
 
     let sumcheck_hints: [FieldElement; 3] = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read SPARK sumcheck final folds hint"))?;
 
-    ensure!(last_sumcheck_value == sumcheck_hints[0] * sumcheck_hints[1] * sumcheck_hints[2]);
+    ensure!(
+        last_sumcheck_value == sumcheck_hints[0] * sumcheck_hints[1] * sumcheck_hints[2],
+        "SPARK sumcheck final folds inconsistent with claimed last value"
+    );
 
     let tau: FieldElement = arthur.verifier_message();
     let gamma: FieldElement = arthur.verifier_message();
@@ -188,40 +192,40 @@ pub(crate) fn verify_spark_single_matrix(
 
     let row_adr: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read row_adr hint"))?;
     let row_timestamp: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read row_timestamp hint"))?;
     let col_adr: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read col_adr hint"))?;
     let col_timestamp: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read col_timestamp hint"))?;
 
     let gpa_eval_weight = MultilinearExtension::new(evaluation_randomness.to_vec());
     let gpa_eval_lf: &dyn whir::algebra::linear_form::LinearForm<FieldElement> = &gpa_eval_weight;
 
     let row_field_at_fold: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read row_field_at_fold hint"))?;
     let read_row_at_fold: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read read_row_at_fold hint"))?;
     let col_field_at_fold: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read col_field_at_fold hint"))?;
     let read_col_at_fold: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read read_col_at_fold hint"))?;
     let vals_at_eval: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read vals_at_eval hint"))?;
 
     let fold_lf_for_vals_rs_ws = MultilinearExtension::new(eval_weight.point.clone());
     let eval_lf_for_vals_rs_ws = MultilinearExtension::new(evaluation_randomness.to_vec());
 
-    let vals_rs_ws_claim = whir_params
+    let vals_rs_ws_claim = whir_configs
         .num_terms_5batched
         .verify(arthur, &[&precomputed_commitments.vals_rsws], &[
             // fold_lf
@@ -247,12 +251,12 @@ pub(crate) fn verify_spark_single_matrix(
 
     let row_mem: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read row_mem hint"))?;
     let col_mem: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read col_mem hint"))?;
 
-    let e_values_combined_claim = whir_params
+    let e_values_combined_claim = whir_configs
         .num_terms_2batched
         .verify(arthur, &[&e_values_commitment], &[
             sumcheck_hints[1],
@@ -272,29 +276,32 @@ pub(crate) fn verify_spark_single_matrix(
 
     let row_rs_opening = row_adr * gamma_sq + row_mem * gamma + row_timestamp - tau;
     let row_ws_opening =
-        row_adr * gamma_sq + row_mem * gamma + row_timestamp + FieldElement::from(1) - tau;
+        row_adr * gamma_sq + row_mem * gamma + row_timestamp + FieldElement::ONE - tau;
     let col_rs_opening = col_adr * gamma_sq + col_mem * gamma + col_timestamp - tau;
     let col_ws_opening =
-        col_adr * gamma_sq + col_mem * gamma + col_timestamp + FieldElement::from(1) - tau;
+        col_adr * gamma_sq + col_mem * gamma + col_timestamp + FieldElement::ONE - tau;
 
     let evaluated_value = row_rs_opening
-        * (FieldElement::from(1) - combination_randomness[0])
-        * (FieldElement::from(1) - combination_randomness[1])
+        * (FieldElement::ONE - combination_randomness[0])
+        * (FieldElement::ONE - combination_randomness[1])
         + row_ws_opening
-            * (FieldElement::from(1) - combination_randomness[0])
+            * (FieldElement::ONE - combination_randomness[0])
             * combination_randomness[1]
         + col_rs_opening
             * combination_randomness[0]
-            * (FieldElement::from(1) - combination_randomness[1])
+            * (FieldElement::ONE - combination_randomness[1])
         + col_ws_opening * combination_randomness[0] * combination_randomness[1];
 
-    ensure!(evaluated_value == gpa_result.last_sumcheck_value);
+    ensure!(
+        evaluated_value == gpa_result.last_sumcheck_value,
+        "rs/ws GPA sumcheck final value inconsistent with evaluated multilinear extension"
+    );
 
     verify_axis(
         arthur,
         matrix_dimensions.num_rows,
-        &whir_params.row,
-        precomputed_commitments.a_row_finalts.clone(),
+        &whir_configs.row,
+        &precomputed_commitments.a_row_finalts,
         |eval_rand| calculate_eq(&request.point_to_evaluate.row, eval_rand),
         &tau,
         &gamma,
@@ -305,8 +312,8 @@ pub(crate) fn verify_spark_single_matrix(
     verify_axis(
         arthur,
         matrix_dimensions.num_cols,
-        &whir_params.col,
-        precomputed_commitments.a_col_finalts.clone(),
+        &whir_configs.col,
+        &precomputed_commitments.a_col_finalts,
         |eval_rand| calculate_eq(&request.point_to_evaluate.col, eval_rand),
         &tau,
         &gamma,

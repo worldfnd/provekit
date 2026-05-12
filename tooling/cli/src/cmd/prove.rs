@@ -47,7 +47,7 @@ pub struct Args {
     )]
     spark_queries_dir: PathBuf,
 
-    /// produce SPARK queries as.
+    /// produce SPARK queries and write them to `spark_queries_dir`.
     #[argh(switch, long = "produce-spark-query")]
     produce_spark_query: bool,
 }

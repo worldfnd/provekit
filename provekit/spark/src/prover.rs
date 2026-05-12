@@ -37,7 +37,7 @@ pub trait SPARKProver {
     fn prove(
         &self,
         spark_data: &SparkProverContext,
-        request: &Vec<R1CSSparkQuery>,
+        request: &[R1CSSparkQuery],
     ) -> Result<SPARKProof>;
 }
 
@@ -114,7 +114,7 @@ impl SPARKProver for SPARKScheme {
     fn prove(
         &self,
         spark_data: &SparkProverContext,
-        requests: &Vec<R1CSSparkQuery>,
+        requests: &[R1CSSparkQuery],
     ) -> Result<SPARKProof> {
         ensure!(
             !requests.is_empty(),
@@ -361,14 +361,14 @@ fn prove_combined_rs_ws_product(
     sumcheck_final_folds: [FieldElement; 3],
 ) -> Result<()> {
     let gamma_sq = challenges.gamma * challenges.gamma;
-    let one = FieldElement::from(1u64);
+    let one = FieldElement::ONE;
 
     let row_field = &matrix.coo.row_field;
     let col_field = &matrix.coo.col_field;
     let n = row_field.len();
 
     let gpa_leaves_flat = tracing::info_span!("build_rs_ws_pairs").in_scope(|| {
-        let mut buf = vec![FieldElement::from(0u64); 4 * n];
+        let mut buf = vec![FieldElement::ZERO; 4 * n];
         let (row_section, col_section) = buf.split_at_mut(2 * n);
         let (row_rs, row_ws) = row_section.split_at_mut(n);
         let (col_rs, col_ws) = col_section.split_at_mut(n);

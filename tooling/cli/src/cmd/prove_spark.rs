@@ -8,8 +8,7 @@ use {
     provekit_common::{
         file::{read, write},
         spark::R1CSSparkQuery,
-        utils::convert_mavros_r1cs_to_provekit,
-        Prover, R1CS,
+        Prover,
     },
     provekit_spark::{types::SparkMatrix, SPARKProver as _, SPARKProverScheme, SparkProverContext},
     std::{
@@ -55,15 +54,13 @@ impl Command for Args {
             return Ok(());
         }
 
-        // TODO: cache from `prepare --spark` instead of recomputing; blocked on
-        // serde for `WhirWitness` over `ark_bn254::Fr`.
-        let (spark_matrix, non_spark_r1cs) =
-            build_spark_matrix(&prover, self.r1cs_path.as_deref())?;
+        // TODO: preprocessing should be done once on the setup side, not per prove
+        // invocation.
+        let spark_matrix = build_spark_matrix(&prover, self.r1cs_path.as_deref())?;
         let hash_config = prover.whir_for_witness().hash_config;
         let (setup, witnesses) = provekit_spark::preprocess_spark(&spark_matrix, hash_config);
         let context = SparkProverContext {
             matrix: spark_matrix,
-            non_spark_r1cs,
             witnesses,
             setup,
         };
@@ -77,22 +74,10 @@ impl Command for Args {
         let spark_proof = scheme
             .prove(&context, &queries)
             .context("generating SPARK proof")?;
-        let proof_path = self.spark_dir.join(format!("spark_proof.sp"));
+        let proof_path = self.spark_dir.join("spark_proof.sp");
         write(&spark_proof, &proof_path)
             .with_context(|| format!("writing SPARK proof to {proof_path:?}"))?;
         info!("Wrote SPARK proof to {proof_path:?}");
-
-        // for (index, query) in queries.iter().enumerate() {
-        //     let scheme =
-        //         SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero,
-        // hash_config);     let spark_proof = scheme
-        //         .prove(&context, query)
-        //         .context("generating SPARK proof")?;
-        //     let proof_path = self.spark_dir.join(format!("spark_proof_{index}.sp"));
-        //     write(&spark_proof, &proof_path)
-        //         .with_context(|| format!("writing SPARK proof to {proof_path:?}"))?;
-        //     info!("Wrote SPARK proof to {proof_path:?}");
-        // }
 
         Ok(())
     }
@@ -113,34 +98,22 @@ fn collect_queries(dir: &Path) -> Result<Vec<R1CSSparkQuery>> {
     Ok(out)
 }
 
-fn build_spark_matrix(prover: &Prover, r1cs_path: Option<&Path>) -> Result<(SparkMatrix, R1CS)> {
+fn build_spark_matrix(prover: &Prover, r1cs_path: Option<&Path>) -> Result<SparkMatrix> {
     let whir = prover.whir_for_witness().clone();
     match prover {
         Prover::Noir(p) => {
-            let matrix = build_spark_r1cs_noir(
-                &p.r1cs,
-                whir.m_0,
-                whir.m,
-                whir.w1_size,
-                whir.num_challenges,
-            )?;
-            Ok((matrix, p.r1cs.clone()))
+            build_spark_r1cs_noir(&p.r1cs, whir.m_0, whir.m, whir.w1_size, whir.num_challenges)
         }
         Prover::Mavros(_) => {
             let r1cs_path = r1cs_path
                 .context("--r1cs is required for SPARK proving with the mavros compiler")?;
-            let matrix = build_spark_r1cs_mavros(
+            build_spark_r1cs_mavros(
                 r1cs_path,
                 whir.m_0,
                 whir.m,
                 whir.w1_size,
                 whir.num_challenges,
-            )?;
-            let r1cs_bytes = std::fs::read(r1cs_path).context("while reading R1CS file")?;
-            let mavros_r1cs: mavros_artifacts::R1CS = bincode::deserialize(&r1cs_bytes)
-                .context("while deserializing R1CS from bincode")?;
-            let r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs);
-            Ok((matrix, r1cs))
+            )
         }
     }
 }

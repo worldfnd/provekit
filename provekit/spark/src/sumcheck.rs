@@ -98,35 +98,35 @@ pub fn run_parallel_sumchecks_verifier(
         let a_coeffs: [FieldElement; 3] = [
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck a_coeffs[0]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck a_coeffs[1]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck a_coeffs[2]"))?,
         ];
         let b_coeffs: [FieldElement; 3] = [
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck b_coeffs[0]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck b_coeffs[1]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck b_coeffs[2]"))?,
         ];
         let c_coeffs: [FieldElement; 3] = [
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck c_coeffs[0]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck c_coeffs[1]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck c_coeffs[2]"))?,
         ];
 
         ensure!(
@@ -152,7 +152,7 @@ pub fn run_parallel_sumchecks_verifier(
 
     let folded: [FieldElement; 3] = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck folded values"))?;
 
     Ok((claimed_values, folded, folding_randomness))
 }
@@ -171,16 +171,16 @@ pub fn run_sumcheck_verifier_spark(
         let hhat_i: [FieldElement; 4] = [
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read SPARK sumcheck hhat_i[0]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read SPARK sumcheck hhat_i[1]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read SPARK sumcheck hhat_i[2]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read SPARK sumcheck hhat_i[3]"))?,
         ];
         let alpha_i: FieldElement = arthur.verifier_message();
         alpha[i] = alpha_i;

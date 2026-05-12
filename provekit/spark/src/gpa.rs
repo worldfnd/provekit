@@ -1,5 +1,6 @@
 use {
     anyhow::{ensure, Context},
+    ark_ff::{AdditiveGroup, Field},
     provekit_common::{
         utils::{
             next_power_of_two,
@@ -210,7 +211,7 @@ fn reconstruct_cubic_from_evaluations(
     at_neg1: FieldElement,
     at_inf_over_x3: FieldElement,
 ) -> [FieldElement; 4] {
-    let mut coeffs = [FieldElement::from(0u64); 4];
+    let mut coeffs = [FieldElement::ZERO; 4];
 
     coeffs[0] = at_0;
     coeffs[2] = HALF * (binding_value + at_neg1 - at_0 - at_0 - at_0);
@@ -243,10 +244,10 @@ pub fn gpa_sumcheck_verifier2(
 
     let claimed_0: FieldElement = arthur
         .prover_message()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read GPA2 claimed_0"))?;
     let claimed_1: FieldElement = arthur
         .prover_message()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read GPA2 claimed_1"))?;
     let claimed_values = [claimed_0, claimed_1];
 
     let line_challenge: FieldElement = arthur.verifier_message();
@@ -261,22 +262,22 @@ pub fn gpa_sumcheck_verifier2(
             let cubic_coeffs: [FieldElement; 4] = [
                 arthur
                     .prover_message()
-                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read GPA2 cubic coeff [0]"))?,
                 arthur
                     .prover_message()
-                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read GPA2 cubic coeff [1]"))?,
                 arthur
                     .prover_message()
-                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read GPA2 cubic coeff [2]"))?,
                 arthur
                     .prover_message()
-                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read GPA2 cubic coeff [3]"))?,
             ];
             let sumcheck_challenge: FieldElement = arthur.verifier_message();
 
             ensure!(
-                eval_cubic_poly(cubic_coeffs, FieldElement::from(0u64))
-                    + eval_cubic_poly(cubic_coeffs, FieldElement::from(1u64))
+                eval_cubic_poly(cubic_coeffs, FieldElement::ZERO)
+                    + eval_cubic_poly(cubic_coeffs, FieldElement::ONE)
                     == sumcheck_value,
                 "Sumcheck verification failed at layer {layer_idx}"
             );
@@ -288,16 +289,16 @@ pub fn gpa_sumcheck_verifier2(
         let line_coeffs: [FieldElement; 2] = [
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read GPA2 line coeff [0]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read GPA2 line coeff [1]"))?,
         ];
         let line_challenge: FieldElement = arthur.verifier_message();
 
         let expected_line_value = calculate_eq(&prev_randomness, &current_randomness)
-            * eval_line(&line_coeffs, &FieldElement::from(0u64))
-            * eval_line(&line_coeffs, &FieldElement::from(1u64));
+            * eval_line(&line_coeffs, &FieldElement::ZERO)
+            * eval_line(&line_coeffs, &FieldElement::ONE);
         ensure!(
             expected_line_value == sumcheck_value,
             "Line evaluation mismatch"
@@ -326,16 +327,16 @@ pub fn gpa_sumcheck_verifier4(
     let claimed_values: [FieldElement; 4] = [
         arthur
             .prover_message()
-            .map_err(|e| anyhow::anyhow!("{e}"))?,
+            .map_err(|_| anyhow::anyhow!("Failed to read GPA4 claimed value [0]"))?,
         arthur
             .prover_message()
-            .map_err(|e| anyhow::anyhow!("{e}"))?,
+            .map_err(|_| anyhow::anyhow!("Failed to read GPA4 claimed value [1]"))?,
         arthur
             .prover_message()
-            .map_err(|e| anyhow::anyhow!("{e}"))?,
+            .map_err(|_| anyhow::anyhow!("Failed to read GPA4 claimed value [2]"))?,
         arthur
             .prover_message()
-            .map_err(|e| anyhow::anyhow!("{e}"))?,
+            .map_err(|_| anyhow::anyhow!("Failed to read GPA4 claimed value [3]"))?,
     ];
     let r0: FieldElement = arthur.verifier_message();
     let r1: FieldElement = arthur.verifier_message();
@@ -352,22 +353,22 @@ pub fn gpa_sumcheck_verifier4(
             let cubic_coeffs: [FieldElement; 4] = [
                 arthur
                     .prover_message()
-                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read GPA4 cubic coeff [0]"))?,
                 arthur
                     .prover_message()
-                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read GPA4 cubic coeff [1]"))?,
                 arthur
                     .prover_message()
-                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read GPA4 cubic coeff [2]"))?,
                 arthur
                     .prover_message()
-                    .map_err(|e| anyhow::anyhow!("{e}"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read GPA4 cubic coeff [3]"))?,
             ];
             let sumcheck_challenge: FieldElement = arthur.verifier_message();
 
             ensure!(
-                eval_cubic_poly(cubic_coeffs, FieldElement::from(0u64))
-                    + eval_cubic_poly(cubic_coeffs, FieldElement::from(1u64))
+                eval_cubic_poly(cubic_coeffs, FieldElement::ZERO)
+                    + eval_cubic_poly(cubic_coeffs, FieldElement::ONE)
                     == sumcheck_value,
                 "Sumcheck verification failed at layer {layer_idx}"
             );
@@ -379,16 +380,16 @@ pub fn gpa_sumcheck_verifier4(
         let line_coeffs: [FieldElement; 2] = [
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read GPA4 line coeff [0]"))?,
             arthur
                 .prover_message()
-                .map_err(|e| anyhow::anyhow!("{e}"))?,
+                .map_err(|_| anyhow::anyhow!("Failed to read GPA4 line coeff [1]"))?,
         ];
         let line_challenge: FieldElement = arthur.verifier_message();
 
         let expected_line_value = calculate_eq(&prev_randomness, &current_randomness)
-            * eval_line(&line_coeffs, &FieldElement::from(0u64))
-            * eval_line(&line_coeffs, &FieldElement::from(1u64));
+            * eval_line(&line_coeffs, &FieldElement::ZERO)
+            * eval_line(&line_coeffs, &FieldElement::ONE);
         ensure!(
             expected_line_value == sumcheck_value,
             "Line evaluation mismatch"
@@ -424,7 +425,7 @@ pub fn calculate_adr(randomness: &[FieldElement]) -> FieldElement {
         .iter()
         .rev()
         .enumerate()
-        .fold(FieldElement::from(0u64), |acc, (i, &r)| {
+        .fold(FieldElement::ZERO, |acc, (i, &r)| {
             acc + r * FieldElement::from(1u64 << i)
         })
 }

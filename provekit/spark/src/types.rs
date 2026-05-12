@@ -6,7 +6,7 @@ use {
             },
             Compression, FileFormat, MaybeHashAware,
         },
-        FieldElement, HashConfig, WhirConfig, WhirR1CSProof, R1CS,
+        FieldElement, HashConfig, WhirConfig, WhirR1CSProof,
     },
     serde::{Deserialize, Serialize},
     whir::protocols::irs_commit,
@@ -16,7 +16,7 @@ pub type WhirWitness = irs_commit::Witness<FieldElement, FieldElement>;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SPARKSetup {
-    pub whir_params:       SPARKWHIRConfigs,
+    pub whir_configs:      SPARKWHIRConfigs,
     pub matrix_dimensions: MatrixDimensions,
     pub transcript:        WhirR1CSProof,
 }
@@ -98,10 +98,9 @@ pub struct SparkWitnesses {
 
 #[derive(Clone)]
 pub struct SparkProverContext {
-    pub matrix:         SparkMatrix,
-    pub non_spark_r1cs: R1CS,
-    pub witnesses:      SparkWitnesses,
-    pub setup:          SPARKSetup,
+    pub matrix:    SparkMatrix,
+    pub witnesses: SparkWitnesses,
+    pub setup:     SPARKSetup,
 }
 
 #[derive(Debug, Clone)]

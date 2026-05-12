@@ -4,6 +4,7 @@ use {
         types::{Challenges, WhirWitness},
     },
     anyhow::{ensure, Result},
+    ark_ff::AdditiveGroup,
     ark_std::One,
     provekit_common::{FieldElement, TranscriptSponge, WhirConfig},
     rayon::prelude::*,
@@ -44,7 +45,7 @@ pub fn prove_axis_init_final_product(
     //   init[i]  = i*gamma_sq + eq[i]*gamma - tau
     //   final[i] = init[i] + final_ts[i]
     let gpa_leaves = tracing::info_span!("build_init_final_vecs").in_scope(|| {
-        let mut buf = vec![FieldElement::from(0u64); 2 * n];
+        let mut buf = vec![FieldElement::ZERO; 2 * n];
         let (init_section, final_section) = buf.split_at_mut(n);
 
         init_section
@@ -82,7 +83,7 @@ pub fn verify_axis(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     num_axis_items: usize,
     whir_config: &WhirConfig,
-    finalts_commitment: Commitment<FieldElement>,
+    finalts_commitment: &Commitment<FieldElement>,
     init_mem_fn: impl Fn(&[FieldElement]) -> FieldElement,
     tau: &FieldElement,
     gamma: &FieldElement,
@@ -106,11 +107,11 @@ pub fn verify_axis(
 
     let final_cntr: FieldElement = arthur
         .prover_hint_ark()
-        .map_err(|e| anyhow::anyhow!("{e}"))?;
+        .map_err(|_| anyhow::anyhow!("Failed to read final counter hint"))?;
 
     let eval_weight = MultilinearExtension::new(evaluation_randomness.to_vec());
     let finalts_claim = whir_config
-        .verify(arthur, &[&finalts_commitment], &[final_cntr])
+        .verify(arthur, &[finalts_commitment], &[final_cntr])
         .map_err(|e| anyhow::anyhow!("WHIR verify failed: {e}"))?;
     finalts_claim
         .verify([&eval_weight as &dyn whir::algebra::linear_form::LinearForm<FieldElement>])
@@ -121,9 +122,15 @@ pub fn verify_axis(
     let evaluated_value = init_opening * (FieldElement::one() - last_randomness[0])
         + final_opening * last_randomness[0];
 
-    ensure!(evaluated_value == gpa_result.last_sumcheck_value);
+    ensure!(
+        evaluated_value == gpa_result.last_sumcheck_value,
+        "init/final GPA sumcheck final value inconsistent with evaluated multilinear extension"
+    );
 
-    ensure!(claimed_init * claimed_ws == claimed_final * claimed_rs);
+    ensure!(
+        claimed_init * claimed_ws == claimed_final * claimed_rs,
+        "memory-checking product mismatch: init * ws != final * rs"
+    );
 
     Ok(())
 }
