@@ -152,6 +152,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         drop(full_witness);
 
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
+        drop(r1cs);
         let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, self.m);
 
         let blinding_offset = blinding.offset;
