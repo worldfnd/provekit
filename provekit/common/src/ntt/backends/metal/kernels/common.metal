@@ -8,6 +8,8 @@ struct Bn254Element {
 
 typedef Bn254Element Fe;
 
+constant Fe FE_ZERO = {{0ul, 0ul, 0ul, 0ul}};
+
 struct StageConfig {
     uint row_len;
     uint half_m;
@@ -38,6 +40,112 @@ struct HashManyParams {
     uint count;
 };
 
+struct GatherRowsParams {
+    uint rows;
+    uint cols;
+    uint count;
+    uint _pad0;
+};
+
+struct GatherHashesParams {
+    uint num_nodes;
+    uint count;
+    uint _pad0;
+    uint _pad1;
+};
+
+struct VectorLenParams {
+    uint len;
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
+};
+
+struct FoldParams {
+    uint len;
+    uint half_width;
+    uint _pad0;
+    uint _pad1;
+};
+
+struct SumcheckParams {
+    uint len;
+    uint half_width;
+    uint pair_count;
+    uint pairs_per_partial;
+};
+
+struct ReduceParams {
+    uint len;
+    uint values_per_chunk;
+    uint _pad0;
+    uint _pad1;
+};
+
+struct UnivariateAccumParams {
+    uint len;
+    uint count;
+    uint _pad0;
+    uint _pad1;
+};
+
+struct UnivariateEvalParams {
+    uint len;
+    uint point_count;
+    uint values_per_chunk;
+    uint partial_count;
+};
+
+struct EqInitParams {
+    uint gamma_count;
+    uint stride;
+    uint _pad0;
+    uint _pad1;
+};
+
+struct EqExpandParams {
+    uint gamma_count;
+    uint stride;
+    uint stage_width;
+    uint stage;
+    uint power_stride;
+    uint _pad0;
+    uint _pad1;
+    uint _pad2;
+};
+
+struct BeqAccumParams {
+    uint half_size;
+    uint gamma_count;
+    uint _pad0;
+    uint _pad1;
+};
+
+struct GammaEvalParams {
+    uint half_size;
+    uint weight_size;
+    uint vector_count;
+    uint vectors_per_polynomial;
+    uint gamma_count;
+    uint partial_count;
+    uint values_per_partial;
+    uint _pad0;
+};
+
+struct GammaReduceParams {
+    uint row_count;
+    uint partial_count;
+    uint _pad0;
+    uint _pad1;
+};
+
+struct PackDeviceVectorParams {
+    uint row_count;
+    uint codeword_length;
+    uint message_length;
+    uint mask_length;
+};
+
 struct ReplicateCosetsParams {
     uint row_len;
     uint coset_size;
@@ -53,6 +161,12 @@ constant ulong BN254_MODULUS[4] = {
 
 constant ulong BN254_N0PRIME = 0xc2e1f593effffffful;
 constant Fe FE_ONE = {{1ul, 0ul, 0ul, 0ul}};
+constant Fe FE_MONT_ONE = {{
+    0xac96341c4ffffffbul,
+    0x36fc76959f60cd29ul,
+    0x666ea36f7879462eul,
+    0x0e0a77c19a07df2ful,
+}};
 
 constant uint SHA256_K[64] = {
     0x428a2f98u, 0x71374491u, 0xb5c0fbcfu, 0xe9b5dba5u,

@@ -158,3 +158,17 @@ inline Fe from_mont(Fe value) {
 inline uint reverse_bits_width(uint value, uint width) {
     return reverse_bits(value) >> (32u - width);
 }
+
+inline Fe pow_u64(Fe base, ulong exponent) {
+    Fe result = FE_MONT_ONE;
+    while (exponent != 0ul) {
+        if ((exponent & 1ul) != 0ul) {
+            result = mont_mul(result, base);
+        }
+        exponent >>= 1ul;
+        if (exponent != 0ul) {
+            base = mont_mul(base, base);
+        }
+    }
+    return result;
+}

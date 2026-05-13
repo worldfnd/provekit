@@ -9,6 +9,9 @@ mod field;
 mod logging;
 #[cfg(target_os = "macos")]
 mod types;
+#[cfg(target_os = "macos")]
+#[path = "whir.rs"]
+mod whir_accel;
 
 #[cfg(target_os = "macos")]
 use self::engine::MetalRuntime;

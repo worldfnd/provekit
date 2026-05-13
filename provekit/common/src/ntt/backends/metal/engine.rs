@@ -30,6 +30,8 @@ const SHADER_SOURCE: &str = concat!(
     "\n",
     include_str!("kernels/matrix.metal"),
     "\n",
+    include_str!("kernels/whir.metal"),
+    "\n",
     include_str!("kernels/sha256.metal"),
     "\n",
 );
@@ -93,16 +95,32 @@ impl Drop for PooledBufferInner {
 }
 
 pub struct MetalRuntime {
-    pub device:                    Retained<Device>,
-    pub queue:                     Retained<CommandQueue>,
-    pub bit_reverse_pipeline:      Retained<ComputePipelineState>,
-    pub ntt_stage_pipeline:        Retained<ComputePipelineState>,
+    pub device: Retained<Device>,
+    pub queue: Retained<CommandQueue>,
+    pub bit_reverse_pipeline: Retained<ComputePipelineState>,
+    pub ntt_stage_pipeline: Retained<ComputePipelineState>,
     pub replicate_cosets_pipeline: Retained<ComputePipelineState>,
-    pub transpose_pipeline:        Retained<ComputePipelineState>,
-    pub encode_bytes_pipeline:     Retained<ComputePipelineState>,
-    pub sha256_pipeline:           Retained<ComputePipelineState>,
-    roots_cache:                   Mutex<HashMap<usize, Arc<Retained<Buffer>>>>,
-    buffer_pool:                   Mutex<HashMap<usize, Vec<Retained<Buffer>>>>,
+    pub transpose_pipeline: Retained<ComputePipelineState>,
+    pub encode_bytes_pipeline: Retained<ComputePipelineState>,
+    pub gather_rows_pipeline: Retained<ComputePipelineState>,
+    pub gather_hashes_pipeline: Retained<ComputePipelineState>,
+    pub vector_add_scaled_pipeline: Retained<ComputePipelineState>,
+    pub fold_vector_pipeline: Retained<ComputePipelineState>,
+    pub univariate_accum_pipeline: Retained<ComputePipelineState>,
+    pub sumcheck_partials_pipeline: Retained<ComputePipelineState>,
+    pub reduce_pair_sum_pipeline: Retained<ComputePipelineState>,
+    pub reduce_sum_pipeline: Retained<ComputePipelineState>,
+    pub dot_partials_pipeline: Retained<ComputePipelineState>,
+    pub univariate_eval_pipeline: Retained<ComputePipelineState>,
+    pub eq_weights_init_pipeline: Retained<ComputePipelineState>,
+    pub eq_weights_expand_pipeline: Retained<ComputePipelineState>,
+    pub beq_accumulate_pipeline: Retained<ComputePipelineState>,
+    pub gamma_eval_partials_pipeline: Retained<ComputePipelineState>,
+    pub gamma_eval_reduce_pipeline: Retained<ComputePipelineState>,
+    pub pack_device_vector_pipeline: Retained<ComputePipelineState>,
+    pub sha256_pipeline: Retained<ComputePipelineState>,
+    roots_cache: Mutex<HashMap<usize, Arc<Retained<Buffer>>>>,
+    buffer_pool: Mutex<HashMap<usize, Vec<Retained<Buffer>>>>,
 }
 
 // SAFETY: Metal device, queue, pipeline, and buffer handles are thread-safe
@@ -151,6 +169,74 @@ impl MetalRuntime {
                     &library,
                     "encode_field_rows_le",
                 )?,
+                gather_rows_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "gather_bit_reversed_rows",
+                )?,
+                gather_hashes_pipeline: Self::new_pipeline(&device, &library, "gather_hashes")?,
+                vector_add_scaled_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "vector_add_assign_scaled",
+                )?,
+                fold_vector_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "fold_vector_in_place",
+                )?,
+                univariate_accum_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "accumulate_univariate_evaluations",
+                )?,
+                sumcheck_partials_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "sumcheck_partials",
+                )?,
+                reduce_pair_sum_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "reduce_field_pair_sum",
+                )?,
+                reduce_sum_pipeline: Self::new_pipeline(&device, &library, "reduce_field_sum")?,
+                dot_partials_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "dot_product_partials",
+                )?,
+                univariate_eval_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "univariate_eval_partials",
+                )?,
+                eq_weights_init_pipeline: Self::new_pipeline(&device, &library, "eq_weights_init")?,
+                eq_weights_expand_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "eq_weights_expand",
+                )?,
+                beq_accumulate_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "beq_accumulate_from_eq_half",
+                )?,
+                gamma_eval_partials_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "gamma_eval_partials",
+                )?,
+                gamma_eval_reduce_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "gamma_eval_reduce",
+                )?,
+                pack_device_vector_pipeline: Self::new_pipeline(
+                    &device,
+                    &library,
+                    "pack_device_vector_rows",
+                )?,
                 sha256_pipeline: Self::new_pipeline(&device, &library, "sha256_many")?,
                 device,
                 roots_cache: Mutex::new(HashMap::new()),
@@ -163,7 +249,7 @@ impl MetalRuntime {
         if values.is_empty() {
             return self
                 .device
-                .newBufferWithLength_options(0, MTLResourceOptions::StorageModeShared)
+                .newBufferWithLength_options(1, MTLResourceOptions::StorageModeShared)
                 .expect("Metal device must create an empty input buffer");
         }
 
@@ -265,7 +351,7 @@ impl MetalRuntime {
         if bucket_bytes == 0 {
             return self
                 .device
-                .newBufferWithLength_options(0, MTLResourceOptions::StorageModeShared)
+                .newBufferWithLength_options(1, MTLResourceOptions::StorageModeShared)
                 .expect("Metal device must create an empty pooled buffer");
         }
 
@@ -318,9 +404,9 @@ pub fn new_command_buffer(queue: &CommandQueue) -> Result<Retained<CommandBuffer
 pub fn new_compute_encoder(
     command_buffer: &CommandBuffer,
 ) -> Result<Retained<ComputeCommandEncoder>, String> {
-    command_buffer.computeCommandEncoder().ok_or_else(|| {
-        "Metal command buffer did not create a compute command encoder".to_string()
-    })
+    command_buffer
+        .computeCommandEncoder()
+        .ok_or_else(|| "Metal command buffer did not create a compute command encoder".to_string())
 }
 
 pub fn set_buffer(encoder: &ComputeCommandEncoder, index: usize, buffer: &Buffer, offset: usize) {

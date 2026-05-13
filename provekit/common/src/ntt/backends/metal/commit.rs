@@ -6,16 +6,16 @@ use {
         },
         field::gpu_to_fr,
         types::{
-            DeviceMatrix, DeviceMerkleWitness, DeviceRows, EncodeFieldBytesParams, GpuField,
-            HashManyParams,
+            DeviceMatrix, DeviceMerkleWitness, DeviceRows, EncodeFieldBytesParams,
+            GatherHashesParams, GatherRowsParams, GpuField, HashManyParams,
         },
         MetalBn254Ntt,
     },
     ark_bn254::Fr,
     objc2_foundation::NSRange,
     objc2_metal::{
-        MTLBlitCommandEncoder, MTLBuffer, MTLCommandBuffer, MTLCommandEncoder,
-        MTLComputeCommandEncoder, MTLSize,
+        MTLBlitCommandEncoder, MTLCommandBuffer, MTLCommandEncoder, MTLComputeCommandEncoder,
+        MTLSize,
     },
     std::{mem::size_of, sync::Arc},
     whir::{
@@ -124,8 +124,7 @@ impl MetalBn254Ntt {
         set_buffer(&hash_encoder, 0, encoded.as_ref(), 0);
         set_buffer(&hash_encoder, 1, hashes.as_ref(), 0);
         set_bytes(&hash_encoder, 2, &hash_params);
-        let hash_threads =
-            runtime.threads_per_threadgroup(&runtime.sha256_pipeline, matrix.rows);
+        let hash_threads = runtime.threads_per_threadgroup(&runtime.sha256_pipeline, matrix.rows);
         hash_encoder.dispatchThreads_threadsPerThreadgroup(
             MTLSize {
                 width:  matrix.rows,
@@ -219,8 +218,7 @@ impl MetalBn254Ntt {
                 current_offset * size_of::<Hash>(),
             );
             set_bytes(&encoder, 2, &params);
-            let threads =
-                runtime.threads_per_threadgroup(&runtime.sha256_pipeline, current_len);
+            let threads = runtime.threads_per_threadgroup(&runtime.sha256_pipeline, current_len);
             encoder.dispatchThreads_threadsPerThreadgroup(
                 MTLSize {
                     width:  current_len,
@@ -254,16 +252,69 @@ impl WitnessTrait for DeviceMerkleWitness {
     }
 
     fn read_nodes(&self, indices: &[usize]) -> Vec<Hash> {
-        let nodes = unsafe {
-            std::slice::from_raw_parts(
-                self.buffer.as_ref().contents().as_ptr().cast::<Hash>(),
-                self.num_nodes,
-            )
+        if indices.is_empty() {
+            return Vec::new();
+        }
+        assert!(
+            self.num_nodes <= u32::MAX as usize,
+            "Metal Merkle witness exceeds current 32-bit gather limit"
+        );
+        let total_bytes = indices
+            .len()
+            .checked_mul(size_of::<Hash>())
+            .expect("Merkle node gather byte count overflow");
+        assert!(
+            total_bytes <= u32::MAX as usize,
+            "Metal Merkle gather exceeds current 32-bit grid limit"
+        );
+
+        let indices: Vec<u32> = indices
+            .iter()
+            .map(|&index| {
+                assert!(index < self.num_nodes, "Merkle node index out of bounds");
+                index as u32
+            })
+            .collect();
+        let runtime = crate::ntt::MetalBn254Ntt
+            .runtime()
+            .unwrap_or_else(|err| panic!("Metal runtime unavailable: {err}"));
+        let index_buffer = runtime.buffer_with_data(&indices);
+        let staging = runtime.pooled_bytes(total_bytes);
+        let params = GatherHashesParams {
+            num_nodes: self.num_nodes as u32,
+            count:     indices.len() as u32,
+            _pad0:     0,
+            _pad1:     0,
         };
-        let mut out = Vec::with_capacity(indices.len());
-        for &index in indices {
-            assert!(index < self.num_nodes, "Merkle node index out of bounds");
-            out.push(nodes[index]);
+
+        let command_buffer = new_command_buffer(&runtime.queue)
+            .unwrap_or_else(|err| panic!("Metal Merkle gather command buffer failed: {err}"));
+        let encoder = new_compute_encoder(&command_buffer)
+            .unwrap_or_else(|err| panic!("Metal Merkle gather encoder failed: {err}"));
+        encoder.setComputePipelineState(&runtime.gather_hashes_pipeline);
+        set_buffer(&encoder, 0, self.buffer.as_ref(), 0);
+        set_buffer(&encoder, 1, &index_buffer, 0);
+        set_buffer(&encoder, 2, staging.as_ref(), 0);
+        set_bytes(&encoder, 3, &params);
+        let threads = runtime.threads_per_threadgroup(&runtime.gather_hashes_pipeline, total_bytes);
+        encoder.dispatchThreads_threadsPerThreadgroup(
+            MTLSize {
+                width:  total_bytes,
+                height: 1,
+                depth:  1,
+            },
+            threads,
+        );
+        encoder.endEncoding();
+        command_buffer.commit();
+        command_buffer.waitUntilCompleted();
+        check_command_buffer(&command_buffer)
+            .unwrap_or_else(|err| panic!("Metal Merkle gather failed: {err}"));
+
+        let gathered = runtime.buffer_slice::<Hash>(staging.as_ref(), indices.len());
+        let mut out = Vec::with_capacity(gathered.len());
+        for node in gathered {
+            out.push(*node);
         }
         out
     }
@@ -288,20 +339,75 @@ impl MatrixRows<Fr> for DeviceRows {
     }
 
     fn read_rows(&self, indices: &[usize]) -> Vec<Fr> {
-        let mut out = Vec::with_capacity(indices.len() * self.cols);
-        let fields = unsafe {
-            std::slice::from_raw_parts(
-                self.buffer.as_ref().contents().as_ptr().cast::<GpuField>(),
-                self.rows * self.cols,
-            )
-        };
-        for &row in indices {
-            assert!(row < self.rows, "row index out of bounds");
-            let start = reverse_bit_index(row, self.rows) * self.cols;
-            let end = start + self.cols;
-            out.extend(fields[start..end].iter().copied().map(gpu_to_fr));
+        if indices.is_empty() {
+            return Vec::new();
         }
-        out
+        assert!(
+            self.rows <= u32::MAX as usize && self.cols <= u32::MAX as usize,
+            "Metal matrix exceeds current 32-bit gather limit"
+        );
+        let total_elements = indices
+            .len()
+            .checked_mul(self.cols)
+            .expect("matrix row gather element count overflow");
+        assert!(
+            total_elements <= u32::MAX as usize,
+            "Metal matrix row gather exceeds current 32-bit grid limit"
+        );
+
+        let indices: Vec<u32> = indices
+            .iter()
+            .map(|&row| {
+                assert!(row < self.rows, "row index out of bounds");
+                row as u32
+            })
+            .collect();
+        if self.cols == 0 {
+            return Vec::new();
+        }
+        let runtime = crate::ntt::MetalBn254Ntt
+            .runtime()
+            .unwrap_or_else(|err| panic!("Metal runtime unavailable: {err}"));
+        let index_buffer = runtime.buffer_with_data(&indices);
+        let staging = runtime.pooled_buffer::<GpuField>(total_elements);
+        let params = GatherRowsParams {
+            rows:  self.rows as u32,
+            cols:  self.cols as u32,
+            count: indices.len() as u32,
+            _pad0: 0,
+        };
+
+        let command_buffer = new_command_buffer(&runtime.queue)
+            .unwrap_or_else(|err| panic!("Metal matrix row gather command buffer failed: {err}"));
+        let encoder = new_compute_encoder(&command_buffer)
+            .unwrap_or_else(|err| panic!("Metal matrix row gather encoder failed: {err}"));
+        encoder.setComputePipelineState(&runtime.gather_rows_pipeline);
+        set_buffer(&encoder, 0, self.buffer.as_ref(), 0);
+        set_buffer(&encoder, 1, &index_buffer, 0);
+        set_buffer(&encoder, 2, staging.as_ref(), 0);
+        set_bytes(&encoder, 3, &params);
+        let threads =
+            runtime.threads_per_threadgroup(&runtime.gather_rows_pipeline, total_elements);
+        encoder.dispatchThreads_threadsPerThreadgroup(
+            MTLSize {
+                width:  total_elements,
+                height: 1,
+                depth:  1,
+            },
+            threads,
+        );
+        encoder.endEncoding();
+        command_buffer.commit();
+        command_buffer.waitUntilCompleted();
+        check_command_buffer(&command_buffer)
+            .unwrap_or_else(|err| panic!("Metal matrix row gather failed: {err}"));
+
+        runtime
+            .buffer_slice::<GpuField>(staging.as_ref(), total_elements)
+            .iter()
+            .copied()
+            .map(gpu_to_fr)
+            .collect()
     }
 }
 
@@ -311,14 +417,5 @@ impl std::fmt::Debug for DeviceMerkleWitness {
             .field("num_nodes", &self.num_nodes)
             .field("root", &self.root)
             .finish()
-    }
-}
-
-fn reverse_bit_index(index: usize, codeword_length: usize) -> usize {
-    let bits = usize::BITS - (codeword_length - 1).leading_zeros();
-    if bits == 0 {
-        index
-    } else {
-        index.reverse_bits() >> (usize::BITS - bits)
     }
 }

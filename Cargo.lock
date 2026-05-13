@@ -7354,7 +7354,6 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
-source = "git+https://github.com/zkfriendly/whir.git?branch=zkfr%2Fadd-metal-gpu-refactor#8c6dd165b27a29d71d87092b2d94658f3a3263d4"
 dependencies = [
  "ark-ff 0.5.0",
  "ark-serialize 0.5.0",
@@ -7376,7 +7375,6 @@ dependencies = [
  "sha3",
  "spongefish",
  "static_assertions",
- "tracing",
  "zerocopy",
 ]
 

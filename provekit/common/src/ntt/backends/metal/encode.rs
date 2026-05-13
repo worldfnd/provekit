@@ -7,7 +7,7 @@ use {
         logging::trace_event,
         types::{
             BitReverseParams, DeviceMatrix, EncodeShape, GpuField, NttStageParams,
-            ReplicateCosetsParams, TransposeParams,
+            PackDeviceVectorParams, ReplicateCosetsParams, TransposeParams,
         },
         MetalBn254Ntt,
     },
@@ -193,6 +193,193 @@ impl MetalBn254Ntt {
         set_buffer(&transpose_encoder, 0, current.as_ref(), 0);
         set_buffer(&transpose_encoder, 1, transposed.as_ref(), 0);
         set_bytes(&transpose_encoder, 2, &transpose_params);
+        transpose_encoder.dispatchThreads_threadsPerThreadgroup(
+            MTLSize {
+                width:  shape.total_elements,
+                height: 1,
+                depth:  1,
+            },
+            transpose_threads,
+        );
+        transpose_encoder.endEncoding();
+
+        command_buffer.commit();
+        command_buffer.waitUntilCompleted();
+        check_command_buffer(&command_buffer)?;
+
+        Ok(DeviceMatrix {
+            rows:   shape.codeword_length,
+            cols:   shape.row_count,
+            buffer: transposed,
+        })
+    }
+
+    pub(super) fn encode_device_vector_matrix(
+        &self,
+        vector: &super::engine::Buffer,
+        vector_len: usize,
+        masks: &[Fr],
+        codeword_length: usize,
+        interleaving_depth: usize,
+    ) -> Result<DeviceMatrix, String> {
+        if interleaving_depth == 0 || !vector_len.is_multiple_of(interleaving_depth) {
+            return Err("device vector length must be divisible by interleaving depth".into());
+        }
+        if !masks.len().is_multiple_of(interleaving_depth) {
+            return Err("mask count must be divisible by interleaving depth".into());
+        }
+        let message_length = vector_len / interleaving_depth;
+        let mask_length = masks.len() / interleaving_depth;
+        let masked_message_length = message_length + mask_length;
+        let mut coset_size = self
+            .next_order(masked_message_length)
+            .ok_or_else(|| "no supported coset size for device-vector encode".to_string())?;
+        while !codeword_length.is_multiple_of(coset_size) {
+            coset_size = self
+                .next_order(coset_size + 1)
+                .ok_or_else(|| "no supported coset size for device-vector encode".to_string())?;
+        }
+        let shape = EncodeShape {
+            row_count: interleaving_depth,
+            codeword_length,
+            coset_size,
+            message_length,
+            mask_length,
+            num_cosets: codeword_length / coset_size,
+            total_elements: interleaving_depth * codeword_length,
+        };
+        if shape.total_elements > u32::MAX as usize {
+            return Err("GPU encode launch exceeds current 32-bit grid limit".into());
+        }
+
+        let runtime = self.runtime()?;
+        let current = runtime.pooled_buffer::<GpuField>(shape.total_elements);
+        let masks_gpu = {
+            let masks = masks.iter().copied().map(fr_to_gpu).collect::<Vec<_>>();
+            runtime.buffer_with_data(&masks)
+        };
+        let roots = runtime.roots_buffer(codeword_length)?;
+
+        let transposed = runtime.pooled_buffer::<GpuField>(shape.total_elements);
+        let stage_count = codeword_length.trailing_zeros() as usize;
+        let skipped_stage_count = shape.num_cosets.trailing_zeros() as usize;
+        let total_butterflies = shape.total_elements / 2;
+        let pack_params = PackDeviceVectorParams {
+            row_count:       shape.row_count as u32,
+            codeword_length: shape.codeword_length as u32,
+            message_length:  shape.message_length as u32,
+            mask_length:     shape.mask_length as u32,
+        };
+        let bit_reverse_params = BitReverseParams {
+            row_len:        shape.codeword_length as u32,
+            log_n:          stage_count as u32,
+            total_elements: shape.total_elements as u32,
+            _pad0:          0,
+        };
+        let replicate_params = ReplicateCosetsParams {
+            row_len:           shape.codeword_length as u32,
+            coset_size:        shape.coset_size as u32,
+            trailing_elements: shape
+                .row_count
+                .saturating_mul(shape.codeword_length - shape.coset_size)
+                as u32,
+        };
+        let transpose_params = TransposeParams {
+            rows:           shape.row_count as u32,
+            cols:           shape.codeword_length as u32,
+            total_elements: shape.total_elements as u32,
+        };
+
+        let command_buffer = new_command_buffer(&runtime.queue)?;
+        let pack_encoder = new_compute_encoder(&command_buffer)?;
+        pack_encoder.setComputePipelineState(&runtime.pack_device_vector_pipeline);
+        set_buffer(&pack_encoder, 0, vector, 0);
+        set_buffer(&pack_encoder, 1, &masks_gpu, 0);
+        set_buffer(&pack_encoder, 2, current.as_ref(), 0);
+        set_bytes(&pack_encoder, 3, &pack_params);
+        let pack_threads = runtime
+            .threads_per_threadgroup(&runtime.pack_device_vector_pipeline, shape.total_elements);
+        pack_encoder.dispatchThreads_threadsPerThreadgroup(
+            MTLSize {
+                width:  shape.total_elements,
+                height: 1,
+                depth:  1,
+            },
+            pack_threads,
+        );
+        pack_encoder.endEncoding();
+
+        if replicate_params.trailing_elements != 0 {
+            let replicate_encoder = new_compute_encoder(&command_buffer)?;
+            replicate_encoder.setComputePipelineState(&runtime.replicate_cosets_pipeline);
+            set_buffer(&replicate_encoder, 0, current.as_ref(), 0);
+            set_bytes(&replicate_encoder, 1, &replicate_params);
+            let replicate_threads = runtime.threads_per_threadgroup(
+                &runtime.replicate_cosets_pipeline,
+                replicate_params.trailing_elements as usize,
+            );
+            replicate_encoder.dispatchThreads_threadsPerThreadgroup(
+                MTLSize {
+                    width:  replicate_params.trailing_elements as usize,
+                    height: 1,
+                    depth:  1,
+                },
+                replicate_threads,
+            );
+            replicate_encoder.endEncoding();
+        }
+
+        let bit_reverse_encoder = new_compute_encoder(&command_buffer)?;
+        bit_reverse_encoder.setComputePipelineState(&runtime.bit_reverse_pipeline);
+        set_buffer(&bit_reverse_encoder, 0, current.as_ref(), 0);
+        set_bytes(&bit_reverse_encoder, 1, &bit_reverse_params);
+        let bit_reverse_threads =
+            runtime.threads_per_threadgroup(&runtime.bit_reverse_pipeline, shape.total_elements);
+        bit_reverse_encoder.dispatchThreads_threadsPerThreadgroup(
+            MTLSize {
+                width:  shape.total_elements,
+                height: 1,
+                depth:  1,
+            },
+            bit_reverse_threads,
+        );
+        bit_reverse_encoder.endEncoding();
+
+        let stage_encoder = new_compute_encoder(&command_buffer)?;
+        stage_encoder.setComputePipelineState(&runtime.ntt_stage_pipeline);
+        let mut twiddle_offset = (1usize << skipped_stage_count).saturating_sub(1);
+        let stage_threads =
+            runtime.threads_per_threadgroup(&runtime.ntt_stage_pipeline, total_butterflies);
+        for stage in skipped_stage_count..stage_count {
+            let half_m = 1usize << stage;
+            let params = NttStageParams {
+                row_len:        shape.codeword_length as u32,
+                half_m:         half_m as u32,
+                twiddle_offset: twiddle_offset as u32,
+                _pad0:          0,
+            };
+            set_buffer(&stage_encoder, 0, current.as_ref(), 0);
+            set_buffer(&stage_encoder, 1, roots.as_ref(), 0);
+            set_bytes(&stage_encoder, 2, &params);
+            stage_encoder.dispatchThreads_threadsPerThreadgroup(
+                MTLSize {
+                    width:  total_butterflies,
+                    height: 1,
+                    depth:  1,
+                },
+                stage_threads,
+            );
+            twiddle_offset += 1usize << stage;
+        }
+        stage_encoder.endEncoding();
+
+        let transpose_encoder = new_compute_encoder(&command_buffer)?;
+        transpose_encoder.setComputePipelineState(&runtime.transpose_pipeline);
+        set_buffer(&transpose_encoder, 0, current.as_ref(), 0);
+        set_buffer(&transpose_encoder, 1, transposed.as_ref(), 0);
+        set_bytes(&transpose_encoder, 2, &transpose_params);
+        let transpose_threads =
+            runtime.threads_per_threadgroup(&runtime.transpose_pipeline, shape.total_elements);
         transpose_encoder.dispatchThreads_threadsPerThreadgroup(
             MTLSize {
                 width:  shape.total_elements,
