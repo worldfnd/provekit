@@ -21,7 +21,11 @@ See [Project status and versioning](/reference/project-status/) for the full pol
 
 ### Has ProveKit been audited?
 
-There is no public audit certification yet. Treat ProveKit as alpha-grade cryptographic software for the purpose of risk management. The codebase ships with property-based tests, regression tests, and a documented soundness checklist for reviewers in `CLAUDE.md` at the repo root.
+The `v1` branch is the current stable, audited release. Use it for any work where audit posture matters. The `main` branch is the rolling-development line and is not covered by the audit — its proof and key formats may change between commits. See [Project status](/reference/project-status/) for the branch policy.
+
+### Which Noir version does ProveKit support?
+
+The audited `v1` branch supports **Noir `v1.0.0-beta.11`**. Other Noir versions may compile and run, but only `v1.0.0-beta.11` is the stable target. `main` may move ahead of this; check the branch's `Cargo.toml` for the current Noir dependency pins before assuming compatibility.
 
 ### What's the license?
 

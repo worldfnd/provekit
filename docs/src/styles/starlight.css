@@ -234,10 +234,27 @@ header.header .icon {
   color: var(--sl-color-text);
 }
 
-header.header [data-open-modal] {
-  border: 1px solid var(--sl-color-hairline);
-  border-radius: 0;
-  background: var(--sl-color-bg);
+header.header [data-open-modal],
+starlight-menu-button > button {
+  border: 1px solid var(--sl-color-hairline) !important;
+  border-radius: 0 !important;
+  background: var(--sl-color-bg) !important;
+  color: var(--sl-color-text) !important;
+  box-shadow: none !important;
+}
+
+header.header [data-open-modal]:hover,
+starlight-menu-button > button:hover {
+  border-color: var(--pk-brand) !important;
+}
+
+:root[data-theme='dark'] header.header [data-open-modal]:hover,
+:root[data-theme='dark'] starlight-menu-button > button:hover {
+  border-color: var(--pk-brand-ink) !important;
+}
+
+:root[data-theme='dark'] starlight-menu-button > button {
+  background: var(--sl-color-bg-nav) !important;
 }
 
 header.header [data-open-modal] kbd {
@@ -1009,4 +1026,50 @@ footer .meta p {
 
 footer .meta a:hover {
   color: var(--pk-brand);
+}
+
+/* ============================================================
+   26. Theme select (header dropdown)
+   The open <select> popup is rendered by the OS and only partly
+   stylable. We style the closed chrome and the option entries.
+   ============================================================ */
+
+starlight-theme-select label {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 0;
+  background: var(--sl-color-bg-nav);
+  padding-inline: 0.5rem;
+  font-family: var(--pk-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.72rem;
+  color: var(--sl-color-text);
+}
+
+starlight-theme-select select {
+  font-family: var(--pk-font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.72rem;
+  color: var(--sl-color-text);
+  background: transparent;
+  border: 0;
+}
+
+starlight-theme-select option {
+  background: var(--sl-color-bg-nav);
+  color: var(--sl-color-text);
+  font-family: var(--pk-font-mono);
+}
+
+starlight-theme-select .caret {
+  color: var(--pk-mute);
+}
+
+starlight-theme-select label:hover {
+  border-color: var(--pk-brand);
+}
+
+:root[data-theme='dark'] starlight-theme-select label:hover {
+  border-color: var(--pk-brand-ink);
 }

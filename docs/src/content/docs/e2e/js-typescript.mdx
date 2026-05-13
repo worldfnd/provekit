@@ -1,31 +1,35 @@
 ---
 title: JS / TypeScript end-to-end
-description: Drive ProveKit's WASM backend from JavaScript or TypeScript in Node.js and browser applications.
+description: Drive ProveKit's WASM backend from JavaScript or TypeScript in Node.js and browser applications via the Verity SDK.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-This guide uses the Verity JS / TypeScript SDK, which wraps ProveKit's WASM backend for browser and Node.js environments. References below are pinned to Verity commit `3f6b8ad6e7c994a740a204fbf35c0a3f3001e4d3`.
+This guide uses the [Verity](https://github.com/atheonxyz/verity) JS / TypeScript SDK, which wraps ProveKit's WASM backend for browser and Node.js environments.
 
-<Aside type="note" title="Validate against your build">
-Treat the snippets as starting points until they run in your application or tests with the generated WASM and your own `.pkp` / `.pkv` artifacts.
+<Aside type="note" title="Witness generation runs in JavaScript">
+The Verity SDK uses **`@noir-lang/noir_js`** and **`@noir-lang/acvm_js`** to generate the witness in JS from your inputs and the Noir circuit JSON embedded in the `.pkp`. Only the WHIR proof generation itself runs in WASM. This is why the Noir peer dependencies below are required, not optional, for proving.
 </Aside>
 
-## SDK surface
+## Install
 
-At the pinned Verity revision:
+```sh
+npm i @atheonxyz/verity
 
-- `sdks/js/package.json` publishes `@atheon/verity` as an ESM-first package with Node and browser export targets.
-- `sdks/js/src/index.ts` exports `Verity`, `Backend`, `Proof`, and the scheme types.
-- `sdks/js/src/verity.ts` constructs `Verity` via `Verity.create(Backend.ProveKit)` and loads prover and verifier schemes from bytes.
-- `sdks/js/src/types.ts` defines `ProverScheme.prove(inputs: Record<string, unknown> | string)` and `VerifierScheme.verify(proof)`.
-- `verity.ts` also exposes `verity.prove(...)` and `verity.verify(...)` convenience delegates, but the scheme methods shown below are the canonical API.
-- `sdks/js/src/backends/provekit.ts` loads the ProveKit WASM module, extracts Noir circuit JSON from `.pkp` bytes, uses `@noir-lang/noir_js` and `@noir-lang/acvm_js` for witness generation, and verifies proofs through the WASM verifier.
+# Noir peer deps for in-JS witness generation. Required for proving.
+# Pin 1.0.0-beta.11 to match the audited v1 ProveKit branch.
+npm i @noir-lang/noir_js@1.0.0-beta.11 \
+      @noir-lang/acvm_js@1.0.0-beta.11 \
+      @noir-lang/noirc_abi@1.0.0-beta.11 \
+      @noir-lang/types@1.0.0-beta.11
+```
+
+Your application never imports these packages; Verity does internally. They're declared as peer dependencies, so npm won't pull them in transitively when you install `@atheonxyz/verity`.
 
 ## Minimal flow
 
 ```ts
-import { Backend, Verity } from "@atheon/verity";
+import { Backend, Verity } from "@atheonxyz/verity";
 
 const verity = await Verity.create(Backend.ProveKit);
 
@@ -43,14 +47,15 @@ prover.dispose();
 verifier.dispose();
 ```
 
-`inputs` may be a plain object or a JSON object string. For Noir circuits with arrays or structured inputs, keep the object layout aligned with the circuit ABI and validate it in application tests.
+`prove` accepts either a plain object whose keys match the circuit's input ABI, or a JSON string with the same shape. For arrays and nested types, keep the object layout aligned with the circuit ABI and validate it in application tests. If your inputs live in a `Prover.toml` file, parse the TOML in JS first and pass the resulting object; Verity does not parse TOML for you (see the working example below).
+
+## Working example
+
+[`playground/wasm-demo/`](https://github.com/worldfnd/provekit/tree/main/playground/wasm-demo) in the ProveKit repo is a complete browser proof flow: artifact fetching, optional `Prover.toml` parsing, thread-pool setup with iOS/Android-aware fallbacks via `Verity.create(Backend.ProveKit, { threads })`, and progress logging. Use it as a reference when building your own integration.
 
 ## Build and packaging notes
 
-- Build the ProveKit WASM artifact before running the browser or Node path from the Verity repo: `make core-wasm`.
-- Generate demo/test `.pkp` and `.pkv` fixtures via `bash scripts/generate-js-artifacts.sh` when using the Verity fixture flow.
-- Install the optional Noir peer dependencies for JS witness generation: `@noir-lang/noir_js` and `@noir-lang/acvm_js`.
-- Browser threading depends on `SharedArrayBuffer`. The Verity ProveKit binding falls back to a non-threaded path when worker/thread-pool initialization is unavailable.
+- Browser threading depends on `SharedArrayBuffer`. The Verity ProveKit binding falls back to a non-threaded path when worker/thread-pool initialization is unavailable. iOS WebKit is particularly unreliable for WASM threading; the wasm-demo runs single-threaded there by default.
 - `proverBytes` and `verifierBytes` are assumed to be `Uint8Array` values already loaded by the application. Fetching, caching, integrity checks, and lifecycle cleanup are the host's responsibility.
 
 ## Related pages

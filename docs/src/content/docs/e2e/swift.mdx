@@ -5,25 +5,11 @@ description: Integrate ProveKit on iOS via the Verity Swift SDK and Swift Packag
 
 import { Aside } from '@astrojs/starlight/components';
 
-This guide uses the Verity Swift SDK, which wraps the shared Verity dispatcher and the ProveKit backend for iOS. References below are pinned to Verity commit `3f6b8ad6e7c994a740a204fbf35c0a3f3001e4d3`.
+This guide uses the [Verity](https://github.com/atheonxyz/verity) Swift SDK, which wraps the shared Verity dispatcher and the ProveKit backend for iOS.
 
 <Aside type="caution" title="iOS only">
 ProveKit does not currently run on macOS. The Verity Swift package declares macOS support upstream, but the native artifacts ProveKit ships target iOS architectures only. Treat any macOS deployment as unsupported.
 </Aside>
-
-<Aside type="note" title="Validate against your build">
-Treat the snippets as starting points until they run in an app or test target with the required framework linked.
-</Aside>
-
-## SDK surface
-
-At the pinned Verity revision:
-
-- The root `Package.swift` exposes the `Verity` library product. ProveKit targets iOS 15+; the package's macOS platform declaration is upstream-only. The native binary artifacts are iOS-only.
-- `Package.swift` selects `source-only`, `native`, or `release` mode via the `VERITY_SWIFT_SDK_MODE` environment variable (or auto-detection).
-- `sdks/swift/Sources/Verity/Verity.swift` defines `Backend.provekit`, initializes the backend once, and loads prover/verifier schemes from file paths, URLs, or `Data`.
-- `Witness.swift` accepts TOML paths, dictionaries of field-element strings, and JSON strings.
-- `ProverScheme.swift` and `VerifierScheme.swift` expose `prove(witness:)`, `verify(proof:)`, `serialize()`, `save(to:)`, and explicit `close()` lifecycle methods.
 
 ## Package declaration
 
@@ -38,6 +24,8 @@ targets: [
     ])
 ]
 ```
+
+The `from: "0.3.2"` resolution uses the SDK's published binary xcframework — no local build required.
 
 ## Minimal flow
 
@@ -59,15 +47,12 @@ prover.close()
 verifier.close()
 ```
 
-Use `loadProver(data:)` and `loadVerifier(data:)` when the app downloads or bundles artifacts as `Data`.
+Use `loadProver(data:)` and `loadVerifier(data:)` when the app downloads or bundles artifacts as `Data`. `Witness` accepts a `[String: String]` of field-element strings, a TOML path, or a JSON string, whichever shape your inputs already have.
 
-## Build and packaging notes
+## Integration notes
 
-- `source-only` validates the Swift wrapper and public API without linking the iOS xcframework, it is not a native proof harness on its own.
-- `native` requires a locally built `output/Verity.xcframework`. `release` consumes the published xcframework declared by the package manifest.
-- The pinned build notes record that the native mobile artifact currently bundles the ProveKit backend only.
-- Use Xcode's iOS simulator test runner for native verification.
 - Call ProveKit's memory configuration before constructing `Verity` when the app needs mobile RAM limits or file-backed memory.
+- `prover.close()` and `verifier.close()` release the underlying native handles. Always call them on cleanup paths (`defer { … }` or scope-bound wrappers); the wrapping `Verity` instance does not auto-release them.
 
 ## Related pages
 

@@ -3,9 +3,9 @@ title: Proving flow
 description: How ProveKit turns Noir programs into verifiable WHIR proofs.
 ---
 
-import { Aside, Card, CardGrid } from '@astrojs/starlight/components';
+import { Aside } from '@astrojs/starlight/components';
 
-ProveKit connects circuit authoring, constraint generation, key preparation, proving, verification, and optional recursive-verifier export. The CLI wraps this lifecycle in three primary commands, `prepare`, `prove`, and `verify`, plus an export step (`generate-gnark-inputs`) when you need recursive verification.
+The CLI wraps ProveKit's lifecycle in three primary commands (`prepare`, `prove`, and `verify`) plus `generate-gnark-inputs` when you need to wrap a proof in Groth16 for on-chain verification.
 
 <svg class="pk-arch-svg" viewBox="0 0 880 280" role="img" aria-label="ProveKit pipeline from Noir source through proof generation to verification and optional Groth16 wrapping">
   <defs>
@@ -17,12 +17,13 @@ ProveKit connects circuit authoring, constraint generation, key preparation, pro
     <path d="M 145 50 L 195 50" marker-end="url(#pk-arrow)" />
     <path d="M 285 50 L 335 50" marker-end="url(#pk-arrow)" />
     <path d="M 425 50 L 475 50" marker-end="url(#pk-arrow)" />
-    <path d="M 565 50 L 615 50" marker-end="url(#pk-arrow)" />
-    <path d="M 545 80 L 545 130" marker-end="url(#pk-arrow)" />
-    <path d="M 685 80 L 685 130" marker-end="url(#pk-arrow)" />
+    <path d="M 545 78 L 545 130" marker-end="url(#pk-arrow)" />
+    <path d="M 565 50 L 685 50 L 685 130" marker-end="url(#pk-arrow)" />
     <path d="M 545 186 L 545 210" marker-end="url(#pk-arrow)" />
     <path d="M 685 186 L 685 210" marker-end="url(#pk-arrow)" />
-    <path d="M 615 158 L 615 158" />
+    <path d="M 435 238 L 475 238" marker-end="url(#pk-arrow)" />
+    <path d="M 615 238 L 625 238" marker-end="url(#pk-arrow)" />
+    <path d="M 765 158 L 785 158" marker-end="url(#pk-arrow)" />
   </g>
   <g class="pk-arch-nodes">
     <rect class="pk-arch-node pk-arch-node--source" x="20" y="22" width="125" height="56" rx="10"/>
@@ -49,6 +50,10 @@ ProveKit connects circuit authoring, constraint generation, key preparation, pro
     <text class="pk-arch-label" x="685" y="154">.pkv</text>
     <text class="pk-arch-sub" x="685" y="172">verifier key</text>
 
+    <rect class="pk-arch-node pk-arch-node--artifact" x="305" y="210" width="130" height="56" rx="10"/>
+    <text class="pk-arch-label" x="370" y="234">Prover.toml</text>
+    <text class="pk-arch-sub" x="370" y="252">witness inputs</text>
+
     <rect class="pk-arch-node pk-arch-node--cmd" x="475" y="210" width="140" height="56" rx="10"/>
     <text class="pk-arch-label" x="545" y="234">prove</text>
     <text class="pk-arch-sub" x="545" y="252">→ proof.np</text>
@@ -64,89 +69,16 @@ ProveKit connects circuit authoring, constraint generation, key preparation, pro
   </g>
 </svg>
 
-<div class="pk-flow" role="img" aria-label="ProveKit proving flow from Noir source to proof verification and recursive verifier export">
-  <div class="pk-flow-row pk-flow-row--three">
-    <div class="pk-flow-node pk-flow-node--accent">Noir source<span class="pk-flow-caption">Circuit package</span></div>
-    <div class="pk-flow-arrow">→</div>
-    <div class="pk-flow-node">ACIR<span class="pk-flow-caption">Noir IR</span></div>
-    <div class="pk-flow-arrow">→</div>
-    <div class="pk-flow-node">R1CS<span class="pk-flow-caption">Constraints + witnesses</span></div>
-  </div>
-  <div class="pk-flow-row pk-flow-row--two pk-flow-split">
-    <div class="pk-flow-node pk-flow-node--accent">prepare</div>
-    <div class="pk-flow-arrow">→</div>
-    <div class="pk-flow-node pk-flow-node--output">.pkp + .pkv<span class="pk-flow-caption">Prover and verifier keys</span></div>
-  </div>
-  <div class="pk-flow-row pk-flow-row--three pk-flow-split">
-    <div class="pk-flow-node pk-flow-node--output">.pkp + Prover.toml<span class="pk-flow-caption">Proving inputs</span></div>
-    <div class="pk-flow-arrow">→</div>
-    <div class="pk-flow-node">Prover</div>
-    <div class="pk-flow-arrow">→</div>
-    <div class="pk-flow-node pk-flow-node--output">proof.np</div>
-  </div>
-  <div class="pk-flow-row pk-flow-row--three pk-flow-split">
-    <div class="pk-flow-node pk-flow-node--output">.pkv + proof.np<span class="pk-flow-caption">Verification inputs</span></div>
-    <div class="pk-flow-arrow">→</div>
-    <div class="pk-flow-node">Verifier</div>
-    <div class="pk-flow-arrow">→</div>
-    <div class="pk-flow-node pk-flow-node--accent">valid / invalid</div>
-  </div>
-  <div class="pk-flow-row pk-flow-row--wide pk-flow-split">
-    <div class="pk-flow-node pk-flow-node--output">.pkv + proof.np<span class="pk-flow-caption">Export inputs</span></div>
-    <div class="pk-flow-arrow">→</div>
-    <div class="pk-flow-node">generate-gnark-inputs</div>
-    <div class="pk-flow-arrow">→</div>
-    <div class="pk-flow-node pk-flow-node--output">params + r1cs.json</div>
-  </div>
-</div>
-
-## Mental model
-
-<CardGrid>
-  <Card title="Author in Noir">
-    Express the computation and its public/private boundary as a Noir package.
-  </Card>
-  <Card title="Prepare once per version">
-    Compile the circuit to produce a matching `.pkp` prover key and `.pkv` verifier key.
-  </Card>
-  <Card title="Prove per witness">
-    Combine the prover key with concrete witness inputs from `Prover.toml` or an SDK witness map.
-  </Card>
-  <Card title="Verify everywhere">
-    Verify with the matching `.pkv` locally, in a service, in WASM, through FFI, or via recursive verification.
-  </Card>
-</CardGrid>
-
-## Core concepts
-
-| Concept | Description |
-| :--- | :--- |
-| **Noir** | The user-facing circuit language used for ProveKit's primary authoring path. |
-| **ACIR** | Abstract Circuit Intermediate Representation emitted by the Noir frontend. |
-| **R1CS** | Rank-1 Constraint System used by the ProveKit proving pipeline. |
-| **Prover key (`.pkp`)** | Key material used to generate a proof for a prepared circuit. |
-| **Verifier key (`.pkv`)** | Key material used to verify proofs from the matching prepared circuit. |
-| **WHIR proof** | Proof object generated by the prover and consumed by every verification path. |
-| **Recursive export** | `params_for_recursive_verifier` and `r1cs.json` derived from a matching verifier key and proof. |
-
-## Command responsibilities
-
-| Command | Responsibility | Run when |
-| :--- | :--- | :--- |
-| `prepare` | Compile the circuit and write `.pkp` / `.pkv`. | The circuit source, compiler backend, hash choice, branch, or proof format changes. |
-| `prove` | Generate `proof.np` from a prover key and inputs. | Once per witness or proof request. |
-| `verify` | Check a proof against a verifier key. | At every trust boundary. |
-| `show-inputs` | Decode public inputs from a verifier key and proof. | During integration testing and production validation. |
-| `generate-gnark-inputs` | Export recursive-verifier inputs from a verifier key and proof. | Whenever the verifier key or proof changes. |
-
-## The setup boundary
+`prove` reads the `.pkp` plus a per-instance witness (`Prover.toml`, an input object, or an SDK witness map) and produces `proof.np`. `verify` reads the `.pkv` plus that proof and returns valid or invalid. The optional gnark wrap takes the same `.pkv` and proof and emits a Groth16 outer proof for EVM consumption.
 
 <Aside type="caution" title="Filenames do not imply compatibility">
-`basic.pkp`, `basic.pkv`, and `proof.np` are only compatible when generated from the same circuit configuration, branch, and commit. Use checksums and provenance records, never trust the filename alone.
+`basic.pkp`, `basic.pkv`, and `proof.np` are only compatible when generated from the same circuit configuration, branch, and commit. Use checksums and provenance records; never trust the filename alone.
 </Aside>
 
-This page stays at the product-flow level. For deployment controls and the security model, continue with:
+## Where to go next
 
-- [Artifact lifecycle](/concepts/artifact-lifecycle/)
-- [Security and trust model](/concepts/security-model/)
-- [Production checklist](/reference/production-checklist/)
+- [Artifact lifecycle](/concepts/artifact-lifecycle/): pairing, regeneration, and custody rules.
+- [Designing circuits for ProveKit](/concepts/designing-circuits/): ProveKit-specific mechanics that shape circuit authoring.
+- [Security and trust model](/concepts/security-model/): what verification proves and what it doesn't.
+- [CLI reference](/cli/overview/): every command's options.
+- [Glossary](/reference/glossary/): Noir, ACIR, R1CS, WHIR, and the artifact-file terminology.

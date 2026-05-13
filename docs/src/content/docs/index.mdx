@@ -3,7 +3,7 @@ title: ProveKit Documentation
 description: Compile Noir circuits to R1CS, generate WHIR proofs, and verify them anywhere, from the CLI to browsers, mobile apps, services, and on-chain via a recursive verifier.
 template: splash
 hero:
-  tagline: A zero-knowledge proof toolkit for shipping Noir circuits to production, across native, browser, mobile, server, and on-chain verification.
+  tagline: A client-side zero-knowledge proof toolkit for shipping Noir circuits to production, across native, browser, mobile, server, and on-chain verification.
   actions:
     - text: Run the quickstart
       link: /getting-started/quickstart/
@@ -95,8 +95,8 @@ ProveKit runs the same proof artifacts across server, browser, and mobile. For t
   <div class="pk-metric"><strong>r1cs.json</strong><span>Recursive-verifier R1CS, exported from a matching `.pkv` and proof.</span></div>
 </div>
 
-Every artifact is bound to a specific circuit, commit, compiler backend, and hash choice. Treat them as versioned deployment objects. See [Artifact lifecycle](/concepts/artifact-lifecycle/) for the full pairing rules.
+Every artifact is bound to a specific circuit, commit, and hash choice. Treat them as versioned deployment objects. See [Artifact lifecycle](/concepts/artifact-lifecycle/) for the full pairing rules.
 
-<Aside type="caution" title="Active development">
-The first tagged release is **[v1.0.0](https://github.com/worldfnd/provekit/releases/tag/v1.0.0)**, available on crates.io. Pin a release tag (or the `v1` branch) for reproducible artifacts; the `main` branch may change proof formats, key formats, recursive-verifier inputs, or integration APIs between commits. See [Project status](/reference/project-status/).
+<Aside type="tip" title="Stable release: v1">
+The **`v1`** branch is the current stable, audited release ([v1.0.0](https://github.com/worldfnd/provekit/releases/tag/v1.0.0) on crates.io). It supports Noir `v1.0.0-beta.11`. Pin a release tag or the `v1` branch for reproducible artifacts; `main` is the rolling-development line and may change proof formats, key formats, recursive-verifier inputs, or integration APIs between commits. See [Project status](/reference/project-status/).
 </Aside>

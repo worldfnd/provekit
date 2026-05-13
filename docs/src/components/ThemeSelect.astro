@@ -1,0 +1,211 @@
+---
+/**
+ * Override of Starlight's ThemeSelect.astro.
+ *
+ * Replaces the native <select> dropdown with a custom listbox so the open
+ * popup can be styled to match the rest of the site (square corners,
+ * cyan border, brand typography, no OS-rendered chrome).
+ *
+ * Persists the chosen mode under `localStorage['starlight-theme']` and sets
+ * `document.documentElement.dataset.theme`, matching Starlight's own
+ * mechanism so the rest of the head theme script and the doc CSS variables
+ * keep working.
+ */
+---
+
+<starlight-theme-select>
+  <div class="pk-theme-select">
+    <button
+      type="button"
+      class="pk-theme-trigger"
+      aria-haspopup="listbox"
+      aria-expanded="false"
+      aria-label="Select theme"
+    >
+      <span class="pk-theme-current" data-mode="auto">Auto</span>
+      <svg class="pk-theme-caret" aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M17 9.17a1 1 0 0 0-1.41 0L12 12.71 8.46 9.17a1 1 0 1 0-1.41 1.42l4.24 4.24a1.002 1.002 0 0 0 1.42 0L17 10.59a1.002 1.002 0 0 0 0-1.42Z" />
+      </svg>
+    </button>
+    <ul class="pk-theme-menu" role="listbox" hidden>
+      <li role="option" class="pk-theme-option" data-value="dark"  tabindex="-1">Dark</li>
+      <li role="option" class="pk-theme-option" data-value="light" tabindex="-1">Light</li>
+      <li role="option" class="pk-theme-option" data-value="auto"  tabindex="-1">Auto</li>
+    </ul>
+  </div>
+</starlight-theme-select>
+
+<script>
+  const STORAGE_KEY = 'starlight-theme';
+  const VALID = new Set(['dark', 'light', 'auto']);
+
+  function readStored(): 'dark' | 'light' | 'auto' {
+    try {
+      const v = localStorage.getItem(STORAGE_KEY);
+      if (v && VALID.has(v)) return v as 'dark' | 'light' | 'auto';
+    } catch {}
+    return 'auto';
+  }
+
+  function effective(mode: string): 'dark' | 'light' {
+    if (mode === 'dark' || mode === 'light') return mode;
+    return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+
+  function applyTheme(mode: 'dark' | 'light' | 'auto') {
+    document.documentElement.dataset.theme = effective(mode);
+    try {
+      localStorage.setItem(STORAGE_KEY, mode === 'auto' ? '' : mode);
+    } catch {}
+    document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+      const label = picker.querySelector<HTMLSpanElement>('.pk-theme-current');
+      if (label) {
+        label.dataset.mode = mode;
+        label.textContent = mode === 'dark' ? 'Dark' : mode === 'light' ? 'Light' : 'Auto';
+      }
+      picker.querySelectorAll<HTMLLIElement>('.pk-theme-option').forEach((opt) => {
+        opt.setAttribute('aria-selected', opt.dataset.value === mode ? 'true' : 'false');
+      });
+    });
+  }
+
+  class StarlightThemeSelect extends HTMLElement {
+    private trigger!: HTMLButtonElement;
+    private menu!: HTMLUListElement;
+
+    connectedCallback() {
+      this.trigger = this.querySelector('.pk-theme-trigger')!;
+      this.menu = this.querySelector('.pk-theme-menu')!;
+      applyTheme(readStored());
+
+      this.trigger.addEventListener('click', () => this.toggle());
+      this.menu.addEventListener('click', (e) => {
+        const target = (e.target as HTMLElement).closest<HTMLLIElement>('.pk-theme-option');
+        if (!target) return;
+        const value = target.dataset.value as 'dark' | 'light' | 'auto';
+        applyTheme(value);
+        this.close();
+        this.trigger.focus();
+      });
+      document.addEventListener('click', (e) => {
+        if (!this.contains(e.target as Node)) this.close();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && this.isOpen()) {
+          this.close();
+          this.trigger.focus();
+        }
+      });
+      matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+        if (readStored() === 'auto') applyTheme('auto');
+      });
+    }
+
+    isOpen(): boolean {
+      return this.trigger.getAttribute('aria-expanded') === 'true';
+    }
+
+    toggle() {
+      this.isOpen() ? this.close() : this.open();
+    }
+
+    open() {
+      this.trigger.setAttribute('aria-expanded', 'true');
+      this.menu.hidden = false;
+    }
+
+    close() {
+      this.trigger.setAttribute('aria-expanded', 'false');
+      this.menu.hidden = true;
+    }
+  }
+
+  customElements.define('starlight-theme-select', StarlightThemeSelect);
+</script>
+
+<style>
+  .pk-theme-select {
+    position: relative;
+    display: inline-block;
+  }
+
+  .pk-theme-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.6rem;
+    background: var(--sl-color-bg-nav);
+    color: var(--sl-color-text);
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 0;
+    cursor: pointer;
+    font-family: var(--pk-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 0.72rem;
+    line-height: 1;
+    transition: border-color 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .pk-theme-trigger:hover,
+  .pk-theme-trigger[aria-expanded='true'] {
+    border-color: var(--pk-brand);
+  }
+
+  :root[data-theme='dark'] .pk-theme-trigger:hover,
+  :root[data-theme='dark'] .pk-theme-trigger[aria-expanded='true'] {
+    border-color: var(--pk-brand-ink);
+  }
+
+  .pk-theme-caret {
+    flex: none;
+    color: var(--pk-mute);
+  }
+
+  .pk-theme-current {
+    min-width: 2.6rem;
+    text-align: left;
+  }
+
+  .pk-theme-menu {
+    position: absolute;
+    inset-block-start: calc(100% + 4px);
+    inset-inline-end: 0;
+    min-width: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    background: var(--sl-color-bg-nav);
+    border: 1px solid var(--sl-color-hairline);
+    border-radius: 0;
+    box-shadow: none;
+    z-index: 50;
+  }
+
+  .pk-theme-option {
+    padding: 0.45rem 0.75rem;
+    font-family: var(--pk-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: 0.72rem;
+    color: var(--sl-color-text);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .pk-theme-option:hover {
+    background: var(--pk-line-soft);
+    color: var(--pk-brand);
+  }
+
+  .pk-theme-option[aria-selected='true'] {
+    background: var(--pk-line-soft);
+    color: var(--pk-brand);
+  }
+
+  :root[data-theme='dark'] .pk-theme-option:hover,
+  :root[data-theme='dark'] .pk-theme-option[aria-selected='true'] {
+    background: #1F2A3A;
+    color: var(--pk-brand-ink);
+  }
+</style>

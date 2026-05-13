@@ -56,63 +56,12 @@ Defaults are convenient locally, but CI jobs, services, and reproducible fixture
 
 | File | Owner | Regenerate when |
 | :--- | :--- | :--- |
-| `<package>.pkp` | Prover-side runtime | Circuit, compiler backend, branch/commit, hash, or proving configuration changes. |
+| `<package>.pkp` | Prover-side runtime | Circuit, branch/commit, hash, or proving configuration changes. |
 | `<package>.pkv` | Verifier-side runtime | The prover key is regenerated, or verifier configuration changes. |
 | `proof.np` | Proof transport / storage layer | Inputs change, the prover key changes, or a fresh proof is required. |
 | `params_for_recursive_verifier` + `r1cs.json` | Recursive-verifier integration | The verifier key or proof changes. |
 
-## Local command sequence
-
-<Steps>
-1. Prepare keys.
-
-   ```sh
-   cargo run --release --bin provekit-cli -- prepare
-   ```
-
-2. Generate a proof.
-
-   ```sh
-   cargo run --release --bin provekit-cli -- prove
-   ```
-
-3. Verify locally.
-
-   ```sh
-   cargo run --release --bin provekit-cli -- verify
-   ```
-
-4. *(Optional)* Export recursive-verifier inputs.
-
-   ```sh
-   cargo run --release --bin provekit-cli -- generate-gnark-inputs basic.pkv proof.np
-   ```
-</Steps>
-
-## Explicit output paths
-
-Create the target directory before writing into it:
-
-```sh
-mkdir -p artifacts
-```
-
-Then run with explicit paths:
-
-```sh
-cargo run --release --bin provekit-cli -- prepare . \
-  --pkp ./artifacts/basic.pkp \
-  --pkv ./artifacts/basic.pkv
-
-cargo run --release --bin provekit-cli -- prove \
-  --prover ./artifacts/basic.pkp \
-  --input ./Prover.toml \
-  --out ./artifacts/proof.np
-
-cargo run --release --bin provekit-cli -- verify \
-  --verifier ./artifacts/basic.pkv \
-  --proof ./artifacts/proof.np
-```
+For the actual command flow, use [Quickstart](/getting-started/quickstart/) for the default paths or [Generate artifacts](/e2e/generate-artifacts/) for explicit output paths, hash choice, and recursive export.
 
 ## Pick the next guide
 

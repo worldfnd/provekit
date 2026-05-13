@@ -5,21 +5,22 @@ description: Security boundaries and operational assumptions for teams integrati
 
 import { Aside } from '@astrojs/starlight/components';
 
-This page documents integration-level security expectations. It is not a cryptographic proof, audit report, or production-readiness certification, use it to decide where artifacts live, who may generate them, and which checks must run before accepting a proof.
+This page documents integration-level security expectations. It supplements but does not replace ProveKit's audit, the formal proof-system specification, or your own production-readiness review; use it to decide where artifacts live, who may generate them, and which checks must run before accepting a proof.
 
-<Aside type="caution" title="Active development">
-ProveKit is under active development. Treat `main`-branch behavior, proof formats, and key formats as unstable unless a release note says otherwise. Walk through the [production checklist](/reference/production-checklist/) before shipping a user-facing workflow.
+<Aside type="caution" title="Pin v1 for production">
+The `v1` branch is the current stable, audited release. The `main` branch is the rolling-development line and may change proof, key, or recursive-verifier formats between commits. Pin a release tag or the `v1` branch for any user-facing workflow, and walk through the [production checklist](/reference/production-checklist/) before shipping.
 </Aside>
 
 ## Trust boundaries
 
 | Boundary | What crosses it | Required control |
 | :--- | :--- | :--- |
-| Circuit authoring → key preparation | Noir source, compiler backend, hash choice | Code review, pinned commit, reproducible command line. |
+| Circuit authoring → key preparation | Noir source, hash choice | Code review, pinned commit, reproducible command line. |
 | Key preparation → prover runtime | `.pkp` | Access control, integrity checks, recorded provenance. |
 | Prover runtime → verifier runtime | `proof.np` / proof JSON and public inputs | Verification with the matching `.pkv`; public-input review. |
 | Verifier runtime → application decision | Boolean validity plus decoded public inputs | Application-level authorization and policy checks. |
 | Recursive export → Go/gnark wrapper | `params_for_recursive_verifier`, `r1cs.json` | Regenerated from the exact verifier/proof pair; setup keys managed explicitly. |
+| Untrusted client → verifier server | `pkvUrl`, `r1csUrl`, proof JSON | Restrict artifact URL sources or proxy downloads through trusted storage; tune `VERIFIER_*` concurrency and timeout limits. |
 
 ## What verification proves
 
@@ -39,7 +40,7 @@ ProveKit's security rests on different assumptions for the base proof and the op
 | Layer | Underlying primitives | Quantum-resistance |
 | :--- | :--- | :--- |
 | **Base WHIR proof** | Hash-based polynomial commitment scheme (WHIR) + Spartan-style sumcheck. Security reduces to the chosen hash's collision resistance. | **Post-quantum secure** under conjectured hash-function PQ-security. Grover's algorithm imposes a quadratic speedup on preimage finding, so 256-bit hashes retain ~128-bit security against quantum adversaries. |
-| **Recursive Groth16 wrap** | Pairing-based SNARK over BN254. Security relies on the q-SDH / Knowledge-of-Exponent assumptions on pairings. | **Not post-quantum secure.** Shor's algorithm breaks discrete-log on elliptic curves; any Groth16-wrapped proof is vulnerable to a sufficiently capable quantum attacker. |
+| **Recursive Groth16 wrap** | Pairing-based SNARK over BN254. Soundness reduces to the q-PKE (q-Power Knowledge of Exponent) assumption on pairings. | **Not post-quantum secure.** Shor's algorithm breaks discrete-log on elliptic curves; any Groth16-wrapped proof is vulnerable to a sufficiently capable quantum attacker. |
 
 If post-quantum security is part of your threat model, scope on-chain settlement carefully: verify the base WHIR proof off-chain (post-quantum secure path) rather than relying on the Groth16 outer proof for cryptographic guarantees. The wrapper is appropriate for cost-efficient EVM verification, not as a long-term cryptographic anchor.
 
@@ -48,20 +49,19 @@ If post-quantum security is part of your threat model, scope on-chain settlement
 | Material | Sensitivity |
 | :--- | :--- |
 | Private witness inputs | Sensitive by default. Keep out of logs and client-visible telemetry. |
-| `.pkp` prover keys | Operationally sensitive, they enable proof generation for the prepared circuit. |
+| `.pkp` prover keys | Operationally sensitive; they enable proof generation for the prepared circuit. |
 | `.pkv` verifier keys | Usually distributable, but always integrity-protected and versioned. |
 | Proofs | May carry public inputs and metadata that are sensitive in your application context. |
-| Recursive proving keys | Manage explicitly. Development-time generation is not sufficient for production. |
+| Recursive proving keys | Only relevant when using the Groth16 recursive wrap. Manage the trusted-setup proving and verifying keys explicitly; development-time generation is not sufficient for production. The base WHIR proof needs no trusted setup. |
 
 ## Operational controls
 
-- Pin the branch, commit, lockfile, toolchain, compiler backend, and hash choice for every artifact release.
-- Verify locally before publishing or accepting any proof artifact.
-- Review public inputs with `show-inputs --hex` for byte-exact comparison.
+The controls that are specifically security-shaped — for the broader pre-launch checklist, see [Production checklist](/reference/production-checklist/).
+
+- Review public inputs with `show-inputs --hex` for byte-exact comparison before accepting a proof.
 - Reject proofs whose provenance is unknown or spans multiple generations.
 - Restrict verifier-server artifact URLs to trusted sources, or proxy downloads through trusted storage.
-- Keep FFI buffer ownership, mobile memory settings, and WASM prover lifecycle under test on real target devices.
-- Add negative tests for mismatched key / proof pairs and corrupted proof payloads.
+- Keep private witness values, prover keys, and proofs out of logs, telemetry, and crash reporters.
 
 ## Red-team prompts for reviewers
 
@@ -70,5 +70,5 @@ Ask these questions during every integration review:
 1. Can a client choose the `.pkv`, `r1cs.json`, proving key, or verifying key used by a verifier service?
 2. Are public inputs bound to the correct account, session, chain, domain, or request?
 3. Can a previously valid proof be replayed after a policy or circuit change?
-4. Could an artifact generated from `main` be accepted by a `v1` deployment by accident?
-5. Are witness values, proofs, or prover keys logged anywhere, CLI wrappers, web servers, mobile crash reporters?
+4. Could artifacts from a different branch, commit, or hash configuration be accepted by mistake?
+5. Are witness values, proofs, or prover keys logged anywhere (CLI wrappers, web servers, mobile crash reporters)?

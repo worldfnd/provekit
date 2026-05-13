@@ -9,7 +9,7 @@ Use this checklist before shipping a workflow backed by ProveKit. It is intentio
 
 - Choose the branch or release. Use `v1` for the current stable interface; use `main` only for early-adopter work.
 - Record the Git commit, `Cargo.lock`, and `rust-toolchain.toml` used to generate artifacts.
-- Record exact CLI commands, feature flags, compiler backend, and the `prepare --hash` value.
+- Record exact CLI commands, feature flags, and the `prepare --hash` value.
 - Rebuild from a clean checkout in CI before trusting a new artifact set.
 
 ## 2. Control artifact provenance
@@ -18,7 +18,7 @@ For every generated artifact, store the path, checksum, source commit, generatin
 
 | Artifact | Required provenance |
 | :--- | :--- |
-| `.pkp` | Circuit source, compiler backend, hash, commit, generating command. |
+| `.pkp` | Circuit source, hash, commit, generating command. |
 | `.pkv` | Same generation record as the matching `.pkp`. |
 | `proof.np` or JSON proof | Matching `.pkp`, input file, public inputs, commit. |
 | `params_for_recursive_verifier` | Matching `.pkv` and proof. |

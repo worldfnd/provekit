@@ -19,6 +19,9 @@ export default defineConfig({
         replacesTitle: true,
       },
       customCss: ['./src/styles/starlight.css'],
+      components: {
+        ThemeSelect: './src/components/ThemeSelect.astro',
+      },
       // Force light as the canonical theme on first visit (brand is light-only).
       // Toggle still works for users who switch.
       head: [

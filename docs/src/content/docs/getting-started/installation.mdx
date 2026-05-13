@@ -13,7 +13,6 @@ There are two ways to get `provekit-cli` on a machine. Use **`cargo install`** w
 | :--- | :--- |
 | **Rust via `rustup`** | Cargo installs and builds the CLI. Source builds use the toolchain pinned in `rust-toolchain.toml`. |
 | **Git** *(source path only)* | Clones the repository and records exact commits for artifact provenance. |
-| **Corepack + pnpm** *(optional)* | Required only to edit or build this docs site. |
 | **Go toolchain** *(optional)* | Required only for recursive-verifier development. |
 
 ## Install the CLI
@@ -77,20 +76,6 @@ The `cargo install` binary doesn't need `cargo run --release --bin provekit-cli 
 
 If `verify` returns exit code `0`, your setup is healthy.
 
-## Build the documentation site
-
-The docs live in `docs/` and are built with [Astro Starlight](https://starlight.astro.build/). Source checkout only.
-
-```sh
-cd docs
-corepack enable
-pnpm install
-pnpm check
-pnpm build
-```
-
-Use `pnpm dev` for live preview while authoring.
-
 ## Optional host tooling
 
 | Target | Additional tooling |
@@ -109,4 +94,3 @@ A healthy setup satisfies all of these checks:
 
 - `provekit-cli --help` (or `cargo run --release --bin provekit-cli -- --help` for source builds) prints the CLI help text.
 - The [Quickstart](/getting-started/quickstart/) completes with `verify` returning exit code `0`.
-- For docs work: `pnpm check` and `pnpm build` both pass inside `docs/`.

@@ -8,7 +8,7 @@ import { Aside } from '@astrojs/starlight/components';
 Use the Rust path when a service, test harness, or release pipeline can link the ProveKit crates and own artifact loading directly, instead of shelling out to `provekit-cli`.
 
 <Aside type="caution" title="Pin crate and artifact versions">
-Pin the ProveKit crate versions, `Cargo.lock`, compiler backend, and `prepare --hash` value for every artifact set you load from Rust. When testing against a local checkout, also pin the ProveKit commit and `rust-toolchain.toml`.
+Pin the ProveKit crate versions, `Cargo.lock`, and `prepare --hash` value for every artifact set you load from Rust. When testing against a local checkout, also pin the ProveKit commit and `rust-toolchain.toml`.
 </Aside>
 
 ## Flow at a glance
@@ -101,7 +101,7 @@ The sample above intentionally loads `fresh_verifier` for the round-trip check. 
 - Treat `.pkp`, `.pkv`, and `proof.np` as versioned deployment artifacts.
 - Validate public inputs with `show-inputs` during integration testing.
 - Add negative tests for mismatched `.pkv` / proof pairs.
-- Regenerate keys and proofs after any change to circuit, branch, compiler backend, lockfile, toolchain, or `prepare --hash`.
+- Regenerate keys and proofs after any change to circuit, branch, lockfile, toolchain, or `prepare --hash`.
 - Walk through the [Production checklist](/reference/production-checklist/) before shipping a Rust prover or verifier service.
 
 ## Related pages

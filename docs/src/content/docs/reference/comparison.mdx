@@ -25,7 +25,7 @@ Headline performance numbers from any single proof system rarely generalize. Mea
 | **Native host support** | CLI, Rust, WASM, FFI, HTTP server, recursive | Rust | Rust | JS/WASM, native binary | Rust, WASM |
 | **Mobile path** | First-class (Swift + Kotlin SDKs via FFI) | DIY | DIY | DIY | Experimental |
 | **Recursive verification** | Via gnark Groth16 wrapper | Native | Native (fast) | Limited | Native (zkVM-style) |
-| **Audit status** | No public audit yet | Multiple audits | Audited (Polygon) | Multiple audits | Multiple audits |
+| **Audit status** | `v1` branch audited | Multiple audits | Audited (Polygon) | Multiple audits | Multiple audits |
 | **License** | MIT | MIT / Apache-2 | Apache-2 / MIT | GPL-3 / MIT components | Apache-2 |
 | **Best when** | You want Noir + production-shaped runtime + cheap EVM verification | You want maximum control inside Ethereum tooling | You want fast recursion in pure Rust | You're already invested in Circom or need legacy EVM verifiers | You want to prove arbitrary Rust without writing a circuit |
 
@@ -38,7 +38,7 @@ Headline performance numbers from any single proof system rarely generalize. Mea
 
 ## Where ProveKit is weaker today
 
-- **Audit maturity.** No public audit certification yet. Halo2, Plonky2, and Circom-based stacks have multiple audits behind them.
+- **Audit maturity.** The `v1` branch is audited (single audit); Halo2, Plonky2, and Circom-based stacks have multiple audits behind them across longer histories.
 - **Recursive verification.** Native recursion isn't yet a first-class operation, the path goes through gnark Groth16 wrapping. Plonky2 and RISC Zero have direct recursion built in.
 - **Established benchmarks.** WHIR is newer than PLONK and FRI families; published numbers from competing systems are not directly comparable yet.
 - **Ecosystem.** Noir's ecosystem is younger than Circom's. Reusable libraries (signatures, primitives) are growing but smaller in scope.

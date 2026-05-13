@@ -119,7 +119,7 @@ The CLI is great for development. In production, the verifier usually runs insid
    cd secret-verifier
    ```
 
-2. Add ProveKit's published verifier crate.
+2. Add the dependencies.
 
    ```toml title="Cargo.toml"
    [package]
@@ -130,6 +130,7 @@ The CLI is great for development. In production, the verifier usually runs insid
    [dependencies]
    provekit-common   = "1.0.0"
    provekit-verifier = "1.0.0"
+   anyhow            = "1"
    ```
 
 3. Write the verifier.
@@ -153,10 +154,9 @@ The CLI is great for development. In production, the verifier usually runs insid
    }
    ```
 
-4. Add `anyhow` and run it.
+4. Run it.
 
    ```sh
-   cargo add anyhow
    cargo run --release
    ```
 
@@ -168,15 +168,6 @@ The CLI is great for development. In production, the verifier usually runs insid
 A user with a `Prover.toml` can convince anyone with the matching `.pkv` and `proof.np` that they know two field elements that hash to the commitment, **without ever transmitting those elements**.
 
 That's the whole zero-knowledge claim. Everything else in ProveKit is plumbing around this shape: bigger circuits, more complex public input contracts, different hash configurations, different transport layers.
-
-## Extend this circuit
-
-Try these next:
-
-- **Make the commitment a Merkle root**, then proving `secret` hashes to *some leaf* of the tree, without revealing which leaf. See the [`noir-passport`](https://github.com/worldfnd/provekit/tree/main/noir-examples/noir-passport) example for a production-scale instance.
-- **Add a nullifier**, bind the secret to a context (election ID, session, chain) and expose the resulting hash as a public input. See [Designing circuits for ProveKit](/concepts/designing-circuits/) for ProveKit-specific mechanics.
-- **Verify in a browser**, load the same `.pkv` bytes from a `Uint8Array` and verify in WASM. See [JS/TypeScript end-to-end](/e2e/js-typescript/).
-- **Push to chain**, export recursive-verifier inputs and produce a Groth16 outer proof. See [Recursive verifier](/integrations/overview/#recursive-verifier--gnark).
 
 ## Clean up
 

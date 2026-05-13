@@ -3,7 +3,7 @@ title: Artifact lifecycle
 description: How ProveKit artifacts are generated, paired, transported, regenerated, and retired.
 ---
 
-import { Aside, Steps } from '@astrojs/starlight/components';
+import { Aside } from '@astrojs/starlight/components';
 
 ProveKit is artifact-driven. A safe integration treats every generated key, proof, and recursive-verifier export as a versioned deployment object, with explicit provenance and strict pairing rules.
 
@@ -11,67 +11,33 @@ ProveKit is artifact-driven. A safe integration treats every generated key, proo
 
 | Artifact | Produced by | Consumed by | Stays paired with |
 | :--- | :--- | :--- | :--- |
-| `.pkp` | `provekit-cli prepare` | `prove`, WASM/FFI/Rust provers | Matching `.pkv`, circuit source, compiler backend, hash choice, commit. |
+| `.pkp` | `provekit-cli prepare` | `prove`, WASM/Swift/Kotlin/Rust provers | Matching `.pkv`, circuit source, hash choice, commit. |
 | `.pkv` | `provekit-cli prepare` | `verify`, `show-inputs`, `generate-gnark-inputs`, verifier server | Matching `.pkp`, the proof set, public input encoding. |
 | `proof.np` | `provekit-cli prove` | `verify`, `show-inputs`, `generate-gnark-inputs` | Matching `.pkv`, public inputs, witness provenance. |
 | `params_for_recursive_verifier` | `generate-gnark-inputs` | `recursive-verifier/` | The exact `.pkv` and `proof.np` used to export it. |
 | `r1cs.json` | `generate-gnark-inputs` | `recursive-verifier/`, verifier server | The exact `.pkv` and `proof.np` used to export it. |
 
-## Lifecycle stages
+## Lifecycle policy
 
-<Steps>
-1. **Generate** artifacts from a clean checkout using explicit paths.
+Record provenance for every artifact set you intend to keep: branch, commit, `Cargo.lock`, `rust-toolchain.toml`, full command line, feature flags, hash choice, and checksums. That record is what lets you reproduce or audit the set later.
 
-   ```sh
-   mkdir -p artifacts
-   cargo run --release --bin provekit-cli -- prepare . \
-     --pkp artifacts/app.pkp \
-     --pkv artifacts/app.pkv
-   ```
+Verify locally before moving a proof or any artifact across a trust boundary. A verification failure at that point is a deployment-blocker, not a debugging step. Generate recursive inputs (`params_for_recursive_verifier`, `r1cs.json`) only after the base proof verifies; those exports are bound to the exact `.pkv` and `proof.np` they came from.
 
-2. **Record provenance.** Capture the branch, commit, `Cargo.lock`, `rust-toolchain.toml`, full command line, feature flags, compiler backend, hash choice, and checksums.
-
-3. **Prove** using inputs that target this exact prepared circuit.
-
-   ```sh
-   cargo run --release --bin provekit-cli -- prove \
-     --prover artifacts/app.pkp \
-     --input Prover.toml \
-     --out artifacts/proof.np
-   ```
-
-4. **Verify** before moving artifacts across a trust boundary.
-
-   ```sh
-   cargo run --release --bin provekit-cli -- verify \
-     --verifier artifacts/app.pkv \
-     --proof artifacts/proof.np
-   ```
-
-5. **Export recursive inputs** only after the base proof verifies.
-
-   ```sh
-   cargo run --release --bin provekit-cli -- generate-gnark-inputs \
-     artifacts/app.pkv \
-     artifacts/proof.np \
-     --params artifacts/params_for_recursive_verifier \
-     --r1cs artifacts/r1cs.json
-   ```
-</Steps>
+For the actual CLI commands, see [Generate artifacts](/e2e/generate-artifacts/) (explicit paths) or [Quickstart](/getting-started/quickstart/) (default paths).
 
 ## When to regenerate
 
 Regenerate every affected artifact when any of these inputs change:
 
 - Git branch, commit, dependency lockfile, Rust toolchain, or relevant feature flags.
-- Noir source, package selection, workspace layout, or compiler backend.
+- Noir source, package selection, or workspace layout.
 - `prepare --hash` value.
 - Prover inputs (when a new proof is expected).
 - The proof / verifier pair used for a recursive export.
 - Serialization or transport changes affecting proof JSON or public input encoding.
 
 <Aside type="danger" title="Never mix generations">
-A verifier key from one preparation run must never be used to verify a proof from a different prover key, circuit, branch, hash choice, or compiler backend. Treat any mismatch as a deployment failure, not a recoverable warning.
+A verifier key from one preparation run must never be used to verify a proof from a different prover key, circuit, branch, or hash choice. Treat any mismatch as a deployment failure, not a recoverable warning.
 </Aside>
 
 ## Custody and storage
@@ -92,5 +58,5 @@ Before publishing or accepting an artifact set, retain:
 - The full CLI command lines used to generate them.
 - A local `verify` success record.
 - `show-inputs --hex` output reviewed by the application owner.
-- Negative-test evidence, mismatched or corrupted proofs are rejected.
+- Negative-test evidence showing that mismatched or corrupted proofs are rejected.
 - An owner and rotation plan for regenerating the set.
