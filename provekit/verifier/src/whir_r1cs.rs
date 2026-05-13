@@ -98,6 +98,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             &data_from_sumcheck_verifier.alpha,
             r1cs,
         );
+        drop((at, bt, ct));
 
         let blinding_eval = data_from_sumcheck_verifier.blinding_eval;
         let blinding_weights = expand_powers::<4>(&data_from_sumcheck_verifier.alpha);
