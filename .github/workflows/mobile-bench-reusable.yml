@@ -135,18 +135,18 @@ jobs:
           set -euo pipefail
           case "${DEVICE_PROFILE}" in
             smoke)
-              device_specs="iPhone 7"
-              fallback_device_specs="iPhone SE 2020-16"
+              device_specs="iPhone 11-13"
+              fallback_device_specs="iPhone SE 2022-15"
               fetch_timeout_secs="7200"
               ;;
             worst)
-              device_specs="iPhone 7"
-              fallback_device_specs="iPhone SE 2020-16"
+              device_specs="iPhone 11-13"
+              fallback_device_specs="iPhone SE 2022-15"
               fetch_timeout_secs="7200"
               ;;
             triad)
-              device_specs="iPhone SE 2020-16,iPhone 15-17,iPhone 16 Pro-18"
-              fallback_device_specs=""
+              device_specs="iPhone 11-13,iPhone 15-17,iPhone 16 Pro-18"
+              fallback_device_specs="iPhone SE 2022-15,iPhone 14-16,iPhone 16 Pro Max-18"
               fetch_timeout_secs="7200"
               ;;
             *)
@@ -306,9 +306,9 @@ jobs:
             return 1
           }
 
-          is_ios_min_os_schedule_failure() {
+          is_ios_device_schedule_failure() {
             local attempt_log="$1"
-            grep -Eq 'os version lower than the minimum required os version required for app, test_suite|BROWSERSTACK_NO_DEVICE_FOUND_WITH_REQUESTED_CRITERIA' "$attempt_log"
+            grep -Eq 'os version lower than the minimum required os version|BROWSERSTACK_NO_DEVICE_FOUND_WITH_REQUESTED_CRITERIA|Device not found' "$attempt_log"
           }
 
           make_device_args() {
@@ -367,8 +367,8 @@ jobs:
                 break
               fi
 
-              if is_ios_min_os_schedule_failure "$attempt_log" && [[ -n "${IOS_FALLBACK_DEVICE_SPECS}" ]] && [[ "${effective_device_specs}" != "${IOS_FALLBACK_DEVICE_SPECS}" ]]; then
-                echo "::warning::iOS devices ${effective_device_specs} require a newer app/test-suite target in BrowserStack; retrying ${benchmark_function} on ${IOS_FALLBACK_DEVICE_SPECS}"
+              if is_ios_device_schedule_failure "$attempt_log" && [[ -n "${IOS_FALLBACK_DEVICE_SPECS}" ]] && [[ "${effective_device_specs}" != "${IOS_FALLBACK_DEVICE_SPECS}" ]]; then
+                echo "::warning::iOS devices ${effective_device_specs} were rejected by BrowserStack; retrying ${benchmark_function} on ${IOS_FALLBACK_DEVICE_SPECS}"
                 effective_device_specs="${IOS_FALLBACK_DEVICE_SPECS}"
                 attempt=1
                 continue

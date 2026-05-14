@@ -250,9 +250,16 @@ PR benchmarks run the triad profile by default:
   - `Google Pixel 7-13.0`
   - `Samsung Galaxy S24-14.0`
 - iOS:
-  - `iPhone SE 2020-16`
+  - `iPhone 11-13`
   - `iPhone 15-17`
   - `iPhone 16 Pro-18`
+
+The iOS triad also carries a backup triad for BrowserStack scheduling or
+catalog changes:
+
+- `iPhone SE 2022-15`
+- `iPhone 14-16`
+- `iPhone 16 Pro Max-18`
 
 Manual workflow dispatches and `/mobench` comments can select `smoke`,
 `worst`, or `triad`; when omitted, PR commands also default to `triad`.
@@ -260,7 +267,7 @@ Manual workflow dispatches and `/mobench` comments can select `smoke`,
 The low-spec pair used for worst-case checks is:
 
 - Android: `Vivo Y21-11.0`
-- iOS: `iPhone 7-10`
+- iOS: `iPhone 11-13`
 
 The sticky PR comment is updated in place using the `<!-- mobench-summary -->`
 marker so each rerun replaces the previous report.
