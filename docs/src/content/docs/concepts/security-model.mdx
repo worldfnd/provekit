@@ -22,17 +22,6 @@ The `v1` branch is the current stable, audited release. The `main` branch is the
 | Recursive export → Go/gnark wrapper | `params_for_recursive_verifier`, `r1cs.json` | Regenerated from the exact verifier/proof pair; setup keys managed explicitly. |
 | Untrusted client → verifier server | `pkvUrl`, `r1csUrl`, proof JSON | Restrict artifact URL sources or proxy downloads through trusted storage; tune `VERIFIER_*` concurrency and timeout limits. |
 
-## What verification proves
-
-A successful ProveKit verification means the proof is valid against the verifier key and public-input binding presented to the verifier. **It does not tell your application what to do with that proof.**
-
-Your application still owns these decisions:
-
-- Whether a user is allowed to submit a proof for a given account or session.
-- Whether public inputs match the expected credential, nullifier, domain separator, or request ID.
-- Whether the proof / key / artifact version is still accepted by the service.
-- Whether replay protection or one-time-use semantics apply.
-
 ## Cryptographic assumptions
 
 ProveKit's security rests on different assumptions for the base proof and the optional recursive wrapper. Treat them separately when modeling threats.
@@ -44,31 +33,18 @@ ProveKit's security rests on different assumptions for the base proof and the op
 
 If post-quantum security is part of your threat model, scope on-chain settlement carefully: verify the base WHIR proof off-chain (post-quantum secure path) rather than relying on the Groth16 outer proof for cryptographic guarantees. The wrapper is appropriate for cost-efficient EVM verification, not as a long-term cryptographic anchor.
 
-## Sensitive material
+## ProveKit-specific key handling
 
-| Material | Sensitivity |
+| Material | Notes |
 | :--- | :--- |
-| Private witness inputs | Sensitive by default. Keep out of logs and client-visible telemetry. |
-| `.pkp` prover keys | Operationally sensitive; they enable proof generation for the prepared circuit. |
-| `.pkv` verifier keys | Usually distributable, but always integrity-protected and versioned. |
-| Proofs | May carry public inputs and metadata that are sensitive in your application context. |
-| Recursive proving keys | Only relevant when using the Groth16 recursive wrap. Manage the trusted-setup proving and verifying keys explicitly; development-time generation is not sufficient for production. The base WHIR proof needs no trusted setup. |
+| `.pkp` prover keys | Enable proof generation for the prepared circuit. Treat as operationally sensitive. |
+| `.pkv` verifier keys | Distributable, but always integrity-protected and pinned to a specific build. |
+| Recursive Groth16 keys | Only relevant when wrapping a WHIR proof for on-chain verification. Manage the trusted-setup proving and verifying keys explicitly; development-time generation is not sufficient for production. The base WHIR proof itself needs no trusted setup. |
 
 ## Operational controls
 
-The controls that are specifically security-shaped — for the broader pre-launch checklist, see [Production checklist](/reference/production-checklist/).
+For the broader pre-launch checklist, see [Production checklist](/reference/production-checklist/). The ProveKit-specific items:
 
-- Review public inputs with `show-inputs --hex` for byte-exact comparison before accepting a proof.
-- Reject proofs whose provenance is unknown or spans multiple generations.
-- Restrict verifier-server artifact URLs to trusted sources, or proxy downloads through trusted storage.
-- Keep private witness values, prover keys, and proofs out of logs, telemetry, and crash reporters.
-
-## Red-team prompts for reviewers
-
-Ask these questions during every integration review:
-
-1. Can a client choose the `.pkv`, `r1cs.json`, proving key, or verifying key used by a verifier service?
-2. Are public inputs bound to the correct account, session, chain, domain, or request?
-3. Can a previously valid proof be replayed after a policy or circuit change?
-4. Could artifacts from a different branch, commit, or hash configuration be accepted by mistake?
-5. Are witness values, proofs, or prover keys logged anywhere (CLI wrappers, web servers, mobile crash reporters)?
+- Use `provekit-cli show-inputs --hex` for byte-exact comparison of public inputs before accepting a proof.
+- Pin artifacts to a specific commit or release tag, and reject proofs whose `.pkv` / `r1cs.json` / hash configuration mismatches the expected build.
+- In the verifier server, restrict `pkvUrl` / `r1csUrl` to trusted sources (or proxy downloads through trusted storage) and tune the `VERIFIER_*` concurrency and timeout limits for your traffic profile.

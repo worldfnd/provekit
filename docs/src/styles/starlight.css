@@ -1,5 +1,5 @@
 /* ============================================================
-   PROVEKIT DESIGN SYSTEM — applied to Astro Starlight
+   PROVEKIT DESIGN SYSTEM: applied to Astro Starlight
    Light-first. Borders, not shadows. Square corners. Outfit + Geist Mono.
    Selectors verified against the rendered Starlight DOM.
    ============================================================ */
@@ -36,7 +36,7 @@
 }
 
 /* ============================================================
-   2. Starlight token map — LIGHT (canonical brand mode)
+   2. Starlight token map: LIGHT (canonical brand mode)
    ============================================================ */
 
 :root,
@@ -80,7 +80,7 @@
 }
 
 /* ============================================================
-   3. Starlight token map — DARK (derivative, kept for toggle users)
+   3. Starlight token map: DARK (derivative, kept for toggle users)
    ============================================================ */
 
 :root[data-theme='dark'] {
@@ -149,7 +149,7 @@ body {
 }
 
 /* ============================================================
-   5. Sidebar — group labels in Geist Mono ALL CAPS
+   5. Sidebar: group labels in Geist Mono ALL CAPS
    Actual DOM: <summary><span class="group-label"><span class="large">Title</span></span></summary>
    ============================================================ */
 
@@ -166,7 +166,7 @@ body {
   padding-block: 0.5rem;
 }
 
-/* Sidebar links — mid-tone ink, readable but not pitch black. */
+/* Sidebar links: mid-tone ink, readable but not pitch black. */
 .sidebar-content ul a {
   font-family: var(--pk-font-sans);
   font-size: 0.95rem;
@@ -199,7 +199,7 @@ body {
 }
 
 /* ============================================================
-   6. Right sidebar — TOC heading in mono uppercase
+   6. Right sidebar: TOC heading in mono uppercase
    ============================================================ */
 
 .right-sidebar-panel h2 {
@@ -305,7 +305,7 @@ header.header [data-open-modal] kbd {
 }
 
 /* ============================================================
-   10. Hero CTAs — square, mono uppercase
+   10. Hero CTAs: square, mono uppercase
    Actual class: <a class="sl-link-button not-content primary">
    ============================================================ */
 
@@ -406,7 +406,7 @@ header.header [data-open-modal] kbd {
 }
 
 /* ============================================================
-   12. Tables — header row in mono uppercase
+   12. Tables: header row in mono uppercase
    ============================================================ */
 
 .sl-markdown-content table:not(:where(.not-content *)) {
@@ -524,7 +524,7 @@ header.header [data-open-modal] kbd {
 }
 
 /* ============================================================
-   15. pk-flow — multi-row pipeline diagram
+   15. pk-flow: multi-row pipeline diagram
    ============================================================ */
 
 .pk-flow {
@@ -636,7 +636,7 @@ header.header [data-open-modal] kbd {
 }
 
 /* ============================================================
-   16. pk-arch SVG — architecture overview
+   16. pk-arch SVG: architecture overview
    ============================================================ */
 
 .pk-arch-svg {
@@ -712,7 +712,7 @@ header.header [data-open-modal] kbd {
 }
 
 /* ============================================================
-   17. Pagination — bordered prev/next blocks, mono "Next/Prev"
+   17. Pagination: bordered prev/next blocks, mono "Next/Prev"
    ============================================================ */
 
 .pagination-links {
@@ -768,7 +768,7 @@ header.header [data-open-modal] kbd {
 }
 
 /* ============================================================
-   18. Right-sidebar TOC items — active highlight
+   18. Right-sidebar TOC items: active highlight
    ============================================================ */
 
 .right-sidebar-panel a {
@@ -801,7 +801,7 @@ header.header [data-open-modal] kbd {
 }
 
 /* ============================================================
-   19. Asides — brand-palette accent overrides
+   19. Asides: brand-palette accent overrides
    Default Starlight: note=blue, tip=green, caution=yellow, danger=red
    Brand:             note=brand, tip=cyan-ink, caution=orange, danger=pink
    ============================================================ */
@@ -856,7 +856,7 @@ header.header [data-open-modal] kbd {
 }
 
 /* ============================================================
-   20. Code frame — explicit brand background + cyan border
+   20. Code frame: explicit brand background + cyan border
    ============================================================ */
 
 .expressive-code {
@@ -896,7 +896,7 @@ header.header [data-open-modal] kbd {
 }
 
 /* ============================================================
-   21. Dialog / search modal — square + cyan border
+   21. Dialog / search modal: square + cyan border
    ============================================================ */
 
 .dialog-frame,
@@ -921,7 +921,7 @@ dialog.dialog-frame,
 }
 
 /* ============================================================
-   22. Misc content — hr, kbd, blockquote, mark
+   22. Misc content: hr, kbd, blockquote, mark
    ============================================================ */
 
 .sl-markdown-content hr {
@@ -999,7 +999,7 @@ dialog.dialog-frame,
 }
 
 /* ============================================================
-   24. Sidebar caret — explicit brand-aware coloring
+   24. Sidebar caret: explicit brand-aware coloring
    ============================================================ */
 
 .sidebar-content .caret {

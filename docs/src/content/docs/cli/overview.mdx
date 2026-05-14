@@ -3,7 +3,18 @@ title: CLI overview
 description: Command reference for preparing keys, proving, verifying, inspecting circuits, and exporting recursive-verifier inputs.
 ---
 
-`provekit-cli` is the primary entry point for preparing keys, proving, verifying, inspecting circuits, and exporting recursive-verifier inputs.
+Two equivalent ways to invoke the CLI:
+
+```sh
+# Installed binary
+cargo install provekit-cli
+provekit-cli <command> [options]
+
+# From a source checkout
+cargo run --release --bin provekit-cli -- <command> [options]
+```
+
+Most examples below assume the current directory contains a Noir package's `Nargo.toml`. When in doubt, pass explicit artifact paths instead of relying on defaults.
 
 **Rust API references:**
 [`provekit-common`](https://docs.rs/provekit-common) ·
@@ -11,14 +22,6 @@ description: Command reference for preparing keys, proving, verifying, inspectin
 [`provekit-verifier`](https://docs.rs/provekit-verifier) ·
 [`provekit-r1cs-compiler`](https://docs.rs/provekit-r1cs-compiler).
 Unfamiliar terms? See the [glossary](/reference/glossary/).
-
-From a source checkout, run commands through Cargo:
-
-```sh
-cargo run --release --bin provekit-cli -- <command> [options]
-```
-
-Most examples below assume the current directory contains a Noir package's `Nargo.toml`. When in doubt, pass explicit artifact paths instead of relying on defaults.
 
 ## Artifact defaults
 
@@ -87,10 +90,7 @@ provekit-cli prepare [program_path] [options]
 | `--pkv`, `-v <path>` | Output verifier key path. Defaults to `<circuit>.pkv`. |
 | `--hash <name>` | Merkle commitment hash: `skyscraper`, `sha256`, `keccak`, `blake3`, or `poseidon2`. Defaults to `skyscraper`. |
 
-Notes:
-
-- `--pkp` and `--pkv` cannot be used when compiling multiple binary packages.
-- Keys generated with one hash configuration are only compatible with proofs generated from the matching keys.
+`--pkp` and `--pkv` cannot be used when compiling multiple binary packages.
 
 ## `prove`
 
@@ -125,14 +125,41 @@ A verification failure usually means the proof, verifier key, public inputs, cir
 
 ## Inspection and export commands
 
-| Command | Purpose |
-| :--- | :--- |
-| `circuit-stats <target/*.json>` | Analyze Noir ACIR circuit statistics and R1CS complexity. Noir only. |
-| `analyze-pkp <file.pkp>` | Print the size breakdown of a Noir prover key. Noir only. |
-| `show-inputs [--hex] <verifier.pkv> <proof.np>` | Display public inputs from a proof using ABI variable names. |
-| `generate-gnark-inputs <verifier.pkv> <proof.np> [--params <path>] [--r1cs <path>]` | Export recursive-verifier parameters and an R1CS JSON file. |
+### `circuit-stats`
 
-Example recursive-verifier export:
+Analyze Noir ACIR circuit statistics and R1CS complexity. Noir only.
+
+```sh
+provekit-cli circuit-stats <target/*.json>
+```
+
+### `analyze-pkp`
+
+Print the size breakdown of a Noir prover key. Noir only.
+
+```sh
+provekit-cli analyze-pkp <file.pkp>
+```
+
+### `show-inputs`
+
+Display public inputs from a proof using their ABI variable names. Pass `--hex` for byte-exact comparison.
+
+```sh
+provekit-cli show-inputs [--hex] <verifier.pkv> <proof.np>
+```
+
+### `generate-gnark-inputs`
+
+Export recursive-verifier parameters and an R1CS JSON file for the Go/gnark wrapper.
+
+```sh
+provekit-cli generate-gnark-inputs <verifier.pkv> <proof.np> \
+  [--params <path>] \
+  [--r1cs <path>]
+```
+
+Example with full paths:
 
 ```sh
 cargo run --release --bin provekit-cli -- generate-gnark-inputs \

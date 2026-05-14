@@ -11,16 +11,16 @@ The codes below are mirrored from [`provekit_ffi.h`](https://github.com/worldfnd
 
 ## Error code reference
 
-| Code | Constant | Meaning | Common causes | Resolution |
-| :--- | :--- | :--- | :--- | :--- |
-| 0 | `PK_SUCCESS` | Success. |, |, |
-| 1 | `PK_INVALID_INPUT` | Invalid input parameters, for example a null pointer where one was required. | Forgot to populate a path string, passed a null buffer, or pre-init memory configuration left `ram_limit_bytes` at `0`. | Validate non-null pointers and required path arguments before the call. Configure memory before `pk_init()`. |
-| 2 | `PK_SCHEME_READ_ERROR` | Failed to read or deserialize the `.pkp` (prover key) file. | Missing file, wrong path, corrupted artifact, or a `.pkp` from an incompatible ProveKit version. | Verify the path through the host filesystem APIs. Confirm the file came from the matching `prepare` run on the deployed branch. |
-| 3 | `PK_WITNESS_READ_ERROR` | Failed to read or parse the witness / input TOML for this circuit. | Wrong file, mismatched circuit ABI, malformed TOML, or incorrect hex encoding in a witness map. | Run `provekit-cli show-inputs` on the corresponding proof to confirm the expected ABI. Validate witness encoding (hex strings ≤ 32 bytes, BN254 field range). |
-| 4 | `PK_PROOF_ERROR` | Proof generation failed inside the prover. | Inputs that don't satisfy the circuit (constraint violation), exhausted memory, or a bug in a witness builder for unusual inputs. | Reproduce with the CLI using the same inputs. If the CLI fails too, the inputs likely don't satisfy the circuit. Otherwise capture stderr and open an issue. |
-| 5 | `PK_SERIALIZATION_ERROR` | Failed to serialize the output (proof bytes or JSON). | Internal serializer failure, often paired with an unexpected allocator or buffer-size condition. | Free intermediate buffers, check `pk_get_memory_stats()` for allocator pressure, and re-run from a clean state. |
-| 6 | `PK_UTF8_ERROR` | UTF-8 conversion error. | A path or string argument contained bytes that don't form valid UTF-8. | Ensure all `const char *` arguments are valid UTF-8 null-terminated strings. |
-| 7 | `PK_FILE_WRITE_ERROR` | Failed to write an output file. | Path doesn't exist, parent directory is read-only, or disk is full. | Create the output directory first. Check permissions. Verify free space on the target volume. |
+| Code | Constant | Description | Resolution |
+| :--- | :--- | :--- | :--- |
+| 0 | `PK_SUCCESS` | Success. | n/a |
+| 1 | `PK_INVALID_INPUT` | Null pointer or invalid argument. | Validate args; call `pk_configure_memory` before `pk_init()`. |
+| 2 | `PK_SCHEME_READ_ERROR` | Failed to read or deserialize the `.pkp` file. | Verify the path and the deployed branch. |
+| 3 | `PK_WITNESS_READ_ERROR` | Failed to read or parse the witness / input TOML. | Run `show-inputs` to confirm the expected ABI. |
+| 4 | `PK_PROOF_ERROR` | Proof generation failed inside the prover. | Reproduce with the CLI; if it also fails, inputs don't satisfy the circuit. |
+| 5 | `PK_SERIALIZATION_ERROR` | Failed to serialize the proof bytes or JSON. | Check `pk_get_memory_stats()` for allocator pressure and re-run clean. |
+| 6 | `PK_UTF8_ERROR` | A string argument wasn't valid UTF-8. | Pass valid UTF-8 null-terminated strings. |
+| 7 | `PK_FILE_WRITE_ERROR` | Failed to write an output file. | Check the output directory exists, is writable, and has free space. |
 
 <Aside type="note" title="No verify error code today">
 There is no dedicated verification error code in the current FFI surface. Verification is performed inside Rust callers of the FFI's proof outputs; verification failures surface through whichever host code wraps `Verifier::verify()`. Track [`tooling/provekit-ffi/include/provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/main/tooling/provekit-ffi/include/provekit_ffi.h) for changes, new codes may be added as the FFI surface expands.
@@ -32,13 +32,13 @@ Every FFI entry point that performs work returns a `PKError` (as `int`):
 
 | Function | Purpose | Returns |
 | :--- | :--- | :--- |
-| `pk_init()` | Initialize the library. Call once before any other operation. | `PK_SUCCESS` on success. |
-| `pk_prove_to_file(prover_path, input_path, out_path)` | Generate a proof and write it to a file. | `PK_SUCCESS` or a `PKError` code. |
-| `pk_prove_to_json(prover_path, input_path, *out_buf)` | Generate a proof as a JSON buffer (when built with JSON support). | `PK_SUCCESS` or a `PKError` code. |
-| `pk_configure_memory(ram_limit_bytes, use_file_backed, swap_file_path)` | Configure the mmap allocator. **Must be called before `pk_init()`.** | `PK_SUCCESS` or `PK_INVALID_INPUT`. |
-| `pk_get_memory_stats(*ram_used, *swap_used, *peak_ram)` | Read RAM, swap, and peak memory statistics. | `PK_SUCCESS`. |
+| `pk_init` | Initialize the library. Call once before any other operation. | `PK_SUCCESS` |
+| `pk_prove_to_file` | Generate a proof and write it to a file. | `PK_SUCCESS` or `PKError` |
+| `pk_prove_to_json` | Generate a proof as a JSON buffer (requires JSON support). | `PK_SUCCESS` or `PKError` |
+| `pk_configure_memory` | Configure the mmap allocator. **Must be called before `pk_init`.** | `PK_SUCCESS` or `PK_INVALID_INPUT` |
+| `pk_get_memory_stats` | Read RAM, swap, and peak memory statistics. | `PK_SUCCESS` |
 
-`pk_free_buf` and `pk_set_allocator` return `void`.
+`pk_free_buf` and `pk_set_allocator` return `void`. For exact signatures, see [`provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/main/tooling/provekit-ffi/include/provekit_ffi.h).
 
 ## Recovery patterns
 

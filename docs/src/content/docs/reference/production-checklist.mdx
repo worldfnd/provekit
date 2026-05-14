@@ -1,20 +1,18 @@
 ---
 title: Production checklist
-description: Pre-launch checklist for ProveKit artifact generation, integration, verification, and operations.
+description: Pre-launch checklist for ProveKit artifact generation, integration, and verification.
 ---
 
-Use this checklist before shipping a workflow backed by ProveKit. It is intentionally conservative, ProveKit is still under active development and `main` may change proof, key, recursive-verifier, or API formats between commits.
+Use this checklist before shipping a workflow backed by ProveKit. It is intentionally conservative: ProveKit is still under active development and `main` may change proof, key, recursive-verifier, or API formats between commits.
 
 ## 1. Pin the implementation
 
-- Choose the branch or release. Use `v1` for the current stable interface; use `main` only for early-adopter work.
-- Record the Git commit, `Cargo.lock`, and `rust-toolchain.toml` used to generate artifacts.
-- Record exact CLI commands, feature flags, and the `prepare --hash` value.
-- Rebuild from a clean checkout in CI before trusting a new artifact set.
+- Use `v1` for the current stable interface; use `main` only for early-adopter work, with a migration or rollback plan.
+- Record the git commit, lockfile, toolchain, exact CLI commands, and the `prepare --hash` value used to generate every artifact set.
 
-## 2. Control artifact provenance
+## 2. Control and handle artifacts
 
-For every generated artifact, store the path, checksum, source commit, generating command, and owner.
+For every generated artifact, record the provenance below:
 
 | Artifact | Required provenance |
 | :--- | :--- |
@@ -25,7 +23,11 @@ For every generated artifact, store the path, checksum, source commit, generatin
 | `r1cs.json` | Matching `.pkv` and recursive-verifier export command. |
 | Groth16 `pk` / `vk` | Setup ceremony or development-only generation record. |
 
-Do not mix artifacts generated from different branches, commits, hash choices, circuits, or verifier/proof pairs.
+Handling rules:
+
+- Do not mix artifacts generated from different branches, commits, hash choices, circuits, or verifier/proof pairs.
+- Treat public input encoding as an API contract; review `show-inputs --hex` output as part of release sign-off.
+- Keep private witness values and prover keys out of logs unless explicitly approved.
 
 ## 3. Lock the end-to-end workflow
 
@@ -59,26 +61,18 @@ cargo run --release --bin provekit-cli -- generate-gnark-inputs \
   --r1cs artifacts/r1cs.json
 ```
 
-## 4. Define trust boundaries
-
-- Decide who is allowed to generate `.pkp` and `.pkv` files.
-- Decide where proofs are generated and where they are verified.
-- Treat public input encoding as an API contract; test it with `show-inputs`.
-- Keep private witnesses, prover keys, and generated proofs out of logs unless explicitly approved.
-- Document whether verification depends on the local CLI, embedded Rust, WASM, FFI, the verifier server, or the recursive verifier.
-
-## 5. Harden integration hosts
+## 4. Harden integration hosts
 
 ### Rust services
 
 - Reload or clone verifier state when verifying multiple proofs in one process.
-- Expose hash, compiler, and backend choices in configuration.
+- Expose the `--hash` choice in configuration so the proving and verifying hosts stay aligned.
 - Add regression tests that confirm mismatched key/proof pairs are rejected.
 
 ### WASM / JavaScript
 
 - Call `initPanicHook()` and `initThreadPool()` before proving when using threaded builds.
-- Create a new `Prover` for each proof, `proveBytes()` / `proveJs()` consume the prover.
+- Create a new `Prover` for each proof; `proveBytes()` / `proveJs()` consume the prover.
 - Validate witness maps before calling `proveBytes()` or `proveJs()`.
 - Load `.pkp` and `.pkv` artifacts from authenticated, integrity-checked sources.
 
@@ -98,32 +92,17 @@ cargo run --release --bin provekit-cli -- generate-gnark-inputs \
 
 ### Recursive verifier
 
-- Manage Groth16 proving and verifying keys explicitly for production.
-- Treat development-time key generation as unsafe unless release-specific setup guidance says otherwise.
+- Generate the Groth16 trusted-setup proving and verifying keys with a production-grade ceremony, not the development helper.
 - Re-run the recursive export after changing the proof, verifier key, branch, circuit, or hash configuration.
 
-## 6. Capture operational evidence
-
-Before launch, capture evidence for each check:
-
-| Check | Evidence to retain |
-| :--- | :--- |
-| Build reproducibility | Clean-checkout build logs and artifact checksums. |
-| Local verification | `verify` success output and the command line used. |
-| Public inputs | `show-inputs --hex` output reviewed by the application owner. |
-| Negative tests | Proof/key mismatch or corrupted proof is rejected. |
-| Performance | Proving and verification time and memory for expected circuit sizes. |
-| Recovery | Procedure for regenerating and rolling back artifacts. |
-| Observability | Logs and metrics that identify request ID, artifact version, and failure class. |
-
-## 7. Red flags
+## 5. Red flags
 
 Pause deployment if any of these are true:
 
 - Artifact provenance is unknown or spans multiple branches or commits.
 - `verify` fails locally for a proof the service plans to accept.
 - Recursive-verifier params or `r1cs.json` were not regenerated with the current `.pkv` and proof.
-- Public input ordering is undocumented.
+- Public input ordering is not pinned by a `show-inputs --hex` test for the production circuit.
 - Verifier-server artifact URLs can be controlled by untrusted clients without filtering.
 - FFI buffers are not freed, or allocator setup happens after `pk_init()`.
 - Browser proving reuses a consumed WASM `Prover` instance.

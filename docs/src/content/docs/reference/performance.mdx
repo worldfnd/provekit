@@ -5,7 +5,7 @@ description: How to measure ProveKit on your circuit, the benchmark suite shippe
 
 import { Aside } from '@astrojs/starlight/components';
 
-ProveKit is fast enough to ship in production for many workloads, but "fast" depends almost entirely on circuit shape. This page tells you how to measure your circuit honestly, what dimensions matter, and where the benchmark suite lives.
+Proving time depends almost entirely on circuit shape. This page tells you how to measure your circuit honestly, what dimensions matter, and where the benchmark suite lives.
 
 <Aside type="note" title="Why we don't publish a headline number">
 A single "ProveKit proves in X ms" number would be misleading. Proving time scales with R1CS constraint count, hash choice, witness layout, host platform, and SIMD availability. The right move is to measure your circuit on your target host, this page shows you how.
@@ -15,8 +15,8 @@ A single "ProveKit proves in X ms" number would be misleading. Proving time scal
 
 | Dimension | Effect |
 | :--- | :--- |
-| **Constraint count** | Roughly linear in R1CS row count for the dominant proving phases (witness solve, commitment, sumcheck). |
-| **Hash choice** | `skyscraper` is the fastest option for BN254 Merkle commitments. SHA-256, Keccak, Blake3, and Poseidon2 are slower in different ways, Keccak and SHA-256 have larger constraint footprints inside Noir circuits, while Skyscraper, Blake3, and Poseidon2 are cheaper in-circuit. |
+| **Witness count** | The dominant scaling factor for proving time. The witness vector is what gets committed via Merkle tree, and the prover's main work (witness solve, commitment, sumcheck) is over the witness space. R1CS constraint count grows alongside witness count for most circuits but doesn't drive proving time directly. |
+| **Merkle commitment hash** (`--hash`) | Sets the hash used for WHIR's Merkle commitments. `sha256` and `blake3` are the fastest in proving thanks to hardware acceleration. `skyscraper` is the default because it's BN254-friendly: slower to prove natively, but dramatically cheaper inside the Groth16 recursive wrap. `keccak` and `poseidon2` are also available for specific interop scenarios. |
 | **Witness layer count** | Witness builders execute in layers (see [Proving flow](/concepts/proving-flow/)). Deep layer graphs add coordination overhead. |
 | **CPU architecture** | `aarch64` benefits from SIMD-accelerated BN254 arithmetic in `skyscraper/core`. x86_64 falls back to portable arithmetic. |
 | **Parallelism** | Proving uses [Rayon](https://github.com/rayon-rs/rayon). More cores help up to the parallelism inherent in the circuit. WASM threading depends on `SharedArrayBuffer`. |
@@ -36,7 +36,7 @@ Inspect the structured timing output it prints. For finer-grained profiling, bui
 cargo run --release --features tracy --bin provekit-cli -- --tracy prove
 ```
 
-For programmatic benchmarking, across hash configurations, host variants, and circuit sizes, use the `provekit-bench` crate in `tooling/provekit-bench/`. It hooks into `criterion` and reports proving time, verification time, peak memory, and proof size.
+For repeatable timing comparisons, the `provekit-bench` crate in `tooling/provekit-bench/` ships a [`divan`](https://github.com/nvzqz/divan) bench harness over the `poseidon-rounds` example, with separate benches for prover-key read, prove, prove-with-IO, and verify. Use it as a template for benchmarking your own circuits by pointing the benches at additional `.pkp` / `.pkv` / proof artifacts.
 
 ## Inspecting the circuit before proving
 
@@ -46,11 +46,12 @@ Two CLI commands tell you what you're about to prove:
 # R1CS structure and ACIR statistics.
 cargo run --release --bin provekit-cli -- circuit-stats target/<circuit>.json
 
-# Size breakdown of the prover key, matrix sparsity, witness builders, hash config.
+# Postcard-encoded byte sizes per prover-key component, plus an R1CS sub-breakdown
+# (Interner, Matrix A/B/C) and the bytes saved by column-delta encoding.
 cargo run --release --bin provekit-cli -- analyze-pkp <circuit>.pkp
 ```
 
-Use `circuit-stats` to confirm constraint counts match your expectations before committing to a host. A circuit that fits comfortably on a server may exceed practical proving time on mobile.
+Use `circuit-stats` to confirm witness and constraint counts match your expectations before committing to a host. A circuit that fits comfortably on a server may exceed practical proving time on mobile.
 
 ## The ProveKit benchmark suite
 
@@ -87,17 +88,21 @@ The fundamentals don't change between hosts, but resource constraints do:
 
 ## Recursive verification cost
 
-The Groth16 wrapper through the Go/gnark recursive verifier adds a fixed per-proof cost, typically a one-time setup cost (proving key generation) and a recurring proving cost for the outer proof. The base proof's verification is the inner workload; everything else is the wrapper. Plan for the Groth16 step to dominate end-to-end latency when on-chain settlement is the goal.
+The Go/gnark recursive verifier wraps a WHIR proof inside a Groth16 proof for on-chain settlement. The wrapper has two costs:
+
+- **One-time setup**: trusted-setup ceremony for the outer Groth16 circuit, producing the recursive proving and verifying keys. Run once per recursive-verifier R1CS shape.
+- **Per-proof wrap**: a Groth16 proving run over the WHIR verifier R1CS. Typically the largest single step in an on-chain workflow, dwarfing the base proving time for small circuits.
+
+Measure both costs separately when benchmarking on-chain end-to-end latency.
 
 ## Optimization checklist
 
 If proving is slower than you need:
 
-1. **Run `circuit-stats`.** Confirm constraint count matches expectations. Unexpected blowups usually indicate accidentally-quadratic constraint generation.
-2. **Switch to `skyscraper` if you haven't.** It's the default but worth confirming. Other hashes are slower in-circuit.
+1. **Run `circuit-stats`.** Confirm witness and constraint counts match expectations. Unexpected blowups in witness count are the strongest signal of accidentally-quadratic constraint generation.
+2. **Pick `--hash` for your settlement path.** `skyscraper` (default) is optimal when you're wrapping the proof with Groth16 for on-chain verification. If you only verify off-chain, `sha256` or `blake3` will prove faster thanks to hardware acceleration.
 3. **Audit black-box vs native lowerings.** Some Noir black boxes (SHA-256, Keccak) are heavier in ProveKit than their native R1CS implementations. The CSP benchmarks call this out explicitly.
 4. **Profile with Tracy.** Run `cargo run --release --features tracy --bin provekit-cli -- --tracy prove` and inspect span timings. Look for layers that dominate the witness solve.
-5. **Split the circuit if possible.** Two smaller proofs may verify faster than one giant proof, depending on transport overhead and what the verifier needs to check.
 
 ## Related pages
 

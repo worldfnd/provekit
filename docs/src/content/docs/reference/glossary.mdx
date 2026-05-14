@@ -11,7 +11,7 @@ Use this glossary when reading ProveKit docs, debugging artifacts, or writing in
 | :--- | :--- |
 | <span id="acir">**ACIR**</span> | Abstract Circuit Intermediate Representation emitted by Noir before backend-specific lowering. |
 | <span id="artifact-provenance">**Artifact provenance**</span> | The branch, commit, toolchain, lockfile, command line, feature flags, hash choice, and checksum record for a generated file. |
-| <span id="bn254">**BN254**</span> | Elliptic-curve scalar field used by the current field-element and witness encoding paths. |
+| <span id="bn254">**BN254**</span> | Elliptic curve whose scalar field is used for ProveKit's field arithmetic. Well-supported on EVM chains, making it a natural fit for the Groth16 recursive wrap. |
 | <span id="circuit">**Circuit**</span> | The constrained computation being proven. In the default flow it is authored as a Noir package. |
 
 ## D–P
@@ -31,13 +31,13 @@ Use this glossary when reading ProveKit docs, debugging artifacts, or writing in
 | Term | Meaning |
 | :--- | :--- |
 | <span id="r1cs">**R1CS**</span> | Rank-1 Constraint System used by the ProveKit proving pipeline. |
-| <span id="recursive-verifier">**Recursive verifier**</span> | Go/gnark wrapper that verifies a ProveKit proof inside an outer Groth16-style workflow. |
+| <span id="recursive-verifier">**Recursive verifier**</span> | Go/gnark wrapper that verifies a ProveKit proof inside an outer Groth16 proof for cheap on-chain settlement. |
 | <span id="r1cs-json">**`r1cs.json`**</span> | Recursive-verifier R1CS export generated from a matching verifier key and proof. |
 | <span id="params-recursive">**`params_for_recursive_verifier`**</span> | Recursive-verifier parameter file generated from a matching verifier key and proof. |
 | <span id="skyscraper">**Skyscraper**</span> | Custom BN254-tuned hash engine used as ProveKit's default Merkle commitment and Fiat-Shamir transcript hash. |
 | <span id="verifier-server">**Verifier server**</span> | HTTP service in `tooling/verifier-server` that downloads artifacts and orchestrates proof verification. |
 | <span id="witness">**Witness**</span> | Private and public assignment values used to satisfy the circuit during proving. |
-| <span id="whir">**WHIR**</span> | Proof system family used by ProveKit for proof generation and verification. |
+| <span id="whir">**WHIR**</span> | Hash-based polynomial commitment scheme used inside ProveKit's Spartan-based proof system. Provides the base proof's commitment layer and gives WHIR its name. |
 
 ## Related pages
 

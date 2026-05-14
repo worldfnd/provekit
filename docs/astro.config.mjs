@@ -52,13 +52,13 @@ export default defineConfig({
         {
           label: 'Build and integrate',
           items: [
+            { slug: 'integrations/overview' },
             { slug: 'e2e/overview' },
             { slug: 'e2e/generate-artifacts' },
             { slug: 'e2e/rust' },
             { slug: 'e2e/js-typescript' },
             { slug: 'e2e/swift' },
             { slug: 'e2e/kotlin' },
-            { slug: 'integrations/overview' },
             { slug: 'reference/starter-template', label: 'Starter templates' },
           ],
         },
@@ -66,7 +66,7 @@ export default defineConfig({
           label: 'Concepts',
           items: [
             { slug: 'concepts/proving-flow' },
-            { slug: 'concepts/designing-circuits', label: 'Designing circuits for ProveKit' },
+            { slug: 'concepts/designing-circuits', label: 'Designing circuits' },
             { slug: 'concepts/artifact-lifecycle' },
             { slug: 'concepts/security-model' },
           ],
@@ -76,19 +76,17 @@ export default defineConfig({
           items: [
             { slug: 'cli/overview', label: 'CLI reference' },
             { slug: 'reference/performance' },
-            { slug: 'reference/comparison', label: 'How ProveKit compares' },
             { slug: 'reference/examples', label: 'Examples catalog' },
             { slug: 'reference/error-codes', label: 'FFI error codes' },
             { slug: 'reference/faq', label: 'FAQ' },
             { slug: 'reference/glossary' },
+            { slug: 'reference/project-status', label: 'Project status' },
           ],
         },
         {
           label: 'Operations',
           items: [
             { slug: 'reference/production-checklist' },
-            { slug: 'reference/project-status', label: 'Project status' },
-            { slug: 'reference/changelog' },
             { slug: 'troubleshooting/common-errors', label: 'Troubleshooting' },
           ],
         },
