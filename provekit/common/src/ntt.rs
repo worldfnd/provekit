@@ -27,21 +27,47 @@ impl ReedSolomon<FieldElement> for RSFr {
         let message_length = poly_size / interleaving_depth;
         assert!(codeword_length.is_multiple_of(message_length));
 
-        let num_interleaved_polys = coeffs.len() * interleaving_depth;
-        let mut result = vec![FieldElement::ZERO; codeword_length * num_interleaved_polys];
+        interleaved_rs_encode(coeffs, codeword_length, message_length, interleaving_depth)
+    }
+}
 
-        for (poly_index, poly) in coeffs.iter().enumerate() {
-            for (block_index, block) in poly.chunks_exact(message_length).enumerate() {
-                let column = poly_index * interleaving_depth + block_index;
-                for (coeff_index, &coeff) in block.iter().enumerate() {
-                    result[coeff_index * num_interleaved_polys + column] = coeff;
-                }
+fn interleaved_rs_encode(
+    coeffs: &[&[FieldElement]],
+    codeword_length: usize,
+    message_length: usize,
+    interleaving_depth: usize,
+) -> Vec<FieldElement> {
+    let column_count = coeffs.len() * interleaving_depth;
+    let mut result = vec![FieldElement::ZERO; codeword_length * column_count];
+
+    write_interleaved_coefficients(
+        &mut result[..message_length * column_count],
+        coeffs,
+        message_length,
+        interleaving_depth,
+    );
+
+    ntt_nr(&mut result, codeword_length, 1);
+    bit_reverse_rows(&mut result, codeword_length, column_count);
+    result
+}
+
+fn write_interleaved_coefficients(
+    interleaved_coeffs: &mut [FieldElement],
+    coeffs: &[&[FieldElement]],
+    message_length: usize,
+    interleaving_depth: usize,
+) {
+    let column_count = coeffs.len() * interleaving_depth;
+    debug_assert_eq!(interleaved_coeffs.len(), message_length * column_count);
+
+    for (poly_index, poly) in coeffs.iter().enumerate() {
+        for (block_index, block) in poly.chunks_exact(message_length).enumerate() {
+            let column = poly_index * interleaving_depth + block_index;
+            for (coeff_index, &coeff) in block.iter().enumerate() {
+                interleaved_coeffs[coeff_index * column_count + column] = coeff;
             }
         }
-
-        ntt_nr(&mut result, codeword_length, 1);
-        bit_reverse_rows(&mut result, codeword_length, num_interleaved_polys);
-        result
     }
 }
 
