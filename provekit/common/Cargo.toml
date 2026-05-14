@@ -11,6 +11,7 @@ repository.workspace = true
 
 [dependencies]
 # Workspace crates
+provekit-ntt.workspace = true
 # skyscraper.workspace = true
 
 # Noir language

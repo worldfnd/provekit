@@ -3493,6 +3493,8 @@ dependencies = [
  "rand_chacha 0.9.0",
  "rand_xorshift 0.4.0",
  "regex-syntax",
+ "rusty-fork",
+ "tempfile",
  "unarray",
 ]
 
@@ -3614,7 +3616,7 @@ checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
 
 [[package]]
 name = "provekit-bench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "divan",
@@ -3633,7 +3635,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-cli"
-version = "0.1.5"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "argh",
@@ -3662,7 +3664,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-common"
-version = "0.1.4"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -3676,6 +3678,7 @@ dependencies = [
  "hex",
  "itertools 0.14.0",
  "postcard",
+ "provekit-ntt",
  "provekit-spongefish",
  "provekit-spongefish-pow",
  "provekit-whir",
@@ -3695,7 +3698,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-ffi"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -3710,7 +3713,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-gnark"
-version = "0.1.2"
+version = "1.0.0"
 dependencies = [
  "ark-poly",
  "provekit-common",
@@ -3721,8 +3724,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "provekit-ntt"
+version = "0.1.0"
+dependencies = [
+ "ark-bn254",
+ "ark-ff 0.5.0",
+ "ark-std 0.5.0",
+ "divan",
+ "proptest",
+ "rayon",
+]
+
+[[package]]
 name = "provekit-prover"
-version = "0.1.4"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "ark-ff 0.5.0",
@@ -3741,7 +3756,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-r1cs-compiler"
-version = "0.1.4"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "ark-bn254",
@@ -3749,6 +3764,7 @@ dependencies = [
  "ark-std 0.5.0",
  "postcard",
  "provekit-common",
+ "provekit-ntt",
  "provekit-whir",
  "provekit_acir",
  "provekit_noirc_abi",
@@ -3792,7 +3808,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-verifier"
-version = "0.1.4"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "ark-std 0.5.0",
@@ -4379,6 +4395,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "quick-error"
+version = "1.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1d01941d82fa2ab50be1e79e6714289dd7cde78eba4c074bc5a4374f650dfe0"
+
+[[package]]
 name = "quote"
 version = "1.0.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4930,6 +4952,18 @@ name = "rustversion"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
+
+[[package]]
+name = "rusty-fork"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc6bf79ff24e648f6da1f8d1f011e9cac26491b619e6b9280f2b47f1774e6ee2"
+dependencies = [
+ "fnv",
+ "quick-error",
+ "tempfile",
+ "wait-timeout",
+]
 
 [[package]]
 name = "rustyline"
@@ -6282,7 +6316,7 @@ dependencies = [
 
 [[package]]
 name = "verifier-server"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -6312,6 +6346,15 @@ name = "virtue"
 version = "0.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
+
+[[package]]
+name = "wait-timeout"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "waitpid-any"

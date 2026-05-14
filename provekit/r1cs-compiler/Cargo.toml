@@ -12,8 +12,8 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+provekit-ntt.workspace = true
 ark-bn254.workspace = true
-# ntt.workspace = true
 
 # Noir language
 acir.workspace = true
