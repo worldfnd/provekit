@@ -65,7 +65,7 @@ on:
         description: "Optional Git ref for mobile-bench-rs to override the released mobench install"
         required: false
         type: string
-        default: ""
+        default: "2afbcb7"
       pr_number:
         description: "PR number for reporting"
         required: false
