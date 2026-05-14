@@ -1,108 +1,118 @@
 #![feature(vec_split_at_spare)]
 pub mod ntt;
 pub use ntt::*;
-use std::{
-    marker::PhantomData,
-    num::NonZero,
-    ops::{Deref, DerefMut},
-};
+pub mod ark_interleaved;
 
-pub trait NTTContainer<T>: AsRef<[T]> + AsMut<[T]> {}
-impl<T, C: AsRef<[T]> + AsMut<[T]>> NTTContainer<T> for C {}
-
-/// The NTT is optimized for NTTs of a power of two. Arbitrary sized NTTs are
-/// not supported. Note: empty vectors (size 0) are also supported as a special
-/// case.
+/// Generates an NTT for a given element type and butterfly
+/// kernel.
 ///
-/// NTTContainer can be a single polynomial or multiple polynomials that are
-/// interleaved. interleaved polynomials; `[a0, b0, c0, d0, a1, b1, c1, d1,
-/// ...]` for four polynomials `a`, `b`, `c`, and `d`. By operating on
-/// interleaved data, you can perform the NTT on all polynomials in-place
-/// without needing to first transpose the data
-#[derive(Debug, Clone, PartialEq)]
-pub struct NTT<T, C: NTTContainer<T>> {
-    container: C,
-    order:     Pow2<usize>,
-    _phantom:  PhantomData<T>,
-}
-
-impl<T, C: NTTContainer<T>> NTT<T, C> {
-    pub fn new(vec: C, number_of_polynomials: usize) -> Option<Self> {
-        let n = vec.as_ref().len();
-        // All polynomials of the same size
-        if number_of_polynomials == 0 || n % number_of_polynomials != 0 {
-            return None;
-        }
-
-        // The order of the individual polynomials needs to be a power of two
-        Pow2::new(n / number_of_polynomials).map(|order| Self {
-            container: vec,
-            order,
-            _phantom: PhantomData,
-        })
-    }
-
-    pub fn order(&self) -> Pow2<usize> {
-        self.order
-    }
-
-    pub fn into_inner(self) -> C {
-        self.container
-    }
-}
-
-impl<T, C: NTTContainer<T>> Deref for NTT<T, C> {
-    type Target = [T];
-
-    fn deref(&self) -> &Self::Target {
-        self.container.as_ref()
-    }
-}
-
-impl<T, C: NTTContainer<T>> DerefMut for NTT<T, C> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.container.as_mut()
-    }
-}
-
-/// Represents the valid length of an NTT (Number Theoretic Transform).
+/// Usage:
+/// ```ignore
+/// define_ntt_loops!(interleaved_ntt_nr, Fr, ark_kernel);
+/// ```
 ///
-/// The allowed values depend on the type parameter:
-/// - `Pow2<usize>`: length is 0 or a power of two (`{0} ∪ {2ⁿ : n ≥ 0}`).
-/// - `Pow2<NonZero<usize>>`: length is a nonzero power of two (`{2ⁿ : n ≥ 0}`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Pow2<T = usize>(T);
+/// Expanding a macro rather than using a generic function avoids the ~2–3%
+/// regression caused by generic boundaries inhibiting LLVM's loop/vectorisation
+/// optimisations even when the kernel is monomorphised.
+#[macro_export]
+macro_rules! define_ntt {
+    ($ntt_fn:ident, $T:ty, $kernel:ident) => {
+        /// In-place Number Theoretic Transform (NTT) from normal order to
+        /// reverse bit order.
+        ///
+        /// Use when multiple polynomials are stored interleaved:
+        /// `[a0, b0, a1, b1, ...]`. Operates on all polynomials in-place
+        /// without a prior transpose.
+        ///
+        /// * `reversed_ordered_roots` — precomputed roots of unity in reverse bit
+        ///   order.
+        /// * `values` — coefficients transformed in place.
+        pub(crate) fn $ntt_fn(
+            reversed_ordered_roots: &[$T],
+            values: &mut [$T],
+            codeword_size: usize,
+            mut num_groups: usize,
+        ) {
+            use rayon::{
+                iter::{IndexedParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
+                slice::ParallelSliceMut,
+            };
 
-impl<T: InPowerOfTwoSet> Pow2<T> {
-    pub fn new(value: T) -> Option<Self> {
-        match value.in_set() {
-            true => Some(Self(value)),
-            false => None,
+            fn dit_nr_cache(
+                reverse_ordered_roots: &[$T],
+                segment: usize,
+                input: &mut [$T],
+                size: usize,
+            ) {
+                let mut elements_in_group = input.len();
+                let mut num_of_groups = 1;
+
+                debug_assert!(size.is_power_of_two());
+
+                while num_of_groups < size {
+                    let twiddle_base = segment * num_of_groups;
+                    for (k, group) in input.chunks_exact_mut(elements_in_group).enumerate() {
+                        let twiddle = twiddle_base + k;
+                        let omega = reverse_ordered_roots[twiddle];
+                        let (evens, odds) = group.split_at_mut(elements_in_group / 2);
+                        evens
+                            .iter_mut()
+                            .zip(odds)
+                            .for_each(|(even, odd)| $kernel(even, odd, &omega));
+                    }
+                    elements_in_group /= 2;
+                    num_of_groups *= 2;
+                }
+            }
+
+            if codeword_size <= 1 {
+                return;
+            }
+
+            assert!(codeword_size.is_power_of_two());
+
+            let mut elements_in_group = values.len() / num_groups;
+
+            while num_groups < 32.min(codeword_size)
+                && elements_in_group > $crate::workload_size::<$T>()
+            {
+                values
+                    .chunks_exact_mut(elements_in_group)
+                    .enumerate()
+                    .for_each(|(k, group)| {
+                        let omega = reversed_ordered_roots[k];
+                        let (evens, odds) = group.split_at_mut(elements_in_group / 2);
+                        evens
+                            .par_iter_mut()
+                            .zip(odds)
+                            .for_each(|(even, odd)| $kernel(even, odd, &omega));
+                    });
+                elements_in_group /= 2;
+                num_groups *= 2;
+            }
+
+            while num_groups < codeword_size && elements_in_group > $crate::workload_size::<$T>() {
+                values
+                    .par_chunks_exact_mut(elements_in_group)
+                    .enumerate()
+                    .for_each(|(k, group)| {
+                        let omega = reversed_ordered_roots[k];
+                        let (evens, odds) = group.split_at_mut(elements_in_group / 2);
+                        evens
+                            .iter_mut()
+                            .zip(odds)
+                            .for_each(|(even, odd)| $kernel(even, odd, &omega));
+                    });
+                elements_in_group /= 2;
+                num_groups *= 2;
+            }
+
+            values
+                .par_chunks_exact_mut(elements_in_group)
+                .enumerate()
+                .for_each(|(k, group)| {
+                    dit_nr_cache(reversed_ordered_roots, k, group, codeword_size / num_groups);
+                });
         }
-    }
-}
-
-// Only Deref is implement as DerefMut allows for breaking the proof.
-impl<T> Deref for Pow2<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-pub trait InPowerOfTwoSet {
-    fn in_set(&self) -> bool;
-}
-
-impl InPowerOfTwoSet for usize {
-    fn in_set(&self) -> bool {
-        usize::is_power_of_two(*self) || *self == 0
-    }
-}
-
-impl InPowerOfTwoSet for NonZero<usize> {
-    fn in_set(&self) -> bool {
-        self.get().is_power_of_two()
-    }
+    };
 }
