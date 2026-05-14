@@ -16,10 +16,6 @@ ignored = ["inventory"]
 [lib]
 crate-type = ["lib", "cdylib", "staticlib"]
 
-[[bin]]
-name = "uniffi-bindgen"
-path = "src/bin/uniffi-bindgen.rs"
-
 [dependencies]
 anyhow.workspace = true
 inventory.workspace = true
@@ -28,7 +24,6 @@ provekit-ffi.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror = "1.0"
-uniffi = { workspace = true, features = ["cli"] }
 
 [lints]
 workspace = true
