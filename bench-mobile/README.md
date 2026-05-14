@@ -59,8 +59,7 @@ At a high level, the flow is:
    - function name
    - measured iteration count
    - warmup iteration count
-3. the app calls the UniFFI-exported Rust entrypoint:
-   `run_benchmark(spec)`
+3. the app calls the native JSON C ABI exported by `mobench-sdk`
 4. `run_benchmark` forwards to `mobench_sdk::run_benchmark(...)`
 5. `mobench-sdk` discovers the selected `#[benchmark]` function, performs
    warmups, measures iterations, and returns a structured report
@@ -74,9 +73,8 @@ Inside this crate:
 
 - benchmark registration comes from `#[benchmark]`
 - phase-level timing comes from `profile_phase(...)`
-- the Rust/UniFFI boundary is expressed by custom record types such as
-  `BenchSpec`, `BenchSample`, `SemanticPhase`, `HarnessTimelineSpan`, and
-  `BenchReport`
+- the mobile boundary is the `mobench_run_benchmark_json` C symbol exported by
+  `mobench_sdk::export_native_c_abi!()`
 
 The exported report preserves the fields the generated mobile runners care
 about:
@@ -97,9 +95,7 @@ bench-mobile/
 ├── src/
 │   ├── examples.rs
 │   ├── lib.rs
-│   ├── passport.rs
-│   └── bin/
-│       └── uniffi-bindgen.rs
+│   └── passport.rs
 ├── scripts/
 │   └── generate-fixtures.sh
 └── tests/
@@ -123,19 +119,14 @@ Copies Noir artifacts generated under the source examples' `target/`
 directories into Cargo's `OUT_DIR` so the mobile runner can embed them without
 checking compiled JSON into git.
 
-### `src/bin/uniffi-bindgen.rs`
-
-Provides the `uniffi-bindgen` binary that `mobench` expects when generating the
-mobile bridge code.
-
 ### `src/lib.rs`
 
 This is the integration surface between ProveKit and `mobench`.
 
 It does three jobs:
 
-1. defines the UniFFI-visible request/response types
-2. exports `run_benchmark(spec)`
+1. exports the native mobench JSON C ABI
+2. keeps a host-side `run_benchmark(spec)` wrapper for tests and diagnostics
 3. registers the benchmark functions themselves
 
 It also contains the benchmark-specific execution policy:
@@ -228,7 +219,9 @@ cargo-mobench build --target android --release --crate-path bench-mobile
 Repo-level `mobench` defaults live in `mobench.toml` at the workspace root. In
 this repository that file pins Android packaging to `arm64-v8a`, which matches
 the real-device CI path and avoids unsupported `armeabi-v7a` builds in
-`skyscraper/fp-rounding`.
+`skyscraper/fp-rounding`. It also sets `ffi_backend = "native-c-abi"`, so the
+generated Android and iOS runners call the C ABI directly and skip UniFFI
+binding generation.
 
 Run a local or CI-managed benchmark by selecting one of the exported benchmark
 function names. The important knobs are:

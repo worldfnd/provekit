@@ -1,6 +1,7 @@
 [project]
 crate = "bench-mobile"
 library_name = "bench_mobile"
+ffi_backend = "native-c-abi"
 
 [android]
 package = "dev.world.benchmobile"

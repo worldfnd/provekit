@@ -14,14 +14,14 @@ use {
 pub mod examples;
 pub mod passport;
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BenchSpec {
     pub name:       String,
     pub iterations: u32,
     pub warmup:     u32,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BenchSample {
     pub duration_ns:            u64,
     pub cpu_time_ms:            Option<u64>,
@@ -29,13 +29,13 @@ pub struct BenchSample {
     pub process_peak_memory_kb: Option<u64>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SemanticPhase {
     pub name:        String,
     pub duration_ns: u64,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct HarnessTimelineSpan {
     pub phase:           String,
     pub start_offset_ns: u64,
@@ -43,7 +43,7 @@ pub struct HarnessTimelineSpan {
     pub iteration:       Option<u32>,
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, uniffi::Record)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BenchReport {
     pub spec:     BenchSpec,
     pub samples:  Vec<BenchSample>,
@@ -51,8 +51,7 @@ pub struct BenchReport {
     pub timeline: Vec<HarnessTimelineSpan>,
 }
 
-#[derive(Debug, thiserror::Error, uniffi::Error)]
-#[uniffi(flat_error)]
+#[derive(Debug, thiserror::Error)]
 pub enum BenchError {
     #[error("iterations must be greater than zero")]
     InvalidIterations,
@@ -165,7 +164,6 @@ fn log_benchmark_lifecycle(
     }
 }
 
-#[uniffi::export]
 pub fn run_benchmark(spec: BenchSpec) -> Result<BenchReport, BenchError> {
     let function = spec.name.clone();
     let iterations = spec.iterations;
@@ -221,7 +219,7 @@ pub fn run_benchmark(spec: BenchSpec) -> Result<BenchReport, BenchError> {
     }
 }
 
-uniffi::setup_scaffolding!();
+mobench_sdk::export_native_c_abi!();
 
 thread_local! {
     static PREPARED_COMPLETE_AGE_CHECK: RefCell<Option<PreparedCompleteAgeCheckFixture>> =
