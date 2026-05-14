@@ -61,43 +61,46 @@ fn write_interleaved_coefficients(
     let column_count = coeffs.len() * interleaving_depth;
     debug_assert_eq!(interleaved_coeffs.len(), message_length * column_count);
 
-    for (poly_index, poly) in coeffs.iter().enumerate() {
-        for (block_index, block) in poly.chunks_exact(message_length).enumerate() {
-            let column = poly_index * interleaving_depth + block_index;
-            for (coeff_index, &coeff) in block.iter().enumerate() {
-                interleaved_coeffs[coeff_index * column_count + column] = coeff;
-            }
+    for (column_index, column_coeffs) in coeffs
+        .iter()
+        .flat_map(|poly| poly.chunks_exact(message_length))
+        .enumerate()
+    {
+        for (row, &coeff) in interleaved_coeffs
+            .chunks_exact_mut(column_count)
+            .zip(column_coeffs)
+        {
+            row[column_index] = coeff;
         }
     }
 }
 
 fn bit_reverse_rows(matrix: &mut [FieldElement], rows: usize, cols: usize) {
     debug_assert_eq!(matrix.len(), rows * cols);
-    let bits = rows.trailing_zeros();
+    debug_assert!(rows.is_power_of_two());
 
-    let swap = |ptr: *mut FieldElement, row: usize, rev: usize| unsafe {
-        std::ptr::swap_nonoverlapping(ptr.add(row * cols), ptr.add(rev * cols), cols);
+    let bits = rows.trailing_zeros();
+    let ptr = matrix.as_mut_ptr() as usize;
+
+    let swap_bit_reversed_pair = |row: usize| {
+        let rev = row.reverse_bits() >> (usize::BITS - bits);
+        if row < rev {
+            // Bit reversal is an involution; keeping only row < rev gives each
+            // worker a disjoint row pair.
+            unsafe {
+                std::ptr::swap_nonoverlapping(
+                    (ptr as *mut FieldElement).add(row * cols),
+                    (ptr as *mut FieldElement).add(rev * cols),
+                    cols,
+                );
+            }
+        }
     };
 
     if rows >= 1 << 14 {
-        let ptr = matrix.as_mut_ptr() as usize;
-        (0..rows).into_par_iter().for_each(|row| {
-            let rev = row.reverse_bits() >> (usize::BITS - bits);
-            if row < rev {
-                // Bit reversal is an involution and this branch only runs for
-                // row < rev, so each parallel swap touches disjoint rows.
-                swap(ptr as *mut FieldElement, row, rev);
-            }
-        });
-        return;
-    }
-
-    let ptr = matrix.as_mut_ptr();
-    for row in 0..rows {
-        let rev = row.reverse_bits() >> (usize::BITS - bits);
-        if row < rev {
-            swap(ptr, row, rev);
-        }
+        (0..rows).into_par_iter().for_each(swap_bit_reversed_pair);
+    } else {
+        (0..rows).for_each(swap_bit_reversed_pair);
     }
 }
 
