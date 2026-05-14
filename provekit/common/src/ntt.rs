@@ -74,34 +74,29 @@ fn write_interleaved_coefficients(
 fn bit_reverse_rows(matrix: &mut [FieldElement], rows: usize, cols: usize) {
     debug_assert_eq!(matrix.len(), rows * cols);
     let bits = rows.trailing_zeros();
+
+    let swap = |ptr: *mut FieldElement, row: usize, rev: usize| unsafe {
+        std::ptr::swap_nonoverlapping(ptr.add(row * cols), ptr.add(rev * cols), cols);
+    };
+
     if rows >= 1 << 14 {
         let ptr = matrix.as_mut_ptr() as usize;
         (0..rows).into_par_iter().for_each(|row| {
             let rev = row.reverse_bits() >> (usize::BITS - bits);
             if row < rev {
-                let row_start = row * cols;
-                let rev_start = rev * cols;
                 // Bit reversal is an involution and this branch only runs for
                 // row < rev, so each parallel swap touches disjoint rows.
-                unsafe {
-                    std::ptr::swap_nonoverlapping(
-                        (ptr as *mut FieldElement).add(row_start),
-                        (ptr as *mut FieldElement).add(rev_start),
-                        cols,
-                    );
-                }
+                swap(ptr as *mut FieldElement, row, rev);
             }
         });
         return;
     }
 
+    let ptr = matrix.as_mut_ptr();
     for row in 0..rows {
         let rev = row.reverse_bits() >> (usize::BITS - bits);
         if row < rev {
-            let row_start = row * cols;
-            let rev_start = rev * cols;
-            let (left, right) = matrix.split_at_mut(rev_start);
-            left[row_start..row_start + cols].swap_with_slice(&mut right[..cols]);
+            swap(ptr, row, rev);
         }
     }
 }
