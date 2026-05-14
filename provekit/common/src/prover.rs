@@ -22,9 +22,15 @@ pub struct NoirProver {
     pub produce_spark_query:    bool,
 }
 
-// INVARIANT: Variant order is wire-format-critical (postcard uses positional
-// discriminants). Do not reorder, cfg-gate, or insert variants without
-// verifying cross-target deserialization (native <-> WASM).
+/// On-disk **ProveKit Prover** (PKP) — the prover-side scheme that gets
+/// serialized to a `.pkp` file by `prepare` and loaded by `prove`.
+///
+/// Holds the R1CS, witness builders, WHIR config, and frontend-specific
+/// program data needed to produce a proof.
+///
+/// INVARIANT: Variant order is wire-format-critical (postcard uses positional
+/// discriminants). Do not reorder, cfg-gate, or insert variants without
+/// verifying cross-target deserialization (native <-> WASM).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Prover {
     Noir(NoirProver),

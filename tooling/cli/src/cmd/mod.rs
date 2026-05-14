@@ -5,6 +5,7 @@ pub mod prepare;
 mod prove;
 mod prove_spark;
 mod show_inputs;
+mod util;
 mod verify;
 mod verify_spark;
 
@@ -14,7 +15,7 @@ pub trait Command {
     fn run(&self) -> Result<()>;
 }
 
-/// Prove & verify a compiled Noir program using R1CS.
+/// Compile, prove, and verify Noir programs using R1CS.
 #[derive(FromArgs, PartialEq, Debug)]
 pub struct Args {
     #[argh(subcommand)]

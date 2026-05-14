@@ -80,7 +80,9 @@ cargo run --release --bin provekit-cli -- prepare ./target/complete_age_check.js
 
 # 2. Prove (generates Noir proof + writes SPARK queries to disk).
 #    `--produce-spark-query` is required, otherwise no queries are written.
-cargo run --release --bin provekit-cli -- prove ./benchmark-inputs/complete-age-check.pkp ./Prover.toml \
+cargo run --release --bin provekit-cli -- prove \
+  -p ./benchmark-inputs/complete-age-check.pkp \
+  -i ./Prover.toml \
   -o ./benchmark-inputs/complete-age-check-proof.np \
   --spark-queries-dir ./spark_proofs \
   --produce-spark-query
@@ -92,7 +94,9 @@ cargo run --release --bin provekit-cli -- prove-spark ./benchmark-inputs/complet
   --spark-dir ./spark_proofs
 
 # 4. Natively verify the Noir proof. Native verification evaluates MLE directly. Spark proofs are useful only in the recursive verifier.
-cargo run --release --bin provekit-cli -- verify ./benchmark-inputs/complete-age-check.pkv ./benchmark-inputs/complete-age-check-proof.np
+cargo run --release --bin provekit-cli -- verify \
+  -v ./benchmark-inputs/complete-age-check.pkv \
+  --proof ./benchmark-inputs/complete-age-check-proof.np
 
 # 5. Verify the batched SPARK proof. Pass every query that the prover saw, in
 #    index order (`_0`, `_1`, ...). The order matters because the transcript
