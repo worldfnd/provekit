@@ -105,6 +105,9 @@ jobs:
     if: inputs.platform == 'ios' || inputs.platform == 'both'
     runs-on: macos-15
     environment: Browserstack
+    concurrency:
+      group: mobench-browserstack-device-cloud
+      cancel-in-progress: false
     env:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
@@ -404,6 +407,9 @@ jobs:
     if: inputs.platform == 'android' || inputs.platform == 'both'
     runs-on: macos-14
     environment: Browserstack
+    concurrency:
+      group: mobench-browserstack-device-cloud
+      cancel-in-progress: false
     env:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
