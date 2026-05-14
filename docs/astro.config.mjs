@@ -22,14 +22,7 @@ export default defineConfig({
       components: {
         ThemeSelect: './src/components/ThemeSelect.astro',
       },
-      // Force light as the canonical theme on first visit (brand is light-only).
-      // Toggle still works for users who switch.
-      head: [
-        {
-          tag: 'script',
-          content: `(()=>{try{if(!localStorage.getItem('starlight-theme'))localStorage.setItem('starlight-theme','light');}catch(e){}})();`,
-        },
-      ],
+      // Default theme follows the user's OS preference (auto).
       lastUpdated: true,
       tableOfContents: {
         minHeadingLevel: 2,
