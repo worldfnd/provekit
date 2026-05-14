@@ -2,6 +2,7 @@
 pub mod file;
 mod interner;
 mod noir_proof_scheme;
+pub mod ntt;
 pub mod prefix_covector;
 mod prover;
 mod r1cs;
@@ -47,7 +48,7 @@ pub fn register_ntt() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(whir::algebra::ntt::ArkNtt::<FieldElement>::default());
+            Arc::new(crate::ntt::RSFr);
         whir::algebra::ntt::NTT.insert(ntt);
 
         // let skyscraper: Arc<dyn whir::hash::HashEngine> =

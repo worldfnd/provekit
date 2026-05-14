@@ -1,5 +1,7 @@
 #![allow(dead_code)] // Remove once RSFr is used for WHIR
-use {ark_bn254::Fr, ark_ff::AdditiveGroup, ntt::ntt_nr, whir::algebra::ntt::ReedSolomon};
+use {
+    ark_bn254::Fr, ark_ff::AdditiveGroup, provekit_ntt::ntt_nr, whir::algebra::ntt::ReedSolomon,
+};
 
 pub struct RSFr;
 impl ReedSolomon<Fr> for RSFr {
@@ -26,7 +28,7 @@ fn interleaved_rs_encode(
     let mut result = vec![Fr::ZERO; expanded_size];
     result[..interleaved_coeffs.len()].copy_from_slice(interleaved_coeffs);
 
-    let mut ntt = ntt::NTT::new(result, interleaving_depth).expect(
+    let mut ntt = provekit_ntt::NTT::new(result, interleaving_depth).expect(
         "interleaved_coeffs.len() * expansion / interleaving_depth needs to be a power of two.",
     );
 
