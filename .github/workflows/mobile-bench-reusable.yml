@@ -60,12 +60,12 @@ on:
         description: "Mobench version to install"
         required: false
         type: string
-        default: "0.1.40"
+        default: "0.1.41"
       mobench_ref:
         description: "Optional Git ref for mobile-bench-rs to override the released mobench install"
         required: false
         type: string
-        default: "provekit-mobench-v0.1.40-ios-readiness"
+        default: "codex/native-c-abi-backend"
       pr_number:
         description: "PR number for reporting"
         required: false
