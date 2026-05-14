@@ -31,7 +31,7 @@ use {
 #[cfg(not(target_arch = "wasm32"))]
 use {
     mavros_artifacts::{ConstraintsLayout, WitnessLayout},
-    mavros_vm::interpreter::Phase1Result,
+    mavros_vm::interpreter::WitgenResult,
 };
 
 pub struct BlindingState {
@@ -68,7 +68,7 @@ pub trait WhirR1CSProver {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        phase1: Phase1Result,
+        witgen: WitgenResult,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
@@ -191,7 +191,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
     fn prove_mavros(
         &self,
         mut merlin: ProverState<TranscriptSponge>,
-        phase1: Phase1Result,
+        witgen: WitgenResult,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
@@ -205,7 +205,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             .as_ref()
             .expect("c1 must carry blinding state");
 
-        let [a, b, c] = [phase1.out_a, phase1.out_b, phase1.out_c];
+        let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
             a,
             b,

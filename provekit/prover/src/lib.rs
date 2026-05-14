@@ -307,13 +307,13 @@ impl Prove for MavrosProver {
             )
             .context("While committing to w1")?;
 
-        let commitments = if self.whir_for_witness.num_challenges > 0 {
+        let (commitments, witgen_result) = if self.whir_for_witness.num_challenges > 0 {
             let challenges: Vec<FieldElement> = (0..self.witness_layout.challenges_size)
                 .map(|_| merlin.verifier_message())
                 .collect();
 
             let witgen_result = mavros_interpreter::run_phase2(
-                phase1.clone(),
+                phase1,
                 &challenges,
                 self.witness_layout,
                 self.constraints_layout,
@@ -330,22 +330,22 @@ impl Prove for MavrosProver {
                 )
                 .context("While committing to w2")?;
 
-            vec![commitment_1, commitment_2]
+            (vec![commitment_1, commitment_2], witgen_result)
         } else {
-            mavros_interpreter::run_phase2(
-                phase1.clone(),
+            let witgen_result = mavros_interpreter::run_phase2(
+                phase1,
                 &[],
                 self.witness_layout,
                 self.constraints_layout,
             );
-            vec![commitment_1]
+            (vec![commitment_1], witgen_result)
         };
 
         let whir_r1cs_proof = self
             .whir_for_witness
             .prove_mavros(
                 merlin,
-                phase1,
+                witgen_result,
                 commitments,
                 &public_inputs,
                 self.witness_layout,
