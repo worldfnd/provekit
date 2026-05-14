@@ -101,7 +101,7 @@ jobs:
       iterations: "2"
       warmup: "1"
       mobench_version: "0.1.41"
-      mobench_ref: "codex/native-c-abi-backend"
+      mobench_ref: ""
       pr_number: ${{ needs.resolve.outputs.pr_number }}
       requested_by: ${{ needs.resolve.outputs.requested_by }}
       head_sha: ${{ needs.resolve.outputs.head_sha }}
