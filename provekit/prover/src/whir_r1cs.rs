@@ -221,7 +221,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
         let (ad_a, ad_b, ad_c, _) = mavros_vm::interpreter::run_ad(
             ad_binary,
-            &eq_alpha[..constraints_layout.algebraic_size],
+            &eq_alpha[..constraints_layout.size()],
             witness_layout,
             constraints_layout,
         );
