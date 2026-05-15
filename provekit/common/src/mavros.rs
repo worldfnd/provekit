@@ -51,10 +51,34 @@ mod wasm_stubs {
         pub lookups_data_size:   usize,
     }
 
+    impl WitnessLayout {
+        pub const fn size(&self) -> usize {
+            self.algebraic_size
+                + self.multiplicities_size
+                + self.challenges_size
+                + self.tables_data_size
+                + self.lookups_data_size
+        }
+
+        pub const fn pre_commitment_size(&self) -> usize {
+            self.algebraic_size + self.multiplicities_size
+        }
+
+        pub const fn post_commitment_size(&self) -> usize {
+            self.challenges_size + self.tables_data_size + self.lookups_data_size
+        }
+    }
+
     #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
     pub struct ConstraintsLayout {
         pub algebraic_size:    usize,
         pub tables_data_size:  usize,
         pub lookups_data_size: usize,
+    }
+
+    impl ConstraintsLayout {
+        pub const fn size(&self) -> usize {
+            self.algebraic_size + self.tables_data_size + self.lookups_data_size
+        }
     }
 }

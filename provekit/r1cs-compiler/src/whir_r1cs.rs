@@ -159,10 +159,14 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             "num_challenges ({num_challenges}) != challenge_offsets.len() ({})",
             challenge_offsets.len()
         );
-        let m_raw = next_power_of_two(num_witnesses);
+        assert!(w1_size <= num_witnesses, "w1_size exceeds total witnesses");
+        let w2_size = num_witnesses - w1_size;
+
+        let m1_raw = next_power_of_two(w1_size);
+        let m2_raw = next_power_of_two(w2_size);
         let m0_raw = next_power_of_two(num_constraints);
 
-        let mut m = m_raw.max(MIN_WHIR_NUM_VARIABLES);
+        let mut m = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
         // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
@@ -231,5 +235,21 @@ mod tests {
             "Blinding commitment security {sec_blinding:.2} < 128 bits at nv={}",
             MIN_WHIR_NUM_VARIABLES
         );
+    }
+
+    #[test]
+    fn mavros_dimensions_use_largest_commitment_not_total_witnesses() {
+        let scheme = WhirR1CSScheme::new_from_dimensions(
+            600_000,
+            8,
+            8,
+            300_000,
+            2,
+            vec![0, 1],
+            false,
+            HashConfig::Sha256,
+        );
+
+        assert_eq!(scheme.m, 19);
     }
 }
