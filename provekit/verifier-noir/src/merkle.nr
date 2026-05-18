@@ -63,12 +63,13 @@ pub fn length_iv_hash<let N: u32>(inputs: [Field; N]) -> Field {
 // --- in-circuit KAT ---
 //
 // EXPECTED_HASH_2 freezes length_iv_hash([1, 2]) per the Rust
-// `poseidon2::hash::poseidon2_hash` reference. Task 2 replaces this
-// placeholder with the real value.
+// `poseidon2::poseidon2_hash` reference.
+// See provekit/verifier-noir-test/tests/merkle_kat.rs for the cross-impl guarantee.
 //
-// PLACEHOLDER VALUE - overwritten in Phase 2A Task 2 after running the
-// Rust-side computation. The test below is expected to FAIL until then.
-global EXPECTED_HASH_2: Field = 0;
+// Value computed by Rust `poseidon2::poseidon2_hash` on `[1, 2]`;
+// frozen as a KAT. See provekit/verifier-noir-test/tests/merkle_kat.rs
+// for the cross-impl guarantee.
+global EXPECTED_HASH_2: Field = 1594597865669602199208529098208508950092942746041644072252494753744672355203;
 
 #[test]
 fn length_iv_hash_2_matches_frozen_kat() {

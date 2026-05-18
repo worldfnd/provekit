@@ -101,6 +101,12 @@ fn lane_sponge_replay(
     out
 }
 
+/// Run the canonical merkle KAT (`length_iv_hash([1, 2])` in Noir terms)
+/// through the Rust `poseidon2::poseidon2_hash` reference.
+pub fn merkle_kat_expected() -> Fr {
+    poseidon2::poseidon2_hash(&[Fr::from(1u64), Fr::from(2u64)])
+}
+
 /// Canonical Phase 1B transcript KAT sequence (same as Noir's
 /// `transcript_init_absorb_squeeze_matches_frozen_kat`):
 ///
@@ -153,5 +159,12 @@ mod tests {
         for (i, fe) in expected.iter().enumerate() {
             println!("EXPECTED_TRANSCRIPT_KAT[{i}] = {}", fr_to_noir_literal(*fe));
         }
+    }
+
+    /// Print the field element that Noir's `EXPECTED_HASH_2` global should hold.
+    #[test]
+    fn print_merkle_kat_expected_for_noir() {
+        let expected = merkle_kat_expected();
+        println!("EXPECTED_HASH_2 = {}", fr_to_noir_literal(expected));
     }
 }
