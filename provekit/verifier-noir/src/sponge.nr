@@ -11,8 +11,7 @@
 
 use crate::poseidon2::permute;
 
-global RATE: u32 = 3; // 3 field lanes = 96 bytes
-global WIDTH: u32 = 4; // 4 field lanes = 128 bytes (RATE + capacity)
+global RATE: u32 = 3; // 3 field lanes = 96 bytes (capacity is the remaining lane, state[3])
 
 /// Duplex sponge state. RATE = 3 lanes, capacity = 1 lane (state[3]).
 pub struct Sponge {
@@ -40,7 +39,8 @@ impl Sponge {
     /// Absorb one field element (= 32 bytes when serialized LE).
     /// Matches spongefish's absorb path at lane granularity.
     pub fn absorb_field(&mut self, fe: Field) {
-        // Reset squeeze mode (spongefish line 198).
+        // Entering absorb mode: force a permute before the next squeeze
+        // (spongefish line 198).
         self.squeeze_pos = RATE;
 
         // Permute on rate overflow (spongefish lines 201-203).
@@ -51,7 +51,7 @@ impl Sponge {
 
         // Overwrite the current rate lane (spongefish line 209).
         self.state[self.absorb_pos] = fe;
-        self.absorb_pos = self.absorb_pos + 1;
+        self.absorb_pos += 1;
     }
 
     /// Squeeze one field element. Permutes if the rate has been fully drained
@@ -66,7 +66,7 @@ impl Sponge {
         }
 
         let out = self.state[self.squeeze_pos];
-        self.squeeze_pos = self.squeeze_pos + 1;
+        self.squeeze_pos += 1;
         out
     }
 }
@@ -75,11 +75,16 @@ impl Sponge {
 //
 // EXPECTED_SPONGE_KAT freezes the four squeezed outputs after the canonical
 // sequence: new() -> absorb_field(1) -> absorb_field(2) -> 4 x squeeze_field().
-// Task 2 (Phase 1B) replaces this with the real values computed by spongefish.
 //
-// PLACEHOLDER VALUE - overwritten in Phase 1B Task 2 after running the
-// Rust-side computation. The test below is expected to FAIL until then.
-global EXPECTED_SPONGE_KAT: [Field; 4] = [0, 0, 0, 0];
+// Values computed by spongefish's Poseidon2Sponge over the canonical KAT
+// sequence; frozen as a KAT. See provekit/verifier-noir-test/tests/sponge_kat.rs
+// for the cross-impl guarantee.
+global EXPECTED_SPONGE_KAT: [Field; 4] = [
+    18820432867059154094859436055199616701968052823097718648623846518936613856822,
+    18765307673170827115753326813900875002848140270017525397879152595142186698156,
+    8902268457968403723723455777528503219317767098362558216701468192393217466553,
+    6893255428283411714874654770501629555921995326027890220762013361906424133476,
+];
 
 #[test]
 fn sponge_absorb_squeeze_matches_frozen_kat() {

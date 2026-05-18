@@ -4745,10 +4745,11 @@ dependencies = [
 name = "provekit-verifier-noir-test"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "ark-bn254",
  "ark-ff 0.5.0",
  "poseidon2",
+ "provekit-common",
+ "spongefish",
 ]
 
 [[package]]

@@ -18,6 +18,42 @@ pub fn fr_to_noir_literal(fe: Fr) -> String {
     fe.into_bigint().to_string()
 }
 
+use {
+    provekit_common::poseidon2::Poseidon2Sponge,
+    spongefish::DuplexSpongeInterface,
+};
+
+/// Run the canonical sponge KAT sequence through spongefish's
+/// `Poseidon2Sponge` and return the four squeezed field elements.
+///
+/// Sequence: `default() -> absorb(field_to_bytes(1)) -> absorb(field_to_bytes(2)) ->
+/// 4 x squeeze(32 bytes)`. Each 32-byte squeeze is interpreted as one
+/// field element via `Fr::from_le_bytes_mod_order`.
+pub fn sponge_kat_expected() -> [Fr; 4] {
+    let mut s = Poseidon2Sponge::default();
+    let one = fr_to_le_bytes(Fr::from(1u64));
+    let two = fr_to_le_bytes(Fr::from(2u64));
+    s.absorb(&one);
+    s.absorb(&two);
+
+    let mut outputs = [Fr::from(0u64); 4];
+    for i in 0..4 {
+        let mut buf = [0u8; 32];
+        s.squeeze(&mut buf);
+        outputs[i] = Fr::from_le_bytes_mod_order(&buf);
+    }
+    outputs
+}
+
+fn fr_to_le_bytes(fe: Fr) -> [u8; 32] {
+    let mut buf = [0u8; 32];
+    let bi = fe.into_bigint();
+    for (i, limb) in bi.0.iter().enumerate() {
+        buf[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
+    }
+    buf
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -31,6 +67,16 @@ mod tests {
         let expected = kat_expected();
         for (i, fe) in expected.iter().enumerate() {
             println!("EXPECTED_PERMUTE_1234[{i}] = {}", fr_to_noir_literal(*fe));
+        }
+    }
+
+    /// Print the four field elements that Noir's `EXPECTED_SPONGE_KAT`
+    /// global should hold. Run with `--nocapture` to capture them.
+    #[test]
+    fn print_sponge_kat_expected_for_noir() {
+        let expected = sponge_kat_expected();
+        for (i, fe) in expected.iter().enumerate() {
+            println!("EXPECTED_SPONGE_KAT[{i}] = {}", fr_to_noir_literal(*fe));
         }
     }
 }
