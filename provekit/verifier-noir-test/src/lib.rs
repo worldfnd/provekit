@@ -1,7 +1,12 @@
 //! Test-only library exposing fixed Poseidon2 KAT inputs / outputs so the
 //! Cargo and Nargo sides can reference the same constants.
 
-use {ark_bn254::Fr, ark_ff::PrimeField};
+use {
+    ark_bn254::Fr,
+    ark_ff::PrimeField,
+    provekit_common::poseidon2::Poseidon2Sponge,
+    spongefish::DuplexSpongeInterface,
+};
 
 /// KAT input for cross-implementation Poseidon2 permutation testing.
 pub fn kat_input() -> [Fr; 4] {
@@ -18,11 +23,6 @@ pub fn fr_to_noir_literal(fe: Fr) -> String {
     fe.into_bigint().to_string()
 }
 
-use {
-    provekit_common::poseidon2::Poseidon2Sponge,
-    spongefish::DuplexSpongeInterface,
-};
-
 /// Run the canonical sponge KAT sequence through spongefish's
 /// `Poseidon2Sponge` and return the four squeezed field elements.
 ///
@@ -37,10 +37,10 @@ pub fn sponge_kat_expected() -> [Fr; 4] {
     s.absorb(&two);
 
     let mut outputs = [Fr::from(0u64); 4];
-    for i in 0..4 {
+    for output in outputs.iter_mut() {
         let mut buf = [0u8; 32];
         s.squeeze(&mut buf);
-        outputs[i] = Fr::from_le_bytes_mod_order(&buf);
+        *output = Fr::from_le_bytes_mod_order(&buf);
     }
     outputs
 }
