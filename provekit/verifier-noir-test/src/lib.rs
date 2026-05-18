@@ -107,6 +107,102 @@ pub fn merkle_kat_expected() -> Fr {
     poseidon2::poseidon2_hash(&[Fr::from(1u64), Fr::from(2u64)])
 }
 
+/// Build a valid 2-round Spartan sumcheck transcript with `sum_g = 12`,
+/// `blinding_eval = 7`, using the convention `h_i = [saved/2, 0, 0, 0]`
+/// (constant polynomial whose two boolean-hypercube evaluations both equal
+/// half the running saved value, so `h_i(0) + h_i(1) == saved` always).
+///
+/// Returns the two `h_polys` rows (each `[c0, c1, c2, c3]`) AND the
+/// `f_at_alpha` the verifier should compute. Both Noir and the Rust replay
+/// consume the same `(sum_g, h_polys, blinding_eval)`; they must agree on
+/// `f_at_alpha`.
+pub fn sumcheck_kat_construct() -> ([[Fr; 4]; 2], Fr) {
+    use ark_ff::Field as _; // for .inverse()
+
+    let sum_g = Fr::from(12u64);
+    let blinding_eval = Fr::from(7u64);
+
+    // Simulate Transcript::new() => fresh lane sponge.
+    let mut state = [Fr::from(0u64); 4];
+    let mut absorb_pos: u32 = 0;
+    let mut squeeze_pos: u32 = SUMCHECK_KAT_RATE;
+
+    const M0: usize = 2;
+
+    // Phase 1: squeeze M0 challenges (`r`).
+    let mut _r = [Fr::from(0u64); M0];
+    for slot in _r.iter_mut() {
+        *slot = sumcheck_squeeze_one(&mut state, &mut absorb_pos, &mut squeeze_pos);
+    }
+
+    // Phase 2: absorb sum_g.
+    sumcheck_absorb_one(&mut state, &mut absorb_pos, &mut squeeze_pos, sum_g);
+
+    // Phase 3: squeeze rho, init saved = rho * sum_g.
+    let rho = sumcheck_squeeze_one(&mut state, &mut absorb_pos, &mut squeeze_pos);
+    let mut saved = rho * sum_g;
+
+    // Phase 4: per-round h_polys + assertions.
+    let mut h_polys = [[Fr::from(0u64); 4]; M0];
+    let two_inv = Fr::from(2u64).inverse().expect("2 is invertible in BN254 scalar field");
+    for row in h_polys.iter_mut() {
+        // Pick h_i = [saved/2, 0, 0, 0] => constant polynomial,
+        // h_i(0) + h_i(1) = saved/2 + saved/2 = saved. Soundness check passes.
+        let c0 = saved * two_inv;
+        *row = [c0, Fr::from(0u64), Fr::from(0u64), Fr::from(0u64)];
+
+        // Absorb the 4 coefficients.
+        for &coeff in row.iter() {
+            sumcheck_absorb_one(&mut state, &mut absorb_pos, &mut squeeze_pos, coeff);
+        }
+
+        // Squeeze alpha_i (consumed only to advance the transcript), update
+        // saved = h_i(alpha_i) = c0 (constant poly, c1..c3 are zero).
+        let _alpha_i = sumcheck_squeeze_one(&mut state, &mut absorb_pos, &mut squeeze_pos);
+        saved = c0;
+    }
+
+    // Phase 5: absorb blinding_eval.
+    sumcheck_absorb_one(&mut state, &mut absorb_pos, &mut squeeze_pos, blinding_eval);
+
+    // f_at_alpha = saved - rho * blinding_eval.
+    let f_at_alpha = saved - rho * blinding_eval;
+
+    (h_polys, f_at_alpha)
+}
+
+const SUMCHECK_KAT_RATE: u32 = 3;
+
+fn sumcheck_absorb_one(
+    state: &mut [Fr; 4],
+    absorb_pos: &mut u32,
+    squeeze_pos: &mut u32,
+    fe: Fr,
+) {
+    *squeeze_pos = SUMCHECK_KAT_RATE;
+    if *absorb_pos == SUMCHECK_KAT_RATE {
+        *state = poseidon2::permutation::poseidon2_permutation(state);
+        *absorb_pos = 0;
+    }
+    state[*absorb_pos as usize] = fe;
+    *absorb_pos += 1;
+}
+
+fn sumcheck_squeeze_one(
+    state: &mut [Fr; 4],
+    absorb_pos: &mut u32,
+    squeeze_pos: &mut u32,
+) -> Fr {
+    *absorb_pos = 0;
+    if *squeeze_pos == SUMCHECK_KAT_RATE {
+        *squeeze_pos = 0;
+        *state = poseidon2::permutation::poseidon2_permutation(state);
+    }
+    let out = state[*squeeze_pos as usize];
+    *squeeze_pos += 1;
+    out
+}
+
 /// Canonical Phase 1B transcript KAT sequence (same as Noir's
 /// `transcript_init_absorb_squeeze_matches_frozen_kat`):
 ///
@@ -166,5 +262,23 @@ mod tests {
     fn print_merkle_kat_expected_for_noir() {
         let expected = merkle_kat_expected();
         println!("EXPECTED_HASH_2 = {}", fr_to_noir_literal(expected));
+    }
+
+    /// Print the values that Noir's sumcheck KAT globals should hold.
+    #[test]
+    fn print_sumcheck_kat_expected_for_noir() {
+        let (h_polys, f_at_alpha) = sumcheck_kat_construct();
+        for (round, row) in h_polys.iter().enumerate() {
+            for (j, c) in row.iter().enumerate() {
+                println!(
+                    "SUMCHECK_KAT_H_POLYS[{round}][{j}] = {}",
+                    fr_to_noir_literal(*c)
+                );
+            }
+        }
+        println!(
+            "EXPECTED_SUMCHECK_F_AT_ALPHA = {}",
+            fr_to_noir_literal(f_at_alpha)
+        );
     }
 }

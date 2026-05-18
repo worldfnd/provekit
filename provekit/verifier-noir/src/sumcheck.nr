@@ -126,7 +126,7 @@ fn calculate_eq_non_boolean() {
     assert(calculate_eq(r, alpha) == 253);
 }
 
-// --- in-circuit sumcheck KAT (placeholder) ---
+// --- in-circuit sumcheck KAT ---
 //
 // Canonical Phase 2A sumcheck KAT:
 //   transcript = fresh
@@ -134,17 +134,15 @@ fn calculate_eq_non_boolean() {
 //   h_polys = constructed by the Rust replay so each round's soundness
 //             assertion (h_i(0) + h_i(1) == saved) passes.
 //   blinding_eval = 7
-// EXPECTED_SUMCHECK_F_AT_ALPHA freezes the final f_at_alpha.
-// Task 4 replaces the placeholders.
-//
-// PLACEHOLDER VALUES - overwritten in Phase 2A Task 4 after running the
-// Rust-side computation. The test below is expected to FAIL until then.
-global EXPECTED_SUMCHECK_F_AT_ALPHA: Field = 0;
+// Values constructed by the Rust sumcheck replay (h_i = [saved/2, 0, 0, 0]
+// each round) so each round's soundness check holds. See
+// provekit/verifier-noir-test/tests/sumcheck_kat.rs for the cross-impl guarantee.
+global EXPECTED_SUMCHECK_F_AT_ALPHA: Field = 489513540466994505614179577330661230587008242067805016378633528214894665614;
 global SUMCHECK_KAT_SUM_G: Field = 12;
 global SUMCHECK_KAT_BLINDING_EVAL: Field = 7;
 global SUMCHECK_KAT_H_POLYS: [[Field; 4]; 2] = [
-    [0, 0, 0, 0],
-    [0, 0, 0, 0],
+    [21153972561138783463825136379261283242667852037314326819130253894253466497196, 0, 0, 0],
+    [10576986280569391731912568189630641621333926018657163409565126947126733248598, 0, 0, 0],
 ];
 
 #[test]
