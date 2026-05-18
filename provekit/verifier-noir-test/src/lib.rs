@@ -221,6 +221,40 @@ pub fn transcript_kat_expected() -> [Fr; 2] {
     [out[0], out[1]]
 }
 
+/// Compute `M^T . eq(alpha, .)` for the 3x4 test matrix A from
+/// `provekit/common/src/utils/sumcheck.rs::make_test_r1cs`:
+///
+///   A = [[1, 2, 0, 0],
+///        [0, 0, 3, 0],
+///        [1, 0, 0, 1]]
+///
+/// with alpha = [2, 3], truncated to 3 constraints. Matches the
+/// `test_multiply_transposed_by_eq_alpha` expected_a vector exactly.
+pub fn matrix_eval_kat_expected() -> [Fr; 4] {
+    // alpha = [2, 3]; eq big-endian hypercube on 2 bits:
+    //   index 0 = eq([2,3], [0,0]) = (1-2)(1-3) =  2
+    //   index 1 = eq([2,3], [0,1]) = (1-2)(3)   = -3
+    //   index 2 = eq([2,3], [1,0]) = (2)(1-3)   = -4
+    //   index 3 = eq([2,3], [1,1]) = (2)(3)     =  6
+    // Truncate to 3 (drop index 3).
+    let one = Fr::from(1u64);
+    let a0 = Fr::from(2u64);
+    let a1 = Fr::from(3u64);
+    let eq0 = (one - a0) * (one - a1); //  2
+    let eq1 = (one - a0) * a1;         // -3
+    let eq2 = a0 * (one - a1);         // -4
+    // Matrix A rows:
+    //   row 0: (col 0, val 1), (col 1, val 2)
+    //   row 1: (col 2, val 3)
+    //   row 2: (col 0, val 1), (col 3, val 1)
+    [
+        Fr::from(1u64) * eq0 + Fr::from(1u64) * eq2, // col 0: -2
+        Fr::from(2u64) * eq0,                        // col 1:  4
+        Fr::from(3u64) * eq1,                        // col 2: -9
+        Fr::from(1u64) * eq2,                        // col 3: -4
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,6 +296,17 @@ mod tests {
     fn print_merkle_kat_expected_for_noir() {
         let expected = merkle_kat_expected();
         println!("EXPECTED_HASH_2 = {}", fr_to_noir_literal(expected));
+    }
+
+    /// Print the four field elements that Noir's `EXPECTED_A_AT_ALPHA` global
+    /// should hold. Run with `--nocapture` to capture them; paste into
+    /// `verifier-noir/src/matrix_eval.nr`.
+    #[test]
+    fn print_matrix_eval_kat_expected_for_noir() {
+        let expected = matrix_eval_kat_expected();
+        for (i, fe) in expected.iter().enumerate() {
+            println!("EXPECTED_A_AT_ALPHA[{i}] = {}", fr_to_noir_literal(*fe));
+        }
     }
 
     /// Print the values that Noir's sumcheck KAT globals should hold.

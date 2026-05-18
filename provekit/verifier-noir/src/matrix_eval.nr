@@ -79,9 +79,6 @@ pub fn multiply_matrix_by_eq<let TRIPLES: u32, let NUM_ROWS: u32, let NUM_COLS: 
 //
 // with alpha = [2, 3] (LOG_N=2 -> hypercube size 4, truncated to 3 rows).
 // Expected: M^T . eq_alpha = [-2, 4, -9, -4] (4 elements, columns 0..3).
-//
-// PLACEHOLDER VALUES - overwritten in Phase 2B Task 2 after running the
-// Rust-side computation. The test below is expected to FAIL until then.
 global A_TEST_TRIPLES: [SparseTriple; 5] = [
     SparseTriple { row: 0, col: 0, val: 1 },
     SparseTriple { row: 0, col: 1, val: 2 },
@@ -89,7 +86,19 @@ global A_TEST_TRIPLES: [SparseTriple; 5] = [
     SparseTriple { row: 2, col: 0, val: 1 },
     SparseTriple { row: 2, col: 3, val: 1 },
 ];
-global EXPECTED_A_AT_ALPHA: [Field; 4] = [0, 0, 0, 0];
+// Values computed by hand: A^T . eq([2,3], [(0,0), (0,1), (1,0)]) on the test matrix.
+//   col 0 = 1*2 + 1*(-4) = -2
+//   col 1 = 2*2          =  4
+//   col 2 = 3*(-3)       = -9
+//   col 3 = 1*(-4)       = -4
+// Frozen as a KAT; see provekit/verifier-noir-test/tests/matrix_eval_kat.rs
+// for the cross-impl guarantee.
+global EXPECTED_A_AT_ALPHA: [Field; 4] = [
+    21888242871839275222246405745257275088548364400416034343698204186575808495615,
+    4,
+    21888242871839275222246405745257275088548364400416034343698204186575808495608,
+    21888242871839275222246405745257275088548364400416034343698204186575808495613,
+];
 
 #[test]
 fn matrix_eval_a_at_alpha_matches_frozen_kat() {
