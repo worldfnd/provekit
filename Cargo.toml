@@ -10,6 +10,7 @@ members = [
   "provekit/r1cs-compiler",
   "provekit/prover",
   "provekit/verifier",
+  "provekit/verifier-noir-test",
   "tooling/cli",
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
