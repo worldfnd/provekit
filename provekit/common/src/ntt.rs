@@ -39,15 +39,17 @@ fn interleaved_rs_encode(
 ) -> Vec<FieldElement> {
     let column_count = coeffs.len() * interleaving_depth;
     let mut result = vec![FieldElement::ZERO; codeword_length * column_count];
+    let coset_size = message_length;
+    let num_cosets = codeword_length / coset_size;
+    let chunk_size = coset_size * column_count;
 
-    write_interleaved_coefficients(
-        &mut result[..message_length * column_count],
-        coeffs,
-        message_length,
-        interleaving_depth,
-    );
+    write_interleaved_coefficients(&mut result[..chunk_size], coeffs, message_length);
 
-    ntt_nr(&mut result, codeword_length, 1);
+    for k in 1..num_cosets {
+        result.copy_within(0..chunk_size, k * chunk_size);
+    }
+
+    ntt_nr(&mut result, codeword_length, num_cosets);
     bit_reverse_rows(&mut result, codeword_length, column_count);
     result
 }
@@ -56,21 +58,18 @@ fn write_interleaved_coefficients(
     interleaved_coeffs: &mut [FieldElement],
     coeffs: &[&[FieldElement]],
     message_length: usize,
-    interleaving_depth: usize,
 ) {
-    let column_count = coeffs.len() * interleaving_depth;
+    let column_count = interleaved_coeffs.len() / message_length;
     debug_assert_eq!(interleaved_coeffs.len(), message_length * column_count);
+    let blocks_per_poly = column_count / coeffs.len();
 
-    for (column_index, column_coeffs) in coeffs
-        .iter()
-        .flat_map(|poly| poly.chunks_exact(message_length))
-        .enumerate()
-    {
-        for (row, &coeff) in interleaved_coeffs
-            .chunks_exact_mut(column_count)
-            .zip(column_coeffs)
-        {
-            row[column_index] = coeff;
+    for column in 0..message_length {
+        let base = column * column_count;
+        for (poly_index, poly) in coeffs.iter().enumerate() {
+            for (block_index, block) in poly.chunks_exact(message_length).enumerate() {
+                interleaved_coeffs[base + poly_index * blocks_per_poly + block_index] =
+                    block[column];
+            }
         }
     }
 }
