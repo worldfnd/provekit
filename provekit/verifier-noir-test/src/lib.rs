@@ -62,6 +62,7 @@ fn fr_to_le_bytes(fe: Fr) -> [u8; 32] {
 /// disagree, either:
 ///   - the Rust replay below has a bug, OR
 ///   - the Noir `sponge.nr` state machine drifted from spongefish semantics.
+#[allow(unused_assignments)]
 fn lane_sponge_replay(
     mut state: [Fr; 4],
     mut absorb_pos: u32,
@@ -83,6 +84,12 @@ fn lane_sponge_replay(
 
     let mut out = Vec::with_capacity(squeeze_count);
     for _ in 0..squeeze_count {
+        // Mirrors spongefish's `squeeze` reset (duplex_sponge.rs line 222)
+        // and Noir's `sponge.nr::squeeze_field` line 61. The assignment is
+        // a no-op for this function's current call patterns (we return
+        // after the squeeze loop) but is required to keep the state machine
+        // faithful — Phase 2 may add interleaved absorb/squeeze sequences.
+        absorb_pos = 0;
         if squeeze_pos == RATE {
             squeeze_pos = 0;
             state = poseidon2::permutation::poseidon2_permutation(&state);
