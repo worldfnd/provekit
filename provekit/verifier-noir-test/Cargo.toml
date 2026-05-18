@@ -14,8 +14,5 @@ poseidon2.workspace = true
 ark-bn254.workspace = true
 ark-ff.workspace = true
 
-[dev-dependencies]
-anyhow.workspace = true
-
 [lints]
 workspace = true

@@ -19,8 +19,8 @@ pub fn permute(state: [Field; 4]) -> [Field; 4] {
 // If Noir's stdlib permutation ever drifts from the Rust crate, this test
 // fails - and the cross-impl KAT in `verifier-noir-test` fails alongside it.
 //
-// PLACEHOLDER VALUE - overwritten in Task 4 step 3 after running the
-// Rust-side computation. The test below is expected to FAIL until then.
+// Values computed by the Rust `poseidon2` crate; frozen as a KAT.
+// See provekit/verifier-noir-test/tests/poseidon2_kat.rs for the cross-impl guarantee.
 global EXPECTED_PERMUTE_1234: [Field; 4] = [
     15505005361706012551741834895355031099510014664842462842053262257331543442865,
     15540689879131394802373076737172779194862932999849486641952351767738780953784,
