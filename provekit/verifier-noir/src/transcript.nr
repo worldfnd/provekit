@@ -53,9 +53,13 @@ impl Transcript {
 //   squeeze_field() -> b
 // EXPECTED_TRANSCRIPT_KAT freezes [a, b]. Task 4 replaces the placeholder.
 //
-// PLACEHOLDER VALUE - overwritten in Phase 1B Task 4 after running the
-// Rust-side computation. The test below is expected to FAIL until then.
-global EXPECTED_TRANSCRIPT_KAT: [Field; 2] = [0, 0];
+// Values computed by the lane-grain sponge replay over the canonical KAT
+// sequence; frozen as a KAT. See provekit/verifier-noir-test/tests/transcript_kat.rs
+// for the cross-impl guarantee.
+global EXPECTED_TRANSCRIPT_KAT: [Field; 2] = [
+    12128367233918472140666042190034498091224706939667107265017613623179249826679,
+    18318138449124604570938096546205124296708170073712695146954402082885284978251,
+];
 
 #[test]
 fn transcript_init_absorb_squeeze_matches_frozen_kat() {
