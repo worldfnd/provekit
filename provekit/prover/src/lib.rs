@@ -5,15 +5,14 @@ use {
         r1cs::{CompressedLayers, CompressedR1CS},
         whir_r1cs::WhirR1CSProver,
     },
+    ::tracing::{debug, info, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
-    ark_std::Zero,
     provekit_common::{
         utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, Prover,
         PublicInputs, TranscriptSponge,
     },
     std::mem::{size_of, take},
-    tracing::{debug, info, info_span, instrument},
     whir::transcript::ProverState,
 };
 #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
@@ -32,21 +31,12 @@ pub(crate) mod ec_arith;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
 pub(crate) mod r1cs;
+mod tracing;
 mod whir_r1cs;
 mod witness;
 
 // Public re-exports for items used by integration tests and benchmarks.
 pub use {ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
-
-fn log_commit_input(label: &str, values: &[FieldElement], scheme_domain_len: usize) {
-    let input_len = values.len();
-    let input_padded_len = input_len.max(1).next_power_of_two();
-    let nonzero_entries = values.iter().filter(|v| !v.is_zero()).count();
-    info!(
-        label,
-        input_len, input_padded_len, scheme_domain_len, nonzero_entries, "WHIR commit input"
-    );
-}
 
 /// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
 /// `prove_with_witness` is available on all targets. `MavrosProver` does not
@@ -195,7 +185,7 @@ impl Prove for NoirProver {
                 .collect::<Result<Vec<_>>>()?
         };
 
-        log_commit_input("noir_w1", &w1, 1usize << self.whir_for_witness.m);
+        crate::tracing::log_commit_input("noir_w1", &w1, 1usize << self.whir_for_witness.m);
         let commitment_1 = self
             .whir_for_witness
             .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
@@ -233,7 +223,7 @@ impl Prove for NoirProver {
                     .collect::<Result<Vec<_>>>()?
             };
 
-            log_commit_input("noir_w2", &w2, 1usize << self.whir_for_witness.m);
+            crate::tracing::log_commit_input("noir_w2", &w2, 1usize << self.whir_for_witness.m);
             let commitment_2 = self
                 .whir_for_witness
                 .commit(&mut merlin, num_witnesses, num_constraints, w2, false)
@@ -325,9 +315,8 @@ impl Prove for MavrosProver {
             "Mavros witness layout"
         );
 
-        let mut phase1 = phase1;
-        let w1 = take(&mut phase1.out_wit_pre_comm);
-        log_commit_input(
+        let w1 = phase1.out_wit_pre_comm.clone();
+        crate::tracing::log_commit_input(
             "mavros_w1_pre_commitment",
             &w1,
             1usize << self.whir_for_witness.m,
@@ -357,7 +346,7 @@ impl Prove for MavrosProver {
 
             let mut witgen_result = witgen_result;
             let w2 = take(&mut witgen_result.out_wit_post_comm);
-            log_commit_input(
+            crate::tracing::log_commit_input(
                 "mavros_w2_post_commitment",
                 &w2,
                 1usize << self.whir_for_witness.m,

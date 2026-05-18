@@ -1,4 +1,5 @@
 use {
+    ::tracing::instrument,
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
     ark_std::{One, Zero},
@@ -21,7 +22,6 @@ use {
         WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
-    tracing::instrument,
     whir::{
         algebra::{dot, linear_form::LinearForm},
         protocols::whir_zk::Witness as WhirZkWitness,
