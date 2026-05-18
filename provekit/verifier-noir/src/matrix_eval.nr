@@ -23,6 +23,11 @@ pub struct SparseTriple {
 /// Compute the boolean-hypercube evaluations of `eq(alpha, x)` for all
 /// `x in {0,1}^LOG_N`.
 ///
+/// Index `k` of the returned array corresponds to the hypercube point where
+/// `alpha[j]` takes the value of bit `(LOG_N - 1 - j)` of `k`. That is,
+/// `alpha[0]` is the MSB of the index, matching the Rust reference at
+/// `provekit/common/src/utils/sumcheck.rs::eval_eq`.
+///
 /// INVARIANT: `N == 1 << LOG_N` (asserted at call sites; Noir doesn't allow
 /// this as a where-clause yet).
 ///
@@ -36,7 +41,9 @@ pub fn eq_hypercube_evals<let LOG_N: u32, let N: u32>(
     result[0] = 1;
     let mut size: u32 = 1;
     for i in 0..LOG_N {
-        let alpha_i = alpha[i];
+        // Process alpha coordinates in REVERSE so alpha[0] ends up as the MSB
+        // of the hypercube index, matching Rust's `eval_eq` convention.
+        let alpha_i = alpha[LOG_N - 1 - i];
         for j in 0..size {
             let v = result[j];
             let v_alpha = v * alpha_i;
