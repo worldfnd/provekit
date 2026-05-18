@@ -1,6 +1,7 @@
 mod analyze_pkp;
 mod circuit_stats;
 mod generate_gnark_inputs;
+mod generate_noir_inputs;
 mod prepare;
 mod prove;
 mod show_inputs;
@@ -45,6 +46,7 @@ enum Commands {
     CircuitStats(circuit_stats::Args),
     Verify(verify::Args),
     GenerateGnarkInputs(generate_gnark_inputs::Args),
+    GenerateNoirInputs(generate_noir_inputs::Args),
     ShowInputs(show_inputs::Args),
 }
 
@@ -63,6 +65,7 @@ impl Command for Commands {
             Self::CircuitStats(args) => args.run(),
             Self::Verify(args) => args.run(),
             Self::GenerateGnarkInputs(args) => args.run(),
+            Self::GenerateNoirInputs(args) => args.run(),
             Self::ShowInputs(args) => args.run(),
         }
     }
