@@ -1,0 +1,8 @@
+[package]
+name = "provekit_verifier"
+type = "bin"
+authors = [""]
+compiler_version = ">=1.0.0"
+description = "Noir recursive verifier for ProveKit WHIR+Spartan proofs (Poseidon2 flavor)"
+
+[dependencies]
