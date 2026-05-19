@@ -3,7 +3,7 @@
 //! 1. Construct a valid 2-round Spartan sumcheck transcript in Rust:
 //!    `sum_g = 12`, `blinding_eval = 7`, `h_i = [saved/2, 0, 0, 0]` each round.
 //!    The Rust replay derives `f_at_alpha`.
-//! 2. Shell out to `nargo test sumcheck_verifier_matches_frozen_kat`.
+//! 2. Shell out to `nargo test sumcheck_verifier_runtime_consistent`.
 //!    That test runs the same `(sum_g, h_polys, blinding_eval)` through
 //!    Noir's `run_sumcheck_verifier` and asserts `f_at_alpha` matches.
 //! 3. Passing means both implementations agree on this synthetic transcript.
@@ -32,14 +32,14 @@ fn cross_impl_sumcheck_kat_agrees() {
     );
 
     let status = Command::new("nargo")
-        .args(["test", "sumcheck_verifier_matches_frozen_kat"])
+        .args(["test", "sumcheck_verifier_runtime_consistent"])
         .current_dir(&nargo_crate)
         .status()
         .expect("failed to run nargo - is it on PATH?");
 
     assert!(
         status.success(),
-        "nargo test sumcheck_verifier_matches_frozen_kat failed (exit code {:?}). \
+        "nargo test sumcheck_verifier_runtime_consistent failed (exit code {:?}). \
          The Noir sumcheck verifier disagreed with the Rust replay on the canonical KAT. \
          Re-run Phase 2A Task 4 step 2 to regenerate the expected values.",
         status.code(),
