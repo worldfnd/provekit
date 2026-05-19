@@ -1,3 +1,5 @@
+#[cfg(target_arch = "wasm32")]
+use provekit_common::ConstraintsLayout;
 use {
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
@@ -31,7 +33,7 @@ use {
 #[cfg(not(target_arch = "wasm32"))]
 use {
     mavros_artifacts::{ConstraintsLayout, WitnessLayout},
-    mavros_vm::interpreter::Phase1Result,
+    mavros_vm::interpreter::WitgenResult,
 };
 
 pub struct BlindingState {
@@ -43,6 +45,14 @@ pub struct WhirR1CSCommitment {
     pub witness:    WhirZkWitness<FieldElement>,
     pub polynomial: Vec<FieldElement>,
     pub blinding:   Option<BlindingState>,
+}
+
+#[cfg(target_arch = "wasm32")]
+pub struct MavrosWitgenResult {
+    pub out_wit_post_comm: Vec<FieldElement>,
+    pub out_a:             Vec<FieldElement>,
+    pub out_b:             Vec<FieldElement>,
+    pub out_c:             Vec<FieldElement>,
 }
 
 pub trait WhirR1CSProver {
@@ -68,13 +78,26 @@ pub trait WhirR1CSProver {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        phase1: Phase1Result,
+        witgen: WitgenResult,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
     ) -> Result<WhirR1CSProof>;
+
+    #[cfg(target_arch = "wasm32")]
+    fn prove_mavros_with_ad_callback<F>(
+        &self,
+        merlin: ProverState<TranscriptSponge>,
+        witgen: MavrosWitgenResult,
+        commitments: Vec<WhirR1CSCommitment>,
+        public_inputs: &PublicInputs,
+        constraints_layout: ConstraintsLayout,
+        run_ad: F,
+    ) -> Result<WhirR1CSProof>
+    where
+        F: FnOnce(&[FieldElement]) -> Result<[Vec<FieldElement>; 3]>;
 }
 
 impl WhirR1CSProver for WhirR1CSScheme {
@@ -191,7 +214,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
     fn prove_mavros(
         &self,
         mut merlin: ProverState<TranscriptSponge>,
-        phase1: Phase1Result,
+        witgen: WitgenResult,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
@@ -205,7 +228,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             .as_ref()
             .expect("c1 must carry blinding state");
 
-        let [a, b, c] = [phase1.out_a, phase1.out_b, phase1.out_c];
+        let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
             a,
             b,
@@ -221,11 +244,63 @@ impl WhirR1CSProver for WhirR1CSScheme {
             calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
         let (ad_a, ad_b, ad_c, _) = mavros_vm::interpreter::run_ad(
             ad_binary,
-            &eq_alpha[..constraints_layout.algebraic_size],
+            &eq_alpha[..constraints_layout.size()],
             witness_layout,
             constraints_layout,
         );
         let alphas = [ad_a, ad_b, ad_c];
+
+        let blinding_offset = blinding.offset;
+        let blinding_weights = expand_powers::<4>(&alpha);
+
+        prove_from_alphas(
+            self,
+            merlin,
+            alphas,
+            blinding_eval,
+            blinding_offset,
+            blinding_weights,
+            commitments,
+            public_inputs,
+        )
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[instrument(skip_all)]
+    fn prove_mavros_with_ad_callback<F>(
+        &self,
+        mut merlin: ProverState<TranscriptSponge>,
+        witgen: MavrosWitgenResult,
+        commitments: Vec<WhirR1CSCommitment>,
+        public_inputs: &PublicInputs,
+        constraints_layout: ConstraintsLayout,
+        run_ad: F,
+    ) -> Result<WhirR1CSProof>
+    where
+        F: FnOnce(&[FieldElement]) -> Result<[Vec<FieldElement>; 3]>,
+    {
+        ensure!(!commitments.is_empty(), "Need at least one commitment");
+
+        let blinding = commitments[0]
+            .blinding
+            .as_ref()
+            .expect("c1 must carry blinding state");
+
+        let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
+        let (alpha, blinding_eval) = run_zk_sumcheck_prover(
+            a,
+            b,
+            c,
+            &mut merlin,
+            self.m_0,
+            &blinding.polynomial,
+            &commitments[0].polynomial,
+            blinding.offset,
+        );
+
+        let eq_alpha =
+            calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
+        let alphas = run_ad(&eq_alpha[..constraints_layout.size()])?;
 
         let blinding_offset = blinding.offset;
         let blinding_weights = expand_powers::<4>(&alpha);

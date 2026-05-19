@@ -37,7 +37,7 @@ function renderFixture(): void {
         <div id="step${step}-status" class="step-status">Waiting...</div>
       </div>
     `).join("")}
-    ${["prover", "verifier", "inputs"].map((key) => `
+    ${["prover", "verifier", "inputs", "witgenWasm", "adWasm"].map((key) => `
       <div id="check-${key}" class="checklist-item pending">
         <div class="item-icon">-</div>
         <span class="item-name">${key}</span>

@@ -9,6 +9,8 @@ describe("upload rules", () => {
     expect(classifyUpload("verifier.pkv")).toBe("verifier");
     expect(classifyUpload("inputs.json")).toBe("inputs");
     expect(classifyUpload("Prover.toml")).toBe("inputs");
+    expect(classifyUpload("witgen.wasm")).toBe("witgenWasm");
+    expect(classifyUpload("ad.wasm")).toBe("adWasm");
     expect(classifyUpload("notes.txt")).toBeNull();
   });
 

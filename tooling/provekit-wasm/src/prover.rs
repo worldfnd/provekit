@@ -15,6 +15,18 @@ use {
     std::{cell::RefCell, collections::BTreeMap},
     wasm_bindgen::prelude::*,
 };
+#[cfg(target_arch = "wasm32")]
+use {
+    ark_ff::{BigInt, PrimeField},
+    js_sys::{Function, Reflect, Uint8Array},
+    noirc_abi::{AbiType, MAIN_RETURN_NAME},
+    provekit_common::{ConstraintsLayout, FieldElement as NativeFieldElement, WitnessLayout},
+    provekit_prover::{
+        prove_mavros_with_wasm_driver, MavrosPhase1Result, MavrosTableInfo, MavrosWasmDriver,
+    },
+    serde::Deserialize,
+    serde_json::Value,
+};
 
 /// WASM bindings for proof generation. Consumed after `proveBytes`/`proveJs`.
 #[wasm_bindgen]
@@ -59,6 +71,46 @@ impl Prover {
             .map_err(|err| JsError::new(&format!("Failed to convert proof to JsValue: {err}")))
     }
 
+    /// Generates a proof for Mavros provers using browser-side Mavros WASM
+    /// artifacts.
+    ///
+    /// `inputs` is the regular ABI-shaped input object. `runner` must expose
+    /// synchronous `runWitgen(inputBytes, witnessLayout, constraintsLayout)`
+    /// and `runAd(coeffBytes, witnessLayout, constraintsLayout)` methods.
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen(js_name = proveMavrosBytes)]
+    pub fn prove_mavros_bytes(
+        &mut self,
+        inputs: JsValue,
+        runner: JsValue,
+    ) -> Result<Box<[u8]>, JsError> {
+        let proof = self.prove_mavros_inner(inputs, runner)?;
+        serde_json::to_vec(&proof)
+            .map(|bytes| bytes.into_boxed_slice())
+            .map_err(|err| JsError::new(&format!("Failed to serialize proof to JSON: {err}")))
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen(js_name = proveMavrosJs)]
+    pub fn prove_mavros_js(
+        &mut self,
+        inputs: JsValue,
+        runner: JsValue,
+    ) -> Result<JsValue, JsError> {
+        let proof = self.prove_mavros_inner(inputs, runner)?;
+        serde_wasm_bindgen::to_value(&proof)
+            .map_err(|err| JsError::new(&format!("Failed to convert proof to JsValue: {err}")))
+    }
+
+    #[wasm_bindgen(js_name = getProverKind)]
+    pub fn get_prover_kind(&self) -> Result<String, JsError> {
+        Ok(match self.inner_ref()? {
+            ProverCore::Noir(_) => "noir",
+            ProverCore::Mavros(_) => "mavros",
+        }
+        .to_owned())
+    }
+
     /// Returns circuit JSON for `@noir-lang/noir_js`.
     ///
     /// ```js
@@ -100,6 +152,316 @@ impl Prover {
     pub fn get_num_witnesses(&self) -> Result<usize, JsError> {
         Ok(self.inner_ref()?.size().1)
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Prover {
+    fn prove_mavros_inner(
+        &mut self,
+        inputs: JsValue,
+        runner: JsValue,
+    ) -> Result<NoirProof, JsError> {
+        let inner = self
+            .inner
+            .take()
+            .ok_or_else(|| JsError::new("Prover has been consumed by a previous prove() call"))?;
+        let ProverCore::Mavros(p) = inner else {
+            return Err(JsError::new("proveMavrosJs requires a Mavros prover"));
+        };
+
+        let input_fields = flatten_mavros_inputs(&p.abi, inputs)?;
+        let mut driver = JsMavrosDriver { runner };
+        prove_mavros_with_wasm_driver(p, input_fields, &mut driver)
+            .context("Failed to generate Mavros proof")
+            .map_err(|err| JsError::new(&format!("{err:#}")))
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+struct JsMavrosDriver {
+    runner: JsValue,
+}
+
+#[cfg(target_arch = "wasm32")]
+impl MavrosWasmDriver for JsMavrosDriver {
+    fn run_witgen(
+        &mut self,
+        input_fields: &[NativeFieldElement],
+        witness_layout: WitnessLayout,
+        constraints_layout: ConstraintsLayout,
+    ) -> anyhow::Result<MavrosPhase1Result> {
+        let result = call_runner(
+            &self.runner,
+            "runWitgen",
+            input_fields,
+            witness_layout,
+            constraints_layout,
+        )?;
+        let tables: Vec<JsTableInfo> = serde_wasm_bindgen::from_value(get_prop(&result, "tables")?)
+            .map_err(|err| anyhow::anyhow!("failed to decode Mavros table metadata: {err}"))?;
+
+        let mut out_wit_pre_comm = decode_field_vec(&get_prop(&result, "outWitPreComm")?)?;
+        normalize_mavros_multiplicities(&mut out_wit_pre_comm, witness_layout);
+
+        Ok(MavrosPhase1Result {
+            out_wit_pre_comm,
+            out_wit_post_comm: decode_field_vec(&get_prop(&result, "outWitPostComm")?)?,
+            out_a: decode_field_vec(&get_prop(&result, "outA")?)?,
+            out_b: decode_field_vec(&get_prop(&result, "outB")?)?,
+            out_c: decode_field_vec(&get_prop(&result, "outC")?)?,
+            tables: tables
+                .into_iter()
+                .map(|table| MavrosTableInfo {
+                    multiplicities_wit_offset: table.multiplicities_wit_offset,
+                    num_values: table.num_values,
+                    length: table.length,
+                    elem_inverses_witness_section_offset: table
+                        .elem_inverses_witness_section_offset,
+                    elem_inverses_constraint_section_offset: table
+                        .elem_inverses_constraint_section_offset,
+                })
+                .collect(),
+        })
+    }
+
+    fn run_ad(
+        &mut self,
+        coeffs: &[NativeFieldElement],
+        witness_layout: WitnessLayout,
+        constraints_layout: ConstraintsLayout,
+    ) -> anyhow::Result<[Vec<NativeFieldElement>; 3]> {
+        let result = call_runner(
+            &self.runner,
+            "runAd",
+            coeffs,
+            witness_layout,
+            constraints_layout,
+        )?;
+        Ok([
+            decode_field_vec(&get_prop(&result, "outDa")?)?,
+            decode_field_vec(&get_prop(&result, "outDb")?)?,
+            decode_field_vec(&get_prop(&result, "outDc")?)?,
+        ])
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct JsTableInfo {
+    multiplicities_wit_offset: usize,
+    num_values: usize,
+    length: usize,
+    elem_inverses_witness_section_offset: usize,
+    elem_inverses_constraint_section_offset: usize,
+}
+
+#[cfg(target_arch = "wasm32")]
+fn call_runner(
+    runner: &JsValue,
+    method: &str,
+    fields: &[NativeFieldElement],
+    witness_layout: WitnessLayout,
+    constraints_layout: ConstraintsLayout,
+) -> anyhow::Result<JsValue> {
+    let method = Reflect::get(runner, &JsValue::from_str(method))
+        .map_err(|_| anyhow::anyhow!("Mavros runner method lookup failed"))?
+        .dyn_into::<Function>()
+        .map_err(|_| anyhow::anyhow!("Mavros runner method is not a function"))?;
+
+    let fields = Uint8Array::from(encode_field_vec(fields).as_slice());
+    let witness_layout = serde_wasm_bindgen::to_value(&witness_layout)
+        .map_err(|err| anyhow::anyhow!("failed to encode Mavros witness layout: {err}"))?;
+    let constraints_layout = serde_wasm_bindgen::to_value(&constraints_layout)
+        .map_err(|err| anyhow::anyhow!("failed to encode Mavros constraints layout: {err}"))?;
+    method
+        .call3(runner, &fields.into(), &witness_layout, &constraints_layout)
+        .map_err(|err| anyhow::anyhow!("Mavros runner threw: {:?}", err))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn get_prop(value: &JsValue, name: &str) -> anyhow::Result<JsValue> {
+    Reflect::get(value, &JsValue::from_str(name))
+        .map_err(|_| anyhow::anyhow!("missing Mavros runner result property `{name}`"))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn encode_field_vec(fields: &[NativeFieldElement]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(fields.len() * MAX_FIELD_ELEMENT_BYTES);
+    for field in fields {
+        for limb in field.0 .0 {
+            bytes.extend_from_slice(&limb.to_le_bytes());
+        }
+    }
+    bytes
+}
+
+#[cfg(target_arch = "wasm32")]
+fn decode_field_vec(value: &JsValue) -> anyhow::Result<Vec<NativeFieldElement>> {
+    let bytes = Uint8Array::new(value).to_vec();
+    anyhow::ensure!(
+        bytes.len() % MAX_FIELD_ELEMENT_BYTES == 0,
+        "field byte buffer length {} is not divisible by {}",
+        bytes.len(),
+        MAX_FIELD_ELEMENT_BYTES
+    );
+    let mut fields = Vec::with_capacity(bytes.len() / MAX_FIELD_ELEMENT_BYTES);
+    for chunk in bytes.chunks_exact(MAX_FIELD_ELEMENT_BYTES) {
+        let limbs = [
+            u64::from_le_bytes(chunk[0..8].try_into().unwrap()),
+            u64::from_le_bytes(chunk[8..16].try_into().unwrap()),
+            u64::from_le_bytes(chunk[16..24].try_into().unwrap()),
+            u64::from_le_bytes(chunk[24..32].try_into().unwrap()),
+        ];
+        fields.push(NativeFieldElement::new_unchecked(BigInt::new(limbs)));
+    }
+    Ok(fields)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn normalize_mavros_multiplicities(fields: &mut [NativeFieldElement], layout: WitnessLayout) {
+    let start = layout.algebraic_size;
+    let end = start + layout.multiplicities_size;
+    for field in &mut fields[start..end] {
+        *field = NativeFieldElement::from(field.0 .0[0]);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn flatten_mavros_inputs(
+    abi: &noirc_abi::Abi,
+    inputs: JsValue,
+) -> Result<Vec<NativeFieldElement>, JsError> {
+    let value: Value = serde_wasm_bindgen::from_value(inputs)
+        .map_err(|err| JsError::new(&format!("Failed to parse Mavros inputs: {err}")))?;
+    let object = value
+        .as_object()
+        .ok_or_else(|| JsError::new("Mavros inputs must be a plain object"))?;
+
+    let mut fields = Vec::new();
+    for param in &abi.parameters {
+        let param_value = object
+            .get(&param.name)
+            .ok_or_else(|| JsError::new(&format!("Parameter '{}' not found", param.name)))?;
+        flatten_abi_value(&param.typ, param_value, &param.name, &mut fields)?;
+    }
+
+    if let Some(return_type) = &abi.return_type {
+        if let Some(return_value) = object.get(MAIN_RETURN_NAME) {
+            flatten_abi_value(
+                &return_type.abi_type,
+                return_value,
+                MAIN_RETURN_NAME,
+                &mut fields,
+            )?;
+        }
+    }
+
+    Ok(fields)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn flatten_abi_value(
+    abi_type: &AbiType,
+    value: &Value,
+    path: &str,
+    out: &mut Vec<NativeFieldElement>,
+) -> Result<(), JsError> {
+    match abi_type {
+        AbiType::Field | AbiType::Integer { .. } => {
+            out.push(parse_json_field(value, path)?);
+        }
+        AbiType::Boolean => {
+            let b = value
+                .as_bool()
+                .ok_or_else(|| JsError::new(&format!("{path} must be a boolean")))?;
+            out.push(NativeFieldElement::from(u64::from(b)));
+        }
+        AbiType::Array { length, typ } => {
+            let values = value
+                .as_array()
+                .ok_or_else(|| JsError::new(&format!("{path} must be an array")))?;
+            if values.len() != *length as usize {
+                return Err(JsError::new(&format!(
+                    "{path} length {} does not match ABI length {}",
+                    values.len(),
+                    length
+                )));
+            }
+            for (idx, item) in values.iter().enumerate() {
+                flatten_abi_value(typ, item, &format!("{path}[{idx}]"), out)?;
+            }
+        }
+        AbiType::Struct { fields, .. } => {
+            let object = value
+                .as_object()
+                .ok_or_else(|| JsError::new(&format!("{path} must be an object")))?;
+            for (field_name, field_type) in fields {
+                let field_value = object.get(field_name).ok_or_else(|| {
+                    JsError::new(&format!("{path}.{field_name} not found in struct input"))
+                })?;
+                flatten_abi_value(
+                    field_type,
+                    field_value,
+                    &format!("{path}.{field_name}"),
+                    out,
+                )?;
+            }
+        }
+        AbiType::Tuple { fields } => {
+            let values = value
+                .as_array()
+                .ok_or_else(|| JsError::new(&format!("{path} must be a tuple array")))?;
+            if values.len() != fields.len() {
+                return Err(JsError::new(&format!(
+                    "{path} length {} does not match tuple length {}",
+                    values.len(),
+                    fields.len()
+                )));
+            }
+            for (idx, (field_type, item)) in fields.iter().zip(values).enumerate() {
+                flatten_abi_value(field_type, item, &format!("{path}.{idx}"), out)?;
+            }
+        }
+        AbiType::String { .. } => {
+            return Err(JsError::new(
+                "String inputs are not supported by the Mavros WASM path",
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn parse_json_field(value: &Value, path: &str) -> Result<NativeFieldElement, JsError> {
+    if let Some(n) = value.as_u64() {
+        return Ok(NativeFieldElement::from(n));
+    }
+    if let Some(n) = value.as_i64() {
+        if n >= 0 {
+            return Ok(NativeFieldElement::from(n as u64));
+        }
+        return Ok(-NativeFieldElement::from(n.unsigned_abs()));
+    }
+    if let Some(s) = value.as_str() {
+        let trimmed = s.trim();
+        if let Some(hex) = trimmed
+            .strip_prefix("0x")
+            .or_else(|| trimmed.strip_prefix("0X"))
+        {
+            let bytes = hex::decode(hex).map_err(|err| {
+                JsError::new(&format!("Failed to parse hex string at {path}: {err}"))
+            })?;
+            return Ok(NativeFieldElement::from_be_bytes_mod_order(&bytes));
+        }
+        return trimmed.parse::<NativeFieldElement>().map_err(|err| {
+            JsError::new(&format!("Failed to parse decimal field at {path}: {err:?}"))
+        });
+    }
+
+    Err(JsError::new(&format!(
+        "{path} must be a number or a decimal/hex string"
+    )))
 }
 
 impl Prover {

@@ -13,10 +13,11 @@ interface RunControllerDeps {
   steps: StepPresenter;
   proofOutput: ProofOutputPresenter;
   artifacts: ArtifactLoader;
-  loadSchemes(proverBytes: Uint8Array, verifierBytes: Uint8Array): Promise<{
-    prover: ProverScheme;
-    verifier: VerifierScheme;
-  }>;
+  loadSchemes(
+    proverBytes: Uint8Array,
+    verifierBytes: Uint8Array,
+    mavrosArtifacts?: { witgenWasmBytes?: Uint8Array; adWasmBytes?: Uint8Array },
+  ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }>;
   waitForUi(): Promise<void>;
   disposeActiveVerifier(): void;
   refreshRunButton(): void;
@@ -39,12 +40,15 @@ export class RunController {
 
     try {
       this.deps.steps.setStatus(2, stepStatus.running("Loading artifacts..."));
-      const { proverBytes, verifierBytes, metadata } = await this.deps.artifacts.loadArtifacts(
+      const { proverBytes, verifierBytes, witgenWasmBytes, adWasmBytes, metadata } = await this.deps.artifacts.loadArtifacts(
         this.deps.state.activeCircuit,
         this.deps.state.customFiles,
       );
 
-      ({ prover, verifier } = await this.deps.loadSchemes(proverBytes, verifierBytes));
+      ({ prover, verifier } = await this.deps.loadSchemes(proverBytes, verifierBytes, {
+        witgenWasmBytes,
+        adWasmBytes,
+      }));
       this.deps.steps.setStatus(2, stepStatus.success("Loaded"));
 
       failingStep = 3;

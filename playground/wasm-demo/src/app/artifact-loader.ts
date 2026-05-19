@@ -5,6 +5,8 @@ import type { CircuitMetadata, CircuitName, CustomFiles, DiagnosticsWriter } fro
 export interface ArtifactBundle {
   proverBytes: Uint8Array;
   verifierBytes: Uint8Array;
+  witgenWasmBytes?: Uint8Array;
+  adWasmBytes?: Uint8Array;
   metadata: CircuitMetadata | null;
 }
 
@@ -111,7 +113,7 @@ export class ArtifactLoader {
   }
 
   private async loadCustomArtifacts(customFiles: CustomFiles): Promise<ArtifactBundle> {
-    const { prover, verifier } = customFiles;
+    const { prover, verifier, witgenWasm, adWasm } = customFiles;
     if (!prover || !verifier) {
       throw new Error("Upload prover and verifier artifacts before running the custom circuit.");
     }
@@ -122,6 +124,8 @@ export class ArtifactLoader {
     return {
       proverBytes: new Uint8Array(await prover.arrayBuffer()),
       verifierBytes: new Uint8Array(await verifier.arrayBuffer()),
+      witgenWasmBytes: witgenWasm ? new Uint8Array(await witgenWasm.arrayBuffer()) : undefined,
+      adWasmBytes: adWasm ? new Uint8Array(await adWasm.arrayBuffer()) : undefined,
       metadata: null,
     };
   }

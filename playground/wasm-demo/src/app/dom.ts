@@ -98,6 +98,8 @@ export function collectDom(document: Document): DemoDom {
       prover: collectChecklist(document, "prover"),
       verifier: collectChecklist(document, "verifier"),
       inputs: collectChecklist(document, "inputs"),
+      witgenWasm: collectChecklist(document, "witgenWasm"),
+      adWasm: collectChecklist(document, "adWasm"),
     },
   };
 }

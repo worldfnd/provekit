@@ -1,5 +1,11 @@
 #[cfg(test)]
 use crate::r1cs::R1CSSolver;
+#[cfg(target_arch = "wasm32")]
+use {
+    crate::whir_r1cs::MavrosWitgenResult,
+    provekit_common::{ConstraintsLayout, MavrosProver, WitnessLayout},
+    whir::transcript::VerifierMessage,
+};
 use {
     crate::{
         r1cs::{CompressedLayers, CompressedR1CS},
@@ -36,6 +42,43 @@ mod witness;
 
 // Public re-exports for items used by integration tests and benchmarks.
 pub use {ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Clone, Debug)]
+pub struct MavrosTableInfo {
+    pub multiplicities_wit_offset: usize,
+    pub num_values: usize,
+    pub length: usize,
+    pub elem_inverses_witness_section_offset: usize,
+    pub elem_inverses_constraint_section_offset: usize,
+}
+
+#[cfg(target_arch = "wasm32")]
+pub struct MavrosPhase1Result {
+    pub out_wit_pre_comm:  Vec<FieldElement>,
+    pub out_wit_post_comm: Vec<FieldElement>,
+    pub out_a:             Vec<FieldElement>,
+    pub out_b:             Vec<FieldElement>,
+    pub out_c:             Vec<FieldElement>,
+    pub tables:            Vec<MavrosTableInfo>,
+}
+
+#[cfg(target_arch = "wasm32")]
+pub trait MavrosWasmDriver {
+    fn run_witgen(
+        &mut self,
+        input_fields: &[FieldElement],
+        witness_layout: WitnessLayout,
+        constraints_layout: ConstraintsLayout,
+    ) -> Result<MavrosPhase1Result>;
+
+    fn run_ad(
+        &mut self,
+        coeffs: &[FieldElement],
+        witness_layout: WitnessLayout,
+        constraints_layout: ConstraintsLayout,
+    ) -> Result<[Vec<FieldElement>; 3]>;
+}
 
 /// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
 /// `prove_with_witness` is available on all targets. `MavrosProver` does not
@@ -267,6 +310,296 @@ impl Prove for NoirProver {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+#[instrument(skip_all)]
+pub fn prove_mavros_with_wasm_driver<D: MavrosWasmDriver>(
+    prover: MavrosProver,
+    input_fields: Vec<FieldElement>,
+    driver: &mut D,
+) -> Result<NoirProof> {
+    let self_ = prover;
+    provekit_common::register_ntt();
+
+    let mut phase1 = driver
+        .run_witgen(
+            &input_fields,
+            self_.witness_layout,
+            self_.constraints_layout,
+        )
+        .context("while running Mavros WASM witness generation")?;
+
+    let num_public_inputs = self_.num_public_inputs;
+    let public_inputs = if num_public_inputs == 0 {
+        PublicInputs::new()
+    } else {
+        PublicInputs::from_vec(phase1.out_wit_pre_comm[1..=num_public_inputs].to_vec())
+    };
+
+    let instance = public_inputs.hash_bytes(self_.hash_config);
+    let ds = self_
+        .whir_for_witness
+        .create_domain_separator()
+        .instance(&instance);
+    let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self_.hash_config));
+
+    let commitment_1 = self_
+        .whir_for_witness
+        .commit(
+            &mut merlin,
+            self_.witness_layout.size(),
+            self_.constraints_layout.algebraic_size,
+            phase1.out_wit_pre_comm.clone(),
+            true,
+        )
+        .context("While committing to Mavros w1")?;
+
+    let witgen_result = if self_.whir_for_witness.num_challenges > 0 {
+        let challenges: Vec<FieldElement> = (0..self_.witness_layout.challenges_size)
+            .map(|_| merlin.verifier_message())
+            .collect();
+        run_mavros_phase2(
+            &mut phase1,
+            &challenges,
+            self_.witness_layout,
+            self_.constraints_layout,
+        )
+        .context("while completing Mavros phase2")?
+    } else {
+        run_mavros_phase2(
+            &mut phase1,
+            &[],
+            self_.witness_layout,
+            self_.constraints_layout,
+        )
+        .context("while completing Mavros phase2")?
+    };
+
+    let commitments = if self_.whir_for_witness.num_challenges > 0 {
+        let commitment_2 = self_
+            .whir_for_witness
+            .commit(
+                &mut merlin,
+                self_.witness_layout.size(),
+                self_.constraints_layout.algebraic_size,
+                witgen_result.out_wit_post_comm.clone(),
+                false,
+            )
+            .context("While committing to Mavros w2")?;
+        vec![commitment_1, commitment_2]
+    } else {
+        vec![commitment_1]
+    };
+
+    let whir_r1cs_proof = self_
+        .whir_for_witness
+        .prove_mavros_with_ad_callback(
+            merlin,
+            witgen_result,
+            commitments,
+            &public_inputs,
+            self_.constraints_layout,
+            |coeffs| {
+                driver
+                    .run_ad(coeffs, self_.witness_layout, self_.constraints_layout)
+                    .context("while running Mavros WASM AD")
+            },
+        )
+        .context("While proving Mavros R1CS instance")?;
+
+    Ok(NoirProof {
+        public_inputs,
+        whir_r1cs_proof,
+    })
+}
+
+#[cfg(target_arch = "wasm32")]
+fn run_mavros_phase2(
+    phase1: &mut MavrosPhase1Result,
+    challenges: &[FieldElement],
+    witness_layout: WitnessLayout,
+    constraints_layout: ConstraintsLayout,
+) -> Result<MavrosWitgenResult> {
+    use {
+        ark_ff::Field,
+        ark_std::{One, Zero},
+    };
+
+    for (i, challenge) in challenges.iter().enumerate() {
+        phase1.out_wit_post_comm[i] = *challenge;
+    }
+
+    let mut running_prod = FieldElement::one();
+    for tbl in &phase1.tables {
+        let alpha = phase1.out_wit_post_comm[0];
+        let base = tbl.elem_inverses_constraint_section_offset;
+
+        if tbl.num_values == 0 {
+            for i in 0..tbl.length {
+                let multiplicity = phase1.out_wit_pre_comm[tbl.multiplicities_wit_offset + i];
+                let denom = alpha - FieldElement::from(i as u64);
+                phase1.out_b[base + i] = denom;
+                phase1.out_c[base + i] = multiplicity;
+                if !multiplicity.is_zero() {
+                    phase1.out_a[base + i] = running_prod;
+                    running_prod *= denom;
+                }
+            }
+        } else {
+            anyhow::ensure!(
+                tbl.num_values == 1,
+                "expected width-2 table, got num_values={}",
+                tbl.num_values
+            );
+            let beta = phase1.out_wit_post_comm[1];
+            for i in 0..tbl.length {
+                let multiplicity = phase1.out_wit_pre_comm[tbl.multiplicities_wit_offset + i];
+                let v_i = phase1.out_a[base + 2 * i];
+                let x_i = -beta * v_i;
+                phase1.out_a[base + 2 * i] = beta;
+                phase1.out_b[base + 2 * i] = v_i;
+                phase1.out_c[base + 2 * i] = -x_i;
+
+                let denom = alpha - FieldElement::from(i as u64) - x_i;
+                phase1.out_b[base + 2 * i + 1] = denom;
+                phase1.out_c[base + 2 * i + 1] = multiplicity;
+                if !multiplicity.is_zero() {
+                    phase1.out_a[base + 2 * i + 1] = running_prod;
+                    running_prod *= denom;
+                }
+            }
+        }
+    }
+
+    let mut running_inv = running_prod
+        .inverse()
+        .ok_or_else(|| anyhow::anyhow!("Mavros lookup running product is not invertible"))?;
+
+    for tbl in phase1.tables.iter().rev() {
+        let base = tbl.elem_inverses_constraint_section_offset;
+
+        if tbl.num_values == 0 {
+            for i in (0..tbl.length).rev() {
+                let multiplicity = phase1.out_c[base + i];
+                let denom = phase1.out_b[base + i];
+                let running_prod = phase1.out_a[base + i];
+                if !multiplicity.is_zero() {
+                    let elem = running_prod * running_inv;
+                    phase1.out_a[base + i] = elem;
+                    running_inv *= denom;
+                }
+            }
+        } else {
+            for i in (0..tbl.length).rev() {
+                let multiplicity = phase1.out_c[base + 2 * i + 1];
+                let denom = phase1.out_b[base + 2 * i + 1];
+                let running_prod = phase1.out_a[base + 2 * i + 1];
+                if !multiplicity.is_zero() {
+                    let elem = running_prod * running_inv;
+                    phase1.out_a[base + 2 * i + 1] = elem;
+                    running_inv *= denom;
+                }
+            }
+        }
+    }
+
+    let mut current_lookup_off = 0;
+    while current_lookup_off < constraints_layout.lookups_data_size {
+        let cnst_off = constraints_layout.lookups_data_start() + current_lookup_off;
+        let wit_off = witness_layout.lookups_data_start() - witness_layout.challenges_start()
+            + current_lookup_off;
+        let table_ix = phase1.out_a[cnst_off].0 .0[0] as usize;
+        let table = &phase1.tables[table_ix];
+        let alpha = phase1.out_wit_post_comm[0];
+
+        if table.num_values == 0 {
+            let flag_u64 = phase1.out_c[cnst_off].0 .0[0];
+            if flag_u64 == 0 {
+                let key = phase1.out_b[cnst_off];
+                phase1.out_a[cnst_off] = FieldElement::zero();
+                phase1.out_b[cnst_off] = alpha - key;
+                phase1.out_c[cnst_off] = FieldElement::zero();
+                phase1.out_wit_post_comm[wit_off] = FieldElement::zero();
+            } else {
+                let ix_in_table = phase1.out_b[cnst_off].0 .0[0] as usize;
+                let src = table.elem_inverses_constraint_section_offset + ix_in_table;
+                phase1.out_a[cnst_off] = phase1.out_a[src];
+                phase1.out_b[cnst_off] = phase1.out_b[src];
+                phase1.out_c[cnst_off] = FieldElement::from(flag_u64);
+                phase1.out_wit_post_comm[wit_off] = phase1.out_a[cnst_off];
+                let sum = table.elem_inverses_constraint_section_offset + table.length;
+                phase1.out_c[sum] += phase1.out_a[cnst_off];
+            }
+            current_lookup_off += 1;
+        } else {
+            let beta = phase1.out_wit_post_comm[1];
+            let result_value = phase1.out_b[cnst_off];
+            let flag_u64 = phase1.out_c[cnst_off + 1].0 .0[0];
+            let x = -beta * result_value;
+            phase1.out_a[cnst_off] = beta;
+            phase1.out_b[cnst_off] = result_value;
+            phase1.out_c[cnst_off] = -x;
+            phase1.out_wit_post_comm[wit_off] = x;
+
+            let y_cnst_off = cnst_off + 1;
+            let y_wit_off = wit_off + 1;
+            if flag_u64 == 0 {
+                let key = phase1.out_b[y_cnst_off];
+                phase1.out_a[y_cnst_off] = FieldElement::zero();
+                phase1.out_b[y_cnst_off] = alpha - key - x;
+                phase1.out_c[y_cnst_off] = FieldElement::zero();
+                phase1.out_wit_post_comm[y_wit_off] = FieldElement::zero();
+            } else {
+                let ix_in_table = phase1.out_b[y_cnst_off].0 .0[0] as usize;
+                let src = table.elem_inverses_constraint_section_offset + 2 * ix_in_table + 1;
+                phase1.out_a[y_cnst_off] = phase1.out_a[src];
+                phase1.out_b[y_cnst_off] = phase1.out_b[src];
+                phase1.out_c[y_cnst_off] = FieldElement::from(flag_u64);
+                phase1.out_wit_post_comm[y_wit_off] = phase1.out_a[y_cnst_off];
+                let sum = table.elem_inverses_constraint_section_offset + 2 * table.length;
+                phase1.out_c[sum] += phase1.out_a[y_cnst_off];
+            }
+            current_lookup_off += 2;
+        }
+    }
+
+    for tbl in &phase1.tables {
+        let base = tbl.elem_inverses_constraint_section_offset;
+        let wit_base = tbl.elem_inverses_witness_section_offset;
+
+        if tbl.num_values == 0 {
+            for i in 0..tbl.length {
+                let multiplicity = phase1.out_c[base + i];
+                if !multiplicity.is_zero() {
+                    let elem = phase1.out_a[base + i] * multiplicity;
+                    phase1.out_a[base + i] = elem;
+                    phase1.out_wit_post_comm[wit_base + i] = elem;
+                    phase1.out_a[base + tbl.length] += elem;
+                }
+            }
+            phase1.out_b[base + tbl.length] = FieldElement::one();
+        } else {
+            for i in 0..tbl.length {
+                let multiplicity = phase1.out_c[base + 2 * i + 1];
+                if !multiplicity.is_zero() {
+                    let elem = phase1.out_a[base + 2 * i + 1] * multiplicity;
+                    phase1.out_a[base + 2 * i + 1] = elem;
+                    phase1.out_wit_post_comm[wit_base + 2 * i + 1] = elem;
+                    phase1.out_a[base + 2 * tbl.length] += elem;
+                }
+                phase1.out_wit_post_comm[wit_base + 2 * i] = -phase1.out_c[base + 2 * i];
+            }
+            phase1.out_b[base + 2 * tbl.length] = FieldElement::one();
+        }
+    }
+
+    Ok(MavrosWitgenResult {
+        out_wit_post_comm: std::mem::take(&mut phase1.out_wit_post_comm),
+        out_a:             std::mem::take(&mut phase1.out_a),
+        out_b:             std::mem::take(&mut phase1.out_b),
+        out_c:             std::mem::take(&mut phase1.out_c),
+    })
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
@@ -307,7 +640,7 @@ impl Prove for MavrosProver {
             )
             .context("While committing to w1")?;
 
-        let commitments = if self.whir_for_witness.num_challenges > 0 {
+        let (commitments, witgen_result) = if self.whir_for_witness.num_challenges > 0 {
             let challenges: Vec<FieldElement> = (0..self.witness_layout.challenges_size)
                 .map(|_| merlin.verifier_message())
                 .collect();
@@ -330,22 +663,22 @@ impl Prove for MavrosProver {
                 )
                 .context("While committing to w2")?;
 
-            vec![commitment_1, commitment_2]
+            (vec![commitment_1, commitment_2], witgen_result)
         } else {
-            mavros_interpreter::run_phase2(
+            let witgen_result = mavros_interpreter::run_phase2(
                 phase1.clone(),
                 &[],
                 self.witness_layout,
                 self.constraints_layout,
             );
-            vec![commitment_1]
+            (vec![commitment_1], witgen_result)
         };
 
         let whir_r1cs_proof = self
             .whir_for_witness
             .prove_mavros(
                 merlin,
-                phase1,
+                witgen_result,
                 commitments,
                 &public_inputs,
                 self.witness_layout,

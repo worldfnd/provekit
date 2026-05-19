@@ -5,6 +5,8 @@ export const DEFAULT_CHECKLIST_LABELS: Record<UploadKey, string> = {
   prover: "prover.pkp",
   verifier: "verifier.pkv",
   inputs: "inputs.json / Prover.toml",
+  witgenWasm: "witgen.wasm (Mavros)",
+  adWasm: "ad.wasm (Mavros)",
 };
 
 const CHECK_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>`;
