@@ -19,14 +19,14 @@ fn cross_impl_commitment_receive_kat_agrees() {
     assert!(nargo_crate.join("Nargo.toml").exists());
 
     let status = Command::new("nargo")
-        .args(["test", "receive_commitment_matches_frozen_kat"])
+        .args(["test", "receive_commitment_advances_transcript"])
         .current_dir(&nargo_crate)
         .status()
         .expect("failed to run nargo");
 
     assert!(
         status.success(),
-        "nargo test receive_commitment_matches_frozen_kat failed (exit {:?})",
+        "nargo test receive_commitment_advances_transcript failed (exit {:?})",
         status.code(),
     );
 }
