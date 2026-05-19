@@ -1464,6 +1464,7 @@ mod tests {
             verifier_path: PathBuf::from("/tmp/does-not-exist.pkv"),
             proof_path:    PathBuf::from("/tmp/does-not-exist.np"),
             out_dir:       PathBuf::from("/tmp/out"),
+            trace:         false,
         };
         assert!(args.run().is_err());
     }
