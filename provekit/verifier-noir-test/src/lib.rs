@@ -2,15 +2,18 @@
 //! Cargo and Nargo sides can reference the same constants.
 
 use {
-    ark_bn254::Fr,
-    ark_ff::PrimeField,
-    provekit_common::poseidon2::Poseidon2Sponge,
+    ark_bn254::Fr, ark_ff::PrimeField, provekit_common::poseidon2::Poseidon2Sponge,
     spongefish::DuplexSpongeInterface,
 };
 
 /// KAT input for cross-implementation Poseidon2 permutation testing.
 pub fn kat_input() -> [Fr; 4] {
-    [Fr::from(1u64), Fr::from(2u64), Fr::from(3u64), Fr::from(4u64)]
+    [
+        Fr::from(1u64),
+        Fr::from(2u64),
+        Fr::from(3u64),
+        Fr::from(4u64),
+    ]
 }
 
 /// Compute the expected output by running the Rust `poseidon2` crate.
@@ -26,9 +29,9 @@ pub fn fr_to_noir_literal(fe: Fr) -> String {
 /// Run the canonical sponge KAT sequence through spongefish's
 /// `Poseidon2Sponge` and return the four squeezed field elements.
 ///
-/// Sequence: `default() -> absorb(field_to_bytes(1)) -> absorb(field_to_bytes(2)) ->
-/// 4 x squeeze(32 bytes)`. Each 32-byte squeeze is interpreted as one
-/// field element via `Fr::from_le_bytes_mod_order`.
+/// Sequence: `default() -> absorb(field_to_bytes(1)) ->
+/// absorb(field_to_bytes(2)) -> 4 x squeeze(32 bytes)`. Each 32-byte squeeze is
+/// interpreted as one field element via `Fr::from_le_bytes_mod_order`.
 pub fn sponge_kat_expected() -> [Fr; 4] {
     let mut s = Poseidon2Sponge::default();
     let one = fr_to_le_bytes(Fr::from(1u64));
@@ -144,7 +147,9 @@ pub fn sumcheck_kat_construct() -> ([[Fr; 4]; 2], Fr) {
 
     // Phase 4: per-round h_polys + assertions.
     let mut h_polys = [[Fr::from(0u64); 4]; M0];
-    let two_inv = Fr::from(2u64).inverse().expect("2 is invertible in BN254 scalar field");
+    let two_inv = Fr::from(2u64)
+        .inverse()
+        .expect("2 is invertible in BN254 scalar field");
     for row in h_polys.iter_mut() {
         // Pick h_i = [saved/2, 0, 0, 0] => constant polynomial,
         // h_i(0) + h_i(1) = saved/2 + saved/2 = saved. Soundness check passes.
@@ -173,12 +178,7 @@ pub fn sumcheck_kat_construct() -> ([[Fr; 4]; 2], Fr) {
 
 const SUMCHECK_KAT_RATE: u32 = 3;
 
-fn sumcheck_absorb_one(
-    state: &mut [Fr; 4],
-    absorb_pos: &mut u32,
-    squeeze_pos: &mut u32,
-    fe: Fr,
-) {
+fn sumcheck_absorb_one(state: &mut [Fr; 4], absorb_pos: &mut u32, squeeze_pos: &mut u32, fe: Fr) {
     *squeeze_pos = SUMCHECK_KAT_RATE;
     if *absorb_pos == SUMCHECK_KAT_RATE {
         *state = poseidon2::permutation::poseidon2_permutation(state);
@@ -188,11 +188,7 @@ fn sumcheck_absorb_one(
     *absorb_pos += 1;
 }
 
-fn sumcheck_squeeze_one(
-    state: &mut [Fr; 4],
-    absorb_pos: &mut u32,
-    squeeze_pos: &mut u32,
-) -> Fr {
+fn sumcheck_squeeze_one(state: &mut [Fr; 4], absorb_pos: &mut u32, squeeze_pos: &mut u32) -> Fr {
     *absorb_pos = 0;
     if *squeeze_pos == SUMCHECK_KAT_RATE {
         *squeeze_pos = 0;
@@ -241,12 +237,12 @@ pub fn matrix_eval_kat_expected() -> [Fr; 4] {
     let a0 = Fr::from(2u64);
     let a1 = Fr::from(3u64);
     let eq0 = (one - a0) * (one - a1); //  2
-    let eq1 = (one - a0) * a1;         // -3
-    let eq2 = a0 * (one - a1);         // -4
-    // Matrix A rows:
-    //   row 0: (col 0, val 1), (col 1, val 2)
-    //   row 1: (col 2, val 3)
-    //   row 2: (col 0, val 1), (col 3, val 1)
+    let eq1 = (one - a0) * a1; // -3
+    let eq2 = a0 * (one - a1); // -4
+                               // Matrix A rows:
+                               //   row 0: (col 0, val 1), (col 1, val 2)
+                               //   row 1: (col 2, val 3)
+                               //   row 2: (col 0, val 1), (col 3, val 1)
     [
         Fr::from(1u64) * eq0 + Fr::from(1u64) * eq2, // col 0: -2
         Fr::from(2u64) * eq0,                        // col 1:  4
@@ -265,8 +261,8 @@ pub fn matrix_eval_kat_expected() -> [Fr; 4] {
 ///   h23 = poseidon2_hash([leaf_hash_2, leaf_hash_3])
 ///   root = poseidon2_hash([h01, h23])
 ///
-/// Path to leaf index 1 (binary 01 -> LSB=1 means we're right child at leaf level):
-///   siblings[0] = leaf_hash_0 (the LEFT sibling at leaf level)
+/// Path to leaf index 1 (binary 01 -> LSB=1 means we're right child at leaf
+/// level):   siblings[0] = leaf_hash_0 (the LEFT sibling at leaf level)
 ///   siblings[1] = h23         (the right sibling at level 1)
 pub fn merkle_path_kat_expected() -> ([Fr; 2], Fr) {
     let leaf0 = poseidon2::poseidon2_hash(&[Fr::from(1u64)]);
@@ -313,7 +309,8 @@ pub fn geometric_challenge_kat_expected() -> [Fr; 4] {
         Fr::from(30u64),
         Fr::from(40u64),
     ];
-    // Use lane_sponge_replay (already defined for transcript_kat). Squeeze 1 field as `x`.
+    // Use lane_sponge_replay (already defined for transcript_kat). Squeeze 1 field
+    // as `x`.
     let xs = lane_sponge_replay(state, 1, 3, &[], 1);
     let x = xs[0];
 
@@ -323,6 +320,82 @@ pub fn geometric_challenge_kat_expected() -> [Fr; 4] {
     result[2] = x * x;
     result[3] = x * x * x;
     result
+}
+
+/// Byte-grain duplex sponge replay used to capture the expected output of
+/// `Transcript::squeeze_bytes_n::<N>()` for the canonical Phase 3B-iii state.
+///
+/// Spongefish's underlying state is `[u8; 128]` with `squeeze_pos` measured in
+/// bytes 0..96 (RATE = 96 bytes = 3 lanes of 32). When squeezing N bytes:
+///   - if `squeeze_pos == 96`, run the permutation (lane-grain) and reset
+///     `squeeze_pos` to 0.
+///   - read one byte from `state_bytes[squeeze_pos]` and advance.
+///
+/// Since the lane-grain `Sponge` in `provekit/verifier-noir` carries the same
+/// state in `[Fr; 4]` form, we lift to bytes by encoding each Fr with LE
+/// (matching Noir's `Field::to_le_bytes::<32>()` and spongefish's
+/// `field_to_bytes_le`).
+///
+/// The canonical KAT state for byte squeeze is the same as the field-grain
+/// transcript KAT: lanes = [10, 20, 30, 40], absorb_pos = 1 (lane units),
+/// squeeze_pos = 3 (lane units). Translated to bytes: byte_absorb_pos =
+/// 1 * 32 = 32, byte_squeeze_pos = 3 * 32 = 96.
+///
+/// The byte stream this function returns is bit-exact to what spongefish's
+/// `Poseidon2Sponge` would produce starting from the byte-equivalent state.
+pub fn byte_sponge_replay(
+    mut state: [Fr; 4],
+    _absorb_pos_lane: u32,
+    mut squeeze_pos_byte: u32,
+    squeeze_byte_count: usize,
+) -> Vec<u8> {
+    const RATE_BYTES: u32 = 96;
+
+    // Reset absorb_pos like spongefish does on first squeeze (we do not absorb
+    // here, but mirror the state-machine field for clarity).
+    let mut _absorb_pos_byte = 0u32;
+
+    let mut out = Vec::with_capacity(squeeze_byte_count);
+    for _ in 0..squeeze_byte_count {
+        if squeeze_pos_byte == RATE_BYTES {
+            squeeze_pos_byte = 0;
+            state = poseidon2::permutation::poseidon2_permutation(&state);
+        }
+        let lane_idx = (squeeze_pos_byte / 32) as usize;
+        let byte_in_lane = (squeeze_pos_byte % 32) as usize;
+        let lane_bytes = fr_to_le_bytes(state[lane_idx]);
+        out.push(lane_bytes[byte_in_lane]);
+        squeeze_pos_byte += 1;
+        _absorb_pos_byte = 0;
+    }
+    out
+}
+
+/// Canonical Phase 3B-iii byte-squeeze KAT sequence (matches the Noir
+/// `squeeze_bytes_matches_frozen_kat` test):
+///
+///   init_from_pre_absorbed_state(state = [10, 20, 30, 40], absorb_pos = 1,
+///                                squeeze_pos = 3)
+///   squeeze_bytes_n::<10>()
+///
+/// Returns the 10-byte output spongefish would produce after the same
+/// preparation.
+pub fn squeeze_bytes_kat_expected() -> [u8; 10] {
+    let state = [
+        Fr::from(10u64),
+        Fr::from(20u64),
+        Fr::from(30u64),
+        Fr::from(40u64),
+    ];
+    // Lane-unit absorb_pos = 1 -> byte absorb_pos = 1 * 32 = 32.
+    // Lane-unit squeeze_pos = 3 -> byte squeeze_pos = 3 * 32 = 96 (RATE
+    // boundary; first byte squeeze triggers a permute, matching the Noir
+    // wrapper which calls the inner Sponge that permutes when
+    // `squeeze_pos == RATE`).
+    let bytes = byte_sponge_replay(state, 32, 96, 10);
+    let mut out = [0u8; 10];
+    out.copy_from_slice(&bytes);
+    out
 }
 
 /// Tensor product of two Fr vectors, row-major. Used to cross-validate Noir's
@@ -351,7 +424,12 @@ pub fn mle_evaluate_kat_expected() -> Fr {
         a0 * (one - a1),         // -4
         a0 * a1,                 //  6
     ];
-    let coeffs = [Fr::from(1u64), Fr::from(2u64), Fr::from(3u64), Fr::from(4u64)];
+    let coeffs = [
+        Fr::from(1u64),
+        Fr::from(2u64),
+        Fr::from(3u64),
+        Fr::from(4u64),
+    ];
     let mut acc = Fr::from(0u64);
     for i in 0..4 {
         acc += coeffs[i] * eq[i];
@@ -395,7 +473,8 @@ mod tests {
         }
     }
 
-    /// Print the field element that Noir's `EXPECTED_HASH_2` global should hold.
+    /// Print the field element that Noir's `EXPECTED_HASH_2` global should
+    /// hold.
     #[test]
     fn print_merkle_kat_expected_for_noir() {
         let expected = merkle_kat_expected();
@@ -442,8 +521,14 @@ mod tests {
     #[test]
     fn print_merkle_path_kat_expected_for_noir() {
         let (siblings, root) = merkle_path_kat_expected();
-        println!("EXPECTED_PATH_SIBLINGS[0] = {}", fr_to_noir_literal(siblings[0]));
-        println!("EXPECTED_PATH_SIBLINGS[1] = {}", fr_to_noir_literal(siblings[1]));
+        println!(
+            "EXPECTED_PATH_SIBLINGS[0] = {}",
+            fr_to_noir_literal(siblings[0])
+        );
+        println!(
+            "EXPECTED_PATH_SIBLINGS[1] = {}",
+            fr_to_noir_literal(siblings[1])
+        );
         println!("EXPECTED_PATH_ROOT = {}", fr_to_noir_literal(root));
     }
 
@@ -451,7 +536,44 @@ mod tests {
     fn print_geometric_challenge_kat_expected_for_noir() {
         let expected = geometric_challenge_kat_expected();
         for (i, fe) in expected.iter().enumerate() {
-            println!("EXPECTED_GEOMETRIC_CHALLENGE[{i}] = {}", fr_to_noir_literal(*fe));
+            println!(
+                "EXPECTED_GEOMETRIC_CHALLENGE[{i}] = {}",
+                fr_to_noir_literal(*fe)
+            );
         }
+    }
+
+    /// Print the 10 bytes that Noir's `EXPECTED_SQUEEZE_BYTES_KAT` global
+    /// should hold. Run with `--nocapture` to capture them; paste into
+    /// `verifier-noir/src/transcript.nr`.
+    #[test]
+    fn print_squeeze_bytes_kat_expected_for_noir() {
+        let expected = squeeze_bytes_kat_expected();
+        let joined: Vec<String> = expected.iter().map(|b| b.to_string()).collect();
+        println!("EXPECTED_SQUEEZE_BYTES_KAT = [{}]", joined.join(", "));
+    }
+
+    /// Spongefish equivalence sanity check: when we squeeze 32-byte aligned
+    /// chunks, our byte-grain replay must agree with `lane_sponge_replay`'s
+    /// LE-encoded field output on the same starting state.
+    #[test]
+    fn byte_replay_agrees_with_lane_replay_on_aligned_squeezes() {
+        let state = [
+            Fr::from(10u64),
+            Fr::from(20u64),
+            Fr::from(30u64),
+            Fr::from(40u64),
+        ];
+        // Squeeze 2 whole lanes worth of bytes (64 bytes) and compare to
+        // squeezing 2 fields and encoding each LE.
+        let bytes = byte_sponge_replay(state, 32, 96, 64);
+        let fields = lane_sponge_replay(state, 1, 3, &[], 2);
+        let mut expected = Vec::with_capacity(64);
+        expected.extend_from_slice(&fr_to_le_bytes(fields[0]));
+        expected.extend_from_slice(&fr_to_le_bytes(fields[1]));
+        assert_eq!(
+            bytes, expected,
+            "byte/lane replays disagree on aligned squeeze"
+        );
     }
 }
