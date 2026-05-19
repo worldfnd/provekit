@@ -255,6 +255,33 @@ pub fn matrix_eval_kat_expected() -> [Fr; 4] {
     ]
 }
 
+/// Build a 4-leaf Merkle tree using `poseidon2_hash` and return
+/// `(siblings_along_path_to_index_1, root)`.
+///
+/// Layout:
+///   leaves = [[1], [2], [3], [4]]
+///   leaf_hash_i = poseidon2_hash([leaf_i])
+///   h01 = poseidon2_hash([leaf_hash_0, leaf_hash_1])
+///   h23 = poseidon2_hash([leaf_hash_2, leaf_hash_3])
+///   root = poseidon2_hash([h01, h23])
+///
+/// Path to leaf index 1 (binary 01 -> LSB=1 means we're right child at leaf level):
+///   siblings[0] = leaf_hash_0 (the LEFT sibling at leaf level)
+///   siblings[1] = h23         (the right sibling at level 1)
+pub fn merkle_path_kat_expected() -> ([Fr; 2], Fr) {
+    let leaf0 = poseidon2::poseidon2_hash(&[Fr::from(1u64)]);
+    let leaf1 = poseidon2::poseidon2_hash(&[Fr::from(2u64)]);
+    let leaf2 = poseidon2::poseidon2_hash(&[Fr::from(3u64)]);
+    let leaf3 = poseidon2::poseidon2_hash(&[Fr::from(4u64)]);
+
+    let h01 = poseidon2::poseidon2_hash(&[leaf0, leaf1]);
+    let h23 = poseidon2::poseidon2_hash(&[leaf2, leaf3]);
+    let root = poseidon2::poseidon2_hash(&[h01, h23]);
+
+    let siblings = [leaf0, h23];
+    (siblings, root)
+}
+
 /// Compute `HashConfig::Poseidon2.hash_field_elements(&[7, 11, 13])`, which is
 /// `poseidon2_hash([DST_FE, 7, 11, 13])` per the Rust reference at
 /// `provekit/common/src/hash_config.rs::hash_poseidon2`.
@@ -352,5 +379,13 @@ mod tests {
         println!("PUBLIC_INPUTS_DST_FE = {}", fr_to_noir_literal(dst));
         let hash = public_input_kat_expected();
         println!("EXPECTED_PI_HASH = {}", fr_to_noir_literal(hash));
+    }
+
+    #[test]
+    fn print_merkle_path_kat_expected_for_noir() {
+        let (siblings, root) = merkle_path_kat_expected();
+        println!("EXPECTED_PATH_SIBLINGS[0] = {}", fr_to_noir_literal(siblings[0]));
+        println!("EXPECTED_PATH_SIBLINGS[1] = {}", fr_to_noir_literal(siblings[1]));
+        println!("EXPECTED_PATH_ROOT = {}", fr_to_noir_literal(root));
     }
 }

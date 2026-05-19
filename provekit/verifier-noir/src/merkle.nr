@@ -110,7 +110,7 @@ fn length_iv_hash_2_matches_frozen_kat() {
     assert(out == EXPECTED_HASH_2);
 }
 
-// --- in-circuit Merkle path KAT (placeholder) ---
+// --- in-circuit Merkle path KAT ---
 //
 // 4-leaf tree (TREE_HEIGHT = 2), leaves = [Field; 1] each.
 //
@@ -122,11 +122,14 @@ fn length_iv_hash_2_matches_frozen_kat() {
 //   siblings[0] = length_iv_hash([1])             (sibling at leaf level)
 //   siblings[1] = h(length_iv_hash([3]), length_iv_hash([4]))  (sibling at level 1)
 //
-// EXPECTED_PATH_ROOT and EXPECTED_PATH_SIBLINGS are frozen here. Task 2 unfreezes them.
-//
-// PLACEHOLDER VALUES - overwritten in Phase 3A Task 2.
-global EXPECTED_PATH_ROOT: Field = 0;
-global EXPECTED_PATH_SIBLINGS: [Field; 2] = [0, 0];
+// Values computed by Rust `poseidon2_hash` over a 4-leaf tree (leaves = [[1],[2],[3],[4]]);
+// path to leaf index 1. Frozen as a KAT. See
+// provekit/verifier-noir-test/tests/merkle_path_kat.rs for the cross-impl guarantee.
+global EXPECTED_PATH_ROOT: Field = 3983465710315167456548183548798902689959509022294417809408172563726113209122;
+global EXPECTED_PATH_SIBLINGS: [Field; 2] = [
+    10190015755989328289879378487807721086446093622177241109507523918927702106995,
+    10227218045183537911834581648597754707179070010871039406184444697848601686626,
+];
 
 #[test]
 fn verify_merkle_path_matches_frozen_kat() {
