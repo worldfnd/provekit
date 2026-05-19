@@ -14,5 +14,6 @@ mod matrix_eval;
 mod public_input;
 
 mod types;
+mod matrices;
 
 fn main() {}
