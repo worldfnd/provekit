@@ -4,23 +4,38 @@
 // Compile-time constants for the v0 inner circuit. Tied to a specific
 // `.pkv` (verifier key) shape; regenerate after any scheme change.
 
-global M: u32 = 13;
-global M_0: u32 = 1;
-global W1_SIZE: u32 = 5;
-global NUM_CHALLENGES: u32 = 0;
-global NUM_PUBLIC_INPUTS: u32 = 0;
-global NUM_CONSTRAINTS: u32 = 1;
-global NUM_WITNESSES: u32 = 5;
-global LOG_NUM_CONSTRAINTS: u32 = 0;
-global LOG_NUM_WITNESSES: u32 = 3;
+pub global M: u32 = 13;
+pub global M_0: u32 = 1;
+pub global W1_SIZE: u32 = 5;
+pub global NUM_CHALLENGES: u32 = 0;
+pub global NUM_PUBLIC_INPUTS: u32 = 0;
+pub global NUM_CONSTRAINTS: u32 = 1;
+pub global NUM_WITNESSES: u32 = 5;
+pub global LOG_NUM_CONSTRAINTS: u32 = 0;
+pub global LOG_NUM_WITNESSES: u32 = 3;
 
 // WHIR protocol shape (witness-side blinded commitment).
-global NUM_WITNESS_VARIABLES: u32 = 13;
-global NUM_BLINDING_VARIABLES: u32 = 11;
-global NUM_WHIR_ROUNDS: u32 = 3;
-global INITIAL_FOLDING_FACTOR: u32 = 3;
-global INITIAL_OOD_COUNT: u32 = 1;
-global INITIAL_QUERY_COUNT: u32 = 127;
-global INITIAL_SUMCHECK_ROUNDS: u32 = 3;
-global FINAL_SUMCHECK_ROUNDS: u32 = 1;
-global FINAL_POW_BITS: u32 = 7;
+pub global NUM_WITNESS_VARIABLES: u32 = 13;
+pub global NUM_BLINDING_VARIABLES: u32 = 11;
+pub global NUM_WHIR_ROUNDS: u32 = 3;
+pub global INITIAL_FOLDING_FACTOR: u32 = 3;
+pub global INITIAL_OOD_COUNT: u32 = 1;
+pub global INITIAL_QUERY_COUNT: u32 = 127;
+pub global INITIAL_SUMCHECK_ROUNDS: u32 = 3;
+pub global FINAL_SUMCHECK_ROUNDS: u32 = 1;
+pub global FINAL_POW_BITS: u32 = 7;
+
+// Per-round PoW bits.
+// TODO(codegen): these are currently hardcoded based on the earlier codegen
+// run (round[0]=10, round[1]=8, round[2]=8). They should be re-emitted by
+// `provekit-cli generate-noir-inputs` alongside the other globals above.
+pub global ROUND_POW_BITS_0: u32 = 10;
+pub global ROUND_POW_BITS_1: u32 = 8;
+pub global ROUND_POW_BITS_2: u32 = 8;
+
+// Derived shape used for the witness-side w_folded_blinding_evals vector:
+//   weights * polynomials * (num_witness_variables + 1) = 1 * 1 * (13 + 1) = 14.
+pub global W_FOLDED_BLINDING_EVALS_LEN: u32 = 14;
+
+// Sum check round polynomial coefficient count (always 4 for cubic round polys).
+pub global SUMCHECK_POLY_COEFFS: u32 = 4;
