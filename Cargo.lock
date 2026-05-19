@@ -4747,6 +4747,7 @@ version = "0.1.0"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.5.0",
+ "blake3",
  "poseidon2",
  "provekit-common",
  "sha2 0.10.9",

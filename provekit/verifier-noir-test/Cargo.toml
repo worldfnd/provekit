@@ -16,6 +16,7 @@ ark-ff.workspace = true
 provekit-common.workspace = true
 spongefish.workspace = true
 sha2.workspace = true
+blake3.workspace = true
 
 [lints]
 workspace = true

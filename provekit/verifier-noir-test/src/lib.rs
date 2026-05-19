@@ -398,6 +398,50 @@ pub fn squeeze_bytes_kat_expected() -> [u8; 10] {
     out
 }
 
+/// Find the smallest u64 nonce satisfying the PoW check at 8-bit difficulty
+/// for the challenge squeezed from the canonical Phase 1B initial transcript
+/// state (lanes=[10,20,30,40], absorb_pos=1, squeeze_pos=3 in lane units).
+///
+/// Protocol (matches `whir::protocols::proof_of_work::Config::verify`):
+///   input  = challenge[0..32] || nonce_le[0..8] || [0u8; 24]
+///   hash   = BLAKE3(input)
+///   result = u64::from_le_bytes(hash[0..8])
+///   accept if result <= threshold
+///   threshold for 8-bit difficulty = 2^56 = 72057594037927936
+pub fn pow_kat_expected() -> [u8; 8] {
+    // Lane-unit squeeze_pos=3 translates to byte squeeze_pos=96 (RATE boundary).
+    // The first 32-byte squeeze triggers a permutation, matching Noir's
+    // squeeze_bytes_n::<32>() from the same initial state.
+    let state = [
+        Fr::from(10u64),
+        Fr::from(20u64),
+        Fr::from(30u64),
+        Fr::from(40u64),
+    ];
+    let challenge_bytes = byte_sponge_replay(state, 32, 96, 32);
+    let mut challenge = [0u8; 32];
+    challenge.copy_from_slice(&challenge_bytes[..32]);
+
+    // 8-bit difficulty: threshold = 2^56 = 72057594037927936.
+    // WHIR comparison is `<=`, so we accept when hash_lo <= threshold.
+    let threshold: u64 = 1u64 << 56;
+
+    // Brute-force smallest nonce satisfying BLAKE3(challenge || nonce_le || zeros[24])[0..8] <= threshold.
+    for nonce in 0..u64::MAX {
+        let mut input = [0u8; 64];
+        input[..32].copy_from_slice(&challenge);
+        input[32..40].copy_from_slice(&nonce.to_le_bytes());
+        // bytes 40..64 stay zero
+        let hash = blake3::hash(&input);
+        let hash_bytes = hash.as_bytes();
+        let h_lo = u64::from_le_bytes(hash_bytes[..8].try_into().unwrap());
+        if h_lo <= threshold {
+            return nonce.to_le_bytes();
+        }
+    }
+    panic!("no PoW solution found in u64 range");
+}
+
 /// Tensor product of two Fr vectors, row-major. Used to cross-validate Noir's
 /// tensor_product.
 pub fn tensor_product_kat_expected() -> [Fr; 4] {
@@ -569,6 +613,19 @@ mod tests {
     fn print_commitment_receive_kat_expected_for_noir() {
         let chal = commitment_receive_kat_expected();
         println!("EXPECTED_RECEIVE_CHALLENGE = {}", fr_to_noir_literal(chal));
+    }
+
+    #[test]
+    fn print_pow_kat_expected_for_noir() {
+        let nonce = pow_kat_expected();
+        print!("EXPECTED_NONCE_BYTES = [");
+        for (i, b) in nonce.iter().enumerate() {
+            if i > 0 {
+                print!(", ");
+            }
+            print!("{}", b);
+        }
+        println!("]");
     }
 
     /// Spongefish equivalence sanity check: when we squeeze 32-byte aligned

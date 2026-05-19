@@ -1,32 +1,102 @@
 //! WHIR low-degree-test verifier.
 //!
-//! Phase 3B-iv: scaffold + PoW verifier stub.
-//! The full WHIR LDT verifier (commitment, sumcheck loop, query phase,
-//! final claim) lands in subsequent Phase 3B sub-tasks.
+//! Phase 3B-vi: real BLAKE3-based PoW verifier replacing the stub.
 
 use crate::transcript::Transcript;
+use std::hash::blake3;
 
-/// Stub PoW verifier. Verifies the proof's PoW nonce against the
-/// transcript's challenge. For v0/basic-2 with difficulty = 0, this is
-/// effectively a no-op; the prover supplies any 32-byte hint and we
-/// absorb it into the transcript.
+/// Verify a Blake3-based PoW: assert that BLAKE3(challenge || nonce || pad)
+/// has its first 8 bytes (as u64 LE) less than or equal to `threshold`.
 ///
-/// TODO: real PoW verification once the difficulty bits per round are
-/// surfaced from the WHIR scheme via codegen.
-pub fn verify_pow_stub(transcript: &mut Transcript, nonce: Field) {
-    // Absorb the nonce into the transcript so any tampering changes
-    // downstream challenges. For real PoW we would also derive a challenge
-    // from squeeze_bytes_n and check H(challenge || nonce) has D trailing
-    // zero bits.
-    transcript.absorb_field(nonce);
+/// `challenge` is the 32 bytes the verifier squeezed from the transcript at
+/// PoW verification time. `nonce_bytes` is the prover-supplied u64 encoded
+/// as 8 little-endian bytes. `threshold` is `ceil(2^(64 - difficulty_bits))`.
+///
+/// Matches `whir::protocols::proof_of_work::Config::verify` (0aeaa7f):
+///   input  = challenge[0..32] || nonce_le[0..8] || [0u8; 24]  // 64 bytes
+///   hash   = BLAKE3(input)
+///   result = u64::from_le_bytes(hash[0..8])
+///   verify: result <= threshold
+///
+/// After the hash check the nonce is absorbed into the transcript as a
+/// field element (8 LE bytes zero-padded to 32) so downstream challenges
+/// depend on the PoW result, matching WHIR's `prover_message(&U64(nonce))`.
+pub fn verify_pow(
+    transcript: &mut Transcript,
+    nonce_bytes: [u8; 8],
+    threshold: u64,
+) {
+    // Squeeze the 32-byte PoW challenge from the transcript (matches
+    // `verifier_state.verifier_message::<[u8; 32]>()`).
+    let challenge: [u8; 32] = transcript.squeeze_bytes_n::<32>();
+
+    // Build the 64-byte BLAKE3 input: challenge || nonce_le || zeros[24].
+    let mut input: [u8; 64] = [0; 64];
+    for i in 0..32 {
+        input[i] = challenge[i];
+    }
+    for i in 0..8 {
+        input[32 + i] = nonce_bytes[i];
+    }
+    // Bytes 40..64 remain zero (zero-extension to a full BLAKE3 block).
+
+    // Compute BLAKE3 of the 64-byte input.
+    let hash: [u8; 32] = blake3(input);
+
+    // Extract first 8 bytes as u64 LE and assert <= threshold.
+    let mut hash_lo: u64 = 0;
+    for i in 0..8 {
+        hash_lo += (hash[i] as u64) * pow2_u64(i);
+    }
+    assert(hash_lo <= threshold);
+
+    // Absorb the nonce into the transcript as a field element (8 LE bytes
+    // zero-padded to 32), matching WHIR's `prover_message(&U64(nonce))`.
+    let mut nonce_field: Field = 0;
+    for i in 0..8 {
+        nonce_field += (nonce_bytes[i] as Field) * pow2_field(8 * i);
+    }
+    transcript.absorb_field(nonce_field);
 }
 
-// Trivial smoke test: stub absorbs without panicking.
+/// Compute `256^byte_index` as u64 (i.e. `1 << (8 * byte_index)`).
+/// Used to build a u64 from individual bytes in little-endian order.
+fn pow2_u64(byte_index: u32) -> u64 {
+    let mut result: u64 = 1;
+    for _ in 0..byte_index {
+        result *= 256;
+    }
+    result
+}
+
+/// Compute `2^bit_index` as Field.
+/// Used to build a Field element from individual bits.
+fn pow2_field(bit_index: u32) -> Field {
+    let mut result: Field = 1;
+    for _ in 0..bit_index {
+        result *= 2;
+    }
+    result
+}
+
+// --- in-circuit PoW KAT ---
+//
+// Canonical sequence:
+//   transcript = init_from_pre_absorbed_state([10, 20, 30, 40], 1, 3)
+//   verify_pow(transcript, EXPECTED_NONCE_BYTES, EXPECTED_THRESHOLD_8BITS)
+// Difficulty: 8 bits, threshold = 2^56 = 72057594037927936.
+// The Rust helper (pow_kat_expected in provekit-verifier-noir-test) finds the
+// smallest nonce satisfying the check for the squeezed challenge.
+global EXPECTED_NONCE_BYTES: [u8; 8] = [11, 2, 0, 0, 0, 0, 0, 0];
+global EXPECTED_THRESHOLD_8BITS: u64 = 72057594037927936; // 2^56
+
 #[test]
-fn verify_pow_stub_smoke() {
-    let mut t = Transcript::new();
-    verify_pow_stub(&mut t, 42);
-    // The stub never asserts; test passes if it returns.
+fn verify_pow_matches_frozen_kat() {
+    let mut t = crate::transcript::Transcript::init_from_pre_absorbed_state(
+        [10, 20, 30, 40], 1, 3,
+    );
+    verify_pow(&mut t, EXPECTED_NONCE_BYTES, EXPECTED_THRESHOLD_8BITS);
+    // If we reach here, the PoW check passed.
 }
 
 /// Commitment received from the prover: a Merkle root and a fixed number
