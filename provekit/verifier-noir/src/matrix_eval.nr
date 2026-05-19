@@ -69,6 +69,43 @@ pub fn multiply_matrix_by_eq<let TRIPLES: u32, let NUM_ROWS: u32, let NUM_COLS: 
     result
 }
 
+/// Outer product of two vectors flattened in row-major order.
+///
+/// `tensor_product([a0, a1], [b0, b1, b2]) = [a0*b0, a0*b1, a0*b2, a1*b0, a1*b1, a1*b2]`.
+/// Used by WHIR for batching coefficient construction.
+pub fn tensor_product<let M: u32, let N: u32>(
+    a: [Field; M],
+    b: [Field; N],
+) -> [Field; M * N] {
+    let mut result: [Field; M * N] = [0; M * N];
+    for i in 0..M {
+        for j in 0..N {
+            result[i * N + j] = a[i] * b[j];
+        }
+    }
+    result
+}
+
+/// Evaluate a multilinear extension at a point.
+///
+/// `coeffs` are the polynomial's values at the boolean hypercube
+/// `{0,1}^LOG_N` (big-endian, matching `eq_hypercube_evals`). The MLE
+/// evaluated at `point` is `<coeffs, eq(point, .)>` where the eq weights
+/// are the Lagrange basis over the hypercube.
+///
+/// INVARIANT: `N == 1 << LOG_N`.
+pub fn mle_evaluate<let LOG_N: u32, let N: u32>(
+    coeffs: [Field; N],
+    point: [Field; LOG_N],
+) -> Field {
+    let weights = eq_hypercube_evals::<LOG_N, N>(point, N);
+    let mut acc: Field = 0;
+    for i in 0..N {
+        acc += coeffs[i] * weights[i];
+    }
+    acc
+}
+
 // --- in-circuit KAT ---
 //
 // The 3x4 test R1CS A matrix (from provekit/common/src/utils/sumcheck.rs::make_test_r1cs):
@@ -109,4 +146,30 @@ fn matrix_eval_a_at_alpha_matches_frozen_kat() {
 
     let result = multiply_matrix_by_eq::<5, 3, 4>(A_TEST_TRIPLES, eq3);
     assert(result == EXPECTED_A_AT_ALPHA);
+}
+
+// --- in-circuit tensor_product KAT (placeholder) ---
+//
+// tensor_product([2, 3], [5, 7]) = [10, 14, 15, 21]
+// Hand-verified; no cross-impl needed (pure index arithmetic).
+#[test]
+fn tensor_product_canonical() {
+    let a: [Field; 2] = [2, 3];
+    let b: [Field; 2] = [5, 7];
+    let result = tensor_product::<2, 2>(a, b);
+    let expected: [Field; 4] = [10, 14, 15, 21];
+    assert(result == expected);
+}
+
+// --- in-circuit mle_evaluate KAT (placeholder) ---
+//
+// coeffs over {0,1}^2 (big-endian): [f(00), f(01), f(10), f(11)] = [1, 2, 3, 4]
+// point = [alpha_0, alpha_1] = [2, 3]
+// eq weights (big-endian) = [2, -3, -4, 6]
+// mle(2, 3) = 1*2 + 2*(-3) + 3*(-4) + 4*6 = 2 - 6 - 12 + 24 = 8
+#[test]
+fn mle_evaluate_canonical() {
+    let coeffs: [Field; 4] = [1, 2, 3, 4];
+    let point: [Field; 2] = [2, 3];
+    assert(mle_evaluate::<2, 4>(coeffs, point) == 8);
 }

@@ -325,6 +325,40 @@ pub fn geometric_challenge_kat_expected() -> [Fr; 4] {
     result
 }
 
+/// Tensor product of two Fr vectors, row-major. Used to cross-validate Noir's
+/// tensor_product.
+pub fn tensor_product_kat_expected() -> [Fr; 4] {
+    let a = [Fr::from(2u64), Fr::from(3u64)];
+    let b = [Fr::from(5u64), Fr::from(7u64)];
+    let mut result = [Fr::from(0u64); 4];
+    for i in 0..2 {
+        for j in 0..2 {
+            result[i * 2 + j] = a[i] * b[j];
+        }
+    }
+    result
+}
+
+/// Multilinear extension evaluation at a point. Used to cross-validate
+/// Noir's mle_evaluate.
+pub fn mle_evaluate_kat_expected() -> Fr {
+    let one = Fr::from(1u64);
+    let a0 = Fr::from(2u64);
+    let a1 = Fr::from(3u64);
+    let eq = [
+        (one - a0) * (one - a1), //  2
+        (one - a0) * a1,         // -3
+        a0 * (one - a1),         // -4
+        a0 * a1,                 //  6
+    ];
+    let coeffs = [Fr::from(1u64), Fr::from(2u64), Fr::from(3u64), Fr::from(4u64)];
+    let mut acc = Fr::from(0u64);
+    for i in 0..4 {
+        acc += coeffs[i] * eq[i];
+    }
+    acc
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
