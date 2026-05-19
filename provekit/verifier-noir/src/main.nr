@@ -82,12 +82,12 @@ fn main(
     witness_initial_root: Field,
     witness_initial_ood_evals: [Field; INITIAL_OOD_COUNT],
 
-    // Per-h_gamma per-poly: m_eval + 13 g_hat_evals. For basic-2 there is one
-    // OOD point (INITIAL_OOD_COUNT = 1) and one polynomial, so:
-    //   total m_evals = 1 (gammas) * 1 (polys) = 1
-    //   total g_hat_evals = 1 (gammas) * 1 (polys) * 13 (num_witness_variables) = 13
-    witness_m_evals: [Field; 1],
-    witness_g_hat_evals: [Field; 13],
+    // Per-h_gamma per-poly: m_eval + 13 g_hat_evals. h_gammas =
+    //   INITIAL_OOD_COUNT * INTERLEAVING_DEPTH = 1 * 8 = 8 for basic-2.
+    //   total m_evals = 8 (gammas) * 1 (polys) = 8
+    //   total g_hat_evals = 8 (gammas) * 1 (polys) * 13 (num_witness_variables) = 104
+    witness_m_evals: [Field; 8],
+    witness_g_hat_evals: [Field; 104],
 
     // After per-poly accumulation, the prover sends the combined and
     // batched-h claim vectors (size = num_polynomials = 1).
@@ -235,12 +235,14 @@ fn main(
     let _tau2: Field = t.squeeze_field();
 
     // 9g. Absorb per-gamma per-poly m_eval + g_hat_evals.
-    // For basic-2: 1 gamma x 1 poly x (1 m_eval + 13 g_hat_evals).
-    for i in 0..1 {
-        t.absorb_field(witness_m_evals[i]);
-    }
-    for i in 0..13 {
-        t.absorb_field(witness_g_hat_evals[i]);
+    // For basic-2: 8 gammas x 1 poly x (1 m_eval + 13 g_hat_evals each).
+    // Order matches the Rust verifier: for each gamma, for each poly,
+    // read 1 m_eval then 13 g_hat_evals.
+    for gamma_idx in 0..8 {
+        t.absorb_field(witness_m_evals[gamma_idx]);
+        for j in 0..13 {
+            t.absorb_field(witness_g_hat_evals[gamma_idx * 13 + j]);
+        }
     }
 
     // 9h. Absorb combined_claims and batched_h_claims (size 1 each).

@@ -24,18 +24,12 @@ pub global INITIAL_QUERY_COUNT: u32 = 127;
 pub global INITIAL_SUMCHECK_ROUNDS: u32 = 3;
 pub global FINAL_SUMCHECK_ROUNDS: u32 = 1;
 pub global FINAL_POW_BITS: u32 = 7;
-
-// Per-round PoW bits.
-// TODO(codegen): these are currently hardcoded based on the earlier codegen
-// run (round[0]=10, round[1]=8, round[2]=8). They should be re-emitted by
-// `provekit-cli generate-noir-inputs` alongside the other globals above.
 pub global ROUND_POW_BITS_0: u32 = 10;
-pub global ROUND_POW_BITS_1: u32 = 8;
+pub global ROUND_POW_BITS_1: u32 = 9;
 pub global ROUND_POW_BITS_2: u32 = 8;
 
-// Derived shape used for the witness-side w_folded_blinding_evals vector:
-//   weights * polynomials * (num_witness_variables + 1) = 1 * 1 * (13 + 1) = 14.
-pub global W_FOLDED_BLINDING_EVALS_LEN: u32 = 14;
-
-// Sum check round polynomial coefficient count (always 4 for cubic round polys).
+// Universal constants.
 pub global SUMCHECK_POLY_COEFFS: u32 = 4;
+// W_FOLDED_BLINDING_EVALS_LEN = weights * polynomials * (num_witness_variables + 1).
+// For basic-2: 1 * 1 * 14 = 14.
+pub global W_FOLDED_BLINDING_EVALS_LEN: u32 = 14;
