@@ -60,6 +60,39 @@ pub fn length_iv_hash<let N: u32>(inputs: [Field; N]) -> Field {
     state[0]
 }
 
+/// Verify a Merkle authentication path.
+///
+/// 1. Hash the leaf via `length_iv_hash::<LEAF_SIZE>(leaf)`.
+/// 2. For each level i in 0..TREE_HEIGHT:
+///    - Read bit i of `index` (lowest bit is the leaf-level pairing).
+///    - If bit i == 0: parent = length_iv_hash::<2>([current, siblings[i]]).
+///    - If bit i == 1: parent = length_iv_hash::<2>([siblings[i], current]).
+/// 3. Assert the final parent equals `root`.
+///
+/// Matches WHIR's Merkle tree construction (binary, leaf-grain via
+/// `poseidon2_hash_bytes` which equals `length_iv_hash` for field-aligned input).
+pub fn verify_merkle_path<let LEAF_SIZE: u32, let TREE_HEIGHT: u32>(
+    leaf: [Field; LEAF_SIZE],
+    siblings: [Field; TREE_HEIGHT],
+    index: u32,
+    root: Field,
+) {
+    let mut current = length_iv_hash::<LEAF_SIZE>(leaf);
+    let mut idx = index;
+    for i in 0..TREE_HEIGHT {
+        let sibling = siblings[i];
+        let bit = idx & 1;
+        let pair: [Field; 2] = if bit == 0 {
+            [current, sibling]
+        } else {
+            [sibling, current]
+        };
+        current = length_iv_hash::<2>(pair);
+        idx >>= 1;
+    }
+    assert(current == root);
+}
+
 // --- in-circuit KAT ---
 //
 // EXPECTED_HASH_2 freezes length_iv_hash([1, 2]) per the Rust
@@ -75,4 +108,29 @@ global EXPECTED_HASH_2: Field = 159459786566960219920852909820850895009294274604
 fn length_iv_hash_2_matches_frozen_kat() {
     let out = length_iv_hash::<2>([1, 2]);
     assert(out == EXPECTED_HASH_2);
+}
+
+// --- in-circuit Merkle path KAT (placeholder) ---
+//
+// 4-leaf tree (TREE_HEIGHT = 2), leaves = [Field; 1] each.
+//
+//   leaves: [L0, L1, L2, L3] = [[1], [2], [3], [4]]
+//   leaf hashes via length_iv_hash::<1>; pair hashes via length_iv_hash::<2>.
+//   root = h(h(L0_h, L1_h), h(L2_h, L3_h))
+//
+// We verify path to leaf index 1 (= L1 = [2]):
+//   siblings[0] = length_iv_hash([1])             (sibling at leaf level)
+//   siblings[1] = h(length_iv_hash([3]), length_iv_hash([4]))  (sibling at level 1)
+//
+// EXPECTED_PATH_ROOT and EXPECTED_PATH_SIBLINGS are frozen here. Task 2 unfreezes them.
+//
+// PLACEHOLDER VALUES - overwritten in Phase 3A Task 2.
+global EXPECTED_PATH_ROOT: Field = 0;
+global EXPECTED_PATH_SIBLINGS: [Field; 2] = [0, 0];
+
+#[test]
+fn verify_merkle_path_matches_frozen_kat() {
+    let leaf: [Field; 1] = [2];
+    let index: u32 = 1;
+    verify_merkle_path::<1, 2>(leaf, EXPECTED_PATH_SIBLINGS, index, EXPECTED_PATH_ROOT);
 }
