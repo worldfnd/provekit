@@ -9,9 +9,9 @@ Build a Noir circuit that verifies a ProveKit WHIR+Spartan proof generated under
 
 **Two-stage delivery.** Inner circuit choice is driven by perf budget: a tiny inner for v0 to land correctness end-to-end fast, then `complete_age_check` for v1.
 
-**v0 acceptance (inner: `noir-examples/poseidon2`):**
+**v0 acceptance (inner: `noir-examples/basic-2`):**
 
-1. `nargo execute --force` accepts a real Poseidon2-flavored proof of the `poseidon2` example (single Poseidon2 permutation with 4-field public input + 4-field public output).
+1. `nargo execute --force` accepts a real Poseidon2-flavored proof of the `basic-2` example (`assert(a*b + c + d == 10)` — a single R1CS constraint, no public inputs).
 2. The verifier circuit itself can be `prepare`d/`prove`d by `provekit-cli` and the resulting outer proof verified by the Rust verifier (one full wrap).
 3. **Stretch perf target:** outer prove (recursive verification) completes in **under 1 minute on Darwin ARM64 (the dev system)**. Correctness wins over hitting this target — if we miss, we land correctness and open v0.1 for perf.
 
@@ -21,9 +21,9 @@ Build a Noir circuit that verifies a ProveKit WHIR+Spartan proof generated under
 2. Adds the multi-commitment / LogUp-challenge code path (Phase 1 second commitment, Phase 4 challenge binding), which `poseidon2` doesn't exercise.
 3. Likely needs at least one round of verifier-circuit optimization to remain in human-tolerable prove time. <1 min is aspirational, not blocking.
 
-### Why `poseidon2` for v0 over `basic-2`
+### Why `basic-2` for v0 over `poseidon2`
 
-`basic-2` (`assert(a*b + c + d == 10)`) has no public inputs, so the verifier circuit's Phase-3 (public-input hash binding) path goes untested. `noir-examples/poseidon2` (`fn main(st: pub [Field; 4]) -> pub [Field; 4]`) is small but exercises (a) public inputs + return values (b) the Phase-3 binding (c) the same Poseidon2 dependency we're verifying against. Single permutation → tiny inner R1CS → tiny outer verifier R1CS → best chance at <1 min outer prove.
+**Updated 2026-05-19:** Original choice was `poseidon2` (4-field pub input + 4-field pub output) because it exercises the public-input binding path. Measurement showed `basic-2` is dramatically smaller (1 R1CS constraint vs 268, w1_size 5 vs 276), giving a much better shot at the <1 min stretch target. The trade-off: `basic-2` has `has_public_inputs = false`, so the integrated `main.nr` doesn't exercise `verify_public_input_hash` / `verify_public_eval`. Those modules are already individually verified via Phase 2B cross-impl KATs, so this isn't a soundness gap — just less end-to-end coverage. v1 (`complete_age_check`) re-exercises the public-input path.
 
 ## Non-goals (v0)
 
@@ -213,7 +213,7 @@ Noir has one error mode: constraint failure. There is no `Result`. The Rust veri
    - A second KAT covers `poseidon2_hash_bytes` (length-IV one-shot).
 2. **Per-module unit tests.** Noir `#[test]` per module where feasible: sponge absorb/squeeze roundtrip, sumcheck single-round acceptance, Merkle path verification on a hand-rolled tree.
 3. **End-to-end integration test** (`provekit/verifier-noir/tests/end_to_end.rs` or in `tooling/cli`):
-   - Run `provekit-cli prepare --hash poseidon2` on `noir-examples/poseidon2` (v0 inner).
+   - Run `provekit-cli prepare --hash poseidon2` on `noir-examples/basic-2` (v0 inner).
    - Run `prove` → `.np`.
    - Run `generate-noir-inputs` to emit `types.nr` / `matrices.nr` / `Prover.toml`.
    - Shell out to `nargo execute --force`. Assert exit 0.
@@ -224,7 +224,7 @@ Noir has one error mode: constraint failure. There is no `Result`. The Rust veri
    - Verify the outer proof with the Rust verifier. Assert success.
 5. **Perf baseline** (added for the <1 min stretch target):
    - Before any optimization work, measure on this Mac:
-     a. Inner prove time for `noir-examples/poseidon2` under `--hash poseidon2`.
+     a. Inner prove time for `noir-examples/basic-2` under `--hash poseidon2`.
      b. Outer prove time once the wrap closes.
    - Record both in `docs/superpowers/specs/2026-05-18-noir-recursive-verifier-design.md` after first successful wrap.
    - Drives v0.1 / v1 perf scoping; never gates v0 correctness.
@@ -235,7 +235,7 @@ Noir has one error mode: constraint failure. There is no `Result`. The Rust veri
 - **Blinding (zk) component is IN for v0.** Verifier consumes blinding-eval prover hint, blinding ood/queries, and the blinding covector. (If the <1 min target is missed, cutting blinding is the first optimization lever to evaluate for v0.1.)
 - **Poseidon2-only.** No runtime hash selection.
 - **Fixed folding factor + query counts** per inner circuit, baked via codegen.
-- **Inner circuit: `noir-examples/poseidon2` for v0, `complete_age_check` for v1.**
+- **Inner circuit: `noir-examples/basic-2` for v0, `complete_age_check` for v1.**
 
 ## Open risks
 
