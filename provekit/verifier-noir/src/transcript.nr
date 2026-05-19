@@ -96,23 +96,42 @@ impl Transcript {
     /// BN254: `base_field_modulus_bytes + 32 = 32 + 32`), then decodes the
     /// 64-byte buffer via `Fr::from_le_bytes_mod_order`.
     ///
-    /// Equivalent reduction in field terms: `lane0 + lane1 * (2^256 mod p)`.
-    /// The constant `R_2_POW_256_MOD_P` is precomputed via
+    /// **Byte-grain semantics (required for transcript fidelity).** When a
+    /// prior byte squeeze left `byte_buf` with N < 32 bytes remaining,
+    /// spongefish continues from that byte position -- it does NOT discard the
+    /// leftover and start a fresh lane. So a 64-byte Fr challenge after a
+    /// non-lane-aligned squeeze interleaves: the leftover bytes from
+    /// `byte_buf` first, then bytes from the next lane(s), then a partial
+    /// final lane if needed.
+    ///
+    /// Equivalent reduction in field terms (when squeeze_pos is lane-aligned
+    /// AND `byte_buf` is empty): `lane0 + lane1 * (2^256 mod p)`. The constant
+    /// `R_2_POW_256_MOD_P` is precomputed via
     /// `Fr::from_le_bytes_mod_order([0..32] || [1, 0..0])`. See
     /// `provekit/verifier-noir-test/tests/spongefish_squeeze_check.rs::
     /// verify_two_lane_combine_matches_spongefish` for the cross-check.
     ///
-    /// Prior behaviour squeezed ONE lane (32 bytes) per challenge, which
-    /// silently desynced the Noir transcript from the Rust verifier as soon
-    /// as any verifier challenge was squeezed. See
-    /// `tests/spongefish_squeeze_check.rs` for the diagnostic.
+    /// History:
+    ///   * v1 squeezed ONE lane (32 bytes) per challenge -- silently desynced
+    ///     as soon as any verifier challenge was squeezed.
+    ///   * v2 squeezed TWO lanes (64 bytes) per challenge, but DISCARDED any
+    ///     leftover bytes from a prior partial byte squeeze. This silently
+    ///     desynced after any 254-byte query-index squeeze (which ends at a
+    ///     non-lane boundary).
+    ///   * v3 (current) reads 64 bytes through the byte stream so squeeze_pos
+    ///     advances byte-by-byte exactly as in spongefish.
     pub fn squeeze_field(&mut self) -> Field {
-        // A field-grain squeeze discards any leftover bytes from a prior
-        // partial byte squeeze. Spongefish's lane-grain reads always advance
-        // to the next whole lane, so leftover sub-lane bytes are gone.
-        self.byte_buf_len = 0;
-        let lane0 = self.sponge.squeeze_lane();
-        let lane1 = self.sponge.squeeze_lane();
+        let bytes: [u8; 64] = self.squeeze_bytes_n::<64>();
+        // Equivalent to Fr::from_le_bytes_mod_order(&bytes), expressed in
+        // field arithmetic as low_32 + high_32 * (2^256 mod p).
+        let mut low: [u8; 32] = [0; 32];
+        let mut high: [u8; 32] = [0; 32];
+        for i in 0..32 {
+            low[i] = bytes[i];
+            high[i] = bytes[32 + i];
+        }
+        let lane0: Field = Field::from_le_bytes::<32>(low);
+        let lane1: Field = Field::from_le_bytes::<32>(high);
         lane0 + lane1 * R_2_POW_256_MOD_P
     }
 

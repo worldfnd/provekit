@@ -35,6 +35,12 @@ pub struct Args {
     /// (default: `provekit/verifier-noir`)
     #[argh(option, default = "PathBuf::from(\"provekit/verifier-noir\")")]
     out_dir: PathBuf,
+
+    /// dump the byte-grain transcript trace produced by replaying the Rust
+    /// verifier with a logging sponge, then exit. No codegen output is
+    /// written. Used for diagnosing desyncs against the Noir verifier.
+    #[argh(switch)]
+    trace: bool,
 }
 
 impl Command for Args {
@@ -221,6 +227,12 @@ impl Command for Args {
             "generate-noir-inputs v0 does not support multi-commit circuits (num_challenges = {})",
             scheme.num_challenges
         );
+
+        // --trace mode: dump the byte-grain transcript trace by re-running the
+        // verifier with a LoggingSponge and exit before any file output.
+        if self.trace {
+            return dump_transcript_trace(&verifier, scheme, &proof);
+        }
 
         // Emit types.nr
         let src_dir = self.out_dir.join("src");
@@ -425,11 +437,18 @@ fn emit_prover_toml(
     values.insert("blinding_eval".to_string(), TomlValue::Field(blinding_eval));
 
     // Step 3 (no challenges).
-    // Step 4: public-inputs hash absorbed only when public_inputs.len() > 0.
-    if !proof.public_inputs.is_empty() {
-        let _public_hash = p.read_field()?;
-        // Not exposed to main.nr today; placeholder for future codegen.
-    }
+    // Step 4: public-inputs hash. The Rust prover UNCONDITIONALLY writes a
+    // public_inputs_hash field via `merlin.prover_message(&public_inputs_hash)`
+    // (see `prover/src/whir_r1cs.rs::get_public_weights`), so the verifier
+    // UNCONDITIONALLY reads it via `arthur.prover_message()?`. Even for
+    // shapes with NUM_PUBLIC_INPUTS = 0 the field is present in the narg
+    // stream and must be absorbed into the transcript -- skipping it causes
+    // every downstream absorb to use the wrong bytes (off-by-32 desync).
+    let public_inputs_hash = p.read_field()?;
+    values.insert(
+        "public_inputs_hash".to_string(),
+        TomlValue::Field(public_inputs_hash),
+    );
 
     // Step 5: A/B/C evals.
     let evals_az = p.read_field()?;
@@ -614,6 +633,196 @@ fn emit_prover_toml(
         out.push_str(&format!("{} = {}\n", k, v.format()));
     }
     Ok(out)
+}
+
+/// Replay the Rust verify flow against the basic-2 proof with a `LoggingSponge`
+/// and dump every absorb/squeeze op to stdout in order. Used as a diagnostic
+/// for transcript desyncs between the Rust verifier and the Noir verifier.
+///
+/// Scope: only the v0 path (single commitment, Poseidon2, no challenges). The
+/// implementation mirrors `WhirR1CSScheme::verify` step by step but stops at
+/// the witness-side WHIR LDT round-0 PoW (where the current Noir verifier
+/// fails). All earlier ops are dumped so a desync can be located by diff
+/// against an analogous Noir-side replay.
+fn dump_transcript_trace(
+    verifier: &Verifier,
+    scheme: &provekit_common::WhirR1CSScheme,
+    proof: &NoirProof,
+) -> Result<()> {
+    use whir::transcript::{Proof, VerifierMessage, VerifierState};
+
+    provekit_common::register_ntt();
+
+    let instance = proof.public_inputs.hash_bytes(verifier.hash_config);
+    let ds = scheme.create_domain_separator().instance(&instance);
+    let whir_proof = Proof {
+        narg_string: proof.whir_r1cs_proof.narg_string.clone(),
+        hints:       proof.whir_r1cs_proof.hints.clone(),
+        #[cfg(debug_assertions)]
+        pattern:     proof.whir_r1cs_proof.pattern.clone(),
+    };
+
+    let logging = LoggingSponge::default();
+    let log_handle = logging.log.clone();
+    let mut arthur = VerifierState::new(&ds, &whir_proof, logging);
+
+    let mut op_index = 0usize;
+    let mut dump = |label: &str, log: &Rc<RefCell<Vec<SpongeOp>>>| {
+        let mut log_mut = log.borrow_mut();
+        while op_index < log_mut.len() {
+            let op = log_mut[op_index].clone();
+            let prefix = if op_index == 0 {
+                format!("[{}]", label)
+            } else {
+                "         ".to_string()
+            };
+            match &op {
+                SpongeOp::Absorb(bytes) => {
+                    println!(
+                        "op {:>4} {} ABSORB ({:>3} bytes) {}",
+                        op_index,
+                        prefix,
+                        bytes.len(),
+                        hex_short(bytes),
+                    );
+                }
+                SpongeOp::Squeeze(n) => {
+                    println!("op {:>4} {} SQUEEZE ({:>3} bytes)", op_index, prefix, n);
+                }
+                SpongeOp::Ratchet => {
+                    println!("op {:>4} {} RATCHET", op_index, prefix);
+                }
+            }
+            op_index += 1;
+        }
+        let _ = label;
+        drop(log_mut);
+    };
+
+    println!("=== Transcript trace for basic-2 verify flow ===");
+    dump("DS_INIT", &log_handle);
+
+    // Step 1: receive_commitments(1).
+    let commitment_1 = scheme
+        .whir_witness
+        .receive_commitments(&mut arthur, 1)
+        .map_err(|_| anyhow::anyhow!("failed receive_commitments(1)"))?;
+    dump("receive_commitments(1)", &log_handle);
+
+    // Step 2: Spartan sumcheck (inline replay of run_sumcheck_verifier).
+    let _r: Vec<ark_bn254::Fr> = arthur.verifier_message_vec(scheme.m_0);
+    let _sum_g: ark_bn254::Fr = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed to read sum_g"))?;
+    let _rho: ark_bn254::Fr = arthur.verifier_message();
+    for _ in 0..scheme.m_0 {
+        let _h0: ark_bn254::Fr = arthur.prover_message().unwrap();
+        let _h1: ark_bn254::Fr = arthur.prover_message().unwrap();
+        let _h2: ark_bn254::Fr = arthur.prover_message().unwrap();
+        let _h3: ark_bn254::Fr = arthur.prover_message().unwrap();
+        let _alpha: ark_bn254::Fr = arthur.verifier_message();
+    }
+    let _blinding_eval: ark_bn254::Fr = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed to read blinding_eval"))?;
+    dump("spartan_sumcheck", &log_handle);
+
+    // Step 3: public_inputs_hash absorb (unconditional).
+    let _pih: ark_bn254::Fr = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed to read public_inputs_hash"))?;
+    dump("public_inputs_hash", &log_handle);
+
+    // Step 4: squeeze x.
+    let _x: ark_bn254::Fr = arthur.verifier_message();
+    dump("squeeze_x", &log_handle);
+
+    // Step 5: 3 evals (az, bz, cz).
+    let az: ark_bn254::Fr = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed to read evals_az"))?;
+    let bz: ark_bn254::Fr = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed to read evals_bz"))?;
+    let cz: ark_bn254::Fr = arthur
+        .prover_message()
+        .map_err(|_| anyhow::anyhow!("failed to read evals_cz"))?;
+    dump("evals_az_bz_cz", &log_handle);
+
+    // Step 6+: call the real zkWHIR verify with our logging sponge. We need
+    // valid `weights` and `evaluations`. Build them as the real verifier does.
+    use provekit_common::{
+        prefix_covector::{build_prefix_covectors, expand_powers, OffsetCovector},
+        utils::sumcheck::{multiply_transposed_by_eq_alpha, transpose_r1cs_matrices},
+    };
+    use whir::algebra::linear_form::LinearForm;
+
+    // Re-do Spartan to get `alpha` since we need it; we already consumed the
+    // narg, so we need to redo. Actually we already squeezed `alpha_0` from the
+    // verifier. Let's reconstruct it by replaying narg bytes:
+    // This is a hack -- we don't bother reconstructing. We just call the real
+    // whir_witness.verify here using DUMMY weights/evaluations.
+    //
+    // Since whir.verify consumes the transcript regardless of weight
+    // correctness, the trace will still capture all ops. The final assertion
+    // (linear form matching) might fail but we just want the trace.
+
+    // Build alphas (3 vectors) from Spartan's alpha (which we discarded but we
+    // need to reconstruct). Simplest: just provide empty/zero alphas. The
+    // result evaluations won't match but the transcript flow is the same.
+
+    let (at, bt, ct) = transpose_r1cs_matrices(&verifier.r1cs);
+    let dummy_alpha = vec![ark_bn254::Fr::from(0u64); scheme.m_0];
+    let alphas = multiply_transposed_by_eq_alpha(&at, &bt, &ct, &dummy_alpha, &verifier.r1cs);
+    let blinding_eval = ark_bn254::Fr::from(0u64);
+    let blinding_weights = expand_powers::<4>(&dummy_alpha);
+    let domain_size = 1usize << scheme.m;
+    let blinding_covector = OffsetCovector::new(blinding_weights, scheme.w1_size, domain_size);
+    let mut weights = build_prefix_covectors(scheme.m, alphas);
+    // No public inputs for basic-2.
+    let mut evaluations = vec![az, bz, cz];
+    evaluations.push(blinding_eval);
+    let mut weight_refs: Vec<&dyn LinearForm<ark_bn254::Fr>> = weights
+        .iter()
+        .map(|w| w as &dyn LinearForm<ark_bn254::Fr>)
+        .collect();
+    weight_refs.push(&blinding_covector as &dyn LinearForm<ark_bn254::Fr>);
+
+    eprintln!("about to call whir_witness.verify...");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        scheme.whir_witness.verify(&mut arthur, &weight_refs, &evaluations, &commitment_1)
+    }));
+    match &result {
+        Ok(Ok(_)) => eprintln!("whir_witness.verify OK"),
+        Ok(Err(_)) => eprintln!("whir_witness.verify returned Err"),
+        Err(_) => eprintln!("whir_witness.verify PANICKED"),
+    }
+    dump("whir_witness.verify", &log_handle);
+
+    // Continue replaying the blinding-side WHIR LDT manually with fresh
+    // dummy weights/evaluations to capture transcript ops.
+    // (Actually: since `whir_zk::verify` consumes commitments.blinding
+    // internally, we don't repeat that here. The trace already includes
+    // anything `verify` performed up to its early-exit Err point.)
+
+    println!("=== trace stopped after full zkWHIR verify ===");
+    println!("ops captured: {}", op_index);
+    drop(weights);
+
+    Ok(())
+}
+
+/// Render the first up-to-16 bytes of a byte slice as ASCII hex for the trace.
+fn hex_short(bytes: &[u8]) -> String {
+    let n = bytes.len().min(16);
+    let mut out = String::with_capacity(n * 2 + 4);
+    for b in &bytes[..n] {
+        out.push_str(&format!("{:02x}", b));
+    }
+    if bytes.len() > n {
+        out.push_str("...");
+    }
+    out
 }
 
 /// A logging wrapper around `Poseidon2Sponge` that records every byte

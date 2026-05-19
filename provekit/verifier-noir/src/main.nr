@@ -78,6 +78,14 @@ fn main(
     sumcheck_h_polys: [[Field; SUMCHECK_POLY_COEFFS]; M_0],
     blinding_eval: Field,
 
+    // --- Public-inputs hash (UNCONDITIONALLY written by Rust prover) ---
+    // The Rust prover writes `public_inputs.hash(scheme.hash_config)` to the
+    // narg stream regardless of whether NUM_PUBLIC_INPUTS == 0, and the Rust
+    // verifier UNCONDITIONALLY reads it before squeezing `x`. The Noir
+    // verifier must absorb the same value here -- skipping it causes a 32-byte
+    // off-by-one in every downstream absorb (cascading desync).
+    public_inputs_hash: Field,
+
     // --- Outer Spartan: A/B/C evaluation hints ---
     evals_az: Field,
     evals_bz: Field,
@@ -179,8 +187,21 @@ fn main(
         blinding_eval,
     );
 
-    // Step 5: NUM_PUBLIC_INPUTS = 0 for basic-2 -- skip the public input
-    // hash absorb and binding check.
+    // -------------------------------------------------------------------
+    // Step 5: Absorb the public_inputs_hash.
+    //
+    // The Rust prover UNCONDITIONALLY writes
+    // `public_inputs.hash(scheme.hash_config)` to the narg stream (see
+    // `prover/src/whir_r1cs.rs::get_public_weights`), and the Rust verifier
+    // UNCONDITIONALLY reads it via `arthur.prover_message()?` BEFORE squeezing
+    // `x`. We mirror that here.
+    //
+    // TODO(soundness): for NUM_PUBLIC_INPUTS > 0 we must (a) recompute the
+    // expected hash in-circuit (see `public_input.nr::compute_public_hash`)
+    // and assert equality, and (b) call `verify_public_input_binding` once the
+    // (stubbed) inner WHIR LDT exposes `public_eval`. For basic-2 we only need
+    // the absorb so the downstream transcript bytes line up.
+    t.absorb_field(public_inputs_hash);
 
     // -------------------------------------------------------------------
     // Step 6: Squeeze the random batching challenge `x`.
