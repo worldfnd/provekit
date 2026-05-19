@@ -56,7 +56,14 @@ impl Sponge {
 
     /// Squeeze one field element. Permutes if the rate has been fully drained
     /// (matches spongefish lines 224-227).
-    pub fn squeeze_field(&mut self) -> Field {
+    ///
+    /// NOTE: this returns ONE rate lane (32 bytes interpreted as Fr). The
+    /// lane-grain sponge is byte-equivalent to spongefish at lane boundaries
+    /// only; callers wanting a uniform Fr challenge (as spongefish's
+    /// `verifier_message::<Fr>()` produces) should use `squeeze_lane` and
+    /// combine TWO lanes via `Transcript::squeeze_field`. See
+    /// `transcript.nr::squeeze_field` for the full 64-byte challenge.
+    pub fn squeeze_lane(&mut self) -> Field {
         // Reset absorb mode (spongefish line 222).
         self.absorb_pos = 0;
 
@@ -68,6 +75,14 @@ impl Sponge {
         let out = self.state[self.squeeze_pos];
         self.squeeze_pos += 1;
         out
+    }
+
+    /// Backwards-compat alias: existing tests still use single-lane
+    /// `squeeze_field`. New transcript code should call `squeeze_lane`
+    /// explicitly when it wants raw lane bytes, or `Transcript::squeeze_field`
+    /// for a 64-byte uniform Fr challenge.
+    pub fn squeeze_field(&mut self) -> Field {
+        self.squeeze_lane()
     }
 }
 
