@@ -15,5 +15,6 @@ mod public_input;
 
 mod types;
 mod matrices;
+mod whir;
 
 fn main() {}

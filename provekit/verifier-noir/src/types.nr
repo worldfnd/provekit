@@ -13,3 +13,14 @@ global NUM_CONSTRAINTS: u32 = 1;
 global NUM_WITNESSES: u32 = 5;
 global LOG_NUM_CONSTRAINTS: u32 = 0;
 global LOG_NUM_WITNESSES: u32 = 3;
+
+// WHIR protocol shape (witness-side blinded commitment).
+global NUM_WITNESS_VARIABLES: u32 = 13;
+global NUM_BLINDING_VARIABLES: u32 = 11;
+global NUM_WHIR_ROUNDS: u32 = 3;
+global INITIAL_FOLDING_FACTOR: u32 = 3;
+global INITIAL_OOD_COUNT: u32 = 1;
+global INITIAL_QUERY_COUNT: u32 = 127;
+global INITIAL_SUMCHECK_ROUNDS: u32 = 3;
+global FINAL_SUMCHECK_ROUNDS: u32 = 1;
+global FINAL_POW_BITS: u32 = 7;

@@ -4749,6 +4749,7 @@ dependencies = [
  "ark-ff 0.5.0",
  "poseidon2",
  "provekit-common",
+ "sha2 0.10.9",
  "spongefish",
 ]
 
