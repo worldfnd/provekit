@@ -28,3 +28,45 @@ fn verify_pow_stub_smoke() {
     verify_pow_stub(&mut t, 42);
     // The stub never asserts; test passes if it returns.
 }
+
+/// Commitment received from the prover: a Merkle root and a fixed number
+/// of out-of-domain (OOD) evaluations.
+pub struct Commitment<let OOD_COUNT: u32> {
+    pub root: Field,
+    pub ood_evals: [Field; OOD_COUNT],
+}
+
+/// Absorb a commitment into the transcript: root first, then each OOD eval
+/// in order. Matches `whir::protocols::irs_commit::Committer::receive_commitment`.
+pub fn receive_commitment<let OOD_COUNT: u32>(
+    transcript: &mut crate::transcript::Transcript,
+    commitment: Commitment<OOD_COUNT>,
+) {
+    transcript.absorb_field(commitment.root);
+    for i in 0..OOD_COUNT {
+        transcript.absorb_field(commitment.ood_evals[i]);
+    }
+}
+
+// --- in-circuit commitment receive KAT ---
+//
+// Canonical sequence:
+//   transcript = Transcript::new()
+//   commitment = { root: 100, ood_evals: [200, 300] }
+//   receive_commitment(&mut t, commitment)
+//   challenge = t.squeeze_field()  // verify the absorb desync would change this
+//
+// EXPECTED_RECEIVE_CHALLENGE freezes the post-absorb squeezed challenge.
+global EXPECTED_RECEIVE_CHALLENGE: Field = 15482865631404602010586643531248511548722443393982267905029295042944073245539;
+
+#[test]
+fn receive_commitment_matches_frozen_kat() {
+    let mut t = crate::transcript::Transcript::new();
+    let commitment = Commitment::<2> {
+        root: 100,
+        ood_evals: [200, 300],
+    };
+    receive_commitment::<2>(&mut t, commitment);
+    let challenge = t.squeeze_field();
+    assert(challenge == EXPECTED_RECEIVE_CHALLENGE);
+}

@@ -437,6 +437,18 @@ pub fn mle_evaluate_kat_expected() -> Fr {
     acc
 }
 
+/// Replay the commitment-receive sequence in Rust: fresh sponge, absorb
+/// root then OOD evals, squeeze 1 challenge. Returns the squeezed challenge.
+pub fn commitment_receive_kat_expected() -> Fr {
+    // Fresh transcript = lane sponge with state=[0;4], absorb_pos=0, squeeze_pos=3 (RATE).
+    let state = [Fr::from(0u64); 4];
+    let absorb_pos: u32 = 0;
+    let squeeze_pos: u32 = 3;
+    let absorbs = [Fr::from(100u64), Fr::from(200u64), Fr::from(300u64)];
+    let squeezes = lane_sponge_replay(state, absorb_pos, squeeze_pos, &absorbs, 1);
+    squeezes[0]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -551,6 +563,12 @@ mod tests {
         let expected = squeeze_bytes_kat_expected();
         let joined: Vec<String> = expected.iter().map(|b| b.to_string()).collect();
         println!("EXPECTED_SQUEEZE_BYTES_KAT = [{}]", joined.join(", "));
+    }
+
+    #[test]
+    fn print_commitment_receive_kat_expected_for_noir() {
+        let chal = commitment_receive_kat_expected();
+        println!("EXPECTED_RECEIVE_CHALLENGE = {}", fr_to_noir_literal(chal));
     }
 
     /// Spongefish equivalence sanity check: when we squeeze 32-byte aligned
