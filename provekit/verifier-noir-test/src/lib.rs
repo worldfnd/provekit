@@ -481,16 +481,73 @@ pub fn mle_evaluate_kat_expected() -> Fr {
     acc
 }
 
-/// Replay the commitment-receive sequence in Rust: fresh sponge, absorb
-/// root then OOD evals, squeeze 1 challenge. Returns the squeezed challenge.
+/// Replay the commitment-receive sequence in Rust: fresh sponge, absorb root,
+/// squeeze OOD_COUNT ood_points, absorb OOD evals, squeeze 1 challenge.
+///
+/// Updated to match the corrected `receive_commitment` which now squeezes
+/// OOD challenge points between the root absorb and the OOD evals absorb,
+/// matching `whir::protocols::irs_commit::Committer::receive_commitment`.
+///
+/// For the KAT (OOD_COUNT=2): absorb root=100, squeeze 2 OOD points,
+/// absorb ood_evals=[200, 300], squeeze 1 final challenge.
 pub fn commitment_receive_kat_expected() -> Fr {
+    const RATE: u32 = 3;
+
     // Fresh transcript = lane sponge with state=[0;4], absorb_pos=0, squeeze_pos=3 (RATE).
-    let state = [Fr::from(0u64); 4];
-    let absorb_pos: u32 = 0;
-    let squeeze_pos: u32 = 3;
-    let absorbs = [Fr::from(100u64), Fr::from(200u64), Fr::from(300u64)];
-    let squeezes = lane_sponge_replay(state, absorb_pos, squeeze_pos, &absorbs, 1);
-    squeezes[0]
+    let mut state = [Fr::from(0u64); 4];
+    let mut absorb_pos: u32 = 0;
+    let mut squeeze_pos: u32 = RATE;
+
+    // Step 1: absorb root (100).
+    lane_absorb_one(&mut state, &mut absorb_pos, &mut squeeze_pos, Fr::from(100u64));
+
+    // Step 2: squeeze 2 OOD challenge points (advance state; values discarded for KAT).
+    for _ in 0..2 {
+        lane_squeeze_one(&mut state, &mut absorb_pos, &mut squeeze_pos);
+    }
+
+    // Step 3: absorb OOD evals [200, 300].
+    lane_absorb_one(&mut state, &mut absorb_pos, &mut squeeze_pos, Fr::from(200u64));
+    lane_absorb_one(&mut state, &mut absorb_pos, &mut squeeze_pos, Fr::from(300u64));
+
+    // Step 4: squeeze the final challenge.
+    lane_squeeze_one(&mut state, &mut absorb_pos, &mut squeeze_pos)
+}
+
+/// Absorb one field element into the lane-grain duplex sponge (in-place).
+/// Mirrors `sumcheck_absorb_one` / the absorb branch of `lane_sponge_replay`.
+pub fn lane_absorb_one(
+    state: &mut [Fr; 4],
+    absorb_pos: &mut u32,
+    squeeze_pos: &mut u32,
+    fe: Fr,
+) {
+    const RATE: u32 = 3;
+    *squeeze_pos = RATE;
+    if *absorb_pos == RATE {
+        *state = poseidon2::permutation::poseidon2_permutation(state);
+        *absorb_pos = 0;
+    }
+    state[*absorb_pos as usize] = fe;
+    *absorb_pos += 1;
+}
+
+/// Squeeze one field element from the lane-grain duplex sponge (in-place).
+/// Mirrors `sumcheck_squeeze_one` / the squeeze branch of `lane_sponge_replay`.
+pub fn lane_squeeze_one(
+    state: &mut [Fr; 4],
+    absorb_pos: &mut u32,
+    squeeze_pos: &mut u32,
+) -> Fr {
+    const RATE: u32 = 3;
+    *absorb_pos = 0;
+    if *squeeze_pos == RATE {
+        *squeeze_pos = 0;
+        *state = poseidon2::permutation::poseidon2_permutation(state);
+    }
+    let out = state[*squeeze_pos as usize];
+    *squeeze_pos += 1;
+    out
 }
 
 #[cfg(test)]

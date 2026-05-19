@@ -31,9 +31,9 @@ use crate::matrix_eval::multiply_matrix_by_eq;
 use crate::sumcheck::{calculate_eq, run_sumcheck_verifier};
 use crate::transcript::Transcript;
 use crate::types::{
-    FINAL_POW_BITS, FINAL_SUMCHECK_ROUNDS, INITIAL_OOD_COUNT, INITIAL_SUMCHECK_ROUNDS,
-    M_0, NUM_CONSTRAINTS, NUM_WHIR_ROUNDS, NUM_WITNESSES,
-    ROUND_POW_BITS_0, ROUND_POW_BITS_1, ROUND_POW_BITS_2,
+    BLINDING_OOD_COUNT, BLINDING_OOD_POINTS, FINAL_POW_BITS, FINAL_SUMCHECK_ROUNDS,
+    INITIAL_OOD_COUNT, INITIAL_SUMCHECK_ROUNDS, M_0, NUM_CONSTRAINTS, NUM_WHIR_ROUNDS,
+    NUM_WITNESSES, ROUND_POW_BITS_0, ROUND_POW_BITS_1, ROUND_POW_BITS_2,
     SUMCHECK_POLY_COEFFS, W_FOLDED_BLINDING_EVALS_LEN,
 };
 use crate::whir::{receive_commitment, verify_pow, Commitment};
@@ -60,9 +60,15 @@ fn main(
     pre_absorbed_absorb_pos: u32,
     pre_absorbed_squeeze_pos: u32,
 
-    // --- Outer Spartan: commitment 1 (witness-side IRS commitment) ---
+    // --- Outer Spartan: commitment 1a (witness-side blinded IRS commitment) ---
     initial_root: Field,
     initial_ood_evals: [Field; INITIAL_OOD_COUNT],
+
+    // --- Outer Spartan: commitment 1b (blinding-side IRS commitment) ---
+    // Part of `receive_commitments(_, 1)` in the Rust verifier: both the
+    // blinded and blinding commitments are absorbed before the Spartan sumcheck.
+    blinding_initial_root: Field,
+    blinding_initial_ood_evals: [Field; BLINDING_OOD_COUNT],
 
     // --- Outer Spartan: sumcheck prover messages ---
     sum_g: Field,
@@ -134,11 +140,24 @@ fn main(
     // Step 2: Receive the witness-side initial IRS commitment (root +
     // INITIAL_OOD_COUNT OOD evaluations).
     // -------------------------------------------------------------------
-    let commitment_1 = Commitment::<INITIAL_OOD_COUNT> {
+    // INITIAL_OOD_COUNT = out_domain_samples = num_vectors = 1 for the blinded commitment.
+    let commitment_1 = Commitment::<INITIAL_OOD_COUNT, INITIAL_OOD_COUNT> {
         root: initial_root,
         ood_evals: initial_ood_evals,
     };
-    receive_commitment::<INITIAL_OOD_COUNT>(&mut t, commitment_1);
+    // ood_points discarded: in-domain consistency checks are stubbed (TODO(soundness)).
+    let _ood_points_1 = receive_commitment::<INITIAL_OOD_COUNT, INITIAL_OOD_COUNT>(&mut t, commitment_1);
+
+    // Step 2b: Receive the blinding-side commitment (also part of
+    // `receive_commitments(_, 1)` in the Rust verifier: absorbs root,
+    // squeezes OOD points, absorbs OOD evals).
+    // BLINDING_OOD_POINTS = out_domain_samples, BLINDING_OOD_COUNT = out_domain_samples * num_vectors.
+    let blinding_commitment_1 = Commitment::<BLINDING_OOD_POINTS, BLINDING_OOD_COUNT> {
+        root: blinding_initial_root,
+        ood_evals: blinding_initial_ood_evals,
+    };
+    // ood_points discarded: in-domain consistency checks are stubbed (TODO(soundness)).
+    let _ood_points_blinding_1 = receive_commitment::<BLINDING_OOD_POINTS, BLINDING_OOD_COUNT>(&mut t, blinding_commitment_1);
 
     // Step 3: NUM_CHALLENGES = 0 for basic-2 -- skip the LogUp branch.
 
@@ -217,11 +236,12 @@ fn main(
     let _masking_challenge: Field = t.squeeze_field();
 
     // 9d. Receive the witness-side initial WHIR commitment.
-    let witness_initial_commitment = Commitment::<INITIAL_OOD_COUNT> {
+    let witness_initial_commitment = Commitment::<INITIAL_OOD_COUNT, INITIAL_OOD_COUNT> {
         root: witness_initial_root,
         ood_evals: witness_initial_ood_evals,
     };
-    receive_commitment::<INITIAL_OOD_COUNT>(&mut t, witness_initial_commitment);
+    // ood_points discarded: in-domain consistency checks are stubbed (TODO(soundness)).
+    let _ood_points_witness = receive_commitment::<INITIAL_OOD_COUNT, INITIAL_OOD_COUNT>(&mut t, witness_initial_commitment);
 
     // 9e. Compute h_gammas (OOD points expanded into coset points).
     // TODO(soundness): real h_gammas come from `initial_in_domain.points`

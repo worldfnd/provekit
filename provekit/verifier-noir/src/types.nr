@@ -20,6 +20,13 @@ pub global NUM_BLINDING_VARIABLES: u32 = 11;
 pub global NUM_WHIR_ROUNDS: u32 = 3;
 pub global INITIAL_FOLDING_FACTOR: u32 = 3;
 pub global INITIAL_OOD_COUNT: u32 = 1;
+// OOD challenge points squeezed for the blinding-side initial commitment
+// (= out_domain_samples; part of the zkWHIR outer receive_commitments call
+// before the Spartan sumcheck).
+pub global BLINDING_OOD_POINTS: u32 = 1;
+// OOD evaluations absorbed for the blinding-side initial commitment
+// (= out_domain_samples * num_vectors).
+pub global BLINDING_OOD_COUNT: u32 = 14;
 pub global INITIAL_QUERY_COUNT: u32 = 127;
 pub global INITIAL_SUMCHECK_ROUNDS: u32 = 3;
 pub global FINAL_SUMCHECK_ROUNDS: u32 = 1;

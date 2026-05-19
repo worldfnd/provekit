@@ -101,42 +101,70 @@ fn verify_pow_matches_frozen_kat() {
 
 /// Commitment received from the prover: a Merkle root and a fixed number
 /// of out-of-domain (OOD) evaluations.
-pub struct Commitment<let OOD_COUNT: u32> {
+///
+/// `OOD_POINTS` is the number of OOD challenge points squeezed from the
+/// transcript (`out_domain_samples` in the Rust IRS committer).
+/// `OOD_EVALS` is the number of OOD evaluations absorbed from the prover
+/// (`out_domain_samples * num_vectors` in the Rust IRS committer).
+/// For single-vector commitments (num_vectors=1) these are equal.
+pub struct Commitment<let OOD_POINTS: u32, let OOD_EVALS: u32> {
     pub root: Field,
-    pub ood_evals: [Field; OOD_COUNT],
+    pub ood_evals: [Field; OOD_EVALS],
 }
 
-/// Absorb a commitment into the transcript: root first, then each OOD eval
-/// in order. Matches `whir::protocols::irs_commit::Committer::receive_commitment`.
-pub fn receive_commitment<let OOD_COUNT: u32>(
+/// Absorb a commitment into the transcript and return the squeezed OOD
+/// challenge points.
+///
+/// Sequence (matches `whir::protocols::irs_commit::Committer::receive_commitment`):
+///   1. Absorb the Merkle root.
+///   2. Squeeze OOD_POINTS challenge points (verifier randomness for
+///      out-of-domain evaluation requests; count = `out_domain_samples`).
+///   3. Absorb the OOD_EVALS prover-supplied evaluations
+///      (count = `out_domain_samples * num_vectors`).
+///
+/// The returned `ood_points` are needed for in-domain consistency checks
+/// inside the full WHIR LDT; callers may discard them while those atoms are
+/// still stubbed.
+pub fn receive_commitment<let OOD_POINTS: u32, let OOD_EVALS: u32>(
     transcript: &mut crate::transcript::Transcript,
-    commitment: Commitment<OOD_COUNT>,
-) {
+    commitment: Commitment<OOD_POINTS, OOD_EVALS>,
+) -> [Field; OOD_POINTS] {
     transcript.absorb_field(commitment.root);
-    for i in 0..OOD_COUNT {
+    // Squeeze the OOD challenge points (matches `irs_commit::Committer::receive_commitment`).
+    let mut ood_points: [Field; OOD_POINTS] = [0; OOD_POINTS];
+    for i in 0..OOD_POINTS {
+        ood_points[i] = transcript.squeeze_field();
+    }
+    // Absorb the prover-supplied OOD evaluations.
+    for i in 0..OOD_EVALS {
         transcript.absorb_field(commitment.ood_evals[i]);
     }
+    ood_points
 }
 
 // --- in-circuit commitment receive KAT ---
 //
-// Canonical sequence:
+// Canonical sequence (matches corrected `receive_commitment`):
 //   transcript = Transcript::new()
 //   commitment = { root: 100, ood_evals: [200, 300] }
-//   receive_commitment(&mut t, commitment)
-//   challenge = t.squeeze_field()  // verify the absorb desync would change this
+//   ood_points = receive_commitment(&mut t, commitment)
+//     -> absorb root(100), squeeze 2 ood_points, absorb evals[200, 300]
+//   challenge = t.squeeze_field()
 //
-// EXPECTED_RECEIVE_CHALLENGE freezes the post-absorb squeezed challenge.
-global EXPECTED_RECEIVE_CHALLENGE: Field = 15482865631404602010586643531248511548722443393982267905029295042944073245539;
+// EXPECTED_RECEIVE_CHALLENGE freezes the final squeezed challenge after the
+// full corrected sequence (root absorb + OOD squeeze + OOD evals absorb).
+// Derived by `commitment_receive_kat_expected()` in provekit-verifier-noir-test.
+global EXPECTED_RECEIVE_CHALLENGE: Field = 21420450511234111622328513418606237610649244099245134324913491629784062739918;
 
 #[test]
 fn receive_commitment_matches_frozen_kat() {
     let mut t = crate::transcript::Transcript::new();
-    let commitment = Commitment::<2> {
+    // OOD_POINTS=2, OOD_EVALS=2 (single-vector: out_domain_samples=2, num_vectors=1).
+    let commitment = Commitment::<2, 2> {
         root: 100,
         ood_evals: [200, 300],
     };
-    receive_commitment::<2>(&mut t, commitment);
+    let _ood_points = receive_commitment::<2, 2>(&mut t, commitment);
     let challenge = t.squeeze_field();
     assert(challenge == EXPECTED_RECEIVE_CHALLENGE);
 }
