@@ -31,12 +31,15 @@ use crate::matrix_eval::multiply_matrix_by_eq;
 use crate::sumcheck::{calculate_eq, run_sumcheck_verifier};
 use crate::transcript::Transcript;
 use crate::types::{
-    BLINDING_OOD_COUNT, BLINDING_OOD_POINTS, FINAL_POW_BITS, FINAL_SUMCHECK_ROUNDS,
-    INITIAL_OOD_COUNT, INITIAL_SUMCHECK_ROUNDS, M_0, NUM_CONSTRAINTS, NUM_WHIR_ROUNDS,
-    NUM_WITNESSES, ROUND_POW_BITS_0, ROUND_POW_BITS_1, ROUND_POW_BITS_2,
+    BLINDING_OOD_COUNT, BLINDING_OOD_POINTS, FINAL_POW_THRESHOLD, FINAL_SUMCHECK_ROUNDS,
+    FINAL_VECTOR_LEN, INITIAL_OOD_COUNT, INITIAL_SUMCHECK_ROUNDS, M_0, NUM_CONSTRAINTS,
+    NUM_WHIR_ROUNDS, NUM_WITNESSES, QUERY_BYTES_TOTAL_0, QUERY_BYTES_TOTAL_1, QUERY_BYTES_TOTAL_2,
+    QUERY_BYTES_TOTAL_FINAL, ROUND_POW_THRESHOLD_0, ROUND_POW_THRESHOLD_1, ROUND_POW_THRESHOLD_2,
     SUMCHECK_POLY_COEFFS, W_FOLDED_BLINDING_EVALS_LEN,
 };
-use crate::whir::{receive_commitment, verify_pow, Commitment};
+use crate::whir::{
+    inner_sumcheck_round, receive_commitment, stub_prev_commit_open, verify_pow, Commitment,
+};
 
 /// Bundle of all witness-side proof data the verifier consumes.
 ///
@@ -84,9 +87,9 @@ fn main(
     // Absorbed `w_folded_blinding_evals` (witness x polys x (num_witness_vars+1)).
     w_folded_blinding_evals: [Field; W_FOLDED_BLINDING_EVALS_LEN],
 
-    // Initial WHIR commitment for the witness-side blinded commitment.
-    witness_initial_root: Field,
-    witness_initial_ood_evals: [Field; INITIAL_OOD_COUNT],
+    // (Removed: phantom witness_initial_root/witness_initial_ood_evals. The
+    // Rust verifier does NOT do a second receive_commitment here -- it calls
+    // `initial_committer.verify` which only squeezes query-index bytes.)
 
     // Per-h_gamma per-poly: m_eval + 13 g_hat_evals. h_gammas =
     //   INITIAL_OOD_COUNT * INTERLEAVING_DEPTH = 1 * 8 = 8 for basic-2.
@@ -100,31 +103,36 @@ fn main(
     combined_claims: [Field; 1],
     batched_h_claims: [Field; 1],
 
-    // --- WHIR inner-LDT prover messages (STUBBED, absorbed only) ---
-    // TODO(soundness): These messages currently flow only through the
-    // transcript -- no Merkle path verification, no in-domain consistency,
-    // no inner-sumcheck-with-folding is performed.
+    // --- WHIR inner-LDT prover messages ---
     //
-    // For each of NUM_WHIR_ROUNDS rounds we expect:
-    //   - a Merkle root         (Field)
-    //   - INITIAL_OOD_COUNT     OOD evaluations
-    //   - INITIAL_SUMCHECK_ROUNDS sumcheck round polynomials, each 4 coeffs
-    //   - a PoW nonce           (u64 packed into [u8;8])
+    // For each WHIR round we receive (in transcript order):
+    //   * Merkle root + INITIAL_OOD_COUNT OOD evals (receive_commitment)
+    //   * PoW nonce for round_config.pow
+    //   * INITIAL_SUMCHECK_ROUNDS quadratic-sumcheck round pairs (c0, c2),
+    //     each round 2 Field elements
+    //
+    // The "previous-round Merkle opening" step is STUBBED: the verifier
+    // squeezes QUERY_BYTES_TOTAL_k bytes from the transcript (matches
+    // `challenge_indices`) but does not consume any narg fields here.
+
+    // Initial-sumcheck polynomials (executed BEFORE the WHIR round loop in
+    // the Rust verifier). INITIAL_SUMCHECK_ROUNDS rounds * 2 fields per round.
+    initial_sumcheck_polys: [[Field; 2]; INITIAL_SUMCHECK_ROUNDS],
+
+    // Per-WHIR-round inputs.
     whir_round_roots: [Field; NUM_WHIR_ROUNDS],
     whir_round_ood_evals: [[Field; INITIAL_OOD_COUNT]; NUM_WHIR_ROUNDS],
-    whir_round_sumcheck_polys: [[[Field; SUMCHECK_POLY_COEFFS]; INITIAL_SUMCHECK_ROUNDS]; NUM_WHIR_ROUNDS],
     whir_round_pow_nonces: [[u8; 8]; NUM_WHIR_ROUNDS],
+    // 2 fields (c0, c2) per round-sumcheck round.
+    whir_round_sumcheck_polys: [[[Field; 2]; INITIAL_SUMCHECK_ROUNDS]; NUM_WHIR_ROUNDS],
 
-    // Final WHIR sumcheck (after the last folding round): FINAL_SUMCHECK_ROUNDS
-    // round polynomials and a final PoW nonce.
-    whir_final_sumcheck_polys: [[Field; SUMCHECK_POLY_COEFFS]; FINAL_SUMCHECK_ROUNDS],
+    // Final-round inputs:
+    //   * FINAL_VECTOR_LEN field elements (`final_vector`)
+    //   * final PoW nonce
+    //   * FINAL_SUMCHECK_ROUNDS quadratic-sumcheck pairs (c0, c2)
+    whir_final_vector: [Field; FINAL_VECTOR_LEN],
     whir_final_pow_nonce: [u8; 8],
-
-    // Final folded polynomial coefficients (size = 2^FINAL_FOLDING_FACTOR).
-    // For basic-2 with initial_folding_factor = 3 and three rounds, the final
-    // polynomial after all folds has 2 coefficients (degree-1 univariate).
-    // TODO(codegen): emit FINAL_POLYNOMIAL_LEN explicitly from codegen.
-    whir_final_polynomial: [Field; 2],
+    whir_final_sumcheck_polys: [[Field; 2]; FINAL_SUMCHECK_ROUNDS],
 ) {
     // -------------------------------------------------------------------
     // Step 1: Initialize the Fiat-Shamir transcript from the pre-absorbed
@@ -235,13 +243,16 @@ fn main(
     // 9c. Squeeze the masking challenge. TODO(soundness): assert != 0.
     let _masking_challenge: Field = t.squeeze_field();
 
-    // 9d. Receive the witness-side initial WHIR commitment.
-    let witness_initial_commitment = Commitment::<INITIAL_OOD_COUNT, INITIAL_OOD_COUNT> {
-        root: witness_initial_root,
-        ood_evals: witness_initial_ood_evals,
-    };
-    // ood_points discarded: in-domain consistency checks are stubbed (TODO(soundness)).
-    let _ood_points_witness = receive_commitment::<INITIAL_OOD_COUNT, INITIAL_OOD_COUNT>(&mut t, witness_initial_commitment);
+    // 9d. STUB `blinded_commitment.initial_committer.verify`. The Rust
+    // verifier squeezes INITIAL_QUERY_COUNT (127) query indices, each
+    // QUERY_BYTES_0 (2) bytes wide, and reads Merkle openings from `hints`
+    // (no narg consumed). We squeeze the same 254 bytes here to keep the
+    // transcript aligned; the Merkle path verification + in-domain
+    // consistency checks are STUBBED.
+    //
+    // TODO(soundness): perform the actual Merkle path verification using the
+    // `hints` proof stream and assert the in-domain row consistency.
+    stub_prev_commit_open::<QUERY_BYTES_TOTAL_0>(&mut t);
 
     // 9e. Compute h_gammas (OOD points expanded into coset points).
     // TODO(soundness): real h_gammas come from `initial_in_domain.points`
@@ -273,59 +284,106 @@ fn main(
         t.absorb_field(batched_h_claims[i]);
     }
 
-    // 9i. Inner WHIR LDT -- witness side (STUBBED).
+    // 9i. Inner WHIR LDT -- witness side.
     //
-    // TODO(soundness): real verifier would do:
-    //   for round in 0..NUM_WHIR_ROUNDS:
-    //     - receive Merkle root + OOD evals  (real receive_commitment)
-    //     - run inner sumcheck (INITIAL_SUMCHECK_ROUNDS rounds)
-    //     - verify per-query Merkle openings (INITIAL_QUERY_COUNT queries)
-    //     - verify in-domain consistency between round i and round i-1
-    //     - verify PoW for this round's difficulty
-    //   - run final sumcheck (FINAL_SUMCHECK_ROUNDS rounds)
-    //   - absorb final polynomial
-    //   - verify final PoW
-    //   - verify final query Merkle openings on the last round
-    //
-    // We do JUST the transcript absorbs + PoW verifications so downstream
-    // challenges stay consistent.
-    for round in 0..NUM_WHIR_ROUNDS {
-        // Absorb the round's Merkle root.
-        t.absorb_field(whir_round_roots[round]);
-        // Absorb OOD evals for the round.
-        for i in 0..INITIAL_OOD_COUNT {
-            t.absorb_field(whir_round_ood_evals[round][i]);
-        }
-        // Absorb the inner-sumcheck round polynomials.
-        for s in 0..INITIAL_SUMCHECK_ROUNDS {
-            for j in 0..SUMCHECK_POLY_COEFFS {
-                t.absorb_field(whir_round_sumcheck_polys[round][s][j]);
-            }
-            // Squeeze the per-sumcheck-round challenge so transcript advances.
-            let _alpha_s: Field = t.squeeze_field();
-        }
-        // Verify PoW for this round.
-        // TODO(codegen): per-round PoW threshold should also come from codegen.
-        let threshold = pow_threshold(round_pow_bits(round));
-        verify_pow(&mut t, whir_round_pow_nonces[round], threshold);
+    // Mirrors `whir::Config::verify` (basic-2 path):
+    //   1. Build oods_matrix (single commitment, no cross-term reads).
+    //   2. geometric_challenge(vector_rlc, num_vectors=1) -- NO squeeze.
+    //   3. geometric_challenge(constraint_rlc, 1 + num_linear_forms=5) -- 1 squeeze.
+    //   4. initial_sumcheck.verify: INITIAL_SUMCHECK_ROUNDS rounds of
+    //      (absorb c0, absorb c2, squeeze alpha).
+    //   5. For each round in 0..NUM_WHIR_ROUNDS:
+    //      a. receive_commitment(this round) -- root + OOD evals.
+    //      b. round_config.pow.verify -- real PoW check (squeeze 32 bytes,
+    //         absorb 8-byte nonce).
+    //      c. STUB the prev-commit Merkle open: squeeze QUERY_BYTES_TOTAL_k
+    //         bytes (matches `challenge_indices`). No narg consumed.
+    //      d. geometric_challenge(constraint_rlc, prev_in_domain + 1) -- 1 squeeze.
+    //      e. sumcheck (3 rounds): per round absorb (c0, c2), squeeze alpha.
+    //   6. Final round:
+    //      a. Absorb FINAL_VECTOR_LEN fields (final_vector).
+    //      b. final_pow.verify -- real PoW check.
+    //      c. STUB the prev-commit (round_configs.last()) open: squeeze
+    //         QUERY_BYTES_TOTAL_FINAL bytes.
+    //      d. STUB in-domain consistency assert.
+    //      e. final_sumcheck (FINAL_SUMCHECK_ROUNDS rounds): per round absorb
+    //         (c0, c2), squeeze alpha.
+
+    // Step 3: constraint_rlc squeeze.
+    // `oods_evals.len()` = `initial_committer.out_domain_samples` * num_vectors
+    //   = 1 (for basic-2). `num_linear_forms` = evaluations.len() / num_vectors
+    //   = 4 (alpha_A, alpha_B, alpha_C, blinding). Total count = 5.
+    // For count > 1, geometric_challenge squeezes 1 field.
+    let _constraint_rlc_initial: Field = t.squeeze_field();
+
+    // Step 4: initial_sumcheck.verify (3 rounds for basic-2).
+    for s in 0..INITIAL_SUMCHECK_ROUNDS {
+        let c0 = initial_sumcheck_polys[s][0];
+        let c2 = initial_sumcheck_polys[s][1];
+        let _alpha = inner_sumcheck_round(&mut t, c0, c2);
     }
 
-    // 9j. Final sumcheck rounds + final polynomial + final PoW.
+    // Step 5: WHIR rounds (NUM_WHIR_ROUNDS = 3 for basic-2).
+    // TODO(generalize): unroll-by-hand because Noir cannot dispatch on a
+    // runtime-known round index for the differently-sized QUERY_BYTES_TOTAL_k
+    // generics.
+    if NUM_WHIR_ROUNDS >= 1 {
+        whir_round_step::<0, QUERY_BYTES_TOTAL_0>(
+            &mut t,
+            whir_round_roots[0],
+            whir_round_ood_evals[0],
+            whir_round_pow_nonces[0],
+            whir_round_sumcheck_polys[0],
+            ROUND_POW_THRESHOLD_0,
+        );
+    }
+    if NUM_WHIR_ROUNDS >= 2 {
+        whir_round_step::<1, QUERY_BYTES_TOTAL_1>(
+            &mut t,
+            whir_round_roots[1],
+            whir_round_ood_evals[1],
+            whir_round_pow_nonces[1],
+            whir_round_sumcheck_polys[1],
+            ROUND_POW_THRESHOLD_1,
+        );
+    }
+    if NUM_WHIR_ROUNDS >= 3 {
+        whir_round_step::<2, QUERY_BYTES_TOTAL_2>(
+            &mut t,
+            whir_round_roots[2],
+            whir_round_ood_evals[2],
+            whir_round_pow_nonces[2],
+            whir_round_sumcheck_polys[2],
+            ROUND_POW_THRESHOLD_2,
+        );
+    }
+
+    // Step 6: Final round.
+    // 6a. Absorb final_vector.
+    for i in 0..FINAL_VECTOR_LEN {
+        t.absorb_field(whir_final_vector[i]);
+    }
+    // 6b. Final PoW.
+    verify_pow(&mut t, whir_final_pow_nonce, FINAL_POW_THRESHOLD);
+    // 6c. STUB the last-round Merkle open: squeeze QUERY_BYTES_TOTAL_FINAL bytes.
+    stub_prev_commit_open::<QUERY_BYTES_TOTAL_FINAL>(&mut t);
+    // 6d. STUB in-domain consistency assert.
+    // TODO(soundness): assert `weights.evaluate(&Identity, final_vector) == evals`
+    //   for each (weights, evals) in the round_configs.last() in_domain pairs.
+    // 6e. Constraint RLC for the final round (count = prev_round.in_domain + 1).
+    // For final round following round_configs.last(): squeeze 1 field if count > 1.
+    let _final_constraint_rlc: Field = t.squeeze_field();
+    // 6f. final_sumcheck.verify: FINAL_SUMCHECK_ROUNDS rounds.
     for s in 0..FINAL_SUMCHECK_ROUNDS {
-        for j in 0..SUMCHECK_POLY_COEFFS {
-            t.absorb_field(whir_final_sumcheck_polys[s][j]);
-        }
-        let _alpha_final: Field = t.squeeze_field();
+        let c0 = whir_final_sumcheck_polys[s][0];
+        let c2 = whir_final_sumcheck_polys[s][1];
+        let _alpha = inner_sumcheck_round(&mut t, c0, c2);
     }
-    for i in 0..2 {
-        t.absorb_field(whir_final_polynomial[i]);
-    }
-    let final_threshold = pow_threshold(FINAL_POW_BITS);
-    verify_pow(&mut t, whir_final_pow_nonce, final_threshold);
 
     // 9k. Inner WHIR LDT -- blinding side (STUBBED ENTIRELY).
     // TODO(soundness): real verifier runs a second WHIR LDT against
-    // `commitment.blinding`. Skipped here.
+    // `commitment.blinding`. Skipped here -- nargo execute will stop somewhere
+    // in this blinding-side flow.
 
     // -------------------------------------------------------------------
     // Step 10: Final Spartan equation.
@@ -337,25 +395,58 @@ fn main(
     assert(sumcheck_result.f_at_alpha == rhs);
 }
 
-/// Compute `2^(64 - difficulty_bits)` as a u64.
-///
-/// Matches `whir::protocols::proof_of_work::Config::threshold`.
-fn pow_threshold(difficulty_bits: u32) -> u64 {
-    // 2^(64 - difficulty_bits)
-    let mut shift: u64 = 1;
-    for _ in 0..(64 - difficulty_bits) {
-        shift *= 2;
-    }
-    shift
-}
+// PoW thresholds are now emitted directly as `u64` constants from the
+// codegen (ROUND_POW_THRESHOLD_k, FINAL_POW_THRESHOLD) so the verifier
+// matches the Rust `proof_of_work::threshold(difficulty)` exactly,
+// including fractional-bit difficulties.
 
-/// Per-round PoW difficulty bits (basic-2 hardcoded).
-fn round_pow_bits(round: u32) -> u32 {
-    if round == 0 {
-        ROUND_POW_BITS_0
-    } else if round == 1 {
-        ROUND_POW_BITS_1
-    } else {
-        ROUND_POW_BITS_2
+/// One iteration of the WHIR LDT round loop, parameterised by the previous
+/// round's QUERY_BYTES_TOTAL (which differs per round).
+///
+/// Sequence:
+///   1. receive_commitment(this round): absorb root, squeeze OOD points,
+///      absorb OOD evals.
+///   2. PoW.verify: squeeze 32 bytes, absorb 8-byte nonce.
+///   3. STUB the open-prev-commit step: squeeze QUERY_BYTES bytes (matches
+///      `challenge_indices` for the previous round's in-domain samples).
+///   4. constraint_rlc squeeze (1 field; count is always > 1 for basic-2).
+///   5. Sumcheck (INITIAL_SUMCHECK_ROUNDS rounds): per round absorb (c0, c2),
+///      squeeze alpha. NO PoW (round_pow=none for basic-2). NO consistency
+///      check (in-domain values stubbed, so saved == c0 + c1 cannot be
+///      computed without the real prev-round folded vector).
+fn whir_round_step<let ROUND: u32, let QUERY_BYTES: u32>(
+    t: &mut Transcript,
+    root: Field,
+    ood_evals: [Field; INITIAL_OOD_COUNT],
+    pow_nonce: [u8; 8],
+    sumcheck_polys: [[Field; 2]; INITIAL_SUMCHECK_ROUNDS],
+    pow_threshold: u64,
+) {
+    let _ = ROUND; // ROUND is for clarity / future shape checks.
+
+    // 1. receive_commitment(this round).
+    let commit = Commitment::<INITIAL_OOD_COUNT, INITIAL_OOD_COUNT> {
+        root,
+        ood_evals,
+    };
+    let _ood_points = receive_commitment::<INITIAL_OOD_COUNT, INITIAL_OOD_COUNT>(t, commit);
+
+    // 2. round-level PoW.
+    verify_pow(t, pow_nonce, pow_threshold);
+
+    // 3. STUB the open-prev-commit Merkle verify, squeezing the query-index
+    //    bytes the Rust verifier would consume.
+    stub_prev_commit_open::<QUERY_BYTES>(t);
+
+    // 4. constraint_rlc squeeze.
+    // For basic-2 every WHIR round's constraint_values.len() > 1 (e.g.
+    // 1 OOD + prev_in_domain_samples), so geometric_challenge squeezes 1 field.
+    let _constraint_rlc: Field = t.squeeze_field();
+
+    // 5. Sumcheck rounds (no PoW for basic-2; no consistency check).
+    for s in 0..INITIAL_SUMCHECK_ROUNDS {
+        let c0 = sumcheck_polys[s][0];
+        let c2 = sumcheck_polys[s][1];
+        let _alpha = inner_sumcheck_round(t, c0, c2);
     }
 }

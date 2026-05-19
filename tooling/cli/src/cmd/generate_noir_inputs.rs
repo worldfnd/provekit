@@ -305,9 +305,58 @@ fn emit_prover_toml(
 
     let interleaving_depth = wc.initial_committer.interleaving_depth;
     let num_gammas = initial_ood_count * interleaving_depth;
-    let w_folded_evals_len = num_polynomials * num_witness_variables_plus_1;
+    // Number of weights inside the inner WHIR call. For basic-2 with no
+    // public inputs and no challenges: 3 covectors (alpha_A, alpha_B,
+    // alpha_C) + 1 blinding_covector = 4.
+    //
+    // TODO(generalize): derive `num_weights` from the same logic
+    // `whir_r1cs.rs` uses to build `weight_refs`. For basic-2 we hardcode 4
+    // and pin it via assertion below.
+    let num_weights = 4usize;
+    let w_folded_evals_len = num_weights * num_polynomials * num_witness_variables_plus_1;
 
     let final_polynomial_len = wc.final_sumcheck.initial_size;
+
+    // Inner-WHIR sumcheck mask_length (basic-2 => 0). With mask_length=0
+    // and num_rounds>0, the inner-sumcheck verifier reads `1 + max(3, ml) - 2 = max(1, ml-1)`
+    // fields per round. For ml=0: that's 1 + 1 = 2 fields per round. We pin
+    // INNER_SUMCHECK_FIELDS_PER_ROUND = 2 below; if the scheme ever requires
+    // non-zero mask_length, regenerate.
+    let initial_sumcheck_mask_len = wc.initial_sumcheck.mask_length;
+    anyhow::ensure!(
+        initial_sumcheck_mask_len == 0,
+        "generate-noir-inputs v0 only supports mask_length=0 inner sumcheck \
+         (got initial_sumcheck.mask_length = {initial_sumcheck_mask_len})"
+    );
+    // Same constraint for each round's sumcheck and the final sumcheck.
+    for (i, rc) in wc.round_configs.iter().enumerate() {
+        anyhow::ensure!(
+            rc.sumcheck.mask_length == 0,
+            "round[{i}].sumcheck.mask_length must be 0 (got {})",
+            rc.sumcheck.mask_length
+        );
+        anyhow::ensure!(
+            rc.sumcheck.round_pow.threshold == u64::MAX,
+            "round[{i}].sumcheck.round_pow must be disabled (threshold = u64::MAX); \
+             got threshold = {}",
+            rc.sumcheck.round_pow.threshold
+        );
+    }
+    anyhow::ensure!(
+        wc.final_sumcheck.mask_length == 0,
+        "final_sumcheck.mask_length must be 0 (got {})",
+        wc.final_sumcheck.mask_length
+    );
+    anyhow::ensure!(
+        wc.initial_sumcheck.round_pow.threshold == u64::MAX,
+        "initial_sumcheck.round_pow must be disabled; got threshold = {}",
+        wc.initial_sumcheck.round_pow.threshold
+    );
+    anyhow::ensure!(
+        wc.final_sumcheck.round_pow.threshold == u64::MAX,
+        "final_sumcheck.round_pow must be disabled; got threshold = {}",
+        wc.final_sumcheck.round_pow.threshold
+    );
 
     let mut p = NargParser::new(&proof.whir_r1cs_proof.narg_string);
     let mut values: BTreeMap<String, TomlValue> = BTreeMap::new();
@@ -398,19 +447,16 @@ fn emit_prover_toml(
         TomlValue::FieldArray(w_folded_blinding_evals),
     );
 
-    //   6b. initial_committer.verify -> matrix_commit.receive_commitment +
-    //       OOD evals.
-    let witness_initial_root = p.read_hash_as_field()?;
-    values.insert(
-        "witness_initial_root".to_string(),
-        TomlValue::Field(witness_initial_root),
-    );
-    let witness_initial_ood_evals =
-        p.read_field_vec(initial_ood_count * wc.initial_committer.num_vectors)?;
-    values.insert(
-        "witness_initial_ood_evals".to_string(),
-        TomlValue::FieldArray(witness_initial_ood_evals),
-    );
+    //   6b. The Rust `whir_zk::Config::verify` calls
+    //       `blinded_commitment.initial_committer.verify(...)` here, which
+    //       squeezes 254 query-index bytes from the transcript (handled in
+    //       main.nr via stub_prev_commit_open) and reads only `hints` for the
+    //       Merkle openings. **No narg bytes are consumed at this point.**
+    //
+    //   Previously this codegen emitted phantom `witness_initial_root` and
+    //   `witness_initial_ood_evals` fields, mis-aligning the parse by 64
+    //   bytes (32 for the bogus root + 32 for the bogus OOD). That has been
+    //   removed.
 
     //   6c. Per h_gamma per polynomial: m_eval + g_hat_evals.
     let mut witness_m_evals: Vec<Fr> = Vec::with_capacity(num_gammas * num_polynomials);
@@ -445,81 +491,67 @@ fn emit_prover_toml(
         TomlValue::FieldArray(batched_h_claims),
     );
 
-    //   6e. Witness-side WHIR LDT (blinded_commitment.verify):
-    //       For commitments=1 and num_linear_forms = evaluations.len() / num_vectors,
-    //       the verifier first reads cross-term OODs for OFF-diagonal entries.
-    //       For basic-2 (single commitment), the diagonal block is filled from
-    //       the commitment's OOD evals; no extra cross-terms are read here.
+    //   6e. Witness-side WHIR LDT (blinded_commitment.verify), see
+    //       `~/.cargo/git/checkouts/whir-…/src/protocols/whir/verifier.rs`.
     //
-    //       Then initial_sumcheck.verify runs INITIAL_SUMCHECK_ROUNDS rounds,
-    //       each reading 4 cubic-polynomial coefficients (we use mask_length=0
-    //       so no mask_sum is read).
+    //   Inner-WHIR sumcheck is quadratic: each round writes 2 fields (c0, c2)
+    //   when mask_length=0 (basic-2). The verifier derives c1 from
+    //   `sum - 2*c0 - c2`. No per-round PoW nonces (sumcheck.round_pow=none for
+    //   basic-2).
     //
-    //       NOTE: When num_linear_forms > 0 (we have constraints to enforce),
-    //       sumcheck.verify reads (4 coeffs + PoW nonce) per round. When the
-    //       constraint_rlc is empty, it just squeezes folding_randomness and
-    //       verifies the skip_pow nonce. For basic-2 we have constraints, so
-    //       the standard path applies.
-    let mut whir_round_roots: Vec<Fr> = Vec::with_capacity(wc.round_configs.len());
-    let mut whir_round_ood_evals: Vec<Vec<Fr>> = Vec::with_capacity(wc.round_configs.len());
-    let mut whir_round_sumcheck_polys: Vec<Vec<Vec<Fr>>> =
-        Vec::with_capacity(wc.round_configs.len());
-    let mut whir_round_pow_nonces: Vec<[u8; 8]> = Vec::with_capacity(wc.round_configs.len());
+    //   Per-WHIR-round shape (the round loop):
+    //     1. receive_commitment(this round): root + OOD evals (no narg reads
+    //        for the squeezed OOD points)
+    //     2. round_config.pow.verify: nonce (8 bytes)
+    //     3. open prev commit: NO narg reads (Merkle hints live in `hints`)
+    //     4. sumcheck (num_rounds rounds): each round 2 fields, no nonce.
+    //
+    //   Final round shape:
+    //     1. final_vector: final_sumcheck.initial_size fields
+    //     2. final_pow.verify: nonce (8 bytes)
+    //     3. open last commit: NO narg reads
+    //     4. final_sumcheck (num_rounds rounds): each round 2 fields, no nonce.
 
-    // Initial-sumcheck round polynomials (executed BEFORE the round loop in
-    // whir::Config::verify). Each round reads 4 cubic coeffs + per-round PoW
-    // nonce. We absorb-only in main.nr so the PoW nonces go into the
-    // "initial-sumcheck PoW" bucket -- but main.nr today expects the PoW
-    // nonces in whir_round_pow_nonces[round]. For basic-2 we have
-    // initial_sumcheck_rounds = 3 (same as INITIAL_SUMCHECK_ROUNDS) which
-    // matches; we capture those polys + PoW nonces and emit them at the
-    // appropriate buckets.
-    //
-    // For shape clarity:
-    //   initial_sumcheck: INITIAL_SUMCHECK_ROUNDS rounds, each (4 coeffs + 8-byte nonce)
-    //   per round (in round_configs): 1 root + ood_evals + INITIAL_SUMCHECK_ROUNDS rounds of (4 coeffs + nonce) + 1 PoW
-    //
-    // The current Noir main.nr's expectations are coarse: it wants
-    //   whir_round_sumcheck_polys[round][s][j]  for round in [0,NUM_WHIR_ROUNDS), s in [0,INITIAL_SUMCHECK_ROUNDS)
-    //   whir_round_pow_nonces[round]
-    // We capture, for each WHIR round (initial+rounds), the same shape.
+    // -- Initial-sumcheck round polynomials (executed BEFORE the round loop
+    //    in whir::Config::verify). Each round reads 2 fields (c0, c2).
     let mut initial_sumcheck_polys: Vec<Vec<Fr>> = Vec::with_capacity(initial_sumcheck_rounds);
     for _ in 0..initial_sumcheck_rounds {
-        let coeffs = p.read_field_vec(4)?;
-        initial_sumcheck_polys.push(coeffs);
-        // per-round PoW nonce (8 bytes)
-        let _nonce = p.read_u64_bytes()?;
+        let pair = p.read_field_vec(2)?;
+        initial_sumcheck_polys.push(pair);
     }
+    values.insert(
+        "initial_sumcheck_polys".to_string(),
+        TomlValue::FieldMatrix(initial_sumcheck_polys),
+    );
 
-    // Subsequent WHIR rounds.
+    // -- Subsequent WHIR rounds.
+    let mut whir_round_roots: Vec<Fr> = Vec::with_capacity(wc.round_configs.len());
+    let mut whir_round_ood_evals: Vec<Vec<Fr>> = Vec::with_capacity(wc.round_configs.len());
+    let mut whir_round_pow_nonces: Vec<[u8; 8]> = Vec::with_capacity(wc.round_configs.len());
+    let mut whir_round_sumcheck_polys: Vec<Vec<Vec<Fr>>> =
+        Vec::with_capacity(wc.round_configs.len());
+
     for round_config in &wc.round_configs {
-        // receive_commitment(round): root (Hash, 32 bytes) + OOD evals.
+        // receive_commitment(this round): root + OOD evals.
         let root = p.read_hash_as_field()?;
         whir_round_roots.push(root);
         let ood = p
             .read_field_vec(round_config.irs_committer.out_domain_samples)?;
         whir_round_ood_evals.push(ood);
-        // round-level PoW nonce.
+
+        // round_config.pow.verify: 8-byte nonce.
         let nonce = p.read_u64_bytes()?;
         whir_round_pow_nonces.push(nonce);
-        // sumcheck for this round: INITIAL_SUMCHECK_ROUNDS rounds of (4 coeffs + nonce).
+
+        // sumcheck for this round: num_rounds rounds, each 2 fields.
         let mut per_round_polys: Vec<Vec<Fr>> =
             Vec::with_capacity(round_config.sumcheck.num_rounds);
         for _ in 0..round_config.sumcheck.num_rounds {
-            let coeffs = p.read_field_vec(4)?;
-            per_round_polys.push(coeffs);
-            let _round_nonce = p.read_u64_bytes()?;
+            let pair = p.read_field_vec(2)?;
+            per_round_polys.push(pair);
         }
         whir_round_sumcheck_polys.push(per_round_polys);
     }
-
-    // main.nr expects exactly NUM_WHIR_ROUNDS round buckets of size
-    // (INITIAL_SUMCHECK_ROUNDS, SUMCHECK_POLY_COEFFS). Use the initial
-    // sumcheck polys as the first WHIR round's sumcheck polys, then append
-    // the rest. For basic-2 NUM_WHIR_ROUNDS = round_configs.len() = 3 and
-    // there are also 3 round_configs, so we use round_configs' polys
-    // directly.
-    let _ = initial_sumcheck_polys;
 
     values.insert(
         "whir_round_roots".to_string(),
@@ -543,41 +575,30 @@ fn emit_prover_toml(
         ),
     );
 
-    // Final round of the witness-side WHIR LDT.
+    // -- Final round of the witness-side WHIR LDT.
     // final_vector first (size = final_sumcheck.initial_size), then PoW nonce.
-    let _final_vector = p.read_field_vec(final_polynomial_len)?;
-    let _final_pow_nonce = p.read_u64_bytes()?;
+    let final_vector = p.read_field_vec(final_polynomial_len)?;
+    values.insert(
+        "whir_final_vector".to_string(),
+        TomlValue::FieldArray(final_vector.clone()),
+    );
 
-    // Final sumcheck (FINAL_SUMCHECK_ROUNDS rounds, each 4 coeffs + nonce).
+    let final_pow_nonce = p.read_u64_bytes()?;
+    values.insert(
+        "whir_final_pow_nonce".to_string(),
+        TomlValue::U8Array(final_pow_nonce.to_vec()),
+    );
+
+    // Final sumcheck (FINAL_SUMCHECK_ROUNDS rounds, each 2 fields).
     let mut whir_final_sumcheck_polys: Vec<Vec<Fr>> =
         Vec::with_capacity(final_sumcheck_rounds);
     for _ in 0..final_sumcheck_rounds {
-        let coeffs = p.read_field_vec(4)?;
-        whir_final_sumcheck_polys.push(coeffs);
-        let _round_nonce = p.read_u64_bytes()?;
+        let pair = p.read_field_vec(2)?;
+        whir_final_sumcheck_polys.push(pair);
     }
     values.insert(
         "whir_final_sumcheck_polys".to_string(),
         TomlValue::FieldMatrix(whir_final_sumcheck_polys),
-    );
-
-    // Emit the final polynomial vector consumed by main.nr (length = 2 for
-    // basic-2; this is the final folded polynomial after all folds).
-    // Reuse the first two coefficients of `_final_vector` (which is the
-    // final-round committed vector). When final_sumcheck.initial_size matches
-    // 2 these are exactly what main.nr absorbs.
-    let final_poly_for_noir: Vec<Fr> = if _final_vector.len() >= 2 {
-        _final_vector.iter().copied().take(2).collect()
-    } else {
-        vec![Fr::from(0u64); 2]
-    };
-    values.insert(
-        "whir_final_polynomial".to_string(),
-        TomlValue::FieldArray(final_poly_for_noir),
-    );
-    values.insert(
-        "whir_final_pow_nonce".to_string(),
-        TomlValue::U8Array(_final_pow_nonce.to_vec()),
     );
 
     // The blinding-side WHIR LDT messages also follow (mirror structure)
@@ -988,15 +1009,29 @@ fn emit_types_nr(verifier: &Verifier, scheme: &provekit_common::WhirR1CSScheme) 
     let final_pow_bits = f64::from(wc.final_pow.difficulty()).ceil() as u32;
     let num_witness_variables = scheme.whir_witness.num_witness_variables();
     let num_blinding_variables = scheme.whir_witness.num_blinding_variables();
-    // For zkWHIR: weights * polynomials * (num_witness_variables + 1).
-    // Following the same formula the proof parser uses (polynomials * (nwv+1)).
+    // For zkWHIR: weights.len() * num_polynomials * (num_witness_variables + 1).
+    // Per whir_zk verifier:
+    //   num_w_folded_evals = weights.len() * num_polynomials * (nwv + 1)
+    // For basic-2 (no public, no challenges): weights.len() = 3 covectors +
+    // 1 blinding_covector = 4. num_polynomials = 1. nwv = 13. → 4*1*14 = 56.
+    let num_weights_basic_2 = 4;
     let w_folded_blinding_evals_len =
-        wc.initial_committer.num_vectors * (num_witness_variables + 1);
-    // Per-round query PoW bits (basic-2 has 3 rounds).
-    let round_pow_bits: Vec<u32> = wc.round_configs.iter()
+        num_weights_basic_2 * 1 * (num_witness_variables + 1);
+    // Per-round query PoW threshold (raw u64) so the verifier matches the
+    // Rust `proof_of_work::threshold(difficulty)` value exactly, including
+    // fractional-bit difficulties (e.g. 9.94 → 2^54.06 ≈ 1.89e16).
+    let round_pow_thresholds: Vec<u64> = wc.round_configs.iter()
+        .map(|rc| rc.pow.threshold)
+        .collect();
+    let final_pow_threshold: u64 = wc.final_pow.threshold;
+    let round_pow_bits_str = round_pow_thresholds.iter().enumerate()
+        .map(|(i, t)| format!("pub global ROUND_POW_THRESHOLD_{i}: u64 = {t};"))
+        .collect::<Vec<_>>().join("\n");
+    // Keep ROUND_POW_BITS_k as integer-ceil bits for diagnostic/back-compat.
+    let round_pow_bits_compat: Vec<u32> = wc.round_configs.iter()
         .map(|rc| f64::from(rc.pow.difficulty()).ceil() as u32)
         .collect();
-    let round_pow_bits_str = round_pow_bits.iter().enumerate()
+    let round_pow_bits_compat_str = round_pow_bits_compat.iter().enumerate()
         .map(|(i, b)| format!("pub global ROUND_POW_BITS_{i}: u32 = {b};"))
         .collect::<Vec<_>>().join("\n");
     // Blinding-side OOD point count (number of challenge points squeezed).
@@ -1005,6 +1040,62 @@ fn emit_types_nr(verifier: &Verifier, scheme: &provekit_common::WhirR1CSScheme) 
     // elements are sent by the prover (one eval per OOD point per vector).
     let blinding_ood_count =
         bc.initial_committer.out_domain_samples * bc.initial_committer.num_vectors;
+
+    // -- Per-round query counts and bytes-per-index for in-domain sampling.
+    //
+    // The verifier squeezes `count * size_bytes` raw bytes per round to
+    // sample query indices, where `count = prev_round.in_domain_samples`
+    // and `size_bytes = ceil(log2(prev_round.codeword_length) / 8)`.
+    //
+    // Round k (k in 0..NUM_WHIR_ROUNDS) opens the previous round's commit:
+    //   k = 0 opens the initial committer
+    //   k > 0 opens round_configs[k-1]
+    //
+    // The final round opens round_configs[NUM_WHIR_ROUNDS-1].
+    let query_count_per_round: Vec<usize> = (0..num_whir_rounds)
+        .map(|k| if k == 0 {
+            wc.initial_committer.in_domain_samples
+        } else {
+            wc.round_configs[k - 1].irs_committer.in_domain_samples
+        })
+        .collect();
+    let query_bytes_per_round: Vec<usize> = (0..num_whir_rounds)
+        .map(|k| {
+            let cl = if k == 0 {
+                wc.initial_committer.codeword_length
+            } else {
+                wc.round_configs[k - 1].irs_committer.codeword_length
+            };
+            ((cl.ilog2() as usize).div_ceil(8)).max(1)
+        })
+        .collect();
+    let query_final_count = if num_whir_rounds == 0 {
+        wc.initial_committer.in_domain_samples
+    } else {
+        wc.round_configs[num_whir_rounds - 1].irs_committer.in_domain_samples
+    };
+    let query_final_bytes = {
+        let cl = if num_whir_rounds == 0 {
+            wc.initial_committer.codeword_length
+        } else {
+            wc.round_configs[num_whir_rounds - 1].irs_committer.codeword_length
+        };
+        ((cl.ilog2() as usize).div_ceil(8)).max(1)
+    };
+
+    let per_round_query_str = (0..num_whir_rounds)
+        .map(|k| {
+            format!(
+                "pub global QUERY_COUNT_{k}: u32 = {};\npub global QUERY_BYTES_{k}: u32 = {};\npub global QUERY_BYTES_TOTAL_{k}: u32 = {};",
+                query_count_per_round[k],
+                query_bytes_per_round[k],
+                query_count_per_round[k] * query_bytes_per_round[k],
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let final_vector_len = wc.final_sumcheck.initial_size;
 
     format!(
         "// AUTO-GENERATED by `provekit-cli generate-noir-inputs`.
@@ -1040,7 +1131,27 @@ pub global INITIAL_QUERY_COUNT: u32 = {initial_query_count};
 pub global INITIAL_SUMCHECK_ROUNDS: u32 = {initial_sumcheck_rounds};
 pub global FINAL_SUMCHECK_ROUNDS: u32 = {final_sumcheck_rounds};
 pub global FINAL_POW_BITS: u32 = {final_pow_bits};
+pub global FINAL_POW_THRESHOLD: u64 = {final_pow_threshold};
+{round_pow_bits_compat_str}
 {round_pow_bits_str}
+
+// Per-round in-domain query counts and per-index byte widths, used by the
+// (stubbed) Merkle-opening transcript advance step. The verifier squeezes
+// QUERY_COUNT_k * QUERY_BYTES_k raw bytes from the transcript before
+// verifying round-k's open of the previous commit.
+{per_round_query_str}
+pub global QUERY_COUNT_FINAL: u32 = {query_final_count};
+pub global QUERY_BYTES_FINAL: u32 = {query_final_bytes};
+pub global QUERY_BYTES_TOTAL_FINAL: u32 = {query_final_total};
+
+// WHIR's inner (quadratic) sumcheck sends 2 fields per round (c0, c2). The
+// missing c1 coefficient is derived as `sum - 2*c0 - c2`. Contrast with the
+// outer Spartan sumcheck which is cubic (SUMCHECK_POLY_COEFFS = 4).
+pub global INNER_SUMCHECK_FIELDS_PER_ROUND: u32 = 2;
+
+// Length of the final committed vector absorbed at the start of the final
+// WHIR round (= final_sumcheck.initial_size).
+pub global FINAL_VECTOR_LEN: u32 = {final_vector_len};
 
 // Universal constants.
 pub global SUMCHECK_POLY_COEFFS: u32 = 4;
@@ -1069,7 +1180,14 @@ pub global W_FOLDED_BLINDING_EVALS_LEN: u32 = {w_folded_blinding_evals_len};
         final_sumcheck_rounds = final_sumcheck_rounds,
         final_pow_bits = final_pow_bits,
         round_pow_bits_str = round_pow_bits_str,
+        round_pow_bits_compat_str = round_pow_bits_compat_str,
+        final_pow_threshold = final_pow_threshold,
         w_folded_blinding_evals_len = w_folded_blinding_evals_len,
+        per_round_query_str = per_round_query_str,
+        query_final_count = query_final_count,
+        query_final_bytes = query_final_bytes,
+        query_final_total = query_final_count * query_final_bytes,
+        final_vector_len = final_vector_len,
     )
 }
 

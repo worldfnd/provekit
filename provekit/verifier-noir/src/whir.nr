@@ -50,13 +50,16 @@ pub fn verify_pow(
     }
     assert(hash_lo <= threshold);
 
-    // Absorb the nonce into the transcript as a field element (8 LE bytes
-    // zero-padded to 32), matching WHIR's `prover_message(&U64(nonce))`.
-    let mut nonce_field: Field = 0;
-    for i in 0..8 {
-        nonce_field += (nonce_bytes[i] as Field) * pow2_field(8 * i);
-    }
-    transcript.absorb_field(nonce_field);
+    // Absorb the nonce into the transcript as 8 LE bytes (matching WHIR's
+    // `prover_message(&U64(nonce))`).
+    //
+    // Spongefish's byte-grain absorb writes only 8 bytes to
+    // `state[absorb_pos..absorb_pos+8]`, leaving the remaining 24 bytes of
+    // that lane UNCHANGED. To match this in our lane-grain sponge we use
+    // `absorb_u64_bytes`, which constructs the new lane value from the
+    // current state lane's upper 24 bytes preserved and the lower 8 bytes
+    // overwritten with `nonce_bytes`.
+    transcript.absorb_u64_bytes(nonce_bytes);
 }
 
 /// Compute `256^byte_index` as u64 (i.e. `1 << (8 * byte_index)`).
@@ -69,15 +72,9 @@ fn pow2_u64(byte_index: u32) -> u64 {
     result
 }
 
-/// Compute `2^bit_index` as Field.
-/// Used to build a Field element from individual bits.
-fn pow2_field(bit_index: u32) -> Field {
-    let mut result: Field = 1;
-    for _ in 0..bit_index {
-        result *= 2;
-    }
-    result
-}
+// pow2_field removed: the PoW nonce is now absorbed as a partial-lane
+// byte-grain absorb via `transcript.absorb_u64_bytes`, so the nonce no
+// longer needs to be packed into a Field via 2^k bit weighting.
 
 // --- in-circuit PoW KAT ---
 //
@@ -140,6 +137,44 @@ pub fn receive_commitment<let OOD_POINTS: u32, let OOD_EVALS: u32>(
         transcript.absorb_field(commitment.ood_evals[i]);
     }
     ood_points
+}
+
+/// Stub the Merkle-opening verification step of the previous-round commit,
+/// performing the transcript squeezes the Rust verifier does but skipping the
+/// actual Merkle-path consistency check. Total bytes squeezed = QUERY_COUNT *
+/// QUERY_BYTES (matches `challenge_indices::challenge_indices`).
+///
+/// TODO(soundness): this elides the real
+/// `irs_commit::Committer::verify` path which (a) verifies Merkle openings
+/// from `hints` and (b) checks in-domain consistency with the previous
+/// round's folded vector. The transcript advance is the only effect captured
+/// here; with this stub the verifier accepts any prover Merkle openings.
+pub fn stub_prev_commit_open<let TOTAL_BYTES: u32>(
+    transcript: &mut crate::transcript::Transcript,
+) {
+    let _bytes: [u8; TOTAL_BYTES] = transcript.squeeze_bytes_n::<TOTAL_BYTES>();
+}
+
+/// Run one round of WHIR's inner (quadratic) sumcheck and return the
+/// squeezed folding-randomness challenge.
+///
+/// `(c0, c2)` are the two coefficients the prover sends; c1 is derived as
+/// `sum - 2*c0 - c2`. Then `round_pow.verify` runs (we assume PoW=none for
+/// basic-2 and skip it). Then a fresh folding_randomness field is squeezed.
+///
+/// TODO(soundness): the actual `*sum = univariate_evaluate(&univariate, r)`
+/// update is NOT applied here -- we just return the squeezed randomness for
+/// transcript-ordering purposes. The full sumcheck consistency check
+/// (saved == c0 + c1 at the boolean hypercube) is stubbed.
+pub fn inner_sumcheck_round(
+    transcript: &mut crate::transcript::Transcript,
+    c0: Field,
+    c2: Field,
+) -> Field {
+    transcript.absorb_field(c0);
+    transcript.absorb_field(c2);
+    // round_pow=none for basic-2: no squeeze/absorb.
+    transcript.squeeze_field()
 }
 
 // --- in-circuit commitment receive KAT ---

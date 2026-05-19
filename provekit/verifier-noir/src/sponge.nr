@@ -84,6 +84,37 @@ impl Sponge {
     pub fn squeeze_field(&mut self) -> Field {
         self.squeeze_lane()
     }
+
+    /// Absorb 8 LE bytes into the current rate lane, preserving the upper
+    /// 24 bytes of that lane (which still carry the bytes from the most
+    /// recent absorb or permute). See `Transcript::absorb_u64_bytes` for
+    /// rationale.
+    ///
+    /// This is the only partial-lane absorb in ProveKit's transcript; it
+    /// exists to support `prover_message(&U64(nonce))` from WHIR's PoW
+    /// protocol. The next op MUST be a squeeze (which permutes and resets
+    /// position counters).
+    pub fn absorb_u64_bytes(&mut self, nonce_bytes: [u8; 8]) {
+        // Force permute on next squeeze (spongefish absorb).
+        self.squeeze_pos = RATE;
+
+        if self.absorb_pos == RATE {
+            self.state = permute(self.state);
+            self.absorb_pos = 0;
+        }
+
+        // Take the current lane's bytes, overwrite low 8 with nonce, re-encode.
+        let lane_bytes: [u8; 32] = self.state[self.absorb_pos].to_le_bytes();
+        let mut new_bytes: [u8; 32] = [0; 32];
+        for i in 0..8 {
+            new_bytes[i] = nonce_bytes[i];
+        }
+        for i in 8..32 {
+            new_bytes[i] = lane_bytes[i];
+        }
+        self.state[self.absorb_pos] = Field::from_le_bytes::<32>(new_bytes);
+        self.absorb_pos += 1;
+    }
 }
 
 // --- in-circuit KAT ---

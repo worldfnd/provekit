@@ -125,6 +125,35 @@ impl Transcript {
         self.sponge.squeeze_lane()
     }
 
+    /// Absorb 8 bytes (a u64 in LE) into the transcript, byte-for-byte
+    /// equivalent to spongefish writing 8 bytes via `prover_message(&U64(n))`.
+    ///
+    /// Spongefish's absorb writes ONLY the 8 bytes; the upper 24 bytes of the
+    /// affected rate lane are LEFT INTACT (they still hold whatever was
+    /// produced by the previous absorb or by the most recent permute).
+    /// To mirror this in the lane sponge:
+    ///   1. Take the current rate lane (state[absorb_pos]).
+    ///   2. Override its lower 8 bytes with `nonce_bytes`.
+    ///   3. Re-encode mod-p and store back.
+    ///
+    /// Pre-conditions:
+    ///   * absorb_pos < RATE (caller must guarantee no partial absorb has
+    ///     left absorb_pos at a non-lane-aligned byte; for ProveKit the
+    ///     PoW absorb is the only partial-lane absorb and it's always
+    ///     followed by a squeeze that resets absorb_pos).
+    ///
+    /// After this:
+    ///   * `state[absorb_pos]` carries the new lane value.
+    ///   * `absorb_pos` is advanced by 1 (treating the partial-byte write
+    ///     as having consumed a full lane). This is safe because the next
+    ///     op MUST be a squeeze (which resets absorb_pos to 0).
+    ///   * `squeeze_pos` is forced to RATE so the next squeeze permutes.
+    pub fn absorb_u64_bytes(&mut self, nonce_bytes: [u8; 8]) {
+        // Force permute on next squeeze (spongefish absorb sets squeeze_pos=RATE).
+        self.byte_buf_len = 0;
+        self.sponge.absorb_u64_bytes(nonce_bytes);
+    }
+
     /// Squeeze N raw bytes from the transcript, byte-for-byte equivalent to
     /// spongefish squeezing N bytes after the same input sequence.
     ///

@@ -31,12 +31,42 @@ pub global INITIAL_QUERY_COUNT: u32 = 127;
 pub global INITIAL_SUMCHECK_ROUNDS: u32 = 3;
 pub global FINAL_SUMCHECK_ROUNDS: u32 = 1;
 pub global FINAL_POW_BITS: u32 = 7;
+pub global FINAL_POW_THRESHOLD: u64 = 254057177368005792;
 pub global ROUND_POW_BITS_0: u32 = 10;
 pub global ROUND_POW_BITS_1: u32 = 9;
 pub global ROUND_POW_BITS_2: u32 = 8;
+pub global ROUND_POW_THRESHOLD_0: u64 = 18786624067678312;
+pub global ROUND_POW_THRESHOLD_1: u64 = 55983906202016720;
+pub global ROUND_POW_THRESHOLD_2: u64 = 77984534171686272;
+
+// Per-round in-domain query counts and per-index byte widths, used by the
+// (stubbed) Merkle-opening transcript advance step. The verifier squeezes
+// QUERY_COUNT_k * QUERY_BYTES_k raw bytes from the transcript before
+// verifying round-k's open of the previous commit.
+pub global QUERY_COUNT_0: u32 = 127;
+pub global QUERY_BYTES_0: u32 = 2;
+pub global QUERY_BYTES_TOTAL_0: u32 = 254;
+pub global QUERY_COUNT_1: u32 = 62;
+pub global QUERY_BYTES_1: u32 = 2;
+pub global QUERY_BYTES_TOTAL_1: u32 = 124;
+pub global QUERY_COUNT_2: u32 = 41;
+pub global QUERY_BYTES_2: u32 = 2;
+pub global QUERY_BYTES_TOTAL_2: u32 = 82;
+pub global QUERY_COUNT_FINAL: u32 = 31;
+pub global QUERY_BYTES_FINAL: u32 = 2;
+pub global QUERY_BYTES_TOTAL_FINAL: u32 = 62;
+
+// WHIR's inner (quadratic) sumcheck sends 2 fields per round (c0, c2). The
+// missing c1 coefficient is derived as `sum - 2*c0 - c2`. Contrast with the
+// outer Spartan sumcheck which is cubic (SUMCHECK_POLY_COEFFS = 4).
+pub global INNER_SUMCHECK_FIELDS_PER_ROUND: u32 = 2;
+
+// Length of the final committed vector absorbed at the start of the final
+// WHIR round (= final_sumcheck.initial_size).
+pub global FINAL_VECTOR_LEN: u32 = 2;
 
 // Universal constants.
 pub global SUMCHECK_POLY_COEFFS: u32 = 4;
 // W_FOLDED_BLINDING_EVALS_LEN = weights * polynomials * (num_witness_variables + 1).
 // For basic-2: 1 * 1 * 14 = 14.
-pub global W_FOLDED_BLINDING_EVALS_LEN: u32 = 14;
+pub global W_FOLDED_BLINDING_EVALS_LEN: u32 = 56;
