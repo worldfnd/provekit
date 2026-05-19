@@ -1,6 +1,5 @@
 use {
-    crate::FieldElement, ark_ff::AdditiveGroup, provekit_ntt::ntt_nr, rayon::prelude::*,
-    whir::algebra::ntt::ReedSolomon,
+    crate::FieldElement, ark_ff::AdditiveGroup, rayon::prelude::*, whir::algebra::ntt::ReedSolomon,
 };
 
 #[derive(Debug)]
@@ -39,17 +38,17 @@ fn interleaved_rs_encode(
 ) -> Vec<FieldElement> {
     let column_count = coeffs.len() * interleaving_depth;
     let mut result = vec![FieldElement::ZERO; codeword_length * column_count];
-    let coset_size = message_length;
-    let num_cosets = codeword_length / coset_size;
-    let chunk_size = coset_size * column_count;
 
-    write_interleaved_coefficients(&mut result[..chunk_size], coeffs, message_length);
+    write_interleaved_coefficients(
+        &mut result[..message_length * column_count],
+        coeffs,
+        message_length,
+    );
 
-    for k in 1..num_cosets {
-        result.copy_within(0..chunk_size, k * chunk_size);
-    }
-
-    ntt_nr(&mut result, codeword_length, num_cosets);
+    let mut ntt =
+        ::ntt::NTT::new(result, column_count).expect("codeword_length must be a power of two");
+    ::ntt::ntt_nr(&mut ntt);
+    let mut result = ntt.into_inner();
     bit_reverse_rows(&mut result, codeword_length, column_count);
     result
 }
