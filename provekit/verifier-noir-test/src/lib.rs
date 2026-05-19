@@ -63,7 +63,7 @@ fn fr_to_le_bytes(fe: Fr) -> [u8; 32] {
 ///   - the Rust replay below has a bug, OR
 ///   - the Noir `sponge.nr` state machine drifted from spongefish semantics.
 #[allow(unused_assignments)]
-fn lane_sponge_replay(
+pub fn lane_sponge_replay(
     mut state: [Fr; 4],
     mut absorb_pos: u32,
     mut squeeze_pos: u32,
@@ -301,6 +301,30 @@ pub fn public_inputs_dst_fe() -> Fr {
     Fr::from_le_bytes_mod_order(&Sha256::digest(b"PROVEKIT_PUBLIC_INPUTS_V1"))
 }
 
+/// Compute the first 4 powers of the squeezed challenge from the canonical
+/// transcript state used by Phase 3B-i KAT.
+///
+/// Sequence: init_from_pre_absorbed_state(state=[10,20,30,40], absorb_pos=1,
+/// squeeze_pos=3); squeeze x; return [1, x, x^2, x^3].
+pub fn geometric_challenge_kat_expected() -> [Fr; 4] {
+    let state = [
+        Fr::from(10u64),
+        Fr::from(20u64),
+        Fr::from(30u64),
+        Fr::from(40u64),
+    ];
+    // Use lane_sponge_replay (already defined for transcript_kat). Squeeze 1 field as `x`.
+    let xs = lane_sponge_replay(state, 1, 3, &[], 1);
+    let x = xs[0];
+
+    let mut result = [Fr::from(0u64); 4];
+    result[0] = Fr::from(1u64);
+    result[1] = x;
+    result[2] = x * x;
+    result[3] = x * x * x;
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -387,5 +411,13 @@ mod tests {
         println!("EXPECTED_PATH_SIBLINGS[0] = {}", fr_to_noir_literal(siblings[0]));
         println!("EXPECTED_PATH_SIBLINGS[1] = {}", fr_to_noir_literal(siblings[1]));
         println!("EXPECTED_PATH_ROOT = {}", fr_to_noir_literal(root));
+    }
+
+    #[test]
+    fn print_geometric_challenge_kat_expected_for_noir() {
+        let expected = geometric_challenge_kat_expected();
+        for (i, fe) in expected.iter().enumerate() {
+            println!("EXPECTED_GEOMETRIC_CHALLENGE[{i}] = {}", fr_to_noir_literal(*fe));
+        }
     }
 }
