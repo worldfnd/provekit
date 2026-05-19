@@ -15,11 +15,11 @@ use crate::merkle::length_iv_hash;
 
 /// Domain-separation tag = SHA256("PROVEKIT_PUBLIC_INPUTS_V1") reduced mod p.
 ///
-/// Computed once by the Rust codegen helper and frozen here. Task 4 unfreezes
-/// the placeholder with the real value.
-///
-/// PLACEHOLDER VALUE - overwritten in Phase 2B Task 4.
-global PUBLIC_INPUTS_DST_FE: Field = 0;
+/// Pinned here so the Noir verifier matches
+/// `provekit/common/src/hash_config.rs::PUBLIC_INPUTS_DST_FE`. See
+/// `provekit/verifier-noir-test/tests/public_input_kat.rs` for the cross-impl
+/// guarantee.
+global PUBLIC_INPUTS_DST_FE: Field = 17472337278469442596796739128721211927880374059638554206255737057576326046406;
 
 /// Assert the prover's claimed public-inputs hash matches the Poseidon2
 /// length-IV hash of `[DST_FE, pi_0, pi_1, ...]`.
@@ -71,13 +71,16 @@ pub fn verify_public_eval<let N: u32>(
 //
 // Two separate frozen KATs:
 //   * EXPECTED_PI_HASH: hash of [DST_FE, 7, 11, 13] (3 public inputs).
-//     PLACEHOLDER until Task 4.
+//     Cross-impl guarantee lives in public_input_kat.rs.
 //   * Pure geometric series: x=5, public_inputs=[7,11,13], expected=1936:
 //     1 + 5*7 + 25*11 + 125*13 = 1 + 35 + 275 + 1625 = 1936. (No cross-impl
 //     needed; the formula is a closed-form computation.)
 //
-// PLACEHOLDER VALUE - overwritten in Phase 2B Task 4.
-global EXPECTED_PI_HASH: Field = 0;
+// Value computed by HashConfig::Poseidon2.hash_field_elements(&[7, 11, 13])
+// (which prepends DST_FE and calls poseidon2_hash); frozen as a KAT.
+// See provekit/verifier-noir-test/tests/public_input_kat.rs for the cross-impl
+// guarantee.
+global EXPECTED_PI_HASH: Field = 17671656644331470764259977637132622632100546348894486287549688249689905550951;
 
 #[test]
 fn verify_public_input_hash_matches_frozen_kat() {

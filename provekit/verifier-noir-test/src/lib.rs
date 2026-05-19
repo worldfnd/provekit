@@ -255,6 +255,25 @@ pub fn matrix_eval_kat_expected() -> [Fr; 4] {
     ]
 }
 
+/// Compute `HashConfig::Poseidon2.hash_field_elements(&[7, 11, 13])`, which is
+/// `poseidon2_hash([DST_FE, 7, 11, 13])` per the Rust reference at
+/// `provekit/common/src/hash_config.rs::hash_poseidon2`.
+pub fn public_input_kat_expected() -> Fr {
+    provekit_common::HashConfig::Poseidon2.hash_field_elements(&[
+        Fr::from(7u64),
+        Fr::from(11u64),
+        Fr::from(13u64),
+    ])
+}
+
+/// The Poseidon2 DST constant the Rust prover/verifier uses:
+/// `SHA256("PROVEKIT_PUBLIC_INPUTS_V1") reduced mod p`. Computed here so the
+/// Noir verifier can pin this constant in source.
+pub fn public_inputs_dst_fe() -> Fr {
+    use sha2::{Digest, Sha256};
+    Fr::from_le_bytes_mod_order(&Sha256::digest(b"PROVEKIT_PUBLIC_INPUTS_V1"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -325,5 +344,13 @@ mod tests {
             "EXPECTED_SUMCHECK_F_AT_ALPHA = {}",
             fr_to_noir_literal(f_at_alpha)
         );
+    }
+
+    #[test]
+    fn print_public_input_kat_expected_for_noir() {
+        let dst = public_inputs_dst_fe();
+        println!("PUBLIC_INPUTS_DST_FE = {}", fr_to_noir_literal(dst));
+        let hash = public_input_kat_expected();
+        println!("EXPECTED_PI_HASH = {}", fr_to_noir_literal(hash));
     }
 }
