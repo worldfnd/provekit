@@ -105,6 +105,10 @@ impl Command for Args {
                 rc.irs_committer.interleaving_depth,
             );
             println!(
+                "    round[{i}] codeword_length = {}",
+                rc.irs_committer.codeword_length,
+            );
+            println!(
                 "    round[{i}] OOD samples     = {}",
                 rc.irs_committer.out_domain_samples,
             );
@@ -125,6 +129,67 @@ impl Command for Args {
                 rc.sumcheck.round_pow.difficulty(),
             );
         }
+        // Blinding-side WHIR config summary
+        let bc = &scheme.whir_witness.blinding_commitment;
+        println!("  WHIR config (blinding-side):");
+        println!(
+            "    initial folding_factor   = {} (interleaving_depth={})",
+            bc.initial_committer.interleaving_depth.trailing_zeros(),
+            bc.initial_committer.interleaving_depth,
+        );
+        println!(
+            "    initial codeword_length  = {}",
+            bc.initial_committer.codeword_length,
+        );
+        println!(
+            "    initial OOD samples      = {}",
+            bc.initial_committer.out_domain_samples,
+        );
+        println!(
+            "    initial in-domain samples= {}",
+            bc.initial_committer.in_domain_samples,
+        );
+        println!(
+            "    initial sumcheck rounds  = {}",
+            bc.initial_sumcheck.num_rounds,
+        );
+        println!("    num WHIR rounds          = {}", bc.round_configs.len());
+        for (i, rc) in bc.round_configs.iter().enumerate() {
+            println!(
+                "    round[{i}] folding_factor  = {} (interleaving_depth={})",
+                rc.irs_committer.interleaving_depth.trailing_zeros(),
+                rc.irs_committer.interleaving_depth,
+            );
+            println!(
+                "    round[{i}] codeword_length = {}",
+                rc.irs_committer.codeword_length,
+            );
+            println!(
+                "    round[{i}] OOD samples     = {}",
+                rc.irs_committer.out_domain_samples,
+            );
+            println!(
+                "    round[{i}] in-domain samp  = {}",
+                rc.irs_committer.in_domain_samples,
+            );
+            println!(
+                "    round[{i}] query PoW       = {:.2}",
+                rc.pow.difficulty(),
+            );
+            println!(
+                "    round[{i}] sumcheck rounds = {}",
+                rc.sumcheck.num_rounds,
+            );
+        }
+        println!(
+            "    final sumcheck rounds    = {}",
+            bc.final_sumcheck.num_rounds,
+        );
+        println!("    final PoW                = {:.2}", bc.final_pow.difficulty());
+        println!(
+            "    initial codeword_length (witness)  = {}",
+            wc.initial_committer.codeword_length,
+        );
         println!(
             "    final sumcheck rounds    = {}",
             wc.final_sumcheck.num_rounds,
