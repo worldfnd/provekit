@@ -4604,6 +4604,7 @@ dependencies = [
  "noir_artifact_cli",
  "noirc_abi",
  "noirc_driver",
+ "poseidon2",
  "postcard",
  "provekit-common",
  "provekit-gnark",
@@ -4612,11 +4613,13 @@ dependencies = [
  "provekit-verifier",
  "rayon",
  "serde_json",
+ "spongefish",
  "tikv-jemallocator",
  "toml 0.8.23",
  "tracing",
  "tracing-subscriber",
  "tracing-tracy",
+ "whir",
 ]
 
 [[package]]

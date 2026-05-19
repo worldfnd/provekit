@@ -4,8 +4,16 @@ use {
     argh::FromArgs,
     ark_bn254::Fr,
     ark_ff::PrimeField,
-    provekit_common::{file::read, FieldElement, NoirProof, Verifier},
-    std::{collections::BTreeMap, path::PathBuf},
+    provekit_common::{
+        file::read, poseidon2::Poseidon2Sponge, FieldElement, NoirProof, Verifier,
+    },
+    spongefish::DuplexSpongeInterface,
+    std::{
+        cell::RefCell,
+        collections::BTreeMap,
+        path::PathBuf,
+        rc::Rc,
+    },
     tracing::instrument,
 };
 
@@ -304,21 +312,23 @@ fn emit_prover_toml(
     let mut p = NargParser::new(&proof.whir_r1cs_proof.narg_string);
     let mut values: BTreeMap<String, TomlValue> = BTreeMap::new();
 
-    // Pre-absorbed sponge state: kept as the previous behaviour (zeros).
-    // TODO(soundness): replay the domain separator + instance through the
-    // byte-faithful sponge to compute real (state, absorb_pos, squeeze_pos)
-    // values, then bind them in-circuit.
+    // Pre-absorbed sponge state: compute the exact sponge state after the
+    // domain-separator absorbs (protocol_id || session_id || instance) so the
+    // Noir verifier's transcript starts at the same state as the Rust prover.
+    let (pre_state, pre_absorb_pos, pre_squeeze_pos) =
+        compute_pre_absorbed_state(verifier, scheme, proof)
+            .context("computing pre-absorbed sponge state")?;
     values.insert(
         "pre_absorbed_state".to_string(),
-        TomlValue::FieldArray(vec![Fr::from(0u64); 4]),
+        TomlValue::FieldArray(pre_state.to_vec()),
     );
     values.insert(
         "pre_absorbed_absorb_pos".to_string(),
-        TomlValue::U32String(0),
+        TomlValue::U32String(pre_absorb_pos),
     );
     values.insert(
         "pre_absorbed_squeeze_pos".to_string(),
-        TomlValue::U32String(3),
+        TomlValue::U32String(pre_squeeze_pos),
     );
 
     // Step 1: receive witness-side initial IRS commitment.
@@ -562,6 +572,228 @@ fn emit_prover_toml(
         out.push_str(&format!("{} = {}\n", k, v.format()));
     }
     Ok(out)
+}
+
+/// A logging wrapper around `Poseidon2Sponge` that records every byte
+/// absorbed, squeezed, and ratchet event in order. We use this to capture the
+/// exact byte sequence spongefish drives through the sponge during
+/// `VerifierState::new` (which only ever calls `absorb`, but the wrapper still
+/// records other operations defensively in case spongefish evolves).
+#[derive(Clone)]
+struct LoggingSponge {
+    inner: Poseidon2Sponge,
+    log:   Rc<RefCell<Vec<SpongeOp>>>,
+}
+
+#[derive(Clone, Debug)]
+enum SpongeOp {
+    Absorb(Vec<u8>),
+    Squeeze(usize),
+    Ratchet,
+}
+
+impl Default for LoggingSponge {
+    fn default() -> Self {
+        Self {
+            inner: Poseidon2Sponge::default(),
+            log:   Rc::new(RefCell::new(Vec::new())),
+        }
+    }
+}
+
+impl DuplexSpongeInterface for LoggingSponge {
+    type U = u8;
+
+    fn absorb(&mut self, input: &[u8]) -> &mut Self {
+        self.log.borrow_mut().push(SpongeOp::Absorb(input.to_vec()));
+        self.inner.absorb(input);
+        self
+    }
+
+    fn squeeze(&mut self, output: &mut [u8]) -> &mut Self {
+        self.log.borrow_mut().push(SpongeOp::Squeeze(output.len()));
+        self.inner.squeeze(output);
+        self
+    }
+
+    fn ratchet(&mut self) -> &mut Self {
+        self.log.borrow_mut().push(SpongeOp::Ratchet);
+        self.inner.ratchet();
+        self
+    }
+}
+
+/// Byte-grain sponge replay over the BN254 Poseidon2 permutation, mirroring
+/// spongefish's `DuplexSponge<Poseidon2Wrapper, 128, 96>` state machine
+/// exactly (see
+/// `~/.cargo/git/checkouts/spongefish-…/spongefish/src/duplex_sponge.rs`).
+///
+/// We can't read spongefish's private state directly, but we can deterministically
+/// reproduce it by replaying the same byte ops on our own copy of the state
+/// machine. This is the same approach as `byte_sponge_replay` in
+/// `provekit-verifier-noir-test`, generalised to also support absorbs and to
+/// return the final state + positions.
+///
+/// Returns `(state_bytes, absorb_pos, squeeze_pos)`.
+fn byte_grain_sponge_replay(ops: &[SpongeOp]) -> ([u8; 128], usize, usize) {
+    use poseidon2::permutation::poseidon2_permutation;
+
+    const WIDTH: usize = 128;
+    const RATE: usize = 96;
+
+    let mut state = [0u8; WIDTH];
+    let mut absorb_pos: usize = 0;
+    let mut squeeze_pos: usize = RATE;
+
+    fn permute(state: &mut [u8; 128]) {
+        // Interpret state as 4 lanes of 32 bytes each, reduce LE mod p, permute,
+        // re-encode canonical LE. Mirrors `Poseidon2Wrapper::permute`.
+        let inputs: [Fr; 4] = std::array::from_fn(|i| {
+            Fr::from_le_bytes_mod_order(&state[i * 32..(i + 1) * 32])
+        });
+        let output = poseidon2_permutation(&inputs);
+        for (i, fe) in output.iter().enumerate() {
+            let bi = fe.into_bigint();
+            for (limb_i, limb) in bi.0.iter().enumerate() {
+                state[i * 32 + limb_i * 8..i * 32 + (limb_i + 1) * 8]
+                    .copy_from_slice(&limb.to_le_bytes());
+            }
+        }
+    }
+
+    for op in ops {
+        match op {
+            SpongeOp::Absorb(input) => {
+                // Mirrors spongefish duplex_sponge.rs `absorb`.
+                squeeze_pos = RATE;
+                let mut remaining: &[u8] = input;
+                while !remaining.is_empty() {
+                    if absorb_pos == RATE {
+                        permute(&mut state);
+                        absorb_pos = 0;
+                    } else {
+                        let chunk_len = (remaining.len()).min(RATE - absorb_pos);
+                        state[absorb_pos..absorb_pos + chunk_len]
+                            .copy_from_slice(&remaining[..chunk_len]);
+                        absorb_pos += chunk_len;
+                        remaining = &remaining[chunk_len..];
+                    }
+                }
+            }
+            SpongeOp::Squeeze(len) => {
+                // Mirrors spongefish duplex_sponge.rs `squeeze`.
+                let mut remaining = *len;
+                if remaining == 0 {
+                    continue;
+                }
+                absorb_pos = 0;
+                while remaining > 0 {
+                    if squeeze_pos == RATE {
+                        squeeze_pos = 0;
+                        permute(&mut state);
+                    }
+                    let chunk_len = remaining.min(RATE - squeeze_pos);
+                    squeeze_pos += chunk_len;
+                    remaining -= chunk_len;
+                }
+            }
+            SpongeOp::Ratchet => {
+                // Mirrors spongefish duplex_sponge.rs `ratchet`.
+                absorb_pos = RATE;
+                squeeze_pos = RATE;
+                state[0..RATE].fill(0);
+                permute(&mut state);
+            }
+        }
+    }
+
+    (state, absorb_pos, squeeze_pos)
+}
+
+/// Reconstructs the Fiat-Shamir sponge state after the domain-separator
+/// initialisation done by `WhirR1CSVerifier::verify` (i.e. after spongefish's
+/// `DomainSeparator::new(protocol).session(s).instance(i).to_verifier(...)`)
+/// and returns `(state_lanes, absorb_pos_lanes, squeeze_pos_lanes)` in the
+/// lane-grain units the Noir verifier consumes.
+///
+/// Requires `hash_config == Poseidon2`; bails on any byte-misalignment that
+/// cannot be expressed in lane units.
+fn compute_pre_absorbed_state(
+    verifier: &Verifier,
+    scheme: &provekit_common::WhirR1CSScheme,
+    proof: &NoirProof,
+) -> Result<([Fr; 4], u32, u32)> {
+    use whir::transcript::{DomainSeparator, Proof, VerifierState};
+
+    anyhow::ensure!(
+        verifier.hash_config == provekit_common::HashConfig::Poseidon2,
+        "compute_pre_absorbed_state currently supports only Poseidon2"
+    );
+
+    // Reconstruct the exact byte sequence the Rust verifier feeds the sponge.
+    let instance = proof.public_inputs.hash_bytes(verifier.hash_config);
+
+    // Spongefish's DomainSeparator::new/session/instance just packages the
+    // ids; the actual byte absorbs happen inside `to_verifier` (via
+    // public_message → absorb).
+    let logging = LoggingSponge::default();
+    let log_handle = logging.log.clone();
+
+    // Build whir's DomainSeparator for the scheme, then bind it to the
+    // instance bytes.
+    let ds = scheme.create_domain_separator();
+    let ds_with_instance: DomainSeparator<'_, [u8; 32]> = ds.instance(&instance);
+
+    // Construct a synthetic Proof: VerifierState::new only consumes the proof
+    // bytes from `narg_string` later (we only care about the DS-init absorbs
+    // here). An empty narg_string is fine because we never call `prover_message`.
+    let synthetic_proof = Proof {
+        narg_string: Vec::new(),
+        hints:       Vec::new(),
+        #[cfg(debug_assertions)]
+        pattern:     Vec::new(),
+    };
+
+    let _verifier_state: VerifierState<'_, LoggingSponge> =
+        VerifierState::new(&ds_with_instance, &synthetic_proof, logging);
+
+    let ops_snapshot = log_handle.borrow().clone();
+
+    // Sanity check: the proof's narg_string is not used here. The variable
+    // `proof` is kept in the signature for forward compatibility (and in case
+    // we later want to validate the pre-state against absorbs the verifier
+    // would do next).
+    let _ = proof;
+
+    // Replay through our byte-grain state machine to extract the final
+    // (state, absorb_pos, squeeze_pos) in BYTES.
+    let (state_bytes, absorb_pos_bytes, squeeze_pos_bytes) =
+        byte_grain_sponge_replay(&ops_snapshot);
+
+    // Convert byte positions to lane positions (RATE = 96 bytes = 3 lanes).
+    anyhow::ensure!(
+        absorb_pos_bytes.is_multiple_of(32),
+        "pre-absorbed sponge state is byte-misaligned (absorb_pos_bytes = {}); \
+         the Noir lane sponge cannot represent this. Consider redesigning the \
+         Noir sponge to track byte-grain positions.",
+        absorb_pos_bytes
+    );
+    anyhow::ensure!(
+        squeeze_pos_bytes.is_multiple_of(32),
+        "pre-absorbed sponge state is byte-misaligned (squeeze_pos_bytes = {}); \
+         the Noir lane sponge cannot represent this.",
+        squeeze_pos_bytes
+    );
+
+    let absorb_pos_lanes = (absorb_pos_bytes / 32) as u32;
+    let squeeze_pos_lanes = (squeeze_pos_bytes / 32) as u32;
+
+    // Decode state lanes from their canonical LE-byte encoding.
+    let state_lanes: [Fr; 4] = std::array::from_fn(|i| {
+        Fr::from_le_bytes_mod_order(&state_bytes[i * 32..(i + 1) * 32])
+    });
+
+    Ok((state_lanes, absorb_pos_lanes, squeeze_pos_lanes))
 }
 
 /// A byte parser over the `narg_string` that reads field elements and U64s
