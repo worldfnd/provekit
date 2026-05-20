@@ -203,4 +203,4 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "sha2",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { path = "/Users/ocdbytes/Desktop/atheo/whir", features = ["tracing"] }
+whir = { git = "https://github.com/ocdbytes/whir", rev = "8d61e407849cad363375e1e4deaeb137ab67ff46", features = ["tracing"] }
