@@ -123,8 +123,8 @@ async function buildShared() {
     process.exit(1);
   }
 
-  // Verity loads @noir-lang/* from node_modules directly; the old demo-local
-  // vendor/pkg staging directories are no longer needed.
+  // The browser demo loads @noir-lang/* from node_modules directly; the old
+  // demo-local vendor/pkg staging directories are no longer needed.
   for (const dir of ["vendor", "pkg", "pkg-web"]) {
     const fullPath = join(DEMO_DIR, dir);
     if (existsSync(fullPath)) {
