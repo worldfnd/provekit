@@ -1,4 +1,3 @@
-import { Proof, type ProverScheme, type VerifierScheme } from "@atheonxyz/verity";
 import { decompressWitnessStack } from "@noir-lang/acvm_js";
 import { Noir } from "@noir-lang/noir_js";
 import * as ProvekitInspector from "provekit-inspector";
@@ -9,6 +8,7 @@ import { CircuitController } from "./app/circuit-controller.js";
 import { collectDom } from "./app/dom.js";
 import { LogRenderer } from "./app/logs.js";
 import { createMavrosRunner, type MavrosRunner } from "./app/mavros-runtime.js";
+import { Proof, type ProverScheme, type VerifierScheme } from "./app/proof-types.js";
 import { ProofOutputPresenter } from "./app/proof-output.js";
 import { initializeRuntime, readCircuitStatsFromPkp } from "./app/proof-runtime.js";
 import { RunController } from "./app/run-controller.js";
@@ -135,7 +135,6 @@ class DemoApp {
     activeCircuit: "sha256",
     customFiles: {},
     wasmReady: false,
-    runtime: null,
     lastProof: null,
     activeVerifier: null,
   };
@@ -199,7 +198,7 @@ class DemoApp {
     try {
       this.steps.setStatus(1, stepStatus.running("Loading..."));
       this.logs.log("Initializing proof runtime...");
-      this.state.runtime = await initializeRuntime(this.logs);
+      await initializeRuntime(this.logs);
       this.state.wasmReady = true;
       this.steps.setStatus(1, stepStatus.success("Loaded"));
       this.circuits.refreshRunButton();
@@ -245,7 +244,7 @@ class DemoApp {
     verifierBytes: Uint8Array,
     mavrosArtifacts?: { witgenWasmBytes?: Uint8Array; adWasmBytes?: Uint8Array },
   ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }> {
-    if (!this.state.runtime) {
+    if (!this.state.wasmReady) {
       throw new Error("Proof runtime is not initialized yet.");
     }
 

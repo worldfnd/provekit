@@ -323,8 +323,8 @@ export class Prover {
      * artifacts.
      *
      * `inputs` is the regular ABI-shaped input object. `runner` must expose
-     * synchronous `runWitgen(inputBytes, witnessLayout, constraintsLayout)`
-     * and `runAd(coeffBytes, witnessLayout, constraintsLayout)` methods.
+     * synchronous `runWitgenInto(...)` and `runAdInto(...)` methods that fill
+     * Rust-owned byte views.
      * @param {any} inputs
      * @param {any} runner
      * @returns {Uint8Array}
@@ -520,6 +520,10 @@ function __wbg_get_imports() {
         getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
     };
+    imports.wbg.__wbg_apply_36be6a55257c99bf = function() { return handleError(function (arg0, arg1, arg2) {
+        const ret = getObject(arg0).apply(getObject(arg1), getObject(arg2));
+        return addHeapObject(ret);
+    }, arguments) };
     imports.wbg.__wbg_buffer_609cc3eee51ed158 = function(arg0) {
         const ret = getObject(arg0).buffer;
         return addHeapObject(ret);
@@ -530,10 +534,6 @@ function __wbg_get_imports() {
     }, arguments) };
     imports.wbg.__wbg_call_7cccdd69e0791ae2 = function() { return handleError(function (arg0, arg1, arg2) {
         const ret = getObject(arg0).call(getObject(arg1), getObject(arg2));
-        return addHeapObject(ret);
-    }, arguments) };
-    imports.wbg.__wbg_call_b8adc8b1d0a0d8eb = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
-        const ret = getObject(arg0).call(getObject(arg1), getObject(arg2), getObject(arg3), getObject(arg4));
         return addHeapObject(ret);
     }, arguments) };
     imports.wbg.__wbg_crypto_86f2631e91b51511 = function(arg0) {
@@ -698,6 +698,10 @@ function __wbg_get_imports() {
     imports.wbg.__wbg_process_3975fd6c72f520aa = function(arg0) {
         const ret = getObject(arg0).process;
         return addHeapObject(ret);
+    };
+    imports.wbg.__wbg_push_737cfc8c1432c2c6 = function(arg0, arg1) {
+        const ret = getObject(arg0).push(getObject(arg1));
+        return ret;
     };
     imports.wbg.__wbg_randomFillSync_f8c153b79f285817 = function() { return handleError(function (arg0, arg1) {
         getObject(arg0).randomFillSync(takeObject(arg1));

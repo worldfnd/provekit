@@ -17,8 +17,8 @@ use {
 };
 #[cfg(target_arch = "wasm32")]
 use {
-    ark_ff::{BigInt, PrimeField},
-    js_sys::{Function, Reflect, Uint8Array},
+    ark_ff::PrimeField,
+    js_sys::{Array, Function, Reflect, Uint8Array},
     noirc_abi::{AbiType, MAIN_RETURN_NAME},
     provekit_common::{ConstraintsLayout, FieldElement as NativeFieldElement, WitnessLayout},
     provekit_prover::{
@@ -75,8 +75,8 @@ impl Prover {
     /// artifacts.
     ///
     /// `inputs` is the regular ABI-shaped input object. `runner` must expose
-    /// synchronous `runWitgen(inputBytes, witnessLayout, constraintsLayout)`
-    /// and `runAd(coeffBytes, witnessLayout, constraintsLayout)` methods.
+    /// synchronous `runWitgenInto(...)` and `runAdInto(...)` methods that fill
+    /// Rust-owned byte views.
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen(js_name = proveMavrosBytes)]
     pub fn prove_mavros_bytes(
@@ -190,25 +190,55 @@ impl MavrosWasmDriver for JsMavrosDriver {
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
     ) -> anyhow::Result<MavrosPhase1Result> {
-        let result = call_runner(
-            &self.runner,
-            "runWitgen",
-            input_fields,
-            witness_layout,
-            constraints_layout,
-        )?;
+        let method = runner_method(&self.runner, "runWitgenInto")?;
+        let (witness_layout_value, constraints_layout_value) =
+            layout_values(witness_layout, constraints_layout)?;
+
+        let mut out_wit_pre_comm = zero_field_vec(witness_layout.pre_commitment_size());
+        let mut out_wit_post_comm = zero_field_vec(witness_layout.post_commitment_size());
+        let mut out_a = zero_field_vec(constraints_layout.size());
+        let mut out_b = zero_field_vec(constraints_layout.size());
+        let mut out_c = zero_field_vec(constraints_layout.size());
+
+        let input_view = field_bytes_view(input_fields);
+        let out_wit_pre_comm_view = field_bytes_view_mut(&mut out_wit_pre_comm);
+        let out_wit_post_comm_view = field_bytes_view_mut(&mut out_wit_post_comm);
+        let out_a_view = field_bytes_view_mut(&mut out_a);
+        let out_b_view = field_bytes_view_mut(&mut out_b);
+        let out_c_view = field_bytes_view_mut(&mut out_c);
+
+        let args = Array::new();
+        args.push(input_view.as_ref());
+        args.push(out_wit_pre_comm_view.as_ref());
+        args.push(out_wit_post_comm_view.as_ref());
+        args.push(out_a_view.as_ref());
+        args.push(out_b_view.as_ref());
+        args.push(out_c_view.as_ref());
+        args.push(&witness_layout_value);
+        args.push(&constraints_layout_value);
+        let result = method
+            .apply(&self.runner, &args)
+            .map_err(|err| anyhow::anyhow!("Mavros runner threw: {:?}", err))?;
+
+        drop((
+            input_view,
+            out_wit_pre_comm_view,
+            out_wit_post_comm_view,
+            out_a_view,
+            out_b_view,
+            out_c_view,
+        ));
+
         let tables: Vec<JsTableInfo> = serde_wasm_bindgen::from_value(get_prop(&result, "tables")?)
             .map_err(|err| anyhow::anyhow!("failed to decode Mavros table metadata: {err}"))?;
-
-        let mut out_wit_pre_comm = decode_field_vec(&get_prop(&result, "outWitPreComm")?)?;
         normalize_mavros_multiplicities(&mut out_wit_pre_comm, witness_layout);
 
         Ok(MavrosPhase1Result {
             out_wit_pre_comm,
-            out_wit_post_comm: decode_field_vec(&get_prop(&result, "outWitPostComm")?)?,
-            out_a: decode_field_vec(&get_prop(&result, "outA")?)?,
-            out_b: decode_field_vec(&get_prop(&result, "outB")?)?,
-            out_c: decode_field_vec(&get_prop(&result, "outC")?)?,
+            out_wit_post_comm,
+            out_a,
+            out_b,
+            out_c,
             tables: tables
                 .into_iter()
                 .map(|table| MavrosTableInfo {
@@ -230,18 +260,33 @@ impl MavrosWasmDriver for JsMavrosDriver {
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
     ) -> anyhow::Result<[Vec<NativeFieldElement>; 3]> {
-        let result = call_runner(
-            &self.runner,
-            "runAd",
-            coeffs,
-            witness_layout,
-            constraints_layout,
-        )?;
-        Ok([
-            decode_field_vec(&get_prop(&result, "outDa")?)?,
-            decode_field_vec(&get_prop(&result, "outDb")?)?,
-            decode_field_vec(&get_prop(&result, "outDc")?)?,
-        ])
+        let method = runner_method(&self.runner, "runAdInto")?;
+        let (witness_layout_value, constraints_layout_value) =
+            layout_values(witness_layout, constraints_layout)?;
+
+        let mut out_da = zero_field_vec(witness_layout.size());
+        let mut out_db = zero_field_vec(witness_layout.size());
+        let mut out_dc = zero_field_vec(witness_layout.size());
+
+        let coeffs_view = field_bytes_view(coeffs);
+        let out_da_view = field_bytes_view_mut(&mut out_da);
+        let out_db_view = field_bytes_view_mut(&mut out_db);
+        let out_dc_view = field_bytes_view_mut(&mut out_dc);
+
+        let args = Array::new();
+        args.push(coeffs_view.as_ref());
+        args.push(out_da_view.as_ref());
+        args.push(out_db_view.as_ref());
+        args.push(out_dc_view.as_ref());
+        args.push(&witness_layout_value);
+        args.push(&constraints_layout_value);
+        method
+            .apply(&self.runner, &args)
+            .map_err(|err| anyhow::anyhow!("Mavros runner threw: {:?}", err))?;
+
+        drop((coeffs_view, out_da_view, out_db_view, out_dc_view));
+
+        Ok([out_da, out_db, out_dc])
     }
 }
 
@@ -257,26 +302,23 @@ struct JsTableInfo {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn call_runner(
-    runner: &JsValue,
-    method: &str,
-    fields: &[NativeFieldElement],
-    witness_layout: WitnessLayout,
-    constraints_layout: ConstraintsLayout,
-) -> anyhow::Result<JsValue> {
-    let method = Reflect::get(runner, &JsValue::from_str(method))
+fn runner_method(runner: &JsValue, method: &str) -> anyhow::Result<Function> {
+    Reflect::get(runner, &JsValue::from_str(method))
         .map_err(|_| anyhow::anyhow!("Mavros runner method lookup failed"))?
         .dyn_into::<Function>()
-        .map_err(|_| anyhow::anyhow!("Mavros runner method is not a function"))?;
+        .map_err(|_| anyhow::anyhow!("Mavros runner method is not a function"))
+}
 
-    let fields = Uint8Array::from(encode_field_vec(fields).as_slice());
+#[cfg(target_arch = "wasm32")]
+fn layout_values(
+    witness_layout: WitnessLayout,
+    constraints_layout: ConstraintsLayout,
+) -> anyhow::Result<(JsValue, JsValue)> {
     let witness_layout = serde_wasm_bindgen::to_value(&witness_layout)
         .map_err(|err| anyhow::anyhow!("failed to encode Mavros witness layout: {err}"))?;
     let constraints_layout = serde_wasm_bindgen::to_value(&constraints_layout)
         .map_err(|err| anyhow::anyhow!("failed to encode Mavros constraints layout: {err}"))?;
-    method
-        .call3(runner, &fields.into(), &witness_layout, &constraints_layout)
-        .map_err(|err| anyhow::anyhow!("Mavros runner threw: {:?}", err))
+    Ok((witness_layout, constraints_layout))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -286,36 +328,40 @@ fn get_prop(value: &JsValue, name: &str) -> anyhow::Result<JsValue> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn encode_field_vec(fields: &[NativeFieldElement]) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(fields.len() * MAX_FIELD_ELEMENT_BYTES);
-    for field in fields {
-        for limb in field.0 .0 {
-            bytes.extend_from_slice(&limb.to_le_bytes());
-        }
-    }
-    bytes
+fn zero_field_vec(len: usize) -> Vec<NativeFieldElement> {
+    vec![NativeFieldElement::from(0u64); len]
 }
 
 #[cfg(target_arch = "wasm32")]
-fn decode_field_vec(value: &JsValue) -> anyhow::Result<Vec<NativeFieldElement>> {
-    let bytes = Uint8Array::new(value).to_vec();
-    anyhow::ensure!(
-        bytes.len() % MAX_FIELD_ELEMENT_BYTES == 0,
-        "field byte buffer length {} is not divisible by {}",
-        bytes.len(),
-        MAX_FIELD_ELEMENT_BYTES
-    );
-    let mut fields = Vec::with_capacity(bytes.len() / MAX_FIELD_ELEMENT_BYTES);
-    for chunk in bytes.chunks_exact(MAX_FIELD_ELEMENT_BYTES) {
-        let limbs = [
-            u64::from_le_bytes(chunk[0..8].try_into().unwrap()),
-            u64::from_le_bytes(chunk[8..16].try_into().unwrap()),
-            u64::from_le_bytes(chunk[16..24].try_into().unwrap()),
-            u64::from_le_bytes(chunk[24..32].try_into().unwrap()),
-        ];
-        fields.push(NativeFieldElement::new_unchecked(BigInt::new(limbs)));
+fn field_bytes_view(fields: &[NativeFieldElement]) -> Uint8Array {
+    assert_field_byte_layout();
+    let len = fields.len() * MAX_FIELD_ELEMENT_BYTES;
+    let ptr = fields.as_ptr().cast::<u8>();
+    // SAFETY: BN254 field elements are represented as four little-endian u64
+    // limbs in this target. The returned view is used only for synchronous JS
+    // calls and is dropped before Rust can mutate or free the backing slice.
+    unsafe { Uint8Array::view(std::slice::from_raw_parts(ptr, len)) }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn field_bytes_view_mut(fields: &mut [NativeFieldElement]) -> Uint8Array {
+    assert_field_byte_layout();
+    let len = fields.len() * MAX_FIELD_ELEMENT_BYTES;
+    let ptr = fields.as_mut_ptr().cast::<u8>();
+    // SAFETY: The JS runner writes exactly `len` bytes into this view during a
+    // synchronous call. No Rust references to the field slice are used until the
+    // view has been dropped, and the vector is fully initialized before export.
+    unsafe { Uint8Array::view_mut_raw(ptr, len) }
+}
+
+#[cfg(target_arch = "wasm32")]
+fn assert_field_byte_layout() {
+    if std::mem::size_of::<NativeFieldElement>() != MAX_FIELD_ELEMENT_BYTES {
+        panic!(
+            "unexpected BN254 field element size: {}",
+            std::mem::size_of::<NativeFieldElement>()
+        );
     }
-    Ok(fields)
 }
 
 #[cfg(target_arch = "wasm32")]

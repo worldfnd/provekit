@@ -1,4 +1,4 @@
-import type { Proof, VerifierScheme, Verity } from "@atheonxyz/verity";
+import type { Proof, VerifierScheme } from "./proof-types.js";
 import type { UploadState } from "./upload-rules.js";
 
 export type CircuitName = "sha256" | "poseidon" | "custom";
@@ -18,7 +18,6 @@ export interface AppState {
   activeCircuit: CircuitName;
   customFiles: CustomFiles;
   wasmReady: boolean;
-  runtime: Verity | null;
   lastProof: Proof | null;
   activeVerifier: VerifierScheme | null;
 }

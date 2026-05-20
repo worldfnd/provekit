@@ -51,7 +51,7 @@ waitForMsgType(self, 'wasm_bindgen_worker_init').then(async ({ init, receiver })
   // OTOH, even though it can't be inlined, it should be still reasonably
   // cheap since the requested file is already in cache (it was loaded by
   // the main thread).
-  const pkg = await import('../../..');
+  const pkg = await import('../../../provekit_wasm.js');
   await pkg.default(init);
   postMessage({ type: 'wasm_bindgen_worker_ready' });
   pkg.wbg_rayon_start_worker(receiver);

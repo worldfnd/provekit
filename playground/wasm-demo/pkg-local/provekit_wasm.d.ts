@@ -31,8 +31,8 @@ export class Prover {
    * artifacts.
    *
    * `inputs` is the regular ABI-shaped input object. `runner` must expose
-   * synchronous `runWitgen(inputBytes, witnessLayout, constraintsLayout)`
-   * and `runAd(coeffBytes, witnessLayout, constraintsLayout)` methods.
+   * synchronous `runWitgenInto(...)` and `runAdInto(...)` methods that fill
+   * Rust-owned byte views.
    */
   proveMavrosBytes(inputs: any, runner: any): Uint8Array;
   getNumConstraints(): number;

@@ -104,8 +104,12 @@ function readU32(view: DataView, ptr: number): number {
   return view.getUint32(ptr, true);
 }
 
-function readFieldRange(memory: WebAssembly.Memory, ptr: number, count: number): Uint8Array {
-  return new Uint8Array(memory.buffer.slice(ptr, ptr + count * FIELD_SIZE));
+function copyFieldRange(memory: WebAssembly.Memory, ptr: number, count: number, out: Uint8Array, label: string): void {
+  const byteLength = count * FIELD_SIZE;
+  if (out.byteLength !== byteLength) {
+    throw new Error(`${label} buffer length ${out.byteLength} does not match ${byteLength}`);
+  }
+  out.set(new Uint8Array(memory.buffer, ptr, byteLength));
 }
 
 async function compileModule(bytes: Uint8Array): Promise<WebAssembly.Module> {
@@ -131,6 +135,24 @@ export interface MavrosRunner {
       elemInversesConstraintSectionOffset: number;
     }>;
   };
+  runWitgenInto(
+    inputFields: Uint8Array,
+    outWitPreComm: Uint8Array,
+    outWitPostComm: Uint8Array,
+    outA: Uint8Array,
+    outB: Uint8Array,
+    outC: Uint8Array,
+    witnessLayout: WitnessLayout,
+    constraintsLayout: ConstraintsLayout,
+  ): {
+    tables: Array<{
+      multiplicitiesWitOffset: number;
+      numValues: number;
+      length: number;
+      elemInversesWitnessSectionOffset: number;
+      elemInversesConstraintSectionOffset: number;
+    }>;
+  };
   runAd(
     coeffs: Uint8Array,
     witnessLayout: WitnessLayout,
@@ -140,6 +162,14 @@ export interface MavrosRunner {
     outDb: Uint8Array;
     outDc: Uint8Array;
   };
+  runAdInto(
+    coeffs: Uint8Array,
+    outDa: Uint8Array,
+    outDb: Uint8Array,
+    outDc: Uint8Array,
+    witnessLayout: WitnessLayout,
+    constraintsLayout: ConstraintsLayout,
+  ): void;
 }
 
 export async function createMavrosRunner(
@@ -154,11 +184,41 @@ export async function createMavrosRunner(
 
   logs?.log("Mavros WASM artifacts compiled");
 
-  return {
+  const runner: MavrosRunner = {
     runWitgen(inputFields, witnessLayout, constraintsLayout) {
+      const witnessCount = witnessSize(witnessLayout);
+      const constraintCount = constraintsSize(constraintsLayout);
+      const preCommitmentCount = witnessPreCommitmentSize(witnessLayout);
+      const outWitPreComm = new Uint8Array(preCommitmentCount * FIELD_SIZE);
+      const outWitPostComm = new Uint8Array((witnessCount - preCommitmentCount) * FIELD_SIZE);
+      const outA = new Uint8Array(constraintCount * FIELD_SIZE);
+      const outB = new Uint8Array(constraintCount * FIELD_SIZE);
+      const outC = new Uint8Array(constraintCount * FIELD_SIZE);
+      const { tables } = this.runWitgenInto(
+        inputFields,
+        outWitPreComm,
+        outWitPostComm,
+        outA,
+        outB,
+        outC,
+        witnessLayout,
+        constraintsLayout,
+      );
+      return {
+        outWitPreComm,
+        outWitPostComm,
+        outA,
+        outB,
+        outC,
+        tables,
+      };
+    },
+
+    runWitgenInto(inputFields, outWitPreComm, outWitPostComm, outA, outB, outC, witnessLayout, constraintsLayout) {
       const started = performance.now();
       const witnessCount = witnessSize(witnessLayout);
       const constraintCount = constraintsSize(constraintsLayout);
+      const preCommitmentCount = witnessPreCommitmentSize(witnessLayout);
       if (!Number.isInteger(inputFields.byteLength / FIELD_SIZE)) {
         throw new Error("Mavros input field buffer is not field-aligned");
       }
@@ -230,31 +290,36 @@ export async function createMavrosRunner(
         };
       });
 
-      const preCommitmentCount = witnessPreCommitmentSize(witnessLayout);
-      const result = {
-        outWitPreComm: readFieldRange(memory, witnessPtr, preCommitmentCount),
-        outWitPostComm: readFieldRange(
-          memory,
-          witnessPtr + preCommitmentCount * FIELD_SIZE,
-          witnessCount - preCommitmentCount,
-        ),
-        outA: readFieldRange(memory, aPtr, constraintCount),
-        outB: readFieldRange(memory, bPtr, constraintCount),
-        outC: readFieldRange(memory, cPtr, constraintCount),
-        tables,
-      };
+      copyFieldRange(memory, witnessPtr, preCommitmentCount, outWitPreComm, "outWitPreComm");
+      copyFieldRange(
+        memory,
+        witnessPtr + preCommitmentCount * FIELD_SIZE,
+        witnessCount - preCommitmentCount,
+        outWitPostComm,
+        "outWitPostComm",
+      );
+      copyFieldRange(memory, aPtr, constraintCount, outA, "outA");
+      copyFieldRange(memory, bPtr, constraintCount, outB, "outB");
+      copyFieldRange(memory, cPtr, constraintCount, outC, "outC");
+
       logs?.log(`Mavros witgen.wasm: ${callMs.toFixed(0)}ms call, ${(performance.now() - started).toFixed(0)}ms total`);
-      return result;
+      return { tables };
     },
 
     runAd(coeffs, witnessLayout, constraintsLayout) {
+      const witnessCount = witnessSize(witnessLayout);
+      const outDa = new Uint8Array(witnessCount * FIELD_SIZE);
+      const outDb = new Uint8Array(witnessCount * FIELD_SIZE);
+      const outDc = new Uint8Array(witnessCount * FIELD_SIZE);
+      this.runAdInto(coeffs, outDa, outDb, outDc, witnessLayout, constraintsLayout);
+      return { outDa, outDb, outDc };
+    },
+
+    runAdInto(coeffs, outDa, outDb, outDc, witnessLayout, constraintsLayout) {
       const started = performance.now();
       const witnessCount = witnessSize(witnessLayout);
       const constraintCount = constraintsSize(constraintsLayout);
       const expectedCoeffBytes = constraintCount * FIELD_SIZE;
-      if (coeffs.byteLength > expectedCoeffBytes) {
-        coeffs = coeffs.slice(0, expectedCoeffBytes);
-      }
       if (coeffs.byteLength !== expectedCoeffBytes) {
         throw new Error(`AD coeff length ${coeffs.byteLength} does not match ${constraintCount} fields`);
       }
@@ -293,15 +358,13 @@ export async function createMavrosRunner(
       callMavrosMain(exports, vmStructPtr);
       const callMs = performance.now() - callStarted;
 
-      const result = {
-        outDa: readFieldRange(memory, daPtr, witnessCount),
-        outDb: readFieldRange(memory, dbPtr, witnessCount),
-        outDc: readFieldRange(memory, dcPtr, witnessCount),
-      };
+      copyFieldRange(memory, daPtr, witnessCount, outDa, "outDa");
+      copyFieldRange(memory, dbPtr, witnessCount, outDb, "outDb");
+      copyFieldRange(memory, dcPtr, witnessCount, outDc, "outDc");
       logs?.log(`Mavros ad.wasm: ${callMs.toFixed(0)}ms call, ${(performance.now() - started).toFixed(0)}ms total`);
-      return result;
     },
   };
+  return runner;
 }
 
 function instantiateWithMemorySync(module: WebAssembly.Module, pages: number): {

@@ -1,8 +1,7 @@
-import type { ProverScheme, VerifierScheme } from "@atheonxyz/verity";
-
 import { ArtifactLoader } from "./artifact-loader.js";
 import type { DemoDom } from "./dom.js";
 import { ProofOutputPresenter } from "./proof-output.js";
+import type { ProverScheme, VerifierScheme } from "./proof-types.js";
 import { StepPresenter, stepStatus } from "./steps.js";
 import type { AppState, DiagnosticsWriter } from "./types.js";
 
@@ -27,7 +26,7 @@ export class RunController {
   constructor(private readonly deps: RunControllerDeps) {}
 
   async run(): Promise<void> {
-    if (!this.deps.state.runtime) {
+    if (!this.deps.state.wasmReady) {
       this.deps.logs.log("Proof runtime is not initialized yet.", "error");
       return;
     }
@@ -100,7 +99,7 @@ export class RunController {
     dom.verifyButton.disabled = true;
     logs.clear();
     // Reset steps 2–5 only; step 1 ("Load Proof Runtime") has already
-    // completed and is tied to the long-lived Verity runtime, not per-run.
+    // completed and is tied to the long-lived local WASM runtime, not per-run.
     steps.reset(2);
     proofOutput.reset();
     state.lastProof = null;

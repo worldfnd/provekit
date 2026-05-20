@@ -1,10 +1,10 @@
-import type { Proof, VerifierScheme } from "@atheonxyz/verity";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ChecklistPresenter } from "../src/app/checklist.js";
 import { CircuitController } from "../src/app/circuit-controller.js";
 import { collectDom } from "../src/app/dom.js";
 import { ProofOutputPresenter } from "../src/app/proof-output.js";
+import type { Proof, VerifierScheme } from "../src/app/proof-types.js";
 import { StepPresenter } from "../src/app/steps.js";
 import type { AppState, CircuitName, LogType } from "../src/app/types.js";
 import { VerifyController } from "../src/app/verify-controller.js";
@@ -52,7 +52,6 @@ function createState(activeCircuit: CircuitName = "sha256"): AppState {
     activeCircuit,
     customFiles: {},
     wasmReady: true,
-    runtime: null,
     lastProof: null,
     activeVerifier: null,
   };
