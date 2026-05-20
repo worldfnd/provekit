@@ -14,7 +14,7 @@ use {
         CompilationResult, CompileOptions, CrateName, DEFAULT_EXPRESSION_WIDTH,
         NOIR_ARTIFACT_VERSION_STRING,
     },
-    provekit_common::{file::write, NoirProofScheme, Prover, Verifier},
+    provekit_common::{file::write, register_ntt, NoirProofScheme, Prover, Verifier},
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
     rayon::prelude::*,
     std::path::{Path, PathBuf},
@@ -77,6 +77,8 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
+        register_ntt();
+
         // Canonicalize so compiled artifacts embed absolute source paths,
         // matching `nargo compile` byte-for-byte in the `file_map` field.
         let program_dir = std::fs::canonicalize(&self.program_dir)

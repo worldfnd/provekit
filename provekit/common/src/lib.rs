@@ -47,7 +47,7 @@ pub fn register_ntt() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {
         let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(whir::algebra::ntt::ArkNtt::<FieldElement>::default());
+            Arc::new(whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield());
         whir::algebra::ntt::NTT.insert(ntt);
 
         // let skyscraper: Arc<dyn whir::hash::HashEngine> =

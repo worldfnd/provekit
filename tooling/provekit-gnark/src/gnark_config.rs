@@ -69,7 +69,7 @@ impl WHIRConfigGnark {
         let ood_samples: Vec<usize> = whir_params
             .round_configs
             .iter()
-            .map(|rc| rc.irs_committer.out_domain_samples)
+            .map(|rc| rc.out_domain_samples)
             .collect();
 
         let num_queries: Vec<usize> = whir_params

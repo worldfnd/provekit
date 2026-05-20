@@ -13,8 +13,11 @@ members = [
   "tooling/cli",
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
-  "tooling/provekit-gnark",
-  "tooling/verifier-server",
+  # Disabled during zook migration — both crates expect the old whir_zk shape
+  # (blinded_polynomial / blinding_polynomial sub-configs) which zook does not
+  # expose. Re-enable after the recursive verifier is ported to zook.
+  # "tooling/provekit-gnark",
+  # "tooling/verifier-server",
   # "ntt",
 ]
 exclude = ["playground/passport-input-gen"]
@@ -177,9 +180,8 @@ ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
-spongefish = { package = "provekit-spongefish", version = "0.1.0", features = [
-  "ark-ff",
-  "sha2",
-] }
-spongefish-pow = { package = "provekit-spongefish-pow", version = "0.1.0" }
-whir = { package = "provekit-whir", version = "0.1.1", features = ["tracing"] }
+spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
+  "ark-ff", "sha2",
+], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
+spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
+whir = { path = "/Users/ocdbytes/Desktop/atheo/whir", features = ["tracing"] }

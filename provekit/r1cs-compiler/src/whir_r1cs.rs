@@ -1,10 +1,45 @@
 use {
     provekit_common::{utils::next_power_of_two, WhirR1CSScheme, WhirZkConfig, R1CS},
-    whir::parameters::ProtocolParameters,
+    whir::{
+        parameters::ProtocolParameters,
+        protocols::params::spec::{FoldingFactor, Mode, SecuritySpec, TuningSpec},
+    },
 };
 
-const MIN_WHIR_NUM_VARIABLES: usize = 14;
+const MIN_WHIR_NUM_VARIABLES: usize = 15;
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
+
+/// Translates the legacy `ProtocolParameters` shape (still used at provekit's
+/// call sites) into zook's `(SecuritySpec, TuningSpec)` pair.
+/// `initial_folding_factor` vs. `folding_factor` map to
+/// `ConstantFromSecondRound`; equal values collapse to `Constant`.
+fn protocol_parameters_to_zook(
+    params: &ProtocolParameters,
+    vector_size: usize,
+) -> (SecuritySpec, TuningSpec) {
+    let folding_factor = if params.initial_folding_factor == params.folding_factor {
+        FoldingFactor::Constant(params.folding_factor)
+    } else {
+        FoldingFactor::ConstantFromSecondRound {
+            initial: params.initial_folding_factor,
+            rest:    params.folding_factor,
+        }
+    };
+    let spec = SecuritySpec {
+        // provekit's current pipeline runs in standard mode; zook also supports ZK,
+        // but for this migration we preserve provekit's existing mode.
+        mode:                 Mode::ZeroKnowledge,
+        target_security_bits: params.security_level as u32,
+        max_pow_bits:         Some(params.pow_bits as u32),
+        hash_id:              params.hash_id,
+    };
+    let tuning = TuningSpec {
+        vector_size,
+        starting_log_inv_rate: params.starting_log_inv_rate as u32,
+        folding_factor,
+    };
+    (spec, tuning)
+}
 
 pub trait WhirR1CSSchemeBuilder {
     fn new_for_r1cs(
@@ -67,11 +102,10 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
     fn new_whir_zk_config_for_size(num_variables: usize) -> WhirZkConfig {
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
 
-        // Parameters tuned for 128-bit security under the Johnson bound (the old
-        // ConjectureList soundness was disproven). Rate=2 balances query count vs
-        // codeword size; ff=3 keeps blinding polynomials small; pow_bits=10 shifts
-        // security budget toward algebraic hardness (118 bits) with light PoW per
-        // round, which is faster than the default ~18-bit grinding.
+        // Same security target as before (128 bits, 10 bits per-slot PoW budget) — the
+        // old whir_zk wrapper is replaced by zook's per-round Construction 9.7
+        // orchestrator. Tuning maps directly: same starting_log_inv_rate (2)
+        // and folding_factor (3).
         let whir_params = ProtocolParameters {
             unique_decoding:        false,
             security_level:         128,
@@ -82,51 +116,36 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             batch_size:             1,
             hash_id:                whir::hash::SHA2,
         };
-        WhirZkConfig::new(nv, &whir_params)
+        let (spec, tuning) = protocol_parameters_to_zook(&whir_params, 1 << nv);
+        println!(">>> spec : {:?}", spec);
+        println!(">>> tuning : {:?}", tuning);
+        WhirZkConfig::derive(spec, tuning)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, whir::protocols::params::bounds::SoundnessBounded};
+
+    fn assert_zook_security_at_least(config: &WhirZkConfig, target: f64, label: &str) {
+        let bits = f64::from(config.analytic_bits());
+        assert!(
+            bits >= target,
+            "{label}: zook analytic bits {bits:.2} < target {target}"
+        );
+    }
 
     #[test]
     fn verify_security_level() {
         let config = WhirR1CSScheme::new_whir_zk_config_for_size(20);
-        let sec_blinded = config
-            .blinded_polynomial
-            .security_level(config.blinded_polynomial.initial_committer.num_vectors, 1);
-        let sec_blinding = config
-            .blinding_polynomial
-            .security_level(config.blinding_polynomial.initial_committer.num_vectors, 1);
-        assert!(
-            sec_blinded >= 128.0,
-            "Blinded commitment security {sec_blinded:.2} < 128 bits"
-        );
-        assert!(
-            sec_blinding >= 128.0,
-            "Blinding commitment security {sec_blinding:.2} < 128 bits"
-        );
+        // We allow up to 10 bits of PoW credit (see `new_whir_zk_config_for_size`),
+        // so analytic floor is target − pow = 118 bits.
+        assert_zook_security_at_least(&config, 118.0, "nv=20");
     }
 
     #[test]
     fn verify_security_level_min_variables() {
         let config = WhirR1CSScheme::new_whir_zk_config_for_size(MIN_WHIR_NUM_VARIABLES);
-        let sec_blinded = config
-            .blinded_polynomial
-            .security_level(config.blinded_polynomial.initial_committer.num_vectors, 1);
-        let sec_blinding = config
-            .blinding_polynomial
-            .security_level(config.blinding_polynomial.initial_committer.num_vectors, 1);
-        assert!(
-            sec_blinded >= 128.0,
-            "Blinded commitment security {sec_blinded:.2} < 128 bits at nv={}",
-            MIN_WHIR_NUM_VARIABLES
-        );
-        assert!(
-            sec_blinding >= 128.0,
-            "Blinding commitment security {sec_blinding:.2} < 128 bits at nv={}",
-            MIN_WHIR_NUM_VARIABLES
-        );
+        assert_zook_security_at_least(&config, 118.0, "nv=MIN");
     }
 }

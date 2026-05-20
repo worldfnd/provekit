@@ -12,7 +12,7 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
-provekit-gnark.workspace = true
+# provekit-gnark.workspace = true  # disabled during zook migration
 provekit-prover.workspace = true
 provekit-r1cs-compiler.workspace = true
 provekit-verifier.workspace = true
