@@ -103,7 +103,7 @@ pub struct Args {
 
     /// hash algorithm for Merkle commitments (skyscraper, sha256, keccak,
     /// blake3, poseidon2)
-    #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
+    #[argh(option, long = "hash", default = "String::from(\"sha256\")")]
     hash: String,
 }
 

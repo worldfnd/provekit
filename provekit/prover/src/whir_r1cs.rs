@@ -300,7 +300,9 @@ fn prove_from_alphas(
 
         let form_refs: Vec<&dyn LinearForm<FieldElement>> =
             boxed_weights.iter().map(|b| b.as_ref()).collect();
-        scheme.whir_witness.prove(&mut merlin, cw, &form_refs, &evaluations);
+        scheme
+            .whir_witness
+            .prove(&mut merlin, cw, &form_refs, &evaluations);
     } else {
         // Dual commitment path
         let mut commitments = commitments.into_iter();
@@ -377,7 +379,9 @@ fn prove_from_alphas(
 
             let form_refs: Vec<&dyn LinearForm<FieldElement>> =
                 boxed_weights.iter().map(|b| b.as_ref()).collect();
-            scheme.whir_witness.prove(&mut merlin, w1, &form_refs, &evaluations);
+            scheme
+                .whir_witness
+                .prove(&mut merlin, w1, &form_refs, &evaluations);
         }
 
         let WhirR1CSCommitment { witness: w2, .. } = c2;
@@ -398,7 +402,9 @@ fn prove_from_alphas(
 
             let form_refs: Vec<&dyn LinearForm<FieldElement>> =
                 boxed_weights.iter().map(|b| b.as_ref()).collect();
-            scheme.whir_witness.prove(&mut merlin, w2, &form_refs, &evaluations);
+            scheme
+                .whir_witness
+                .prove(&mut merlin, w2, &form_refs, &evaluations);
         }
     }
 

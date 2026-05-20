@@ -134,8 +134,10 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         hash_id: EngineId,
     ) -> WhirZkConfig {
         // Zook is single-poly; `num_polynomials` is kept on the trait for
-        // callsite compatibility but ignored here.
-        let _ = num_polynomials;
+        // callsite compatibility but ignored here. WHIR internal hash is
+        // pinned to SHA2 during the zook migration; the caller's `hash_id`
+        // still drives the transcript sponge.
+        let _ = (num_polynomials, hash_id);
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
 
         // Same security target as before (128 bits, 10 bits per-slot PoW budget) — the
@@ -143,14 +145,14 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         // orchestrator. Tuning maps directly: same starting_log_inv_rate (2)
         // and folding_factor (3).
         let whir_params = ProtocolParameters {
-            unique_decoding: false,
-            security_level: 128,
-            pow_bits: 10,
+            unique_decoding:        false,
+            security_level:         128,
+            pow_bits:               10,
             initial_folding_factor: 3,
-            folding_factor: 3,
-            starting_log_inv_rate: 2,
-            batch_size: 1,
-            hash_id,
+            folding_factor:         3,
+            starting_log_inv_rate:  2,
+            batch_size:             1,
+            hash_id:                whir::hash::SHA2,
         };
         let (spec, tuning) = protocol_parameters_to_zook(&whir_params, 1 << nv);
         WhirZkConfig::derive(spec, tuning)

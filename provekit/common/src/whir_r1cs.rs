@@ -13,8 +13,9 @@ use {
 };
 
 pub type WhirConfig = GenericWhirConfig<Identity<FieldElement>>;
-/// `WhirZkConfig` now aliases zook's per-round orchestrator config (Construction 9.7),
-/// not the older whir_zk wrapper. Single-poly, multi-claim — matches provekit's usage.
+/// `WhirZkConfig` now aliases zook's per-round orchestrator config
+/// (Construction 9.7), not the older whir_zk wrapper. Single-poly, multi-claim
+/// — matches provekit's usage.
 pub type WhirZkConfig = ProtocolConfig<Identity<FieldElement>>;
 
 /// Type alias for the whir domain separator used in provekit's outer protocol.
