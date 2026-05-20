@@ -9,7 +9,6 @@ use {
             OffsetCovector,
         },
         utils::{
-            pad_to_power_of_two,
             sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, calculate_witness_bounds,
                 eval_cubic_poly, multiply_transposed_by_eq_alpha, sumcheck_fold_map_reduce,
@@ -20,11 +19,10 @@ use {
         FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
         WhirR1CSScheme, R1CS,
     },
-    std::borrow::Cow,
     tracing::instrument,
     whir::{
-        algebra::{dot, linear_form::LinearForm},
-        protocols::whir_zk::Witness as WhirZkWitness,
+        algebra::{dot, embedding::Identity, linear_form::LinearForm},
+        protocols::zook::CommittedWitness,
         transcript::{ProverState, VerifierMessage},
     },
 };
@@ -40,7 +38,7 @@ pub struct BlindingState {
 }
 
 pub struct WhirR1CSCommitment {
-    pub witness:    WhirZkWitness<FieldElement>,
+    pub witness:    CommittedWitness<Identity<FieldElement>>,
     pub polynomial: Vec<FieldElement>,
     pub blinding:   Option<BlindingState>,
 }
@@ -106,13 +104,12 @@ impl WhirR1CSProver for WhirR1CSScheme {
             "R1CS constraints exceed scheme capacity"
         );
 
-        let num_vars = self.whir_witness.num_witness_variables();
-        let target_len = 1usize << num_vars;
-
-        let mut padded_witness = pad_to_power_of_two(witness);
-        if padded_witness.len() < target_len {
-            padded_witness.resize(target_len, FieldElement::zero());
-        }
+        // Zook uses `vector_size` directly (= 2^num_witness_variables). The
+        // scheme is sized so `target_len ≥ next_pow2(witness.len())`, so a
+        // single resize covers both pow2-rounding and target-length padding.
+        let target_len = self.whir_witness.tuning.vector_size;
+        let mut padded_witness = witness;
+        padded_witness.resize(target_len, FieldElement::zero());
 
         let blinding = if is_w1 {
             let g = generate_blinding_univariates(self.m_0);
@@ -130,7 +127,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             None
         };
 
-        let zk_witness = self.whir_witness.commit(merlin, &[&padded_witness]);
+        let zk_witness = self.whir_witness.commit(merlin, &padded_witness);
 
         Ok(WhirR1CSCommitment {
             witness: zk_witness,
@@ -288,6 +285,11 @@ fn prove_from_alphas(
         let mut evaluations = compute_evaluations(&weights, &commitment.polynomial);
         evaluations.push(blinding_eval);
 
+        // `commitment.polynomial` (≈33 MB at 2^20) is no longer needed; zook::prove
+        // consumes the witness which carries the message internally. Drop it before
+        // zook allocates its NTT working buffers to cut peak memory.
+        let WhirR1CSCommitment { witness: cw, .. } = commitment;
+
         let blinding_covector = OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
         let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
@@ -296,13 +298,9 @@ fn prove_from_alphas(
             .collect();
         boxed_weights.push(Box::new(blinding_covector));
 
-        let _ = scheme.whir_witness.prove(
-            &mut merlin,
-            vec![Cow::Borrowed(commitment.polynomial.as_slice())],
-            commitment.witness,
-            boxed_weights,
-            Cow::Borrowed(&evaluations),
-        );
+        let form_refs: Vec<&dyn LinearForm<FieldElement>> =
+            boxed_weights.iter().map(|b| b.as_ref()).collect();
+        scheme.whir_witness.prove(&mut merlin, cw, &form_refs, &evaluations);
     } else {
         // Dual commitment path
         let mut commitments = commitments.into_iter();
@@ -355,11 +353,9 @@ fn prove_from_alphas(
             None
         };
 
-        let WhirR1CSCommitment {
-            witness: w1,
-            polynomial: p1,
-            ..
-        } = c1;
+        // Drop c1.polynomial (≈33 MB at 2^20) up front; only the committed
+        // witness is needed for zook::prove. Same trick on c2 below.
+        let WhirR1CSCommitment { witness: w1, .. } = c1;
         {
             let mut weights = build_prefix_covectors(scheme.m, alphas_1);
             let mut evaluations: Vec<FieldElement> = Vec::new();
@@ -379,21 +375,12 @@ fn prove_from_alphas(
                 .collect();
             boxed_weights.push(Box::new(blinding_covector));
 
-            let _ = scheme.whir_witness.prove(
-                &mut merlin,
-                vec![Cow::Borrowed(p1.as_slice())],
-                w1,
-                boxed_weights,
-                Cow::Borrowed(&evaluations),
-            );
+            let form_refs: Vec<&dyn LinearForm<FieldElement>> =
+                boxed_weights.iter().map(|b| b.as_ref()).collect();
+            scheme.whir_witness.prove(&mut merlin, w1, &form_refs, &evaluations);
         }
-        drop(p1);
 
-        let WhirR1CSCommitment {
-            witness: w2,
-            polynomial: p2,
-            ..
-        } = c2;
+        let WhirR1CSCommitment { witness: w2, .. } = c2;
         {
             let weights = build_prefix_covectors(scheme.m, alphas_2);
             let mut evaluations: Vec<FieldElement> = evals_2;
@@ -409,13 +396,9 @@ fn prove_from_alphas(
                 boxed_weights.push(Box::new(cw));
             }
 
-            let _ = scheme.whir_witness.prove(
-                &mut merlin,
-                vec![Cow::Borrowed(p2.as_slice())],
-                w2,
-                boxed_weights,
-                Cow::Borrowed(&evaluations),
-            );
+            let form_refs: Vec<&dyn LinearForm<FieldElement>> =
+                boxed_weights.iter().map(|b| b.as_ref()).collect();
+            scheme.whir_witness.prove(&mut merlin, w2, &form_refs, &evaluations);
         }
     }
 

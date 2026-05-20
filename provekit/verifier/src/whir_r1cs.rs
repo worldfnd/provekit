@@ -66,14 +66,14 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
         let commitment_1 = self
             .whir_witness
-            .receive_commitments(&mut arthur, 1)
+            .receive_commitment(&mut arthur)
             .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
 
         let (commitment_2, logup_challenges) = if self.num_challenges > 0 {
             let challenges: Vec<FieldElement> = arthur.verifier_message_vec(self.num_challenges);
             let commitment = self
                 .whir_witness
-                .receive_commitments(&mut arthur, 1)
+                .receive_commitment(&mut arthur)
                 .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?;
             (Some(commitment), Some(challenges))
         } else {
@@ -187,7 +187,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             weight_refs_1.push(&blinding_covector as &dyn LinearForm<FieldElement>);
 
             self.whir_witness
-                .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
+                .verify(&mut arthur, commitment_1, &weight_refs_1, &evaluations_1)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
 
             let mut weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
@@ -198,7 +198,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 weight_refs_2.push(cw as &dyn LinearForm<FieldElement>);
             }
             self.whir_witness
-                .verify(&mut arthur, &weight_refs_2, &evaluations_2, &commitment_2)
+                .verify(&mut arthur, commitment_2, &weight_refs_2, &evaluations_2)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c2"))?;
 
             (
@@ -240,7 +240,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             weight_refs.push(&blinding_covector as &dyn LinearForm<FieldElement>);
 
             self.whir_witness
-                .verify(&mut arthur, &weight_refs, &evaluations, &commitment_1)
+                .verify(&mut arthur, commitment_1, &weight_refs, &evaluations)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed"))?;
 
             (evals[0], evals[1], evals[2])

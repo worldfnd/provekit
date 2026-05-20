@@ -25,6 +25,8 @@ noirc_driver.workspace = true
 # 3rd party
 anyhow.workspace = true
 ark-ff.workspace = true
+ark-serialize.workspace = true
+ark-std.workspace = true
 divan.workspace = true
 serde.workspace = true
 test-case.workspace = true

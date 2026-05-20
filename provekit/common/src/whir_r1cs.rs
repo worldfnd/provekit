@@ -7,13 +7,15 @@ use {
     serde::{Deserialize, Serialize},
     whir::{
         algebra::embedding::Identity,
-        protocols::{whir::Config as GenericWhirConfig, whir_zk::Config as GenericWhirZkConfig},
+        protocols::{params::protocol_config::ProtocolConfig, whir::Config as GenericWhirConfig},
         transcript,
     },
 };
 
 pub type WhirConfig = GenericWhirConfig<Identity<FieldElement>>;
-pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
+/// `WhirZkConfig` now aliases zook's per-round orchestrator config (Construction 9.7),
+/// not the older whir_zk wrapper. Single-poly, multi-claim — matches provekit's usage.
+pub type WhirZkConfig = ProtocolConfig<Identity<FieldElement>>;
 
 /// Type alias for the whir domain separator used in provekit's outer protocol.
 type WhirDomainSeparator = transcript::DomainSeparator<'static, ()>;

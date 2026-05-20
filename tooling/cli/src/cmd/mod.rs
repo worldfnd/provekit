@@ -1,6 +1,8 @@
 mod analyze_pkp;
 mod circuit_stats;
-mod generate_gnark_inputs;
+// `generate_gnark_inputs` disabled during zook migration; gnark recursive
+// verifier still expects the old whir_zk config shape.
+// mod generate_gnark_inputs;
 mod prepare;
 mod prove;
 mod show_inputs;
@@ -44,7 +46,7 @@ enum Commands {
     Prove(prove::Args),
     CircuitStats(circuit_stats::Args),
     Verify(verify::Args),
-    GenerateGnarkInputs(generate_gnark_inputs::Args),
+    // GenerateGnarkInputs(generate_gnark_inputs::Args),  // disabled during zook migration
     ShowInputs(show_inputs::Args),
 }
 
@@ -62,7 +64,7 @@ impl Command for Commands {
             Self::Prove(args) => args.run(),
             Self::CircuitStats(args) => args.run(),
             Self::Verify(args) => args.run(),
-            Self::GenerateGnarkInputs(args) => args.run(),
+            // Self::GenerateGnarkInputs(args) => args.run(),  // disabled during zook migration
             Self::ShowInputs(args) => args.run(),
         }
     }
