@@ -56,6 +56,7 @@ async function initializeLocalRuntime(logSink: LogWriter): Promise<void> {
   const isAndroid = /Android/.test(navigator.userAgent);
   const isMobile = isIos || isAndroid;
   const hasSharedArrayBuffer = typeof SharedArrayBuffer !== "undefined";
+  const isCrossOriginIsolated = globalThis.crossOriginIsolated === true;
   const maxThreads = navigator.hardwareConcurrency || 4;
 
   let threadSetting: number | false = false;
@@ -69,6 +70,10 @@ async function initializeLocalRuntime(logSink: LogWriter): Promise<void> {
     } else {
       logSink.log("Mobile: running in single-threaded mode");
     }
+  } else if (!isCrossOriginIsolated) {
+    throw new Error(
+      "Threaded ProveKit WASM requires cross-origin isolation. Serve the demo with COOP/COEP headers via scripts/serve.mjs."
+    );
   } else if (isAndroid) {
     threadSetting = Math.min(maxThreads, 4);
     logSink.log(`📱 Android detected, requesting ${threadSetting} worker threads...`);

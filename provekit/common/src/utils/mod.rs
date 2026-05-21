@@ -196,9 +196,12 @@ pub fn convert_mavros_r1cs_to_provekit(mavros_r1cs: &mavros_artifacts::R1CS) -> 
     r1cs.add_witnesses(num_witnesses);
     r1cs.reserve_constraints(num_constraints, total_entries);
 
-    let mut a_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
-    let mut b_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
-    let mut c_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
+    let mut a_buf: Vec<(u32, FieldElement)> = Vec::with_capacity(64);
+    let mut b_buf: Vec<(u32, FieldElement)> = Vec::with_capacity(64);
+    let mut c_buf: Vec<(u32, FieldElement)> = Vec::with_capacity(64);
+    let mut a_interned: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
+    let mut b_interned: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
+    let mut c_interned: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
 
     for constraint in &mavros_r1cs.constraints {
         a_buf.clear();
@@ -206,7 +209,7 @@ pub fn convert_mavros_r1cs_to_provekit(mavros_r1cs: &mavros_artifacts::R1CS) -> 
             constraint
                 .a
                 .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
+                .map(|(idx, coeff)| (*idx as u32, *coeff)),
         );
 
         b_buf.clear();
@@ -214,7 +217,7 @@ pub fn convert_mavros_r1cs_to_provekit(mavros_r1cs: &mavros_artifacts::R1CS) -> 
             constraint
                 .b
                 .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
+                .map(|(idx, coeff)| (*idx as u32, *coeff)),
         );
 
         c_buf.clear();
@@ -222,19 +225,49 @@ pub fn convert_mavros_r1cs_to_provekit(mavros_r1cs: &mavros_artifacts::R1CS) -> 
             constraint
                 .c
                 .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
+                .map(|(idx, coeff)| (*idx as u32, *coeff)),
         );
 
-        a_buf.sort_by_key(|(idx, _)| *idx);
-        b_buf.sort_by_key(|(idx, _)| *idx);
-        c_buf.sort_by_key(|(idx, _)| *idx);
+        sort_sum_and_intern_mavros_row(&mut r1cs, &mut a_buf, &mut a_interned);
+        sort_sum_and_intern_mavros_row(&mut r1cs, &mut b_buf, &mut b_interned);
+        sort_sum_and_intern_mavros_row(&mut r1cs, &mut c_buf, &mut c_interned);
 
         r1cs.push_constraint(
-            a_buf.iter().copied(),
-            b_buf.iter().copied(),
-            c_buf.iter().copied(),
+            a_interned.iter().copied(),
+            b_interned.iter().copied(),
+            c_interned.iter().copied(),
         );
     }
 
     r1cs
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn sort_sum_and_intern_mavros_row(
+    r1cs: &mut crate::R1CS,
+    row: &mut Vec<(u32, FieldElement)>,
+    interned: &mut Vec<(u32, crate::InternedFieldElement)>,
+) {
+    use ark_ff::Zero;
+
+    row.sort_by_key(|(idx, _)| *idx);
+
+    let mut write = 0;
+    for read in 0..row.len() {
+        let (idx, coeff) = row[read];
+        if write > 0 && row[write - 1].0 == idx {
+            row[write - 1].1 += coeff;
+        } else {
+            row[write] = (idx, coeff);
+            write += 1;
+        }
+    }
+    row.truncate(write);
+
+    interned.clear();
+    interned.extend(
+        row.iter()
+            .filter(|(_, coeff)| !coeff.is_zero())
+            .map(|(idx, coeff)| (*idx, r1cs.intern(*coeff))),
+    );
 }

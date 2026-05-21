@@ -31,6 +31,9 @@ use {
 #[cfg(target_arch = "wasm32")]
 const MAVROS_BUFFER_ABI_VERSION: u32 = 1;
 
+#[cfg(target_arch = "wasm32")]
+const _: [(); MAX_FIELD_ELEMENT_BYTES] = [(); std::mem::size_of::<NativeFieldElement>()];
+
 /// WASM bindings for proof generation. Consumed after `proveBytes`/`proveJs`.
 #[wasm_bindgen]
 pub struct Prover {
@@ -170,6 +173,10 @@ impl Prover {
         inputs: JsValue,
         runner: JsValue,
     ) -> Result<NoirProof, JsError> {
+        validate_runner_abi(&runner).map_err(|err| JsError::new(&format!("{err:#}")))?;
+        runner_method(&runner, "runWitgenInto").map_err(|err| JsError::new(&format!("{err:#}")))?;
+        runner_method(&runner, "runAdInto").map_err(|err| JsError::new(&format!("{err:#}")))?;
+
         let inner = self
             .inner
             .take()
@@ -322,9 +329,11 @@ struct JsTableInfo {
 #[cfg(target_arch = "wasm32")]
 fn runner_method(runner: &JsValue, method: &str) -> anyhow::Result<Function> {
     Reflect::get(runner, &JsValue::from_str(method))
-        .map_err(|_| anyhow::anyhow!("Mavros runner method lookup failed"))?
+        .map_err(|err| anyhow::anyhow!("Mavros runner method `{method}` lookup failed: {err:?}"))?
         .dyn_into::<Function>()
-        .map_err(|_| anyhow::anyhow!("Mavros runner method is not a function"))
+        .map_err(|err| {
+            anyhow::anyhow!("Mavros runner method `{method}` is not a function: {err:?}")
+        })
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -342,13 +351,13 @@ fn layout_values(
 #[cfg(target_arch = "wasm32")]
 fn get_prop(value: &JsValue, name: &str) -> anyhow::Result<JsValue> {
     Reflect::get(value, &JsValue::from_str(name))
-        .map_err(|_| anyhow::anyhow!("missing Mavros runner result property `{name}`"))
+        .map_err(|err| anyhow::anyhow!("missing Mavros runner result property `{name}`: {err:?}"))
 }
 
 #[cfg(target_arch = "wasm32")]
 fn validate_runner_abi(runner: &JsValue) -> anyhow::Result<()> {
     let version = Reflect::get(runner, &JsValue::from_str("mavrosBufferAbiVersion"))
-        .map_err(|_| anyhow::anyhow!("missing Mavros runner buffer ABI version"))?
+        .map_err(|err| anyhow::anyhow!("missing Mavros runner buffer ABI version: {err:?}"))?
         .as_f64()
         .ok_or_else(|| anyhow::anyhow!("Mavros runner buffer ABI version must be a number"))?;
     anyhow::ensure!(
@@ -366,7 +375,6 @@ fn zero_field_vec(len: usize) -> Vec<NativeFieldElement> {
 
 #[cfg(target_arch = "wasm32")]
 fn fields_to_js_array(fields: &[NativeFieldElement]) -> anyhow::Result<Uint8Array> {
-    assert_field_byte_layout();
     let len = checked_field_bytes(fields.len())?;
     let array = uint8_array_with_len(len)?;
     let bytes = unsafe {
@@ -404,7 +412,6 @@ fn copy_js_array_to_fields(
     fields: &mut [NativeFieldElement],
     label: &str,
 ) -> anyhow::Result<()> {
-    assert_field_byte_layout();
     let expected_len = checked_field_bytes(fields.len())?;
     anyhow::ensure!(
         array.length() as usize == expected_len,
@@ -420,16 +427,6 @@ fn copy_js_array_to_fields(
     };
     array.copy_to(bytes);
     Ok(())
-}
-
-#[cfg(target_arch = "wasm32")]
-fn assert_field_byte_layout() {
-    if std::mem::size_of::<NativeFieldElement>() != MAX_FIELD_ELEMENT_BYTES {
-        panic!(
-            "unexpected BN254 field element size: {}",
-            std::mem::size_of::<NativeFieldElement>()
-        );
-    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -576,6 +573,12 @@ fn parse_json_field(value: &Value, path: &str) -> Result<NativeFieldElement, JsE
             let bytes = hex::decode(hex).map_err(|err| {
                 JsError::new(&format!("Failed to parse hex string at {path}: {err}"))
             })?;
+            if bytes.len() > MAX_FIELD_ELEMENT_BYTES {
+                return Err(JsError::new(&format!(
+                    "Hex value at {path} is {} bytes, exceeds BN254 field element size (32 bytes)",
+                    bytes.len()
+                )));
+            }
             return Ok(NativeFieldElement::from_be_bytes_mod_order(&bytes));
         }
         return trimmed.parse::<NativeFieldElement>().map_err(|err| {

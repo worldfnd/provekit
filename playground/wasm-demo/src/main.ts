@@ -17,9 +17,7 @@ import type { AppState } from "./app/types.js";
 import { VerifyController } from "./app/verify-controller.js";
 
 const ProvekitWasmProver = ProvekitInspector.Prover;
-const ProvekitWasmVerifier = (ProvekitInspector as unknown as {
-  Verifier: new (verifierBytes: Uint8Array) => ProvekitWasmVerifierHandle;
-}).Verifier;
+const ProvekitWasmVerifier = ProvekitInspector.Verifier;
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -49,8 +47,12 @@ class LocalVerifierScheme implements VerifierScheme {
   ) {}
 
   async verify(proof: Proof): Promise<boolean> {
-    this.verifier.verifyBytes(proof.data);
-    return true;
+    try {
+      this.verifier.verifyBytes(proof.data);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async serialize(): Promise<Uint8Array> {
@@ -108,6 +110,7 @@ class LocalNoirProverScheme implements ProverScheme {
 
 class MavrosProverScheme implements ProverScheme {
   constructor(
+    private readonly proverBytes: Uint8Array,
     private readonly prover: MavrosWasmProverHandle,
     private readonly runner: MavrosRunner,
   ) {}
@@ -117,7 +120,7 @@ class MavrosProverScheme implements ProverScheme {
   }
 
   async serialize(): Promise<Uint8Array> {
-    return new Uint8Array();
+    return new Uint8Array(this.proverBytes);
   }
 
   dispose(): void {
@@ -284,12 +287,12 @@ class DemoApp {
   }
 
   private async loadLocalVerifier(verifierBytes: Uint8Array): Promise<VerifierScheme> {
-    const verifier = new ProvekitWasmVerifier(verifierBytes) as unknown as ProvekitWasmVerifierHandle;
+    const verifier = new ProvekitWasmVerifier(verifierBytes);
     return new LocalVerifierScheme(verifierBytes, verifier);
   }
 
   private async loadLocalNoirProver(proverBytes: Uint8Array): Promise<ProverScheme> {
-    const prover = new ProvekitWasmProver(proverBytes) as unknown as ProvekitWasmNoirProverHandle;
+    const prover = new ProvekitWasmProver(proverBytes);
     return new LocalNoirProverScheme(proverBytes, prover);
   }
 
@@ -300,13 +303,13 @@ class DemoApp {
   ): Promise<ProverScheme> {
     this.logs.log("Loading Mavros WASM witness and AD artifacts...");
     const runner = await createMavrosRunner(witgenWasmBytes, adWasmBytes, this.logs);
-    const prover = new ProvekitWasmProver(proverBytes) as unknown as MavrosWasmProverHandle;
+    const prover = new ProvekitWasmProver(proverBytes);
     const kind = typeof prover.getProverKind === "function" ? prover.getProverKind() : "mavros";
     if (kind !== "mavros") {
       prover.free();
       throw new Error("Mavros WASM artifacts were provided, but prover.pkp is not a Mavros prover.");
     }
-    return new MavrosProverScheme(prover, runner);
+    return new MavrosProverScheme(proverBytes, prover, runner);
   }
 
   private async copyLogs(): Promise<void> {

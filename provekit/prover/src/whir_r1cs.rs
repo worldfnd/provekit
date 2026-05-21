@@ -47,11 +47,16 @@ pub struct WhirR1CSCommitment {
     pub blinding:   Option<BlindingState>,
 }
 
+/// Completed Mavros witness-generation buffers passed into WHIR sumcheck.
 #[cfg(target_arch = "wasm32")]
 pub struct MavrosWitgenResult {
+    /// Post-commitment witness values, including challenges and lookup data.
     pub out_wit_post_comm: Vec<FieldElement>,
+    /// Constraint matrix A values after Mavros phase 2.
     pub out_a:             Vec<FieldElement>,
+    /// Constraint matrix B values after Mavros phase 2.
     pub out_b:             Vec<FieldElement>,
+    /// Constraint matrix C values after Mavros phase 2.
     pub out_c:             Vec<FieldElement>,
 }
 
@@ -179,7 +184,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let blinding = commitments[0]
             .blinding
             .as_ref()
-            .expect("c1 must carry blinding state");
+            .ok_or_else(|| anyhow::anyhow!("c1 must carry blinding state"))?;
 
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
             a,
@@ -226,7 +231,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let blinding = commitments[0]
             .blinding
             .as_ref()
-            .expect("c1 must carry blinding state");
+            .ok_or_else(|| anyhow::anyhow!("c1 must carry blinding state"))?;
 
         let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
@@ -284,7 +289,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let blinding = commitments[0]
             .blinding
             .as_ref()
-            .expect("c1 must carry blinding state");
+            .ok_or_else(|| anyhow::anyhow!("c1 must carry blinding state"))?;
 
         let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
@@ -332,6 +337,11 @@ fn prove_from_alphas(
     let public_inputs_hash = public_inputs.hash(scheme.hash_config);
     let public_inputs_len = public_inputs.len();
 
+    ensure!(
+        commitments.len() == 1 || commitments.len() == 2,
+        "expected one or two commitments, got {}",
+        commitments.len()
+    );
     let is_single = commitments.len() == 1;
     let (x, public_weight) =
         get_public_weights(public_inputs_hash, public_inputs_len, &mut merlin, scheme.m);
@@ -343,7 +353,7 @@ fn prove_from_alphas(
         let commitment = commitments
             .into_iter()
             .next()
-            .expect("single-commitment path requires at least one commitment");
+            .ok_or_else(|| anyhow::anyhow!("single-commitment path requires one commitment"))?;
         let (mut weights, evals) =
             create_weights_and_evaluations::<3>(scheme.m, &commitment.polynomial, alphas);
 
@@ -383,10 +393,10 @@ fn prove_from_alphas(
         let mut commitments = commitments.into_iter();
         let c1 = commitments
             .next()
-            .expect("dual-commitment path requires first commitment");
+            .ok_or_else(|| anyhow::anyhow!("dual-commitment path requires first commitment"))?;
         let c2 = commitments
             .next()
-            .expect("dual-commitment path requires second commitment");
+            .ok_or_else(|| anyhow::anyhow!("dual-commitment path requires second commitment"))?;
 
         let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
             .into_iter()
@@ -398,10 +408,10 @@ fn prove_from_alphas(
 
         let alphas_1: [Vec<FieldElement>; 3] = alphas_1
             .try_into()
-            .expect("alphas_1 must have exactly 3 elements");
+            .map_err(|_| anyhow::anyhow!("alphas_1 must have exactly 3 elements"))?;
         let alphas_2: [Vec<FieldElement>; 3] = alphas_2
             .try_into()
-            .expect("alphas_2 must have exactly 3 elements");
+            .map_err(|_| anyhow::anyhow!("alphas_2 must have exactly 3 elements"))?;
 
         let evals_1 = compute_alpha_evals(&c1.polynomial, &alphas_1);
         let evals_2 = compute_alpha_evals(&c2.polynomial, &alphas_2);
