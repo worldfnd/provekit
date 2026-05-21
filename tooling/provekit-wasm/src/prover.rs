@@ -28,6 +28,9 @@ use {
     serde_json::Value,
 };
 
+#[cfg(target_arch = "wasm32")]
+const MAVROS_BUFFER_ABI_VERSION: u32 = 1;
+
 /// WASM bindings for proof generation. Consumed after `proveBytes`/`proveJs`.
 #[wasm_bindgen]
 pub struct Prover {
@@ -74,9 +77,15 @@ impl Prover {
     /// Generates a proof for Mavros provers using browser-side Mavros WASM
     /// artifacts.
     ///
-    /// `inputs` is the regular ABI-shaped input object. `runner` must expose
-    /// synchronous `runWitgenInto(...)` and `runAdInto(...)` methods that fill
-    /// Rust-owned byte views.
+    /// `inputs` is the regular ABI-shaped input object. `runner` must expose:
+    ///
+    /// - `mavrosBufferAbiVersion = 1`
+    /// - synchronous `runWitgenInto(...)` and `runAdInto(...)` methods
+    ///
+    /// Buffer ABI v1 uses 32-byte little-endian BN254 Montgomery-form field
+    /// elements for all field buffers. The witgen multiplicity section is the
+    /// only exception: each slot is a canonical `u64` in limb 0 and zero in
+    /// limbs 1..3.
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen(js_name = proveMavrosBytes)]
     pub fn prove_mavros_bytes(
@@ -190,6 +199,7 @@ impl MavrosWasmDriver for JsMavrosDriver {
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
     ) -> anyhow::Result<MavrosPhase1Result> {
+        validate_runner_abi(&self.runner)?;
         let method = runner_method(&self.runner, "runWitgenInto")?;
         let (witness_layout_value, constraints_layout_value) =
             layout_values(witness_layout, constraints_layout)?;
@@ -200,12 +210,12 @@ impl MavrosWasmDriver for JsMavrosDriver {
         let mut out_b = zero_field_vec(constraints_layout.size());
         let mut out_c = zero_field_vec(constraints_layout.size());
 
-        let input_view = field_bytes_view(input_fields);
-        let out_wit_pre_comm_view = field_bytes_view_mut(&mut out_wit_pre_comm);
-        let out_wit_post_comm_view = field_bytes_view_mut(&mut out_wit_post_comm);
-        let out_a_view = field_bytes_view_mut(&mut out_a);
-        let out_b_view = field_bytes_view_mut(&mut out_b);
-        let out_c_view = field_bytes_view_mut(&mut out_c);
+        let input_view = fields_to_js_array(input_fields)?;
+        let out_wit_pre_comm_view = new_field_js_array(out_wit_pre_comm.len())?;
+        let out_wit_post_comm_view = new_field_js_array(out_wit_post_comm.len())?;
+        let out_a_view = new_field_js_array(out_a.len())?;
+        let out_b_view = new_field_js_array(out_b.len())?;
+        let out_c_view = new_field_js_array(out_c.len())?;
 
         let args = Array::new();
         args.push(input_view.as_ref());
@@ -220,18 +230,23 @@ impl MavrosWasmDriver for JsMavrosDriver {
             .apply(&self.runner, &args)
             .map_err(|err| anyhow::anyhow!("Mavros runner threw: {:?}", err))?;
 
-        drop((
-            input_view,
-            out_wit_pre_comm_view,
-            out_wit_post_comm_view,
-            out_a_view,
-            out_b_view,
-            out_c_view,
-        ));
+        copy_js_array_to_fields(
+            &out_wit_pre_comm_view,
+            &mut out_wit_pre_comm,
+            "outWitPreComm",
+        )?;
+        copy_js_array_to_fields(
+            &out_wit_post_comm_view,
+            &mut out_wit_post_comm,
+            "outWitPostComm",
+        )?;
+        copy_js_array_to_fields(&out_a_view, &mut out_a, "outA")?;
+        copy_js_array_to_fields(&out_b_view, &mut out_b, "outB")?;
+        copy_js_array_to_fields(&out_c_view, &mut out_c, "outC")?;
 
         let tables: Vec<JsTableInfo> = serde_wasm_bindgen::from_value(get_prop(&result, "tables")?)
             .map_err(|err| anyhow::anyhow!("failed to decode Mavros table metadata: {err}"))?;
-        normalize_mavros_multiplicities(&mut out_wit_pre_comm, witness_layout);
+        normalize_mavros_multiplicities(&mut out_wit_pre_comm, witness_layout)?;
 
         Ok(MavrosPhase1Result {
             out_wit_pre_comm,
@@ -260,6 +275,7 @@ impl MavrosWasmDriver for JsMavrosDriver {
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
     ) -> anyhow::Result<[Vec<NativeFieldElement>; 3]> {
+        validate_runner_abi(&self.runner)?;
         let method = runner_method(&self.runner, "runAdInto")?;
         let (witness_layout_value, constraints_layout_value) =
             layout_values(witness_layout, constraints_layout)?;
@@ -268,10 +284,10 @@ impl MavrosWasmDriver for JsMavrosDriver {
         let mut out_db = zero_field_vec(witness_layout.size());
         let mut out_dc = zero_field_vec(witness_layout.size());
 
-        let coeffs_view = field_bytes_view(coeffs);
-        let out_da_view = field_bytes_view_mut(&mut out_da);
-        let out_db_view = field_bytes_view_mut(&mut out_db);
-        let out_dc_view = field_bytes_view_mut(&mut out_dc);
+        let coeffs_view = fields_to_js_array(coeffs)?;
+        let out_da_view = new_field_js_array(out_da.len())?;
+        let out_db_view = new_field_js_array(out_db.len())?;
+        let out_dc_view = new_field_js_array(out_dc.len())?;
 
         let args = Array::new();
         args.push(coeffs_view.as_ref());
@@ -284,7 +300,9 @@ impl MavrosWasmDriver for JsMavrosDriver {
             .apply(&self.runner, &args)
             .map_err(|err| anyhow::anyhow!("Mavros runner threw: {:?}", err))?;
 
-        drop((coeffs_view, out_da_view, out_db_view, out_dc_view));
+        copy_js_array_to_fields(&out_da_view, &mut out_da, "outDa")?;
+        copy_js_array_to_fields(&out_db_view, &mut out_db, "outDb")?;
+        copy_js_array_to_fields(&out_dc_view, &mut out_dc, "outDc")?;
 
         Ok([out_da, out_db, out_dc])
     }
@@ -328,30 +346,80 @@ fn get_prop(value: &JsValue, name: &str) -> anyhow::Result<JsValue> {
 }
 
 #[cfg(target_arch = "wasm32")]
+fn validate_runner_abi(runner: &JsValue) -> anyhow::Result<()> {
+    let version = Reflect::get(runner, &JsValue::from_str("mavrosBufferAbiVersion"))
+        .map_err(|_| anyhow::anyhow!("missing Mavros runner buffer ABI version"))?
+        .as_f64()
+        .ok_or_else(|| anyhow::anyhow!("Mavros runner buffer ABI version must be a number"))?;
+    anyhow::ensure!(
+        version == f64::from(MAVROS_BUFFER_ABI_VERSION),
+        "unsupported Mavros runner buffer ABI version {version}; expected \
+         {MAVROS_BUFFER_ABI_VERSION}"
+    );
+    Ok(())
+}
+
+#[cfg(target_arch = "wasm32")]
 fn zero_field_vec(len: usize) -> Vec<NativeFieldElement> {
     vec![NativeFieldElement::from(0u64); len]
 }
 
 #[cfg(target_arch = "wasm32")]
-fn field_bytes_view(fields: &[NativeFieldElement]) -> Uint8Array {
+fn fields_to_js_array(fields: &[NativeFieldElement]) -> anyhow::Result<Uint8Array> {
     assert_field_byte_layout();
-    let len = fields.len() * MAX_FIELD_ELEMENT_BYTES;
-    let ptr = fields.as_ptr().cast::<u8>();
-    // SAFETY: BN254 field elements are represented as four little-endian u64
-    // limbs in this target. The returned view is used only for synchronous JS
-    // calls and is dropped before Rust can mutate or free the backing slice.
-    unsafe { Uint8Array::view(std::slice::from_raw_parts(ptr, len)) }
+    let len = checked_field_bytes(fields.len())?;
+    let array = uint8_array_with_len(len)?;
+    let bytes = unsafe {
+        // SAFETY: `assert_field_byte_layout` guarantees each field occupies
+        // exactly `MAX_FIELD_ELEMENT_BYTES`; this creates a temporary read-only
+        // byte slice that is immediately copied into a JS-owned Uint8Array.
+        std::slice::from_raw_parts(fields.as_ptr().cast::<u8>(), len)
+    };
+    array.copy_from(bytes);
+    Ok(array)
 }
 
 #[cfg(target_arch = "wasm32")]
-fn field_bytes_view_mut(fields: &mut [NativeFieldElement]) -> Uint8Array {
+fn new_field_js_array(fields_len: usize) -> anyhow::Result<Uint8Array> {
+    uint8_array_with_len(checked_field_bytes(fields_len)?)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn uint8_array_with_len(len: usize) -> anyhow::Result<Uint8Array> {
+    let len = u32::try_from(len)
+        .map_err(|_| anyhow::anyhow!("Mavros buffer is too large for Uint8Array"))?;
+    Ok(Uint8Array::new_with_length(len))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn checked_field_bytes(fields_len: usize) -> anyhow::Result<usize> {
+    fields_len
+        .checked_mul(MAX_FIELD_ELEMENT_BYTES)
+        .ok_or_else(|| anyhow::anyhow!("Mavros field buffer length overflow"))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn copy_js_array_to_fields(
+    array: &Uint8Array,
+    fields: &mut [NativeFieldElement],
+    label: &str,
+) -> anyhow::Result<()> {
     assert_field_byte_layout();
-    let len = fields.len() * MAX_FIELD_ELEMENT_BYTES;
-    let ptr = fields.as_mut_ptr().cast::<u8>();
-    // SAFETY: The JS runner writes exactly `len` bytes into this view during a
-    // synchronous call. No Rust references to the field slice are used until the
-    // view has been dropped, and the vector is fully initialized before export.
-    unsafe { Uint8Array::view_mut_raw(ptr, len) }
+    let expected_len = checked_field_bytes(fields.len())?;
+    anyhow::ensure!(
+        array.length() as usize == expected_len,
+        "Mavros {label} buffer length {} does not match expected {expected_len}",
+        array.length()
+    );
+    let bytes = unsafe {
+        // SAFETY: `assert_field_byte_layout` guarantees the field slice is the
+        // expected contiguous byte layout. The copy is from a JS-owned typed
+        // array after the runner has returned, so no user JS runs while this
+        // Rust-owned memory is exposed as bytes.
+        std::slice::from_raw_parts_mut(fields.as_mut_ptr().cast::<u8>(), expected_len)
+    };
+    array.copy_to(bytes);
+    Ok(())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -365,12 +433,22 @@ fn assert_field_byte_layout() {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn normalize_mavros_multiplicities(fields: &mut [NativeFieldElement], layout: WitnessLayout) {
+fn normalize_mavros_multiplicities(
+    fields: &mut [NativeFieldElement],
+    layout: WitnessLayout,
+) -> anyhow::Result<()> {
     let start = layout.algebraic_size;
     let end = start + layout.multiplicities_size;
-    for field in &mut fields[start..end] {
-        *field = NativeFieldElement::from(field.0 .0[0]);
+    for (offset, field) in fields[start..end].iter_mut().enumerate() {
+        let limbs = field.0 .0;
+        anyhow::ensure!(
+            limbs[1..] == [0, 0, 0],
+            "Mavros multiplicity slot {} must be canonical u64 in limb 0 with zero high limbs",
+            start + offset
+        );
+        *field = NativeFieldElement::from(limbs[0]);
     }
+    Ok(())
 }
 
 #[cfg(target_arch = "wasm32")]

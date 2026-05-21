@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChecklistPresenter } from "../src/app/checklist.js";
 import { CircuitController } from "../src/app/circuit-controller.js";
@@ -140,6 +140,33 @@ describe("CircuitController", () => {
     expect(state.customFiles.verifier?.name).toBe("verifier.pkv");
     expect(state.customFiles.inputs?.name).toBe("Prover.toml");
     expect(dom.runButton.disabled).toBe(false);
+  });
+
+  it("requires confirmation before accepting custom Mavros WASM artifacts", () => {
+    const confirmSpy = vi.spyOn(globalThis, "confirm").mockReturnValue(false);
+    const { controller, dom, logs, state } = setupCircuitHarness("sha256");
+    controller.bind();
+    controller.applyCircuit("custom", false);
+
+    const dropEvent = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(dropEvent, "dataTransfer", {
+      value: {
+        files: [
+          new File(["witgen"], "witgen.wasm"),
+          new File(["ad"], "ad.wasm"),
+        ],
+      },
+    });
+
+    dom.dropzone.dispatchEvent(dropEvent);
+
+    expect(confirmSpy).toHaveBeenCalledOnce();
+    expect(state.customFiles.witgenWasm).toBeUndefined();
+    expect(state.customFiles.adWasm).toBeUndefined();
+    expect(logs.entries.some(({ message }) => message.includes("Skipped uploaded Mavros WASM")))
+      .toBe(true);
+
+    confirmSpy.mockRestore();
   });
 });
 

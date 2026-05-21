@@ -1,6 +1,7 @@
 import type { LogWriter } from "./types.js";
 
 const FIELD_SIZE = 32;
+const MAVROS_BUFFER_ABI_VERSION = 1 as const;
 const WASM_STACK_SIZE_BYTES = 256 * 1024;
 const WASM_STATIC_DATA_BYTES = 4096;
 
@@ -117,6 +118,12 @@ async function compileModule(bytes: Uint8Array): Promise<WebAssembly.Module> {
 }
 
 export interface MavrosRunner {
+  /**
+   * ABI v1 uses little-endian BN254 Montgomery-form field elements in every
+   * 32-byte field slot. The witgen multiplicity section is the only exception:
+   * each slot is a canonical u64 in limb 0 and zero in limbs 1..3.
+   */
+  readonly mavrosBufferAbiVersion: typeof MAVROS_BUFFER_ABI_VERSION;
   runWitgen(
     inputFields: Uint8Array,
     witnessLayout: WitnessLayout,
@@ -185,6 +192,8 @@ export async function createMavrosRunner(
   logs?.log("Mavros WASM artifacts compiled");
 
   const runner: MavrosRunner = {
+    mavrosBufferAbiVersion: MAVROS_BUFFER_ABI_VERSION,
+
     runWitgen(inputFields, witnessLayout, constraintsLayout) {
       const witnessCount = witnessSize(witnessLayout);
       const constraintCount = constraintsSize(constraintsLayout);
