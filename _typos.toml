@@ -12,4 +12,6 @@ extend-exclude = [
     "playground/passport-input-gen/src/mock_keys.rs",
     # Typst labels (e.g. <thm-hm>) are not typos
     "playground/sage/*.typst",
+    # Generated wasm-bindgen glue contains hashed import names.
+    "playground/wasm-demo/pkg-local/**",
 ]
