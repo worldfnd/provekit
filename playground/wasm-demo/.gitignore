@@ -6,6 +6,7 @@ vendor/
 artifacts/
 pkg/
 pkg-web/
+pkg-local/
 
 # Build outputs
 *.wasm
