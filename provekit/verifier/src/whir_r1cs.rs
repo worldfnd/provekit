@@ -3,8 +3,8 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         prefix_covector::{
-            build_prefix_covectors, expand_powers, make_challenge_weight, make_public_weight,
-            OffsetCovector,
+            build_combined_prefix_covector, expand_powers, make_challenge_weight,
+            make_public_weight, rlc_powers, OffsetCovector,
         },
         utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
@@ -13,7 +13,7 @@ use {
     },
     tracing::instrument,
     whir::{
-        algebra::linear_form::LinearForm,
+        algebra::{dot, linear_form::LinearForm},
         transcript::{Proof, VerifierMessage, VerifierState},
     },
 };
@@ -142,52 +142,65 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     .map_err(|_| anyhow::anyhow!("Failed to read evals_2[2]"))?,
             ];
 
-            let mut weights_1 = build_prefix_covectors(self.m, alphas_1);
-            let weights_2 = build_prefix_covectors(self.m, alphas_2);
-
-            let mut evaluations_1 = if !public_inputs.is_empty() {
+            // Mirror prover: read optional public/challenge evals first so the
+            // FS state matches at the inner_rlc sample below.
+            let public_1_eval = if !public_inputs.is_empty() {
                 let public_1: FieldElement = arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read public_1"))?;
                 verify_public_input_binding(public_1, x, public_inputs)?;
-                weights_1.insert(0, make_public_weight(x, public_inputs.len(), self.m));
-                vec![public_1, evals_1[0], evals_1[1], evals_1[2]]
-            } else {
-                evals_1.to_vec()
-            };
-            evaluations_1.push(blinding_eval);
-            let mut evaluations_2 = evals_2.to_vec();
-
-            // Challenge binding: read the prover's claimed evaluation and verify
-            // that it matches the expected inner product of challenges with the
-            // committed w2 polynomial.
-            let challenge_weight = if !self.challenge_offsets.is_empty() {
-                let challenge_eval: FieldElement = arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read challenge eval"))?;
-                verify_challenge_binding(challenge_eval, x, &logup_challenges)?;
-                evaluations_2.push(challenge_eval);
-                Some(make_challenge_weight(x, &self.challenge_offsets, self.m))
+                Some(public_1)
             } else {
                 None
             };
 
-            let mut weight_refs_1: Vec<&dyn LinearForm<FieldElement>> = weights_1
-                .iter()
-                .map(|w| w as &dyn LinearForm<FieldElement>)
-                .collect();
+            // Challenge binding: read the prover's claimed evaluation and verify
+            // that it matches the expected inner product of challenges with the
+            // committed w2 polynomial.
+            let challenge_binding = if !self.challenge_offsets.is_empty() {
+                let challenge_eval: FieldElement = arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read challenge eval"))?;
+                verify_challenge_binding(challenge_eval, x, &logup_challenges)?;
+                Some(challenge_eval)
+            } else {
+                None
+            };
+
+            // Mirror prover's direct-RLC sample. One challenge collapses each
+            // commitment's (A, B, C) triple into a single linear form.
+            let powers = rlc_powers::<3>(arthur.verifier_message());
+            let combined_eval_1 = dot(&powers, &evals_1);
+            let combined_eval_2 = dot(&powers, &evals_2);
+            let combined_lf_1 = build_combined_prefix_covector(alphas_1, &powers, domain_size);
+            let combined_lf_2 = build_combined_prefix_covector(alphas_2, &powers, domain_size);
+
+            let public_weight_1 = public_1_eval
+                .map(|_| make_public_weight(x, public_inputs.len(), self.m));
+            let challenge_weight = challenge_binding
+                .map(|_| make_challenge_weight(x, &self.challenge_offsets, self.m));
+
+            let mut weight_refs_1: Vec<&dyn LinearForm<FieldElement>> = Vec::new();
+            let mut evaluations_1: Vec<FieldElement> = Vec::new();
+            if let (Some(ref pw), Some(pe)) = (&public_weight_1, public_1_eval) {
+                weight_refs_1.push(pw as &dyn LinearForm<FieldElement>);
+                evaluations_1.push(pe);
+            }
+            weight_refs_1.push(&combined_lf_1 as &dyn LinearForm<FieldElement>);
+            evaluations_1.push(combined_eval_1);
             weight_refs_1.push(&blinding_covector as &dyn LinearForm<FieldElement>);
+            evaluations_1.push(blinding_eval);
 
             self.whir_witness
                 .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
 
-            let mut weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
-                .iter()
-                .map(|w| w as &dyn LinearForm<FieldElement>)
-                .collect();
-            if let Some(ref cw) = challenge_weight {
+            let mut weight_refs_2: Vec<&dyn LinearForm<FieldElement>> =
+                vec![&combined_lf_2 as &dyn LinearForm<FieldElement>];
+            let mut evaluations_2: Vec<FieldElement> = vec![combined_eval_2];
+            if let (Some(ref cw), Some(ce)) = (&challenge_weight, challenge_binding) {
                 weight_refs_2.push(cw as &dyn LinearForm<FieldElement>);
+                evaluations_2.push(ce);
             }
             self.whir_witness
                 .verify(&mut arthur, &weight_refs_2, &evaluations_2, &commitment_2)
@@ -211,25 +224,34 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     .map_err(|_| anyhow::anyhow!("Failed to read evals[2]"))?,
             ];
 
-            let mut weights = build_prefix_covectors(self.m, alphas);
-
-            let mut evaluations = if !public_inputs.is_empty() {
-                let public_eval: FieldElement = arthur
+            // Mirror prover: read public eval (if any), then sample inner_rlc
+            // and collapse the three R1CS row-covectors into one.
+            let public_eval = if !public_inputs.is_empty() {
+                let pe: FieldElement = arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read public eval"))?;
-                verify_public_input_binding(public_eval, x, public_inputs)?;
-                weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
-                vec![public_eval, evals[0], evals[1], evals[2]]
+                verify_public_input_binding(pe, x, public_inputs)?;
+                Some(pe)
             } else {
-                evals.to_vec()
+                None
             };
-            evaluations.push(blinding_eval);
 
-            let mut weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
-                .iter()
-                .map(|w| w as &dyn LinearForm<FieldElement>)
-                .collect();
+            let powers = rlc_powers::<3>(arthur.verifier_message());
+            let combined_eval = dot(&powers, &evals);
+            let combined_lf = build_combined_prefix_covector(alphas, &powers, domain_size);
+            let public_weight =
+                public_eval.map(|_| make_public_weight(x, public_inputs.len(), self.m));
+
+            let mut weight_refs: Vec<&dyn LinearForm<FieldElement>> = Vec::new();
+            let mut evaluations: Vec<FieldElement> = Vec::new();
+            if let (Some(ref pw), Some(pe)) = (&public_weight, public_eval) {
+                weight_refs.push(pw as &dyn LinearForm<FieldElement>);
+                evaluations.push(pe);
+            }
+            weight_refs.push(&combined_lf as &dyn LinearForm<FieldElement>);
+            evaluations.push(combined_eval);
             weight_refs.push(&blinding_covector as &dyn LinearForm<FieldElement>);
+            evaluations.push(blinding_eval);
 
             self.whir_witness
                 .verify(&mut arthur, &weight_refs, &evaluations, &commitment_1)
