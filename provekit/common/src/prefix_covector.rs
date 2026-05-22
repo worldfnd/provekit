@@ -249,15 +249,15 @@ pub fn build_combined_prefix_covector<const N: usize>(
     combined.resize(base_len, FieldElement::zero());
 
     // Scale the first vector by coeffs[0]. For geometric-RLC weights this is
-    // `one()` and the loop is skipped, but we support general coefficients.
+    // one() and the multiply is a no-op, but the cost is negligible vs. the
+    // accumulation that follows and a branchless path keeps the helper
+    // general for non-geometric callers.
     let c0 = coeffs[0];
-    if !c0.is_one() {
-        if raw_len > whir::utils::workload_size::<FieldElement>() {
-            combined[..raw_len].par_iter_mut().for_each(|v| *v *= c0);
-        } else {
-            for v in &mut combined[..raw_len] {
-                *v *= c0;
-            }
+    if raw_len > whir::utils::workload_size::<FieldElement>() {
+        combined[..raw_len].par_iter_mut().for_each(|v| *v *= c0);
+    } else {
+        for v in &mut combined[..raw_len] {
+            *v *= c0;
         }
     }
 
@@ -265,9 +265,6 @@ pub fn build_combined_prefix_covector<const N: usize>(
     // zero throughout, so we only walk `raw_len` positions per source.
     for (i, src) in iter.enumerate() {
         let c = coeffs[i + 1];
-        if c.is_zero() {
-            continue;
-        }
         let dst = &mut combined[..raw_len];
         if raw_len > whir::utils::workload_size::<FieldElement>() {
             dst.par_iter_mut().zip(src.par_iter()).for_each(|(d, &s)| {
@@ -290,8 +287,11 @@ pub fn build_combined_prefix_covector<const N: usize>(
 pub fn compute_alpha_evals<const N: usize>(
     polynomial: &[FieldElement],
     alphas: &[Vec<FieldElement>; N],
-) -> [FieldElement; N] {
-    std::array::from_fn(|i| dot(&alphas[i], &polynomial[..alphas[i].len()]))
+) -> Vec<FieldElement> {
+    alphas
+        .iter()
+        .map(|w| dot(w, &polynomial[..w.len()]))
+        .collect()
 }
 
 /// Compute the public weight evaluation `⟨[1, x, x², …, x^N], poly[0..=N]⟩`

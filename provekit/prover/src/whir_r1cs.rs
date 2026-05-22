@@ -158,6 +158,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let domain_size = 1usize << self.m;
 
         if is_single {
+            // Single commitment path
             let commitment = commitments.into_iter().next().unwrap();
 
             let evals = compute_alpha_evals(&commitment.polynomial, &alphas);
@@ -173,10 +174,11 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 None
             };
 
-            // `inner_rlc` is sampled only after every alpha eval (and the
-            // optional public eval) is absorbed: standard Schwartz-Zippel on
-            // the (A, B, C) -> A + r·B + r²·C collapse then gives soundness
-            // ≤ 2/|F| per commitment.
+            // Sample `inner_rlc` only after every alpha eval (and the optional
+            // public eval) is absorbed into the transcript. By Schwartz-Zippel
+            // on the degree-2 polynomial `A + r·B + r²·C`, a false (A, B, C)
+            // claim collapses to a true combined claim with probability at
+            // most 2/|F|.
             let powers = rlc_powers::<3>(merlin.verifier_message());
             let combined_eval = dot(&powers, &evals);
             let combined_lf = build_combined_prefix_covector(alphas, &powers, domain_size);
@@ -202,6 +204,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 Cow::Borrowed(&evaluations),
             );
         } else {
+            // Dual commitment path
             let mut commitments = commitments.into_iter();
             let c1 = commitments.next().unwrap();
             let c2 = commitments.next().unwrap();
@@ -234,6 +237,10 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 None
             };
 
+            // Challenge binding: compute eval of challenge positions in w2 and
+            // send as transcript-bound message so the verifier can check that
+            // the committed w2 polynomial contains the correct Fiat-Shamir
+            // challenges.
             let challenge_eval = if !self.challenge_offsets.is_empty() {
                 let ce = compute_challenge_eval(x, &self.challenge_offsets, &c2.polynomial);
                 merlin.prover_message(&ce);
@@ -242,9 +249,13 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 None
             };
 
-            // One FS challenge is reused for both commitments — it is sampled
-            // after every prover message above is bound, so c1 and c2 cannot
-            // be adversarially aligned against each other.
+            // One `inner_rlc` is reused across c1 and c2: it is sampled only
+            // after every alpha eval (plus optional public/challenge evals)
+            // for both halves is absorbed, so the prover cannot adversarially
+            // align one half against the other. Sharing the challenge does
+            // not degrade soundness: by Schwartz-Zippel on the degree-2
+            // collapse, each individual false claim still folds to a true
+            // combined claim with probability at most 2/|F|.
             let powers = rlc_powers::<3>(merlin.verifier_message());
             let combined_eval_1 = dot(&powers, &evals_1);
             let combined_eval_2 = dot(&powers, &evals_2);

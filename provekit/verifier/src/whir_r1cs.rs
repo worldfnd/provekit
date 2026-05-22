@@ -175,14 +175,14 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             let combined_lf_1 = build_combined_prefix_covector(alphas_1, &powers, domain_size);
             let combined_lf_2 = build_combined_prefix_covector(alphas_2, &powers, domain_size);
 
-            let public_weight_1 = public_1_eval
-                .map(|_| make_public_weight(x, public_inputs.len(), self.m));
-            let challenge_weight = challenge_binding
-                .map(|_| make_challenge_weight(x, &self.challenge_offsets, self.m));
+            let public_weight_1 = (!public_inputs.is_empty())
+                .then(|| make_public_weight(x, public_inputs.len(), self.m));
+            let challenge_weight = (!self.challenge_offsets.is_empty())
+                .then(|| make_challenge_weight(x, &self.challenge_offsets, self.m));
 
             let mut weight_refs_1: Vec<&dyn LinearForm<FieldElement>> = Vec::new();
             let mut evaluations_1: Vec<FieldElement> = Vec::new();
-            if let (Some(ref pw), Some(pe)) = (&public_weight_1, public_1_eval) {
+            if let (Some(pw), Some(pe)) = (public_weight_1.as_ref(), public_1_eval) {
                 weight_refs_1.push(pw as &dyn LinearForm<FieldElement>);
                 evaluations_1.push(pe);
             }
@@ -198,7 +198,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             let mut weight_refs_2: Vec<&dyn LinearForm<FieldElement>> =
                 vec![&combined_lf_2 as &dyn LinearForm<FieldElement>];
             let mut evaluations_2: Vec<FieldElement> = vec![combined_eval_2];
-            if let (Some(ref cw), Some(ce)) = (&challenge_weight, challenge_binding) {
+            if let (Some(cw), Some(ce)) = (challenge_weight.as_ref(), challenge_binding) {
                 weight_refs_2.push(cw as &dyn LinearForm<FieldElement>);
                 evaluations_2.push(ce);
             }
@@ -239,12 +239,12 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             let powers = rlc_powers::<3>(arthur.verifier_message());
             let combined_eval = dot(&powers, &evals);
             let combined_lf = build_combined_prefix_covector(alphas, &powers, domain_size);
-            let public_weight =
-                public_eval.map(|_| make_public_weight(x, public_inputs.len(), self.m));
+            let public_weight = (!public_inputs.is_empty())
+                .then(|| make_public_weight(x, public_inputs.len(), self.m));
 
             let mut weight_refs: Vec<&dyn LinearForm<FieldElement>> = Vec::new();
             let mut evaluations: Vec<FieldElement> = Vec::new();
-            if let (Some(ref pw), Some(pe)) = (&public_weight, public_eval) {
+            if let (Some(pw), Some(pe)) = (public_weight.as_ref(), public_eval) {
                 weight_refs.push(pw as &dyn LinearForm<FieldElement>);
                 evaluations.push(pe);
             }
