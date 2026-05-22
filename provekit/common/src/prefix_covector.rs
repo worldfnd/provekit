@@ -199,34 +199,13 @@ pub fn make_public_weight(x: FieldElement, num_public_inputs: usize, m: usize) -
     PrefixCovector::new(public_weights, domain_size)
 }
 
-/// Build [`PrefixCovector`] weights from alpha vectors, consuming the alphas.
-///
-/// Each alpha vector is padded to a power-of-two length (min 2) and wrapped
-/// in a `PrefixCovector` with the given domain size `2^m`.
-#[must_use]
-pub fn build_prefix_covectors<const N: usize>(
-    m: usize,
-    alphas: [Vec<FieldElement>; N],
-) -> Vec<PrefixCovector> {
-    let domain_size = 1usize << m;
-    alphas
-        .into_iter()
-        .map(|mut w| {
-            let base_len = w.len().next_power_of_two().max(2);
-            w.resize(base_len, FieldElement::zero());
-            PrefixCovector::new(w, domain_size)
-        })
-        .collect()
-}
-
 /// Build a single [`PrefixCovector`] equal to `Σᵢ coeffs[i] · alphas[i]`,
 /// consuming the inputs.
 ///
-/// Behaves like [`build_prefix_covectors`] followed by a coefficient-weighted
-/// sum across the resulting covectors, but allocates only the combined vector
-/// instead of `N` independent ones — saving `(N − 1) × base_len` field
-/// elements at peak for callers that would otherwise materialise all of them
-/// simultaneously (e.g. the three R1CS matrix covectors A, B, C).
+/// Allocates one combined vector instead of `N` independent
+/// [`PrefixCovector`]s — saving `(N − 1) × base_len` field elements at peak
+/// for callers that would otherwise materialise all of them simultaneously
+/// (e.g. the three R1CS matrix covectors A, B, C).
 ///
 /// All input vectors must share the same length; the result is padded to
 /// the next power of two (min 2) to match [`PrefixCovector`]'s convention.

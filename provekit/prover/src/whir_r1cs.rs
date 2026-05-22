@@ -271,8 +271,11 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = Vec::new();
                 let mut evaluations: Vec<FieldElement> = Vec::new();
                 if let Some(pe) = public_1 {
-                    boxed_weights
-                        .push(Box::new(make_public_weight(x, public_inputs.len(), self.m)));
+                    boxed_weights.push(Box::new(make_public_weight(
+                        x,
+                        public_inputs.len(),
+                        self.m,
+                    )));
                     evaluations.push(pe);
                 }
                 boxed_weights.push(Box::new(combined_lf_1));
