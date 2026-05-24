@@ -28,6 +28,12 @@ jobs:
         with:
           channel: nightly-2026-03-04
           cache-base: main
+      - name: Setup Noir
+        uses: noir-lang/noirup@v0.1.2
+        with:
+          toolchain: v1.0.0-beta.19
+      - name: Generate mobile benchmark Noir artifacts
+        run: bench-mobile/scripts/generate-fixtures.sh
       - name: Build
         run: cargo build --all-targets --all-features --verbose
       - name: Run tests
