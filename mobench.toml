@@ -1,0 +1,20 @@
+[project]
+crate = "bench-mobile"
+library_name = "bench_mobile"
+ffi_backend = "native-c-abi"
+
+[android]
+package = "dev.world.benchmobile"
+min_sdk = 24
+target_sdk = 34
+abis = ["arm64-v8a"]
+
+[ios]
+bundle_id = "dev.world.benchmobile"
+deployment_target = "10.0"
+runner = "uikit-legacy"
+
+[browserstack]
+ios_completion_timeout_secs = 7200
+android_benchmark_timeout_secs = 7200
+android_heartbeat_interval_secs = 10

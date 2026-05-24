@@ -1,7 +1,10 @@
 #[cfg(test)]
 use crate::r1cs::R1CSSolver;
 use {
-    crate::whir_r1cs::WhirR1CSProver,
+    crate::{
+        r1cs::{CompressedLayers, CompressedR1CS},
+        whir_r1cs::WhirR1CSProver,
+    },
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
@@ -119,9 +122,12 @@ impl Prove for Prover {
         drop(self.program);
         drop(self.witness_generator);
 
-        let r1cs = self.r1cs;
-        let num_witnesses = r1cs.num_witnesses();
-        let num_constraints = r1cs.num_constraints();
+        // R1CS matrices are only needed at sumcheck; compress to free memory during
+        // commits.
+        let compressed_r1cs =
+            CompressedR1CS::compress(self.r1cs).context("While compressing R1CS")?;
+        let num_witnesses = compressed_r1cs.num_witnesses();
+        let num_constraints = compressed_r1cs.num_constraints();
 
         // Set up transcript with public inputs bound to the instance.
         let instance = public_inputs.hash_bytes();
@@ -147,10 +153,14 @@ impl Prove for Prover {
             .context("While solving w1 witnesses")?;
         }
 
-        // Hold w2 layers across the w1 commit only when challenges exist.
+        // Compress w2 layers to free memory during w1 commit (only when
+        // challenges exist; otherwise just drop them).
         let has_challenges = self.whir_for_witness.num_challenges > 0;
-        let w2_layers = if has_challenges {
-            Some(self.split_witness_builders.w2_layers)
+        let compressed_w2_layers = if has_challenges {
+            Some(
+                CompressedLayers::compress(self.split_witness_builders.w2_layers)
+                    .context("While compressing w2 layers")?,
+            )
         } else {
             drop(self.split_witness_builders.w2_layers);
             None
@@ -158,6 +168,7 @@ impl Prove for Prover {
 
         debug!(
             witness_heap_bytes = witness.capacity() * size_of::<Option<FieldElement>>(),
+            compressed_r1cs_blob_bytes = compressed_r1cs.blob_len(),
             "component sizes after solve_w1"
         );
 
@@ -188,7 +199,10 @@ impl Prove for Prover {
             .context("While committing to w1")?;
 
         let commitments = if has_challenges {
-            let w2_layers = w2_layers.expect("w2_layers is Some whenever has_challenges is true");
+            let w2_layers = compressed_w2_layers
+                .unwrap()
+                .decompress()
+                .context("While decompressing w2 layers")?;
             {
                 let _s = info_span!("solve_w2").entered();
                 crate::r1cs::solve_witness_vec(
@@ -219,6 +233,11 @@ impl Prove for Prover {
             drop(acir_witness_idx_to_value_map);
             vec![commitment_1]
         };
+
+        // Decompress R1CS for the sumcheck and matrix operations.
+        let r1cs = compressed_r1cs
+            .decompress()
+            .context("While decompressing R1CS")?;
 
         #[cfg(test)]
         r1cs.test_witness_satisfaction(&witness.iter().map(|w| w.unwrap()).collect::<Vec<_>>())
