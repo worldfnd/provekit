@@ -1,0 +1,148 @@
+name: Mobile Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      crate_path:
+        description: "Path to the benchmark crate"
+        required: false
+        type: string
+        default: "./bench-mobile"
+      functions:
+        description: "JSON array of benchmark functions"
+        required: false
+        type: string
+        default: '["bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove","bench_mobile::bench_passport_complete_age_check_prove"]'
+      functions_ios:
+        description: "Optional iOS-specific benchmark functions"
+        required: false
+        type: string
+        default: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      functions_android:
+        description: "Optional Android-specific benchmark functions"
+        required: false
+        type: string
+        default: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      platform:
+        description: "android | ios | both"
+        required: false
+        type: choice
+        default: both
+        options:
+          - android
+          - ios
+          - both
+      device_profile:
+        description: "Device profile to run"
+        required: false
+        type: choice
+        default: "triad"
+        options:
+          - smoke
+          - triad
+          - worst
+      device_profile_ios:
+        description: "Optional iOS-specific device profile"
+        required: false
+        type: string
+        default: ""
+      device_profile_android:
+        description: "Optional Android-specific device profile"
+        required: false
+        type: string
+        default: ""
+      iterations:
+        description: "Number of benchmark iterations"
+        required: false
+        type: string
+        default: "2"
+      warmup:
+        description: "Number of warmup iterations"
+        required: false
+        type: string
+        default: "1"
+      mobench_version:
+        description: "Mobench release version to install when mobench_ref is empty"
+        required: false
+        type: string
+        default: "0.1.41"
+      mobench_ref:
+        description: "Optional mobile-bench-rs Git ref to install instead of a released version"
+        required: false
+        type: string
+        default: "8c3f002ae515afaa7440107f4e671f7067d276e3"
+      pr_number:
+        description: "PR number for reporting"
+        required: false
+        type: string
+        default: ""
+      report_repository:
+        description: "owner/repo to receive the sticky benchmark comment; defaults to this repository"
+        required: false
+        type: string
+        default: ""
+      head_sha:
+        description: "Exact commit SHA to benchmark"
+        required: false
+        type: string
+        default: ""
+      requested_by:
+        description: "Who triggered the run"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  actions: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: mobench-${{ inputs.pr_number != '' && inputs.pr_number || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  browserstack-preflight:
+    name: BrowserStack preflight
+    runs-on: ubuntu-latest
+    environment: Browserstack
+    outputs:
+      available: ${{ steps.check.outputs.available }}
+    env:
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+    steps:
+      - name: Check BrowserStack secrets
+        id: check
+        shell: bash
+        run: |
+          if [ -n "$BROWSERSTACK_USERNAME" ] && [ -n "$BROWSERSTACK_ACCESS_KEY" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  browserstack:
+    name: BrowserStack benchmarks
+    needs: browserstack-preflight
+    if: ${{ needs.browserstack-preflight.outputs.available == 'true' }}
+    uses: ./.github/workflows/mobile-bench-reusable.yml
+    secrets: inherit
+    with:
+      crate_path: ${{ inputs.crate_path }}
+      functions: ${{ inputs.functions }}
+      functions_ios: ${{ inputs.functions_ios }}
+      functions_android: ${{ inputs.functions_android }}
+      platform: ${{ inputs.platform }}
+      device_profile: ${{ inputs.device_profile }}
+      device_profile_ios: ${{ inputs.device_profile_ios }}
+      device_profile_android: ${{ inputs.device_profile_android }}
+      iterations: ${{ inputs.iterations }}
+      warmup: ${{ inputs.warmup }}
+      mobench_version: ${{ inputs.mobench_version }}
+      mobench_ref: ${{ inputs.mobench_ref }}
+      pr_number: ${{ inputs.pr_number }}
+      report_repository: ${{ inputs.report_repository }}
+      head_sha: ${{ inputs.head_sha }}
+      requested_by: ${{ inputs.requested_by }}

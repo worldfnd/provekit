@@ -73,6 +73,26 @@ fn load_dealloc_fn() -> Option<DeallocFn> {
     }
 }
 
+#[inline(always)]
+unsafe fn default_alloc(layout: Layout) -> *mut u8 {
+    std::alloc::System.alloc(layout)
+}
+
+#[inline(always)]
+unsafe fn default_dealloc(ptr: *mut u8, layout: Layout) {
+    std::alloc::System.dealloc(ptr, layout);
+}
+
+#[inline(always)]
+unsafe fn default_alloc_zeroed(layout: Layout) -> *mut u8 {
+    std::alloc::System.alloc_zeroed(layout)
+}
+
+#[inline(always)]
+unsafe fn default_realloc(ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+    std::alloc::System.realloc(ptr, layout, new_size)
+}
+
 unsafe impl GlobalAlloc for FfiAllocator {
     #[inline(always)]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
@@ -84,7 +104,7 @@ unsafe impl GlobalAlloc for FfiAllocator {
         // Fallback to callback or system allocator
         match load_alloc_fn() {
             Some(f) => f(layout.size(), layout.align()) as *mut u8,
-            None => std::alloc::System.alloc(layout),
+            None => default_alloc(layout),
         }
     }
 
@@ -98,7 +118,7 @@ unsafe impl GlobalAlloc for FfiAllocator {
         // Fallback to callback or system allocator
         match load_dealloc_fn() {
             Some(f) => f(ptr as *mut c_void, layout.size(), layout.align()),
-            None => std::alloc::System.dealloc(ptr, layout),
+            None => default_dealloc(ptr, layout),
         }
     }
 
@@ -118,7 +138,7 @@ unsafe impl GlobalAlloc for FfiAllocator {
                 }
                 ptr
             }
-            None => std::alloc::System.alloc_zeroed(layout),
+            None => default_alloc_zeroed(layout),
         }
     }
 
@@ -143,7 +163,7 @@ unsafe impl GlobalAlloc for FfiAllocator {
                 }
                 new_ptr
             }
-            _ => std::alloc::System.realloc(ptr, layout, new_size),
+            _ => default_realloc(ptr, layout, new_size),
         }
     }
 }
