@@ -30,6 +30,14 @@ async function loadInputsJson(base: string): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
 
+async function loadOptionalBytes(path: string): Promise<Uint8Array | undefined> {
+  const response = await fetch(path);
+  if (!response.ok) {
+    return undefined;
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 function logBinarySize(logs: DiagnosticsWriter, label: string, bytes: Uint8Array): void {
   logs.log(`${label}: ${(bytes.byteLength / 1024 / 1024).toFixed(2)} MB`);
 }
@@ -96,9 +104,11 @@ export class ArtifactLoader {
     this.logs.log("Loading prover (.pkp) and verifier (.pkv) artifacts...");
     this.logs.logMemory("Before loading artifacts");
 
-    const [proverResponse, verifierResponse] = await Promise.all([
+    const [proverResponse, verifierResponse, witgenWasmBytes, adWasmBytes] = await Promise.all([
       fetch(`${base}prover.pkp`),
       fetch(`${base}verifier.pkv`),
+      loadOptionalBytes(`${base}witgen.wasm`),
+      loadOptionalBytes(`${base}ad.wasm`),
     ]);
 
     if (!proverResponse.ok || !verifierResponse.ok) {
@@ -108,6 +118,8 @@ export class ArtifactLoader {
     return {
       proverBytes: new Uint8Array(await proverResponse.arrayBuffer()),
       verifierBytes: new Uint8Array(await verifierResponse.arrayBuffer()),
+      witgenWasmBytes,
+      adWasmBytes,
       metadata,
     };
   }

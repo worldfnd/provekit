@@ -1,13 +1,13 @@
 import { decompressWitnessStack } from "@noir-lang/acvm_js";
 import { Noir } from "@noir-lang/noir_js";
 import * as ProvekitInspector from "provekit-inspector";
+import { createProveKit, type ProveKit, type ProveKitScheme, type WitnessProvider, type Proof as SdkProof } from "provekit-sdk";
 
 import { ArtifactLoader } from "./app/artifact-loader.js";
 import { ChecklistPresenter } from "./app/checklist.js";
 import { CircuitController } from "./app/circuit-controller.js";
 import { collectDom } from "./app/dom.js";
 import { LogRenderer } from "./app/logs.js";
-import { createMavrosRunner, type MavrosRunner } from "./app/mavros-runtime.js";
 import { Proof, type ProverScheme, type VerifierScheme } from "./app/proof-types.js";
 import { ProofOutputPresenter } from "./app/proof-output.js";
 import { initializeRuntime, readCircuitStatsFromPkp } from "./app/proof-runtime.js";
@@ -16,71 +16,18 @@ import { StepPresenter, stepStatus } from "./app/steps.js";
 import type { AppState } from "./app/types.js";
 import { VerifyController } from "./app/verify-controller.js";
 
-const ProvekitWasmProver = ProvekitInspector.Prover;
-const ProvekitWasmVerifier = ProvekitInspector.Verifier;
-
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-interface MavrosWasmProverHandle {
-  proveMavrosBytes(inputs: Record<string, unknown>, runner: MavrosRunner): Uint8Array;
-  getProverKind?(): string;
-  free(): void;
-}
-
-interface ProvekitWasmNoirProverHandle {
-  getCircuit(): Uint8Array;
-  proveBytes(witnessMap: Record<string, unknown>): Uint8Array;
-  free(): void;
-}
-
-interface ProvekitWasmVerifierHandle {
-  verifyBytes(proof: Uint8Array): void;
-  free(): void;
-}
-
-class LocalVerifierScheme implements VerifierScheme {
-  constructor(
-    private readonly verifierBytes: Uint8Array,
-    private readonly verifier: ProvekitWasmVerifierHandle,
-  ) {}
-
-  async verify(proof: Proof): Promise<boolean> {
-    try {
-      this.verifier.verifyBytes(proof.data);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  async serialize(): Promise<Uint8Array> {
-    return new Uint8Array(this.verifierBytes);
-  }
-
-  dispose(): void {
-    this.verifier.free();
-  }
-}
-
-class LocalNoirProverScheme implements ProverScheme {
-  private readonly circuitJson: unknown;
-
-  constructor(
-    private readonly proverBytes: Uint8Array,
-    private readonly prover: ProvekitWasmNoirProverHandle,
-  ) {
-    this.circuitJson = JSON.parse(new TextDecoder().decode(this.prover.getCircuit()));
-  }
-
-  async prove(inputs: Record<string, unknown>): Promise<Proof> {
-    const noir = new Noir(this.circuitJson as never);
+class BrowserWitnessProvider implements WitnessProvider {
+  async generateWitness(inputs: Record<string, unknown>, circuit: unknown): Promise<Record<string, unknown>> {
+    const noir = new Noir(circuit as never);
     const { witness: compressedWitness } = await noir.execute(inputs as never);
     const witnessStack = decompressWitnessStack(compressedWitness);
     const witnessMap = witnessStack[0]?.witness;
     if (!witnessMap) {
-      throw new Error("Noir execution produced an empty witness stack");
+      throw new Error("Circuit execution produced an empty witness stack");
     }
 
     const converted: Record<string, unknown> = {};
@@ -95,36 +42,44 @@ class LocalNoirProverScheme implements ProverScheme {
       }
       converted[index] = value;
     }
-
-    return Proof.fromBytes(this.prover.proveBytes(converted));
-  }
-
-  async serialize(): Promise<Uint8Array> {
-    return new Uint8Array(this.proverBytes);
-  }
-
-  dispose(): void {
-    this.prover.free();
+    return converted;
   }
 }
 
-class MavrosProverScheme implements ProverScheme {
-  constructor(
-    private readonly proverBytes: Uint8Array,
-    private readonly prover: MavrosWasmProverHandle,
-    private readonly runner: MavrosRunner,
-  ) {}
+function toLocalProof(sdkProof: SdkProof): Proof {
+  return Proof.fromBytes(sdkProof.bytes);
+}
+
+class SdkProverScheme implements ProverScheme {
+  constructor(private readonly scheme: ProveKitScheme) {}
 
   async prove(inputs: Record<string, unknown>): Promise<Proof> {
-    return Proof.fromBytes(this.prover.proveMavrosBytes(inputs, this.runner));
+    return toLocalProof(await this.scheme.prove(inputs));
   }
 
   async serialize(): Promise<Uint8Array> {
-    return new Uint8Array(this.proverBytes);
+    return this.scheme.serializeProver();
   }
 
   dispose(): void {
-    this.prover.free();
+    // No-op: the SDK consumes the prover handle during prove(); the paired
+    // SdkVerifierScheme owns final disposal of the scheme.
+  }
+}
+
+class SdkVerifierScheme implements VerifierScheme {
+  constructor(private readonly scheme: ProveKitScheme) {}
+
+  async verify(proof: Proof): Promise<boolean> {
+    return this.scheme.tryVerify(proof.data);
+  }
+
+  async serialize(): Promise<Uint8Array> {
+    return this.scheme.serializeVerifier() ?? new Uint8Array();
+  }
+
+  dispose(): void {
+    this.scheme.dispose();
   }
 }
 
@@ -134,6 +89,8 @@ class DemoApp {
   private readonly steps = new StepPresenter(this.dom.steps);
   private readonly checklist = new ChecklistPresenter(this.dom.checklist);
   private readonly proofOutput = new ProofOutputPresenter(this.dom, this.logs);
+  private readonly witnessProvider = new BrowserWitnessProvider();
+  private provekit: ProveKit | null = null;
   private readonly state: AppState = {
     activeCircuit: "sha256",
     customFiles: {},
@@ -202,6 +159,11 @@ class DemoApp {
       this.steps.setStatus(1, stepStatus.running("Loading..."));
       this.logs.log("Initializing proof runtime...");
       await initializeRuntime(this.logs);
+      this.provekit = await createProveKit({
+        bindings: ProvekitInspector,
+        threads: false,
+        panicHook: false,
+      });
       this.state.wasmReady = true;
       this.steps.setStatus(1, stepStatus.success("Loaded"));
       this.circuits.refreshRunButton();
@@ -245,71 +207,37 @@ class DemoApp {
   private async loadSchemes(
     proverBytes: Uint8Array,
     verifierBytes: Uint8Array,
-    mavrosArtifacts?: { witgenWasmBytes?: Uint8Array; adWasmBytes?: Uint8Array },
+    provingModules?: { witnessBytes?: Uint8Array; derivativesBytes?: Uint8Array },
   ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }> {
-    if (!this.state.wasmReady) {
+    if (!this.state.wasmReady || !this.provekit) {
       throw new Error("Proof runtime is not initialized yet.");
     }
 
     this.logs.log("Loading prover and verifier...");
     const loadStart = performance.now();
 
-    const hasMavrosWasm = Boolean(mavrosArtifacts?.witgenWasmBytes || mavrosArtifacts?.adWasmBytes);
-    if (hasMavrosWasm && (!mavrosArtifacts?.witgenWasmBytes || !mavrosArtifacts.adWasmBytes)) {
-      throw new Error("Mavros custom proving requires both witgen.wasm and ad.wasm.");
+    const hasProvingModules = Boolean(provingModules?.witnessBytes || provingModules?.derivativesBytes);
+    if (hasProvingModules && (!provingModules?.witnessBytes || !provingModules.derivativesBytes)) {
+      throw new Error("Custom proving modules require both witness and derivatives WASM artifacts.");
     }
 
-    const proverPromise = hasMavrosWasm
-      ? this.loadMavrosProver(proverBytes, mavrosArtifacts!.witgenWasmBytes!, mavrosArtifacts!.adWasmBytes!)
-      : this.loadLocalNoirProver(proverBytes);
-
-    // Use allSettled so we can dispose the resolved scheme if the other load
-    // rejects — a bare Promise.all would leak the fulfilled side's WASM handle.
-    const [proverResult, verifierResult] = await Promise.allSettled([
-      proverPromise,
-      this.loadLocalVerifier(verifierBytes),
-    ]);
-
-    if (proverResult.status === "rejected" || verifierResult.status === "rejected") {
-      if (proverResult.status === "fulfilled") {
-        proverResult.value.dispose();
-      }
-      if (verifierResult.status === "fulfilled") {
-        verifierResult.value.dispose();
-      }
-      throw proverResult.status === "rejected"
-        ? proverResult.reason
-        : (verifierResult as PromiseRejectedResult).reason;
-    }
+    const scheme = await this.provekit.loadArtifacts({
+      prover: proverBytes,
+      verifier: verifierBytes,
+      witnessProvider: this.witnessProvider,
+      provingModules: hasProvingModules
+        ? {
+            witness: provingModules!.witnessBytes!,
+            derivatives: provingModules!.derivativesBytes!,
+          }
+        : undefined,
+    });
 
     this.logs.log(`Scheme load time: ${(performance.now() - loadStart).toFixed(0)}ms`);
-    return { prover: proverResult.value, verifier: verifierResult.value };
-  }
-
-  private async loadLocalVerifier(verifierBytes: Uint8Array): Promise<VerifierScheme> {
-    const verifier = new ProvekitWasmVerifier(verifierBytes);
-    return new LocalVerifierScheme(verifierBytes, verifier);
-  }
-
-  private async loadLocalNoirProver(proverBytes: Uint8Array): Promise<ProverScheme> {
-    const prover = new ProvekitWasmProver(proverBytes);
-    return new LocalNoirProverScheme(proverBytes, prover);
-  }
-
-  private async loadMavrosProver(
-    proverBytes: Uint8Array,
-    witgenWasmBytes: Uint8Array,
-    adWasmBytes: Uint8Array,
-  ): Promise<ProverScheme> {
-    this.logs.log("Loading Mavros WASM witness and AD artifacts...");
-    const runner = await createMavrosRunner(witgenWasmBytes, adWasmBytes, this.logs);
-    const prover = new ProvekitWasmProver(proverBytes);
-    const kind = typeof prover.getProverKind === "function" ? prover.getProverKind() : "mavros";
-    if (kind !== "mavros") {
-      prover.free();
-      throw new Error("Mavros WASM artifacts were provided, but prover.pkp is not a Mavros prover.");
-    }
-    return new MavrosProverScheme(proverBytes, prover, runner);
+    return {
+      prover: new SdkProverScheme(scheme),
+      verifier: new SdkVerifierScheme(scheme),
+    };
   }
 
   private async copyLogs(): Promise<void> {

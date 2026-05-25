@@ -1,4 +1,76 @@
-import type { LogWriter } from "./types.js";
+// Mavros Buffer ABI v1 — the struct offsets and field encoding below mirror
+// the Rust-side contract documented in tooling/provekit-wasm/src/prover.rs
+// (look for `MAVROS_BUFFER_ABI_VERSION` and `prove_mavros_bytes`). Bump
+// `MAVROS_BUFFER_ABI_VERSION` here and on the Rust side together when the
+// layout changes — the version is sent across to the WASM prover for a
+// handshake check.
+
+interface WitnessLayout {
+  algebraic_size: number;
+  multiplicities_size: number;
+  challenges_size: number;
+  tables_data_size: number;
+  lookups_data_size: number;
+}
+
+interface ConstraintsLayout {
+  algebraic_size: number;
+  tables_data_size: number;
+  lookups_data_size: number;
+}
+
+interface MavrosTableInfo {
+  multiplicitiesWitOffset: number;
+  numValues: number;
+  length: number;
+  elemInversesWitnessSectionOffset: number;
+  elemInversesConstraintSectionOffset: number;
+}
+
+export interface CompiledModuleRunner {
+  readonly mavrosBufferAbiVersion: 1;
+  runWitgen(
+    inputFields: Uint8Array,
+    witnessLayout: WitnessLayout,
+    constraintsLayout: ConstraintsLayout,
+  ): {
+    outWitPreComm: Uint8Array;
+    outWitPostComm: Uint8Array;
+    outA: Uint8Array;
+    outB: Uint8Array;
+    outC: Uint8Array;
+    tables: MavrosTableInfo[];
+  };
+  runWitgenInto(
+    inputFields: Uint8Array,
+    outWitPreComm: Uint8Array,
+    outWitPostComm: Uint8Array,
+    outA: Uint8Array,
+    outB: Uint8Array,
+    outC: Uint8Array,
+    witnessLayout: WitnessLayout,
+    constraintsLayout: ConstraintsLayout,
+  ): {
+    tables: MavrosTableInfo[];
+  };
+  runAd(
+    coeffs: Uint8Array,
+    witnessLayout: WitnessLayout,
+    constraintsLayout: ConstraintsLayout,
+  ): {
+    outDa: Uint8Array;
+    outDb: Uint8Array;
+    outDc: Uint8Array;
+  };
+  runAdInto(
+    coeffs: Uint8Array,
+    outDa: Uint8Array,
+    outDb: Uint8Array,
+    outDc: Uint8Array,
+    witnessLayout: WitnessLayout,
+    constraintsLayout: ConstraintsLayout,
+  ): void;
+}
 
 const FIELD_SIZE = 32;
 const MAVROS_BUFFER_ABI_VERSION = 1 as const;
@@ -40,20 +112,6 @@ const AD_CURRENT_CNST_TABLES_OFF_OFFSET = 28;
 const AD_CURRENT_WIT_TABLES_OFF_OFFSET = 32;
 const AD_CURRENT_WIT_MULTIPLICITIES_OFF_OFFSET = 36;
 const AD_VM_STRUCT_SIZE = 40;
-
-interface WitnessLayout {
-  algebraic_size: number;
-  multiplicities_size: number;
-  challenges_size: number;
-  tables_data_size: number;
-  lookups_data_size: number;
-}
-
-interface ConstraintsLayout {
-  algebraic_size: number;
-  tables_data_size: number;
-  lookups_data_size: number;
-}
 
 type MavrosExports = WebAssembly.Exports;
 
@@ -105,7 +163,13 @@ function readU32(view: DataView, ptr: number): number {
   return view.getUint32(ptr, true);
 }
 
-function copyFieldRange(memory: WebAssembly.Memory, ptr: number, count: number, out: Uint8Array, label: string): void {
+function copyFieldRange(
+  memory: WebAssembly.Memory,
+  ptr: number,
+  count: number,
+  out: Uint8Array,
+  label: string,
+): void {
   const byteLength = count * FIELD_SIZE;
   if (out.byteLength !== byteLength) {
     throw new Error(`${label} buffer length ${out.byteLength} does not match ${byteLength}`);
@@ -117,81 +181,16 @@ async function compileModule(bytes: Uint8Array): Promise<WebAssembly.Module> {
   return WebAssembly.compile(new Uint8Array(bytes).buffer);
 }
 
-export interface MavrosRunner {
-  /**
-   * ABI v1 uses little-endian BN254 Montgomery-form field elements in every
-   * 32-byte field slot. The witgen multiplicity section is the only exception:
-   * each slot is a canonical u64 in limb 0 and zero in limbs 1..3.
-   */
-  readonly mavrosBufferAbiVersion: typeof MAVROS_BUFFER_ABI_VERSION;
-  runWitgen(
-    inputFields: Uint8Array,
-    witnessLayout: WitnessLayout,
-    constraintsLayout: ConstraintsLayout,
-  ): {
-    outWitPreComm: Uint8Array;
-    outWitPostComm: Uint8Array;
-    outA: Uint8Array;
-    outB: Uint8Array;
-    outC: Uint8Array;
-    tables: Array<{
-      multiplicitiesWitOffset: number;
-      numValues: number;
-      length: number;
-      elemInversesWitnessSectionOffset: number;
-      elemInversesConstraintSectionOffset: number;
-    }>;
-  };
-  runWitgenInto(
-    inputFields: Uint8Array,
-    outWitPreComm: Uint8Array,
-    outWitPostComm: Uint8Array,
-    outA: Uint8Array,
-    outB: Uint8Array,
-    outC: Uint8Array,
-    witnessLayout: WitnessLayout,
-    constraintsLayout: ConstraintsLayout,
-  ): {
-    tables: Array<{
-      multiplicitiesWitOffset: number;
-      numValues: number;
-      length: number;
-      elemInversesWitnessSectionOffset: number;
-      elemInversesConstraintSectionOffset: number;
-    }>;
-  };
-  runAd(
-    coeffs: Uint8Array,
-    witnessLayout: WitnessLayout,
-    constraintsLayout: ConstraintsLayout,
-  ): {
-    outDa: Uint8Array;
-    outDb: Uint8Array;
-    outDc: Uint8Array;
-  };
-  runAdInto(
-    coeffs: Uint8Array,
-    outDa: Uint8Array,
-    outDb: Uint8Array,
-    outDc: Uint8Array,
-    witnessLayout: WitnessLayout,
-    constraintsLayout: ConstraintsLayout,
-  ): void;
-}
-
 export async function createMavrosRunner(
   witgenWasm: Uint8Array,
   adWasm: Uint8Array,
-  logs?: LogWriter,
-): Promise<MavrosRunner> {
+): Promise<CompiledModuleRunner> {
   const [witgenModule, adModule] = await Promise.all([
     compileModule(witgenWasm),
     compileModule(adWasm),
   ]);
 
-  logs?.log("Mavros WASM artifacts compiled");
-
-  const runner: MavrosRunner = {
+  const runner: CompiledModuleRunner = {
     mavrosBufferAbiVersion: MAVROS_BUFFER_ABI_VERSION,
 
     runWitgen(inputFields, witnessLayout, constraintsLayout) {
@@ -203,7 +202,7 @@ export async function createMavrosRunner(
       const outA = new Uint8Array(constraintCount * FIELD_SIZE);
       const outB = new Uint8Array(constraintCount * FIELD_SIZE);
       const outC = new Uint8Array(constraintCount * FIELD_SIZE);
-      const { tables } = this.runWitgenInto(
+      const { tables } = runner.runWitgenInto(
         inputFields,
         outWitPreComm,
         outWitPostComm,
@@ -223,8 +222,16 @@ export async function createMavrosRunner(
       };
     },
 
-    runWitgenInto(inputFields, outWitPreComm, outWitPostComm, outA, outB, outC, witnessLayout, constraintsLayout) {
-      const started = performance.now();
+    runWitgenInto(
+      inputFields,
+      outWitPreComm,
+      outWitPostComm,
+      outA,
+      outB,
+      outC,
+      witnessLayout,
+      constraintsLayout,
+    ) {
       const witnessCount = witnessSize(witnessLayout);
       const constraintCount = constraintsSize(constraintsLayout);
       const preCommitmentCount = witnessPreCommitmentSize(witnessLayout);
@@ -236,12 +243,10 @@ export async function createMavrosRunner(
       const constraintBytes = constraintCount * FIELD_SIZE;
       const inputBytes = inputFields.byteLength;
       const tableInfoBytes = constraintsLayout.tables_data_size * TABLE_INFO_SLOT_SIZE;
-      const hostBytes = WITGEN_VM_STRUCT_SIZE + witnessBytes + 3 * constraintBytes + inputBytes + tableInfoBytes;
+      const hostBytes =
+        WITGEN_VM_STRUCT_SIZE + witnessBytes + 3 * constraintBytes + inputBytes + tableInfoBytes;
       const pages = pagesFor(WASM_STACK_SIZE_BYTES + WASM_STATIC_DATA_BYTES + hostBytes);
-
-      let exports: MavrosExports;
-      let memory: WebAssembly.Memory;
-      ({ exports, memory } = instantiateWithMemorySync(witgenModule, pages));
+      const { exports, memory } = instantiateWithMemorySync(witgenModule, pages);
 
       const dataEnd = getDataEnd(exports);
       const dataOffset = (dataEnd + 15) & ~15;
@@ -260,7 +265,8 @@ export async function createMavrosRunner(
       const lookupsB = bPtr + constraintsLookupsDataStart(constraintsLayout) * FIELD_SIZE;
       const lookupsC = cPtr + constraintsLookupsDataStart(constraintsLayout) * FIELD_SIZE;
       const currentCnstTablesOff = constraintsTablesDataStart(constraintsLayout);
-      const currentWitTablesOff = witnessTablesDataStart(witnessLayout) - witnessChallengesStart(witnessLayout);
+      const currentWitTablesOff =
+        witnessTablesDataStart(witnessLayout) - witnessChallengesStart(witnessLayout);
 
       writeU32(view, vmStructPtr + WITGEN_WITNESS_PTR_OFFSET, witnessPtr);
       writeU32(view, vmStructPtr + WITGEN_A_PTR_OFFSET, aPtr);
@@ -278,16 +284,14 @@ export async function createMavrosRunner(
       writeU32(view, vmStructPtr + WITGEN_CURRENT_WIT_TABLES_OFF_OFFSET, currentWitTablesOff);
       new Uint8Array(memory.buffer, inputsPtr, inputBytes).set(inputFields);
 
-      const callStarted = performance.now();
       callMavrosMain(exports, vmStructPtr);
-      const callMs = performance.now() - callStarted;
       const tablesLen = readU32(new DataView(memory.buffer), vmStructPtr + WITGEN_TABLES_LEN_OFFSET);
       if (tablesLen > constraintsLayout.tables_data_size) {
         throw new Error(`Mavros table registry overflow: ${tablesLen} > ${constraintsLayout.tables_data_size}`);
       }
 
       const tableView = new DataView(memory.buffer);
-      const tables = Array.from({ length: tablesLen }, (_, index) => {
+      const tables: MavrosTableInfo[] = Array.from({ length: tablesLen }, (_, index) => {
         const slot = tablesPtr + index * TABLE_INFO_SLOT_SIZE;
         const multsBase = readU32(tableView, slot + TABLE_INFO_MULTS_BASE_PTR_OFFSET);
         return {
@@ -310,8 +314,6 @@ export async function createMavrosRunner(
       copyFieldRange(memory, aPtr, constraintCount, outA, "outA");
       copyFieldRange(memory, bPtr, constraintCount, outB, "outB");
       copyFieldRange(memory, cPtr, constraintCount, outC, "outC");
-
-      logs?.log(`Mavros witgen.wasm: ${callMs.toFixed(0)}ms call, ${(performance.now() - started).toFixed(0)}ms total`);
       return { tables };
     },
 
@@ -320,12 +322,11 @@ export async function createMavrosRunner(
       const outDa = new Uint8Array(witnessCount * FIELD_SIZE);
       const outDb = new Uint8Array(witnessCount * FIELD_SIZE);
       const outDc = new Uint8Array(witnessCount * FIELD_SIZE);
-      this.runAdInto(coeffs, outDa, outDb, outDc, witnessLayout, constraintsLayout);
+      runner.runAdInto(coeffs, outDa, outDb, outDc, witnessLayout, constraintsLayout);
       return { outDa, outDb, outDc };
     },
 
     runAdInto(coeffs, outDa, outDb, outDc, witnessLayout, constraintsLayout) {
-      const started = performance.now();
       const witnessCount = witnessSize(witnessLayout);
       const constraintCount = constraintsSize(constraintsLayout);
       const expectedCoeffBytes = constraintCount * FIELD_SIZE;
@@ -363,20 +364,19 @@ export async function createMavrosRunner(
       writeU32(view, vmStructPtr + AD_CURRENT_WIT_TABLES_OFF_OFFSET, witnessTablesDataStart(witnessLayout));
       writeU32(view, vmStructPtr + AD_CURRENT_WIT_MULTIPLICITIES_OFF_OFFSET, witnessLayout.algebraic_size);
 
-      const callStarted = performance.now();
       callMavrosMain(exports, vmStructPtr);
-      const callMs = performance.now() - callStarted;
-
       copyFieldRange(memory, daPtr, witnessCount, outDa, "outDa");
       copyFieldRange(memory, dbPtr, witnessCount, outDb, "outDb");
       copyFieldRange(memory, dcPtr, witnessCount, outDc, "outDc");
-      logs?.log(`Mavros ad.wasm: ${callMs.toFixed(0)}ms call, ${(performance.now() - started).toFixed(0)}ms total`);
     },
   };
   return runner;
 }
 
-function instantiateWithMemorySync(module: WebAssembly.Module, pages: number): {
+function instantiateWithMemorySync(
+  module: WebAssembly.Module,
+  pages: number,
+): {
   exports: MavrosExports;
   memory: WebAssembly.Memory;
 } {

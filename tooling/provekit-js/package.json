@@ -1,0 +1,53 @@
+{
+  "name": "provekit-sdk",
+  "version": "0.1.0",
+  "description": "Browser TypeScript SDK for ProveKit WASM proving and verification",
+  "license": "(MIT OR Apache-2.0)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/worldfnd/provekit.git",
+    "directory": "tooling/provekit-js"
+  },
+  "homepage": "https://github.com/worldfnd/provekit/tree/main/tooling/provekit-js",
+  "bugs": {
+    "url": "https://github.com/worldfnd/provekit/issues"
+  },
+  "keywords": [
+    "provekit",
+    "zero-knowledge",
+    "zk",
+    "wasm",
+    "noir",
+    "r1cs",
+    "whir"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "prepack": "npm run build",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

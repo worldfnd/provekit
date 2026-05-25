@@ -23,3 +23,70 @@ declare module "provekit-inspector" {
     free(): void;
   }
 }
+
+declare module "provekit-sdk" {
+  export type ProvingInput = Record<string, unknown>;
+  export type BytesInput = Uint8Array | ArrayBuffer | ArrayBufferView | RequestInfo | URL | string;
+
+  export interface WitnessProvider {
+    generateWitness(
+      inputs: ProvingInput,
+      circuit: unknown,
+    ): Promise<Record<string, unknown> | Map<number | string, unknown>>;
+  }
+
+  export interface ProvingModules {
+    witness: BytesInput;
+    derivatives: BytesInput;
+  }
+
+  export interface ProveKitWasmBindings {
+    Prover: new (proverData: Uint8Array) => unknown;
+    Verifier: new (verifierData: Uint8Array) => unknown;
+    initPanicHook?: () => void;
+    initThreadPool?: (numThreads: number) => Promise<unknown>;
+  }
+
+  export interface ProveKitInitOptions {
+    bindings: ProveKitWasmBindings;
+    init?: (moduleOrPath?: unknown) => Promise<unknown>;
+    wasmModule?: unknown;
+    threads?: number | false;
+    panicHook?: boolean;
+  }
+
+  export interface LoadArtifactsOptions {
+    baseUrl?: string | URL;
+    prover?: BytesInput;
+    verifier?: BytesInput;
+    skipVerifier?: boolean;
+    provingModules?: ProvingModules;
+    witnessProvider?: WitnessProvider;
+  }
+
+  export class Proof {
+    readonly bytes: Uint8Array;
+    readonly data: Uint8Array;
+    readonly size: number;
+    json<T = unknown>(): T;
+    text(): string;
+  }
+
+  export class ProveKitScheme {
+    readonly numConstraints?: number;
+    readonly numWitnesses?: number;
+    readonly consumed: boolean;
+    serializeProver(): Uint8Array;
+    serializeVerifier(): Uint8Array | undefined;
+    prove(inputs: ProvingInput): Promise<Proof>;
+    verify(proof: Proof | Uint8Array): Promise<void>;
+    tryVerify(proof: Proof | Uint8Array): Promise<boolean>;
+    dispose(): void;
+  }
+
+  export class ProveKit {
+    loadArtifacts(input: LoadArtifactsOptions | string | URL): Promise<ProveKitScheme>;
+  }
+
+  export function createProveKit(options: ProveKitInitOptions): Promise<ProveKit>;
+}

@@ -4,6 +4,7 @@ import { execSync, spawnSync } from "child_process";
 import {
   existsSync,
   mkdirSync,
+  cpSync,
   readdirSync,
   readFileSync,
   rmSync,
@@ -16,6 +17,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, "../../..");
 const DEMO_DIR = resolve(__dirname, "..");
 const OUT_DIR = join(DEMO_DIR, "pkg-local");
+const SDK_DIR = join(ROOT_DIR, "tooling/provekit-js");
+const SDK_DIST_DIR = join(SDK_DIR, "dist");
+const SDK_OUT_DIR = join(OUT_DIR, "provekit-sdk");
 const WASM_PATH = join(
   ROOT_DIR,
   "target/wasm32-unknown-unknown/release/provekit_wasm.wasm"
@@ -58,6 +62,13 @@ function patchRayonWorkerImport() {
   }
 }
 
+function stageSdk() {
+  run("npm run build", { cwd: SDK_DIR });
+  rmSync(SDK_OUT_DIR, { recursive: true, force: true });
+  mkdirSync(SDK_OUT_DIR, { recursive: true });
+  cpSync(SDK_DIST_DIR, SDK_OUT_DIR, { recursive: true });
+}
+
 function main() {
   if (!commandExists("wasm-bindgen")) {
     throw new Error(
@@ -77,6 +88,7 @@ function main() {
   });
 
   patchRayonWorkerImport();
+  stageSdk();
 
   if (commandExists("wasm-opt")) {
     run(

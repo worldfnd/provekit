@@ -15,7 +15,7 @@ interface RunControllerDeps {
   loadSchemes(
     proverBytes: Uint8Array,
     verifierBytes: Uint8Array,
-    mavrosArtifacts?: { witgenWasmBytes?: Uint8Array; adWasmBytes?: Uint8Array },
+    provingModules?: { witnessBytes?: Uint8Array; derivativesBytes?: Uint8Array },
   ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }>;
   waitForUi(): Promise<void>;
   disposeActiveVerifier(): void;
@@ -45,8 +45,8 @@ export class RunController {
       );
 
       ({ prover, verifier } = await this.deps.loadSchemes(proverBytes, verifierBytes, {
-        witgenWasmBytes,
-        adWasmBytes,
+        witnessBytes: witgenWasmBytes,
+        derivativesBytes: adWasmBytes,
       }));
       this.deps.steps.setStatus(2, stepStatus.success("Loaded"));
 
