@@ -231,6 +231,14 @@ pub struct MmapProvingKey {
     pub nb_infinity_a: u64,
     pub nb_infinity_b: u64,
 
+    /// Wire indices where `A(τ) != 0`, derived once at load from
+    /// `infinity_a`. Owned (not borrowed from the mmap) — the file format
+    /// doesn't store this; it's a cheap O(n) one-time computation.
+    pub non_inf_a: Vec<usize>,
+    /// Wire indices where `B(τ) != 0`, derived once at load from
+    /// `infinity_b`.
+    pub non_inf_b: Vec<usize>,
+
     /// Raw-pointer descriptors for each Pedersen commitment key. The
     /// pointers index into the same `_mmap` mapping above. Lifetime is
     /// implicit through `&self` — accessors return `&[G1Affine]` slices
@@ -442,7 +450,23 @@ impl MmapProvingKey {
             let (off, len) = *section_offsets
                 .get(&sid)
                 .ok_or_else(|| anyhow::anyhow!("missing section {:?}", sid))?;
-            let ptr = unsafe { mmap.as_ptr().add(off) } as *const bool;
+            ensure!(
+                off.checked_add(len).map_or(false, |end| end <= mmap.len()),
+                "section {:?} body out of bounds (off={}, len={})",
+                sid,
+                off,
+                len
+            );
+            // SAFETY: reinterpreting bytes as `&[bool]` is UB unless every byte
+            // is 0 or 1. The mmap is attacker-controllable on iOS/Android, so
+            // validate the bool validity invariant before exposing the slice.
+            let bytes = &mmap[off..off + len];
+            ensure!(
+                bytes.iter().all(|&b| b <= 1),
+                "section {:?} contains invalid bool byte (not 0 or 1)",
+                sid
+            );
+            let ptr = bytes.as_ptr() as *const bool;
             Ok((ptr, len))
         };
 
@@ -548,6 +572,26 @@ impl MmapProvingKey {
             load_pedersen_commitment_keys(&mmap, &section_offsets)?
         };
 
+        // Derive non-infinity index lists from the mmap'd `infinity_a/b`
+        // bytes. One-time O(n) walk at load — amortized across every
+        // subsequent prove call.
+        // SAFETY: pointers / lengths were validated by `load_bool_section`
+        // above, and the mapping outlives this scope.
+        let infinity_a_slice: &[bool] =
+            unsafe { std::slice::from_raw_parts(infinity_a_ptr, infinity_a_len) };
+        let infinity_b_slice: &[bool] =
+            unsafe { std::slice::from_raw_parts(infinity_b_ptr, infinity_b_len) };
+        let non_inf_a: Vec<usize> = infinity_a_slice
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &x)| if !x { Some(i) } else { None })
+            .collect();
+        let non_inf_b: Vec<usize> = infinity_b_slice
+            .iter()
+            .enumerate()
+            .filter_map(|(i, &x)| if !x { Some(i) } else { None })
+            .collect();
+
         Ok(MmapProvingKey {
             _mmap: mmap,
             domain_size,
@@ -573,6 +617,8 @@ impl MmapProvingKey {
             infinity_b_len,
             nb_infinity_a,
             nb_infinity_b,
+            non_inf_a,
+            non_inf_b,
             commitment_keys,
         })
     }
@@ -1318,7 +1364,7 @@ mod tests {
         r1cs.add_witnesses(3);
         let one = ark_bn254::Fr::from(1u64);
         r1cs.add_constraint(&[(one, 2)], &[(one, 2)], &[(one, 1)]);
-        let (pk, _vk) = crate::setup::setup(&r1cs, &[], &[], &[]).unwrap();
+        let (pk, _vk) = crate::setup::setup(&r1cs, &[], &[]).unwrap();
 
         let dir = tempdir().unwrap();
         let path = dir.path().join("pk_sections.bin");

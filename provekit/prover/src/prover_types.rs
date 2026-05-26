@@ -97,6 +97,13 @@ pub struct Groth16PkView<'a> {
     pub g2_b:            &'a [ark_bn254::G2Affine],
     pub infinity_a:      &'a [bool],
     pub infinity_b:      &'a [bool],
+    /// Precomputed wire indices where `A(τ) != 0` (the complement of
+    /// `infinity_a`). Built at setup time for owned PKs, at mmap-load time
+    /// for mmap PKs. Lets `prove_ar_bs_bs1` build the MSM input by direct
+    /// indexing instead of re-filtering on every prove call.
+    pub non_inf_a:       &'a [usize],
+    /// Twin of `non_inf_a` for the B side.
+    pub non_inf_b:       &'a [usize],
     /// One view per BSB22 commitment. Borrows basis arrays out of either
     /// owned `pedersen::ProvingKey`s (legacy path) or mmap'd file pages
     /// (rapidsnark-style raw layout), with no allocation of the bases
@@ -122,6 +129,8 @@ impl Groth16PkSource {
                 g2_b:            &pk.g2_b,
                 infinity_a:      &pk.infinity_a,
                 infinity_b:      &pk.infinity_b,
+                non_inf_a:       &pk.non_inf_a,
+                non_inf_b:       &pk.non_inf_b,
                 commitment_keys: pk.commitment_keys.iter().map(|ck| ck.view()).collect(),
             },
             #[cfg(not(target_arch = "wasm32"))]
@@ -139,6 +148,8 @@ impl Groth16PkSource {
                 g2_b:            m.g2_b(),
                 infinity_a:      m.infinity_a(),
                 infinity_b:      m.infinity_b(),
+                non_inf_a:       &m.non_inf_a,
+                non_inf_b:       &m.non_inf_b,
                 commitment_keys: m.commitment_keys.iter().map(|ck| ck.view()).collect(),
             },
         }

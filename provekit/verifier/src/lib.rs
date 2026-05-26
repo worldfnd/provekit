@@ -3,8 +3,8 @@ mod whir_r1cs;
 use {
     crate::whir_r1cs::WhirR1CSVerifier,
     anyhow::{Context, Result},
-    ark_bn254,
     provekit_common::{NoirProof, Verifier},
+    provekit_groth16::VerifierGroth16Ext,
     tracing::instrument,
 };
 
@@ -41,16 +41,10 @@ impl Verify for Verifier {
             } => {
                 use ark_serialize::CanonicalDeserialize;
 
-                let vk_bytes = self.groth16_vk.as_ref().context(
+                let vk = self.groth16_vk_typed()?.context(
                     "proof/verifier backend mismatch: proof is Groth16 but verifier was prepared \
                      for WHIR",
                 )?;
-
-                tracing::debug!(vk_bytes_len = vk_bytes.len(), "deserializing Groth16 VK");
-
-                let vk: provekit_groth16::VerifyingKey =
-                    CanonicalDeserialize::deserialize_uncompressed(&vk_bytes[..])
-                        .context("while deserializing Groth16 verifying key")?;
 
                 tracing::debug!(
                     g1_k_len = vk.g1_k.len(),

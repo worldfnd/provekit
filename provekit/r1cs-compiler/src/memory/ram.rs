@@ -74,12 +74,16 @@ pub fn add_ram_checking(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     block: &MemoryBlock,
 ) -> (u32, Vec<usize>) {
-    // Add two verifier challenges for the multiset check
-    let rs_challenge =
-        r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
+    // Draw this RAM block's (rs, sz) pair from the global BSB22 power
+    // chains on the compiler. Each RAM block gets a distinct `(β^k, α^k)`
+    // pair via in-circuit power chaining — the two roots `(α, β)` are the
+    // only `Challenge` builders allocated for the whole circuit.
+    // `rs_challenge_sqrd` is still computed within this LogUp (it's an
+    // *internal* power of `rs_challenge` used by the Spice multiset
+    // construction below), so it stays as an explicit `add_product`.
+    let rs_challenge = r1cs_compiler.next_rs_power();
     let rs_challenge_sqrd = r1cs_compiler.add_product(rs_challenge, rs_challenge);
-    let sz_challenge =
-        r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
+    let sz_challenge = r1cs_compiler.next_sz_power();
 
     // The current witnesses indices for the partial products of the read set (RS)
     // hash and the write set (WS) hash

@@ -1,7 +1,7 @@
 /// Groth16 proof system with BSB22 commitment extension for BN254.
 ///
-/// This is a Rust port of gnark's Groth16 BN254 backend, using arkworks
-/// primitives for elliptic curve operations, pairings, FFT, and MSM.
+/// Built on arkworks primitives for elliptic curve operations, pairings,
+/// FFT, and MSM.
 ///
 /// Reference: DIZK paper <https://eprint.iacr.org/2018/691.pdf> (Figure 4)
 /// BSB22 extension: <https://eprint.iacr.org/2022/1072>
@@ -17,6 +17,30 @@ pub mod mmap_pk;
 #[cfg(not(target_arch = "wasm32"))]
 pub use mmap_pk::{MmapProvingKey, MMAP_SENTINEL};
 pub use types::{Proof, ProvingKey, VerifyingKey};
+
+/// Extension trait for [`provekit_common::Verifier`] that decodes the
+/// `groth16_vk: Option<Vec<u8>>` field into a typed [`VerifyingKey`] in one
+/// place — so consumers don't each repeat the
+/// `CanonicalDeserialize::deserialize_uncompressed(&bytes[..])` dance.
+pub trait VerifierGroth16Ext {
+    /// Decode the embedded Groth16 verifying key, if present.
+    ///
+    /// `Ok(None)` means this PKV is for the WHIR backend; `Err` means a VK
+    /// was present but failed to deserialize.
+    fn groth16_vk_typed(&self) -> anyhow::Result<Option<VerifyingKey>>;
+}
+
+impl VerifierGroth16Ext for provekit_common::Verifier {
+    fn groth16_vk_typed(&self) -> anyhow::Result<Option<VerifyingKey>> {
+        use {anyhow::Context, ark_serialize::CanonicalDeserialize};
+        self.groth16_vk
+            .as_ref()
+            .map(|bytes| {
+                VerifyingKey::deserialize_uncompressed(&bytes[..]).context("decoding groth16_vk")
+            })
+            .transpose()
+    }
+}
 
 /// Domain separator for BSB22 commitment hashing.
 pub const COMMITMENT_DST: &[u8] = b"bsb22-commitment";
@@ -41,8 +65,12 @@ pub struct CommitmentInfo {
     pub public_and_commitment_committed: Vec<usize>,
     /// Indices of private/internal wires committed to.
     pub private_committed:               Vec<usize>,
-    /// Wire index where the commitment challenge value is stored.
-    pub commitment_index:                usize,
+    /// Wire indices that hold derived challenge values for this commitment,
+    /// in the order the verifier inserts them into `extended_public`.
+    /// `setup()` flattens these across `commitment_info` to know which wires
+    /// belong to `vk.g1_k`; the prover writes derived challenges into the
+    /// witness at these positions.
+    pub challenge_indices:               Vec<usize>,
     /// Number of entries in `public_and_commitment_committed` that are public
     /// (as opposed to other commitment indices).
     pub nb_public_committed:             usize,
@@ -60,8 +88,6 @@ impl CommitmentInfo {
     }
 }
 
-/// Helper to convert arkworks MSM errors (which are just `usize`) into anyhow
-/// errors.
 pub(crate) fn msm_err(e: usize) -> anyhow::Error {
     anyhow::anyhow!("MSM error: bases/scalars length mismatch ({})", e)
 }

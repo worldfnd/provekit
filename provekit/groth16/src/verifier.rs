@@ -1,7 +1,5 @@
 /// Groth16+BSB22 verifier: verifies proofs against a verifying key.
 ///
-/// Ported from gnark's `backend/groth16/bn254/verify.go`.
-///
 /// Verification steps:
 /// 1. Subgroup check on proof elements
 /// 2. Recompute BSB22 commitment challenges from proof commitments
@@ -12,7 +10,7 @@ use anyhow::{ensure, Context, Result};
 use {
     crate::{
         pedersen,
-        prover::{derive_commitment_challenge, hash_to_fr, hash_to_fr_multi},
+        prover::{hash_to_fr, hash_to_fr_multi},
         types::{Proof, VerifyingKey},
         BSB22_FOLD_DST, COMMITMENT_DST, FR_BYTES,
     },
@@ -20,12 +18,9 @@ use {
     ark_ec::{pairing::Pairing, CurveGroup, VariableBaseMSM},
 };
 
-/// Verify a Groth16+BSB22 proof.
-///
-/// # Arguments
-/// * `proof` - The proof to verify.
-/// * `vk` - The verifying key (must have `precompute()` called).
-/// * `public_witness` - Public input values (excluding the constant 1 wire).
+/// Verify a Groth16+BSB22 proof. `vk` must have had
+/// [`VerifyingKey::precompute`] called; `public_witness` excludes the
+/// constant-1 wire.
 pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result<()> {
     let total_challenges: usize = vk.num_challenges_per_commitment.iter().sum();
     // Guard the subtraction below: a malformed VK with more declared
@@ -91,50 +86,50 @@ pub fn verify(proof: &Proof, vk: &VerifyingKey, public_witness: &[Fr]) -> Result
             })
             .collect::<Result<Vec<_>>>()?;
 
-        if num_challenges <= 1 {
-            let challenge = derive_commitment_challenge(&proof.commitments[i], &public_vals)?;
-            extended_public.push(challenge);
-            let bytes = crate::prover::fr_to_bytes(&challenge)?;
+        // Always use the counter-chain `hash_to_fr_multi` — including the
+        // N=1 case — so the verifier matches the prover, which calls
+        // `hash_to_fr_multi(..., N)` unconditionally for every N.
+        let challenge_data = {
+            use ark_serialize::CanonicalSerialize;
+            let mut data = Vec::new();
+            let mut commitment_bytes = Vec::new();
+            proof.commitments[i]
+                .serialize_uncompressed(&mut commitment_bytes)
+                .map_err(|e| anyhow::anyhow!("serialize commitment: {e}"))?;
+            data.extend_from_slice(&commitment_bytes);
+            for val in &public_vals {
+                let bytes = crate::prover::fr_to_bytes(val)?;
+                data.extend_from_slice(&bytes);
+            }
+            data
+        };
+
+        let challenges = hash_to_fr_multi(&challenge_data, COMMITMENT_DST, num_challenges)?;
+
+        for ch in &challenges {
+            let bytes = crate::prover::fr_to_bytes(ch)?;
             commitments_serialized[FR_BYTES * serial_offset..FR_BYTES * (serial_offset + 1)]
                 .copy_from_slice(&bytes);
             serial_offset += 1;
-        } else {
-            let challenge_data = {
-                use ark_serialize::CanonicalSerialize;
-                let mut data = Vec::new();
-                let mut commitment_bytes = Vec::new();
-                proof.commitments[i]
-                    .serialize_uncompressed(&mut commitment_bytes)
-                    .map_err(|e| anyhow::anyhow!("serialize commitment: {e}"))?;
-                data.extend_from_slice(&commitment_bytes);
-                for val in &public_vals {
-                    let bytes = crate::prover::fr_to_bytes(val)?;
-                    data.extend_from_slice(&bytes);
-                }
-                data
-            };
-
-            let challenges = hash_to_fr_multi(&challenge_data, COMMITMENT_DST, num_challenges)?;
-
-            for ch in &challenges {
-                let bytes = crate::prover::fr_to_bytes(ch)?;
-                commitments_serialized[FR_BYTES * serial_offset..FR_BYTES * (serial_offset + 1)]
-                    .copy_from_slice(&bytes);
-                serial_offset += 1;
-            }
-
-            extended_public.extend_from_slice(&challenges);
         }
+
+        extended_public.extend_from_slice(&challenges);
     }
 
     // Step 3: Verify BSB22 Pedersen commitments
     if !vk.commitment_keys.is_empty() {
         let folding_challenge = hash_to_fr(&commitments_serialized, BSB22_FOLD_DST)?;
 
+        let typed_commitments: Vec<pedersen::Commitment> = proof
+            .commitments
+            .iter()
+            .copied()
+            .map(pedersen::Commitment)
+            .collect();
         pedersen::batch_verify_multi_vk(
             &vk.commitment_keys,
-            &proof.commitments,
-            proof.commitment_pok,
+            &typed_commitments,
+            pedersen::ProofOfKnowledge(proof.commitment_pok),
             folding_challenge,
         )
         .context("Pedersen batch verification failed")?;

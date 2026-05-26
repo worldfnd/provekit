@@ -541,7 +541,7 @@ impl Prove for Groth16Prover {
                 .collect::<Result<Vec<_>>>()?;
 
             // Compute Pedersen commitment: C = Σ vᵢ · Basis[i]
-            let commitment = pk.view().commitment_keys[0].commit(&private_vals)?;
+            let commitment = pk.view().commitment_keys[0].commit(&private_vals)?.0;
 
             // Gather public values for hashing
             let public_vals: Vec<FieldElement> = ci
@@ -583,12 +583,11 @@ impl Prove for Groth16Prover {
                 witness[wire_idx] = Some(*challenge);
             }
 
-            // Build groth16 CommitmentInfo for the inner prove() call
-            // Uses the first challenge index as commitment_index
+            // Build groth16 CommitmentInfo for the inner prove() call.
             groth16_ci.push(provekit_groth16::CommitmentInfo {
                 public_and_commitment_committed: ci.public_committed.clone(),
                 private_committed:               ci.private_committed.clone(),
-                commitment_index:                ci.challenge_indices[0],
+                challenge_indices:               ci.challenge_indices.clone(),
                 nb_public_committed:             ci.public_committed.len(),
             });
 
@@ -638,15 +637,24 @@ impl Prove for Groth16Prover {
 
         // Borrowed view over the PK. Uniform across owned and mmap-backed
         // sources — the mmap variant exposes the same slice shape, just
-        // pointing at file pages. Note: per-field early `drop()` calls that
-        // existed in the previous owned-only implementation are gone — for
-        // the mmap source the slices are non-owning, and for the owned
-        // source the whole PK now drops at function return. The peak-memory
-        // bump is bounded by the PK size and was deemed acceptable in
-        // exchange for sharing the prove path between sources.
-        let pk_view = pk.view();
-        let domain_size = pk_view.domain_size;
-        let g1_delta = pk_view.g1_delta;
+        // pointing at file pages.
+        //
+        // Memory note: for the Owned source we explicitly drop the bases used
+        // by stage 1 (g1_a/g1_b/g2_b/infinity_a/b/non_inf_a/b/commitment_keys)
+        // before stage 2 (`prove_krs`) starts — see the `mem::take` block
+        // below. Without it, ~230 MB of stage-1-only bases stay resident while
+        // `prove_krs`'s MSM bucket allocator runs, doubling prove-time peak
+        // RSS on big circuits (SHA256: 848 MB → ~380 MB observed). The Mmap
+        // path skips this — its slices borrow into the file mapping, so
+        // there's nothing on the heap to release.
+        let mut pk = pk;
+        let domain_size;
+        let g1_delta;
+        {
+            let pk_view = pk.view();
+            domain_size = pk_view.domain_size;
+            g1_delta = pk_view.g1_delta;
+        }
 
         // r/s and the δ multiples are needed by both the H-independent stages
         // and `prove_krs`, so sample them before the rayon::join below.
@@ -663,49 +671,67 @@ impl Prove for Groth16Prover {
             ark_poly::EvaluationDomain::new(num_constraints)
                 .ok_or_else(|| anyhow::anyhow!("failed to create FFT domain"))?;
 
-        // Overlap the FFT-bound `compute_h` with the H-independent
+        // Stage 1: overlap the FFT-bound `compute_h` with the H-independent
         // Groth16 stages (`bsb22_pok` + `prove_ar_bs_bs1`). `prove_ar_bs_bs1`
         // serializes its three internal MSMs so only one bucket allocator
         // is alive at a time — without that, FFT scratch and MSM buckets
         // would stack and inflate peak under rayon contention.
-        let (h, branch_b) = rayon::join(
-            move || provekit_groth16::prover::compute_h(a_evals, b_evals, c_evals, &domain),
-            || -> Result<(
-                ark_bn254::G1Affine,
-                ark_bn254::G1Affine,
-                ark_bn254::G2Affine,
-                ark_bn254::G1Projective,
-            )> {
-                let pok = provekit_groth16::prover::bsb22_pok(
-                    &pk_view.commitment_keys,
-                    &committed_values,
-                    &challenge_wire_indices,
-                    &full_witness,
-                )
-                .context("while computing BSB22 proof of knowledge")?;
-                let (ar, bs, bs1) = provekit_groth16::prover::prove_ar_bs_bs1(
-                    pk_view.g1_a,
-                    pk_view.g1_b,
-                    pk_view.g2_b,
-                    pk_view.infinity_a,
-                    pk_view.infinity_b,
-                    &full_witness,
-                    pk_view.g1_alpha,
-                    pk_view.g1_beta,
-                    pk_view.g2_beta,
-                    pk_view.g2_delta,
-                    r_delta,
-                    s_delta,
-                    s_scalar,
-                )
-                .context("while computing Ar/Bs/Bs1")?;
-                Ok((pok, ar, bs, bs1))
-            },
-        );
+        let (h, branch_b) = {
+            let pk_view = pk.view();
+            rayon::join(
+                move || provekit_groth16::prover::compute_h(a_evals, b_evals, c_evals, &domain),
+                || -> Result<(
+                    ark_bn254::G1Affine,
+                    ark_bn254::G1Affine,
+                    ark_bn254::G2Affine,
+                    ark_bn254::G1Projective,
+                )> {
+                    let pok = provekit_groth16::prover::bsb22_pok(
+                        &pk_view.commitment_keys,
+                        &committed_values,
+                        &challenge_wire_indices,
+                        &full_witness,
+                    )
+                    .context("while computing BSB22 proof of knowledge")?;
+                    let (ar, bs, bs1) = provekit_groth16::prover::prove_ar_bs_bs1(
+                        pk_view.g1_a,
+                        pk_view.g1_b,
+                        pk_view.g2_b,
+                        pk_view.non_inf_a,
+                        pk_view.non_inf_b,
+                        &full_witness,
+                        pk_view.g1_alpha,
+                        pk_view.g1_beta,
+                        pk_view.g2_beta,
+                        pk_view.g2_delta,
+                        r_delta,
+                        s_delta,
+                        s_scalar,
+                    )
+                    .context("while computing Ar/Bs/Bs1")?;
+                    Ok((pok, ar, bs, bs1))
+                },
+            )
+        };
 
         let h = h.context("while computing quotient polynomial H")?;
         let (commitment_pok, ar, bs, bs1) = branch_b?;
 
+        // Free stage-1-only bases before stage 2's MSM bucket allocator runs.
+        // No-op for the Mmap variant (nothing on the heap to free).
+        if let Groth16PkSource::Owned(ref mut inner) = pk {
+            drop(std::mem::take(&mut inner.g1_a));
+            drop(std::mem::take(&mut inner.g1_b));
+            drop(std::mem::take(&mut inner.g2_b));
+            drop(std::mem::take(&mut inner.infinity_a));
+            drop(std::mem::take(&mut inner.infinity_b));
+            drop(std::mem::take(&mut inner.non_inf_a));
+            drop(std::mem::take(&mut inner.non_inf_b));
+            drop(std::mem::take(&mut inner.commitment_keys));
+        }
+
+        // Stage 2: prove_krs only needs g1_k and g1_z from the PK.
+        let pk_view = pk.view();
         let krs = provekit_groth16::prover::prove_krs(
             pk_view.g1_k,
             pk_view.g1_z,
@@ -722,6 +748,8 @@ impl Prove for Groth16Prover {
             s_scalar,
         )
         .context("while computing Krs")?;
+        drop(pk_view);
+        drop(pk);
 
         let proof = provekit_groth16::Proof {
             ar,

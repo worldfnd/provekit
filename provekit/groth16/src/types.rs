@@ -1,6 +1,5 @@
 /// Core Groth16+BSB22 types: Proof, ProvingKey, VerifyingKey.
 ///
-/// Ported from gnark's `backend/groth16/bn254/setup.go` and `prove.go`.
 /// Notation follows Figure 4 in the DIZK paper.
 use ark_bn254::{Bn254, Fr, G1Affine, G2Affine, G2Projective};
 use {
@@ -113,6 +112,13 @@ pub struct ProvingKey {
     pub nb_infinity_a: u64,
     /// Count of infinity points in B.
     pub nb_infinity_b: u64,
+    /// Wire indices where `A(τ) != 0`, precomputed at setup. Lets the prover
+    /// build the A-side MSM input by direct indexing instead of re-filtering
+    /// the `infinity_a` bool array on every prove call. Always satisfies
+    /// `non_inf_a.len() == nb_wires - nb_infinity_a`.
+    pub non_inf_a:     Vec<usize>,
+    /// Wire indices where `B(τ) != 0`. Analogous to `non_inf_a`.
+    pub non_inf_b:     Vec<usize>,
 
     /// Pedersen commitment proving keys (one per BSB22 commitment).
     pub commitment_keys: Vec<pedersen::ProvingKey>,
@@ -333,6 +339,8 @@ impl ProvingKey {
             infinity_b:      Vec::new(),
             nb_infinity_a:   0,
             nb_infinity_b:   0,
+            non_inf_a:       Vec::new(),
+            non_inf_b:       Vec::new(),
             commitment_keys: Vec::new(),
         }
     }

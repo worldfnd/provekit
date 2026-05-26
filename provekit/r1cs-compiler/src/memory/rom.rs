@@ -33,11 +33,13 @@ pub(crate) fn add_rom_checking(r1cs_compiler: &mut NoirToR1CSCompiler, block: &M
     );
     let access_counts_first_witness = r1cs_compiler.add_witness_builder(wb);
 
-    // Add two verifier challenges for the lookup
-    let rs_challenge =
-        r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
-    let sz_challenge =
-        r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
+    // Draw this ROM block's (rs, sz) pair from the global BSB22 power
+    // chains on the compiler instead of allocating two fresh `Challenge`
+    // builders. Multiple ROM blocks each get a distinct `(β^k, α^k)`
+    // through in-circuit power chaining; the two roots stay the only
+    // Fiat-Shamir samples. See [`NoirToR1CSCompiler::next_sz_power`].
+    let rs_challenge = r1cs_compiler.next_rs_power();
+    let sz_challenge = r1cs_compiler.next_sz_power();
 
     // Calculate the sum, over all reads, of 1/denominator
     let summands_for_reads = block

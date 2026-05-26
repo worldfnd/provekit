@@ -3,7 +3,7 @@ pub use file::binary_format;
 pub mod hash_config;
 mod interner;
 mod mavros;
-pub mod noir_proof_scheme;
+mod noir_proof_scheme;
 pub mod ntt;
 pub mod optimize;
 pub mod poseidon2;

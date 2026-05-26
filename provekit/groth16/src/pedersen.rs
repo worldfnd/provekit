@@ -1,7 +1,5 @@
 /// Pedersen commitment scheme for BSB22 extension.
 ///
-/// Ported from gnark-crypto's `ecc/bn254/fr/pedersen/pedersen.go`.
-///
 /// A Pedersen commitment C = Σ vᵢ·Gᵢ binds the prover to values v₁..vₖ
 /// using bases G₁..Gₖ from the trusted setup. The proof of knowledge (PoK)
 /// proves the prover knows the committed values without revealing them.
@@ -13,6 +11,21 @@ use {
     ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
     zeroize::Zeroizing,
 };
+
+/// A Pedersen commitment `C = Σ vᵢ · Gᵢ` — binds the prover to values.
+///
+/// Wrapping `G1Affine` in a distinct newtype prevents accidentally passing a
+/// proof of knowledge where a commitment is expected (or vice versa): they're
+/// both `G1Affine` at the curve level but represent semantically distinct
+/// objects, and a swap would silently verify the wrong pairing equation.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Commitment(pub G1Affine);
+
+/// A Pedersen proof of knowledge `PoK = Σ vᵢ · (σ·Gᵢ)` — proves the prover
+/// knows the opening of a [`Commitment`] without revealing the values. See
+/// [`Commitment`] for the rationale behind making this a newtype.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct ProofOfKnowledge(pub G1Affine);
 
 /// Pedersen proving key: bases for commitment and PoK generation.
 #[derive(Clone, Debug, CanonicalSerialize, CanonicalDeserialize)]
@@ -37,8 +50,6 @@ pub struct VerifyingKey {
 /// `bases_per_commitment` is a slice of slices — one set of bases per
 /// commitment. `g2_point` is an optional pre-chosen G2 point (if None, a random
 /// one is sampled).
-///
-/// Ported from gnark-crypto `pedersen.Setup()`.
 pub fn setup(
     bases_per_commitment: &[&[G1Affine]],
     g2_point: Option<G2Affine>,
@@ -115,7 +126,7 @@ pub struct ProvingKeyView<'a> {
 
 impl<'a> ProvingKeyView<'a> {
     /// Compute Pedersen commitment: `C = Σ vᵢ · Basis[i]`.
-    pub fn commit(&self, values: &[Fr]) -> Result<G1Affine> {
+    pub fn commit(&self, values: &[Fr]) -> Result<Commitment> {
         ensure!(
             values.len() == self.basis.len(),
             "commit: got {} values, expected {}",
@@ -124,15 +135,15 @@ impl<'a> ProvingKeyView<'a> {
         );
 
         if values.is_empty() {
-            return Ok(G1Affine::zero());
+            return Ok(Commitment(G1Affine::zero()));
         }
 
         let commitment = chunked_g1_msm(self.basis, values)?;
-        Ok(commitment.into_affine())
+        Ok(Commitment(commitment.into_affine()))
     }
 
     /// Generate proof of knowledge: `PoK = Σ vᵢ · BasisExpSigma[i]`.
-    pub fn prove_knowledge(&self, values: &[Fr]) -> Result<G1Affine> {
+    pub fn prove_knowledge(&self, values: &[Fr]) -> Result<ProofOfKnowledge> {
         ensure!(
             values.len() == self.basis_exp_sigma.len(),
             "prove_knowledge: got {} values, expected {}",
@@ -141,11 +152,11 @@ impl<'a> ProvingKeyView<'a> {
         );
 
         if values.is_empty() {
-            return Ok(G1Affine::zero());
+            return Ok(ProofOfKnowledge(G1Affine::zero()));
         }
 
         let pok = chunked_g1_msm(self.basis_exp_sigma, values)?;
-        Ok(pok.into_affine())
+        Ok(ProofOfKnowledge(pok.into_affine()))
     }
 }
 
@@ -159,9 +170,7 @@ impl ProvingKey {
     }
 
     /// Compute Pedersen commitment: `C = Σ vᵢ · Basis[i]`.
-    ///
-    /// Ported from gnark-crypto `ProvingKey.Commit()`.
-    pub fn commit(&self, values: &[Fr]) -> Result<G1Affine> {
+    pub fn commit(&self, values: &[Fr]) -> Result<Commitment> {
         self.view().commit(values)
     }
 
@@ -169,9 +178,7 @@ impl ProvingKey {
     ///
     /// Proves the prover knows the values inside the commitment without
     /// revealing them. The verifier checks e(C, G^(-σ)) · e(PoK, G) == 1.
-    ///
-    /// Ported from gnark-crypto `ProvingKey.ProveKnowledge()`.
-    pub fn prove_knowledge(&self, values: &[Fr]) -> Result<G1Affine> {
+    pub fn prove_knowledge(&self, values: &[Fr]) -> Result<ProofOfKnowledge> {
         self.view().prove_knowledge(values)
     }
 }
@@ -179,8 +186,6 @@ impl ProvingKey {
 /// Fold multiple G1 points into one using a random linear combination.
 ///
 /// Returns: `points[0] + coeff·points[1] + coeff²·points[2] + ...`
-///
-/// Ported from gnark-crypto `G1Affine.Fold()`.
 pub fn fold(points: &[G1Affine], coeff: Fr) -> Result<G1Affine> {
     if points.is_empty() {
         return Ok(G1Affine::zero());
@@ -207,12 +212,10 @@ pub fn fold(points: &[G1Affine], coeff: Fr) -> Result<G1Affine> {
 ///   e(Cᵢ, VKᵢ.GSigmaNeg) · e(PoKᵢ, VKᵢ.G) == 1
 ///
 /// All PoKs are expected to have already been folded into a single point.
-///
-/// Ported from gnark-crypto `pedersen.BatchVerifyMultiVk()`.
 pub fn batch_verify_multi_vk(
     vks: &[VerifyingKey],
-    commitments: &[G1Affine],
-    folded_pok: G1Affine,
+    commitments: &[Commitment],
+    folded_pok: ProofOfKnowledge,
     folding_challenge: Fr,
 ) -> Result<()> {
     use {ark_bn254::Bn254, ark_ec::pairing::Pairing};
@@ -239,7 +242,8 @@ pub fn batch_verify_multi_vk(
     );
 
     // Fold commitments: C_folded = C₀ + challenge·C₁ + challenge²·C₂ + ...
-    let folded_commitment = fold(commitments, folding_challenge)?;
+    let commitments_g1: Vec<G1Affine> = commitments.iter().map(|c| c.0).collect();
+    let folded_commitment = fold(&commitments_g1, folding_challenge)?;
 
     // Fold GSigmaNeg: we need Σ rⁱ·VKᵢ.GSigmaNeg
     // Since all G points are the same, this simplifies to:
@@ -263,7 +267,7 @@ pub fn batch_verify_multi_vk(
 
     // Pairing check: e(folded_commitment, g_sigma_neg_folded) · e(folded_pok, g) ==
     // 1
-    let result = Bn254::multi_pairing([folded_commitment, folded_pok], [g_sigma_neg_folded, g]);
+    let result = Bn254::multi_pairing([folded_commitment, folded_pok.0], [g_sigma_neg_folded, g]);
 
     ensure!(
         result.0.is_one(),

@@ -166,11 +166,20 @@ pub fn read_bin<T: for<'a> Deserialize<'a>>(
     let is_zstd = peek[..4] == ZSTD_MAGIC;
     let is_xz = peek[..6] == XZ_MAGIC;
 
-    // Scratch buffer for postcard streaming. 1 MB floor handles tiny files
-    // (.np proofs are a few hundred bytes); for large .pkp files we use the
-    // compressed file size, which is a safe upper bound on the largest single
-    // `deserialize_byte_buf` read in our formats.
-    let scratch_size = std::cmp::max(1 << 20, file_size);
+    // Scratch buffer for postcard streaming. Must be at least as large as
+    // the largest single `deserialize_byte_buf` read; in practice this is
+    // a few MB at most for our formats. Cap the default at 16 MB so that
+    // opening a 1 GB .pkp doesn't allocate a 1 GB scratch on top of the
+    // decoder buffer and the parsed value. Floor at 1 MB for tiny .np
+    // proofs. Override with `PROVEKIT_SCRATCH_MAX_MB` if a future format
+    // needs more.
+    const DEFAULT_SCRATCH_CAP: usize = 16 << 20;
+    let scratch_cap = std::env::var("PROVEKIT_SCRATCH_MAX_MB")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .and_then(|mb| mb.checked_shl(20))
+        .unwrap_or(DEFAULT_SCRATCH_CAP);
+    let scratch_size = file_size.min(scratch_cap).max(1 << 20);
     let mut scratch = vec![0u8; scratch_size];
 
     // Wrap the streaming decoder in a `BufReader` so postcard's per-byte
@@ -179,17 +188,39 @@ pub fn read_bin<T: for<'a> Deserialize<'a>>(
     // decompressed data in memory than necessary.
     const DECODER_BUF: usize = 256 * 1024;
 
+    // If the cap shrank scratch below the (compressed) file size, the failure
+    // mode for an oversized `deserialize_byte_buf` is opaque ("postcard
+    // streaming failed"). Attach a hint pointing at the env-var escape hatch
+    // so users don't have to guess. Compressed-vs-decompressed is an
+    // intentional under-approximation: if the file is small but the
+    // decompressed payload contains a huge byte_buf, the hint still fires.
+    let scratch_capped = scratch_size < file_size;
+    let postcard_err = |stage: &'static str, e: postcard::Error| -> anyhow::Error {
+        let err = anyhow::Error::from(e).context(stage);
+        if scratch_capped {
+            err.context(format!(
+                "postcard scratch capped at {} MB (file is {} MB); if a single \
+                 `deserialize_byte_buf` read exceeded the cap, raise it with \
+                 `PROVEKIT_SCRATCH_MAX_MB=<MB>`",
+                scratch_size >> 20,
+                file_size >> 20,
+            ))
+        } else {
+            err
+        }
+    };
+
     let value = if is_zstd {
         let decoder = zstd::Decoder::new(file).context("while initializing zstd decoder")?;
         let buffered = BufReader::with_capacity(DECODER_BUF, decoder);
         let (value, _) = postcard::from_io::<T, _>((buffered, &mut scratch))
-            .context("while streaming postcard from zstd")?;
+            .map_err(|e| postcard_err("while streaming postcard from zstd", e))?;
         value
     } else if is_xz {
         let decoder = xz2::read::XzDecoder::new(file);
         let buffered = BufReader::with_capacity(DECODER_BUF, decoder);
         let (value, _) = postcard::from_io::<T, _>((buffered, &mut scratch))
-            .context("while streaming postcard from xz")?;
+            .map_err(|e| postcard_err("while streaming postcard from xz", e))?;
         value
     } else {
         anyhow::bail!(

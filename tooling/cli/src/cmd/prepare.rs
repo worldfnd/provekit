@@ -132,10 +132,7 @@ impl Command for Args {
                 write(&verifier, &pkv_path).context("while writing Provekit Verifier")?;
             }
             Backend::Groth16 => {
-                use {
-                    ark_serialize::CanonicalSerialize,
-                    provekit_common::noir_proof_scheme::NoirProofScheme,
-                };
+                use {ark_serialize::CanonicalSerialize, provekit_common::NoirProofScheme};
 
                 // Extract R1CS and witness builders from the compiled scheme
                 let NoirProofScheme::Noir(d) = scheme else {
@@ -194,11 +191,10 @@ impl Command for Args {
                             private_committed: private_w1_wires.clone(),
                             challenge_indices: sorted_challenge_indices.clone(),
                         };
-                        // For setup, use first sorted challenge wire as commitment_index
                         let g16_ci = vec![provekit_groth16::CommitmentInfo {
                             public_and_commitment_committed: public_committed,
                             private_committed:               private_w1_wires.clone(),
-                            commitment_index:                sorted_challenge_indices[0],
+                            challenge_indices:               sorted_challenge_indices,
                             nb_public_committed:             r1cs.num_public_inputs,
                         }];
                         let ncpc = vec![num_challenges];
@@ -214,21 +210,10 @@ impl Command for Args {
                     w1_size,
                     "Running Groth16 trusted setup..."
                 );
-                // Flatten challenge wire indices across commitments in the
-                // SAME order as `commitment_info` (the setup contract). With
-                // a single commitment this is just that commitment's
-                // challenge wires; with multiple commitments the caller is
-                // responsible for concatenating them in commitment order.
-                let challenge_wire_indices: Vec<usize> = commitment_info
-                    .iter()
-                    .flat_map(|ci| ci.challenge_indices.iter().copied())
-                    .collect();
-
                 let (pk, vk) = provekit_groth16::setup::setup(
                     &r1cs,
                     &groth16_ci,
                     &num_challenges_per_commitment,
-                    &challenge_wire_indices,
                 )
                 .context("while running Groth16 trusted setup")?;
 
@@ -250,15 +235,12 @@ impl Command for Args {
                     "Groth16 setup complete"
                 );
 
-                let prover = Prover::Groth16(Groth16Prover {
-                    program,
-                    r1cs: r1cs.clone(),
-                    split_witness_builders,
-                    witness_generator,
-                    groth16_pk: pk.into(),
-                    commitment_info,
-                });
-
+                // Build + write the Verifier first; this owns the only live
+                // copy of `r1cs`. Then move that `r1cs` out of the Verifier
+                // into the Prover via partial move — no clone. The previous
+                // version cloned `r1cs` for the Prover and kept both structs
+                // resident simultaneously, doubling peak prepare-time RAM and
+                // OOMing CI hosts on SHA-style (hundreds-of-MB-R1CS) circuits.
                 let verifier = Verifier {
                     hash_config,
                     r1cs,
@@ -266,6 +248,16 @@ impl Command for Args {
                     abi,
                     groth16_vk: Some(vk_bytes),
                 };
+                write(&verifier, &pkv_path).context("while writing Provekit Verifier")?;
+
+                let prover = Prover::Groth16(Groth16Prover {
+                    program,
+                    r1cs: verifier.r1cs,
+                    split_witness_builders,
+                    witness_generator,
+                    groth16_pk: pk.into(),
+                    commitment_info,
+                });
 
                 if self.mmap {
                     write_pkp_mmap(&prover, &pkp_path)
@@ -273,7 +265,6 @@ impl Command for Args {
                 } else {
                     write_pkp(&prover, &pkp_path).context("while writing Provekit Prover")?;
                 }
-                write(&verifier, &pkv_path).context("while writing Provekit Verifier")?;
             }
         }
 
