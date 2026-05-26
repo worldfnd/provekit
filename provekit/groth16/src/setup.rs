@@ -253,10 +253,10 @@ pub fn setup(
     };
 
     // Batch the three toxic-scalar muls into a single call per group.
-    let g1_abd = fb_g1(&[toxic.alpha, toxic.beta, toxic.delta]);
-    let g1_alpha = g1_abd[0];
-    let g1_beta = g1_abd[1];
-    let g1_delta = g1_abd[2];
+    let [g1_alpha, g1_beta, g1_delta] = {
+        let v = fb_g1(&[toxic.alpha, toxic.beta, toxic.delta]);
+        [v[0], v[1], v[2]]
+    };
 
     let g1_a = fb_g1(&a_scalars_filtered);
     let g1_b = fb_g1(&b_scalars_filtered);
@@ -275,10 +275,10 @@ pub fn setup(
     let g1_ck_k: Vec<Vec<G1Affine>> = ck_k.iter().map(|ck| fb_g1(ck)).collect();
 
     // G2: same pattern.
-    let g2_bdg = fb_g2(&[toxic.beta, toxic.delta, toxic.gamma]);
-    let g2_beta = g2_bdg[0];
-    let g2_delta = g2_bdg[1];
-    let g2_gamma = g2_bdg[2];
+    let [g2_beta, g2_delta, g2_gamma] = {
+        let v = fb_g2(&[toxic.beta, toxic.delta, toxic.gamma]);
+        [v[0], v[1], v[2]]
+    };
 
     let g2_b = fb_g2(&b_scalars_filtered);
 
