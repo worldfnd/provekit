@@ -1,7 +1,5 @@
 mod analyze_pkp;
 mod circuit_stats;
-mod export_evm_proof;
-mod export_solidity;
 mod generate_gnark_inputs;
 mod prepare;
 mod prove;
@@ -48,8 +46,6 @@ enum Commands {
     Verify(verify::Args),
     GenerateGnarkInputs(generate_gnark_inputs::Args),
     ShowInputs(show_inputs::Args),
-    ExportSolidity(export_solidity::Args),
-    ExportEvmProof(export_evm_proof::Args),
 }
 
 impl Command for Args {
@@ -68,8 +64,6 @@ impl Command for Commands {
             Self::Verify(args) => args.run(),
             Self::GenerateGnarkInputs(args) => args.run(),
             Self::ShowInputs(args) => args.run(),
-            Self::ExportSolidity(args) => args.run(),
-            Self::ExportEvmProof(args) => args.run(),
         }
     }
 }
