@@ -214,7 +214,7 @@ impl NoirToR1CSCompiler {
     /// `WitnessBuilder::Challenge` and returns it (so instance #1 sees the
     /// raw Fiat-Shamir sample, identical to the legacy code-path).
     /// Subsequent calls emit `α², α³, …` as private wires via
-    /// [`add_product`] — instance #k sees `α^k`.
+    /// [`Self::add_product`] — instance #k sees `α^k`.
     ///
     /// Every LogUp-style sub-circuit that previously allocated its own
     /// `sz_challenge` should consume this instead. See the doc on
