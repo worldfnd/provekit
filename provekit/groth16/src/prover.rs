@@ -306,8 +306,10 @@ pub fn hash_to_fr(msg: &[u8], dst: &[u8]) -> Result<Fr> {
 /// Hash bytes with a domain separator to produce multiple field elements.
 ///
 /// Single-root counter chain:
+/// ```text
 ///   root      = keccak256(dst || msg)
 ///   out[i]    = keccak256(root || I2OSP(i, 1))   reduced mod R
+/// ```
 ///
 /// One outer hash over the (often large) `msg`, then N cheap 33-byte hashes
 /// — keeps total work close to a single keccak even for N up to ~32.
