@@ -9,10 +9,13 @@
 //!     N_PUB lines.
 //!
 //! Pair with:
-//!   cast call <verifier_addr> \
+//!
+//! ```text
+//! cast call <verifier_addr> \
 //!     "verifyProof(bytes,uint256[N])" \
 //!     $(cat proof.hex) \
 //!     "[$(paste -sd, inputs.txt)]"
+//! ```
 //!
 //! The prover stores the Groth16 proof in arkworks **compressed** form (the
 //! 192-byte representation in the postcard blob). On-chain we need
