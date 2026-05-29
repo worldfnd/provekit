@@ -264,6 +264,18 @@ pub fn add_range_checks(
 
     // Phase 4: For each atomic bucket, add range check constraints.
     // Choose LogUp or naive based on whichever produces fewer witnesses.
+    //
+    // LogUp instances pull their `sz_challenge` from the compiler-wide
+    // power chain: instance #k gets `α^k`, where `α = sz_root_challenge`
+    // is allocated once (lazily) on the very first call to
+    // `next_sz_power` anywhere in the compile. The pairing equation
+    // enforces `wire[αⁿ] = wire[αⁿ⁻¹] · wire[α]` via the generated
+    // `add_product` constraints. Net effect: range_check contributes 0
+    // new `Challenge` builders regardless of the bucket count.
+    //
+    // Range checks only need a single LogUp randomness (the table is
+    // 1-column: `value ∈ [0, 2^bits)`), so we only consume the sz chain
+    // here; the rs chain is untouched by this pass.
     atomic_range_checks
         .iter()
         .enumerate()
@@ -283,7 +295,8 @@ pub fn add_range_checks(
             }
             let num_bits = num_bits as u32;
             if should_use_logup(num_bits, values_to_lookup.len()) {
-                add_range_check_via_lookup(r1cs, num_bits, &values_to_lookup);
+                let sz_challenge = r1cs.next_sz_power();
+                add_range_check_via_lookup(r1cs, num_bits, &values_to_lookup, sz_challenge);
             } else {
                 values_to_lookup.iter().for_each(|value| {
                     add_naive_range_check(r1cs, num_bits, *value);
@@ -297,10 +310,17 @@ pub fn add_range_checks(
 /// Helper function which computes all the terms of the summation for
 /// each side (LHS and RHS) of the log-derivative multiset check.
 /// Uses a fused constraint to check equality of both sums directly.
+///
+/// `sz_challenge` is the wire index of the LogUp randomness, supplied by
+/// the caller. In SHA-via-spread circuits the caller threads in an
+/// in-circuit power of the BSB22 root challenge (α², α³, …) so multiple
+/// buckets share a single Fiat-Shamir challenge; in other circuits the
+/// caller allocates a fresh `WitnessBuilder::Challenge` instead.
 fn add_range_check_via_lookup(
     r1cs_compiler: &mut NoirToR1CSCompiler,
     num_bits: u32,
     values_to_lookup: &[usize],
+    sz_challenge: usize,
 ) {
     // Add witnesses for the multiplicities
     let wb = WitnessBuilder::MultiplicitiesForRange(
@@ -309,10 +329,6 @@ fn add_range_check_via_lookup(
         values_to_lookup.into(),
     );
     let multiplicities_first_witness = r1cs_compiler.add_witness_builder(wb);
-    // Sample the Schwartz-Zippel challenge for the log derivative
-    // multiset check.
-    let sz_challenge =
-        r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
 
     // Collect table side terms: multiplicity / (X - table_value)
     // Uses fused single constraint: (X - table_value) × quotient = multiplicity

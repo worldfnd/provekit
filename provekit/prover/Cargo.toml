@@ -16,13 +16,18 @@ parallel = ["provekit-common/parallel"]
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+provekit-groth16.workspace = true
 
 # Noir language
 acir.workspace = true
 noirc_abi.workspace = true
 
 # Cryptography and proof systems
+ark-bn254.workspace = true
+ark-ec.workspace = true
 ark-ff.workspace = true
+ark-poly.workspace = true
+ark-serialize.workspace = true
 ark-std.workspace = true
 whir.workspace = true
 
@@ -30,15 +35,23 @@ whir.workspace = true
 anyhow.workspace = true
 num-bigint.workspace = true
 postcard.workspace = true
+rayon.workspace = true
+serde.workspace = true
 tracing.workspace = true
 
-# Target-specific dependencies: only on non-WASM targets
+# Target-specific dependencies: only on non-WASM targets.
+# `xz2` and `zstd` wrap C libraries and don't build for wasm32; `bytes` is only
+# used by `pkp_io`, which is itself non-wasm.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 bn254_blackbox_solver = { workspace = true, optional = true }
 nargo = { workspace = true, optional = true }
 noir_artifact_cli = { workspace = true, optional = true }
 mavros-vm.workspace = true
 mavros-artifacts.workspace = true
+bytes.workspace = true
+memmap2 = { workspace = true }
+xz2.workspace = true
+zstd.workspace = true
 
 [lints]
 workspace = true

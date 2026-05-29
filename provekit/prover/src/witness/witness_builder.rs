@@ -165,8 +165,14 @@ impl WitnessBuilderSolver for WitnessBuilder {
                 }
             }
             WitnessBuilder::Challenge(witness_idx) => {
-                let challenge: FieldElement = transcript.verifier_message();
-                witness[*witness_idx] = Some(challenge);
+                // In Groth16 flow, BSB22 pre-sets challenge values via
+                // hash_to_fr_multi before w2 solving. These are derived from
+                // the Pedersen commitment (not the Fiat-Shamir transcript),
+                // so the values will differ. Skip if already set.
+                if witness[*witness_idx].is_none() {
+                    let challenge: FieldElement = transcript.verifier_message();
+                    witness[*witness_idx] = Some(challenge);
+                }
             }
             WitnessBuilder::LogUpDenominator(
                 witness_idx,

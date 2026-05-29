@@ -1,12 +1,19 @@
+//! Backend-specific prover types that don't introduce a `provekit_groth16`
+//! dependency.
+//!
+//! `NoirProver` lives here because it's referenced by the WHIR pipeline that
+//! is shared by everything in the workspace. The Groth16 prover and the
+//! `Prover` enum live in `provekit_prover::prover_types` so they can hold a
+//! typed `provekit_groth16::ProvingKey` without creating a dependency cycle
+//! (`provekit_groth16` depends on this crate for `R1CS`).
+
 use {
     crate::{
-        noir_proof_scheme::NoirProofScheme,
         whir_r1cs::WhirR1CSScheme,
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        HashConfig, MavrosProver, NoirElement, R1CS,
+        HashConfig, NoirElement, R1CS,
     },
     acir::circuit::Program,
-    noirc_abi::Abi,
     serde::{Deserialize, Serialize},
 };
 
@@ -18,69 +25,4 @@ pub struct NoirProver {
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme,
-}
-
-/// On-disk **ProveKit Prover** (PKP) — the prover-side scheme that gets
-/// serialized to a `.pkp` file by `prepare` and loaded by `prove`.
-///
-/// Holds the R1CS, witness builders, WHIR config, and frontend-specific
-/// program data needed to produce a proof.
-///
-/// INVARIANT: Variant order is wire-format-critical (postcard uses positional
-/// discriminants). Do not reorder, cfg-gate, or insert variants without
-/// verifying cross-target deserialization (native <-> WASM).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Prover {
-    Noir(NoirProver),
-    Mavros(MavrosProver),
-}
-
-impl Prover {
-    /// Convert a compilation output into the on-disk prover format.
-    pub fn from_noir_proof_scheme(scheme: NoirProofScheme) -> Self {
-        match scheme {
-            NoirProofScheme::Noir(d) => Prover::Noir(NoirProver {
-                hash_config:            d.hash_config,
-                program:                d.program,
-                r1cs:                   d.r1cs,
-                split_witness_builders: d.split_witness_builders,
-                witness_generator:      d.witness_generator,
-                whir_for_witness:       d.whir_for_witness,
-            }),
-            NoirProofScheme::Mavros(d) => Prover::Mavros(MavrosProver {
-                abi:                d.abi,
-                num_public_inputs:  d.num_public_inputs,
-                whir_for_witness:   d.whir_for_witness,
-                witgen_binary:      d.witgen_binary,
-                ad_binary:          d.ad_binary,
-                constraints_layout: d.constraints_layout,
-                witness_layout:     d.witness_layout,
-                hash_config:        d.hash_config,
-            }),
-        }
-    }
-
-    pub fn abi(&self) -> &Abi {
-        match self {
-            Prover::Noir(p) => p.witness_generator.abi(),
-            Prover::Mavros(p) => &p.abi,
-        }
-    }
-
-    pub fn size(&self) -> (usize, usize) {
-        match self {
-            Prover::Noir(p) => (p.r1cs.num_constraints(), p.r1cs.num_witnesses()),
-            Prover::Mavros(p) => (
-                p.constraints_layout.algebraic_size,
-                p.witness_layout.algebraic_size,
-            ),
-        }
-    }
-
-    pub fn whir_for_witness(&self) -> &WhirR1CSScheme {
-        match self {
-            Prover::Noir(p) => &p.whir_for_witness,
-            Prover::Mavros(p) => &p.whir_for_witness,
-        }
-    }
 }

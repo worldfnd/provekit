@@ -15,13 +15,13 @@ pub const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
 // ---------------------------------------------------------------------------
 
 pub const PROVER_FORMAT: [u8; 8] = *b"PrvKitPr";
-pub const PROVER_VERSION: (u16, u16) = (1, 2);
+pub const PROVER_VERSION: (u16, u16) = (1, 5);
 
 pub const VERIFIER_FORMAT: [u8; 8] = *b"PrvKitVr";
-pub const VERIFIER_VERSION: (u16, u16) = (1, 3);
+pub const VERIFIER_VERSION: (u16, u16) = (1, 4);
 
 pub const NOIR_PROOF_SCHEME_FORMAT: [u8; 8] = *b"NrProScm";
 pub const NOIR_PROOF_SCHEME_VERSION: (u16, u16) = (1, 2);
 
 pub const NOIR_PROOF_FORMAT: [u8; 8] = *b"NPSProof";
-pub const NOIR_PROOF_VERSION: (u16, u16) = (1, 1);
+pub const NOIR_PROOF_VERSION: (u16, u16) = (1, 2);

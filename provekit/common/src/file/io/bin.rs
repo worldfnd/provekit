@@ -111,12 +111,29 @@ pub fn read_hash_config(
 }
 
 /// Read a compressed binary file, auto-detecting zstd or XZ compression.
+///
+/// The decompressed bytes are streamed directly into postcard's deserializer
+/// instead of being materialized into a single `Vec<u8>`. This keeps peak
+/// memory close to the size of the deserialized struct, instead of paying
+/// twice (once for the decompressed buffer, once for the parsed value).
+///
+/// `postcard::from_io` needs a scratch buffer sized to fit the largest
+/// `deserialize_bytes` / `deserialize_byte_buf` read it will encounter. For
+/// our types that's bounded by the on-disk file size (the largest single
+/// borrowed-bytes field — currently the Groth16 proving key — encodes
+/// ~1:1 against the compressed file because arkworks-serialized curve points
+/// are essentially random). We size the scratch buffer to the file size with
+/// a small floor for tiny files.
 #[instrument(fields(size = path.metadata().map(|m| m.len()).ok()))]
 pub fn read_bin<T: for<'a> Deserialize<'a>>(
     path: &Path,
     format: [u8; 8],
     (major, minor): (u16, u16),
 ) -> Result<T> {
+    use std::io::BufRead;
+
+    let file_size = path.metadata().map(|m| m.len()).unwrap_or(0) as usize;
+
     let mut file = BufReader::new(File::open(path).context("while opening input file")?);
 
     let mut buffer = [0; HEADER_SIZE];
@@ -140,9 +157,79 @@ pub fn read_bin<T: for<'a> Deserialize<'a>>(
     // Skip hash_config byte (can be read separately via read_hash_config if needed)
     let _hash_config_byte = header.get_u8();
 
-    let uncompressed = decompress_stream(&mut file)?;
+    // Detect compression via magic bytes.
+    let peek = file.fill_buf().context("while peeking compression magic")?;
+    ensure!(
+        peek.len() >= 6,
+        "File too small to detect compression format"
+    );
+    let is_zstd = peek[..4] == ZSTD_MAGIC;
+    let is_xz = peek[..6] == XZ_MAGIC;
 
-    postcard::from_bytes(&uncompressed).context("while decoding from postcard")
+    // Scratch buffer for postcard streaming. Must be at least as large as
+    // the largest single `deserialize_byte_buf` read; in practice this is
+    // a few MB at most for our formats. Cap the default at 16 MB so that
+    // opening a 1 GB .pkp doesn't allocate a 1 GB scratch on top of the
+    // decoder buffer and the parsed value. Floor at 1 MB for tiny .np
+    // proofs. Override with `PROVEKIT_SCRATCH_MAX_MB` if a future format
+    // needs more.
+    const DEFAULT_SCRATCH_CAP: usize = 16 << 20;
+    let scratch_cap = std::env::var("PROVEKIT_SCRATCH_MAX_MB")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .and_then(|mb| mb.checked_shl(20))
+        .unwrap_or(DEFAULT_SCRATCH_CAP);
+    let scratch_size = file_size.min(scratch_cap).max(1 << 20);
+    let mut scratch = vec![0u8; scratch_size];
+
+    // Wrap the streaming decoder in a `BufReader` so postcard's per-byte
+    // `pop()` calls become fast in-memory reads instead of one syscall each.
+    // 256 KB is large enough to amortize syscall overhead without holding more
+    // decompressed data in memory than necessary.
+    const DECODER_BUF: usize = 256 * 1024;
+
+    // If the cap shrank scratch below the (compressed) file size, the failure
+    // mode for an oversized `deserialize_byte_buf` is opaque ("postcard
+    // streaming failed"). Attach a hint pointing at the env-var escape hatch
+    // so users don't have to guess. Compressed-vs-decompressed is an
+    // intentional under-approximation: if the file is small but the
+    // decompressed payload contains a huge byte_buf, the hint still fires.
+    let scratch_capped = scratch_size < file_size;
+    let postcard_err = |stage: &'static str, e: postcard::Error| -> anyhow::Error {
+        let err = anyhow::Error::from(e).context(stage);
+        if scratch_capped {
+            err.context(format!(
+                "postcard scratch capped at {} MB (file is {} MB); if a single \
+                 `deserialize_byte_buf` read exceeded the cap, raise it with \
+                 `PROVEKIT_SCRATCH_MAX_MB=<MB>`",
+                scratch_size >> 20,
+                file_size >> 20,
+            ))
+        } else {
+            err
+        }
+    };
+
+    let value = if is_zstd {
+        let decoder = zstd::Decoder::new(file).context("while initializing zstd decoder")?;
+        let buffered = BufReader::with_capacity(DECODER_BUF, decoder);
+        let (value, _) = postcard::from_io::<T, _>((buffered, &mut scratch))
+            .map_err(|e| postcard_err("while streaming postcard from zstd", e))?;
+        value
+    } else if is_xz {
+        let decoder = xz2::read::XzDecoder::new(file);
+        let buffered = BufReader::with_capacity(DECODER_BUF, decoder);
+        let (value, _) = postcard::from_io::<T, _>((buffered, &mut scratch))
+            .map_err(|e| postcard_err("while streaming postcard from xz", e))?;
+        value
+    } else {
+        anyhow::bail!(
+            "Unknown compression format (first bytes: {:02X?})",
+            &peek[..peek.len().min(6)]
+        );
+    };
+
+    Ok(value)
 }
 
 /// Serialize a value to bytes in the same format as `write_bin` (header +
@@ -233,41 +320,4 @@ fn decompress_bytes(data: &[u8]) -> Result<Vec<u8>> {
             &data[..data.len().min(6)]
         );
     }
-}
-
-/// Peek at the first bytes to detect compression format, then
-/// stream-decompress.
-fn decompress_stream(reader: &mut BufReader<File>) -> Result<Vec<u8>> {
-    use std::io::BufRead;
-
-    let buf = reader
-        .fill_buf()
-        .context("while peeking compression magic")?;
-    ensure!(
-        buf.len() >= 6,
-        "File too small to detect compression format"
-    );
-
-    let is_zstd = buf[..4] == ZSTD_MAGIC;
-    let is_xz = buf[..6] == XZ_MAGIC;
-
-    let mut out = Vec::new();
-    if is_zstd {
-        let mut decoder = zstd::Decoder::new(reader).context("while initializing zstd decoder")?;
-        decoder
-            .read_to_end(&mut out)
-            .context("while decompressing zstd data")?;
-    } else if is_xz {
-        let mut decoder = xz2::read::XzDecoder::new(reader);
-        decoder
-            .read_to_end(&mut out)
-            .context("while decompressing XZ data")?;
-    } else {
-        anyhow::bail!(
-            "Unknown compression format (first bytes: {:02X?})",
-            &buf[..buf.len().min(6)]
-        );
-    }
-
-    Ok(out)
 }

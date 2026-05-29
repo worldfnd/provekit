@@ -35,7 +35,7 @@ impl Command for Args {
         let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
 
         let abi = &verifier.abi;
-        let values = &proof.public_inputs.0;
+        let values = &proof.public_inputs().0;
 
         println!("Public Inputs:");
         println!("==============");

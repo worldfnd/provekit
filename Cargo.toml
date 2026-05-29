@@ -10,6 +10,7 @@ members = [
   "provekit/r1cs-compiler",
   "provekit/prover",
   "provekit/verifier",
+  "provekit/groth16",
   "tooling/cli",
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
@@ -100,6 +101,7 @@ provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" , features = ["provekit_ntt"]}
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
+provekit-groth16 = { path = "provekit/groth16" }
 provekit-prover = { path = "provekit/prover", default-features = false }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-verifier = { path = "provekit/verifier" }
@@ -155,6 +157,7 @@ parking_lot = "0.12"
 # and calls keccak::f1600(), which was removed in keccak 0.2.0 stable. Pinning to
 # the RC prevents `cargo update` from bumping acvm_blackbox_solver's keccak to stable.
 keccak = "=0.2.0-rc.2"
+memmap2 = "0.9.5"
 xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
@@ -187,12 +190,14 @@ noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.1
 # Cryptography and proof systems
 ark-bn254 = { version = "0.5.0", default-features = false, features = [
   "scalar_field",
+  "curve",
 ] }
 
+ark-ec = { version = "0.5", features = ["parallel"] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
-ark-std = { version = "0.5", features = ["std"] }
+ark-std = { version = "0.5", features = ["std", "parallel"] }
 mavros-vm = { git = "https://github.com/reilabs/mavros", rev = "3e47fd58001a0109a0314bc080b5246fd807ba04" }
 mavros-artifacts = { git = "https://github.com/reilabs/mavros", rev = "3e47fd58001a0109a0314bc080b5246fd807ba04" }
 spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [

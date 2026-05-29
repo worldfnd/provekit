@@ -1,23 +1,12 @@
 use {
     super::{util::resolve_key_path, Command},
-    anyhow::{anyhow, bail, Context as _, Result},
+    anyhow::{Context as _, Result},
     argh::FromArgs,
-    nargo::{
-        insert_all_files_for_workspace_into_file_manager,
-        ops::{check_program, collect_errors, compile_program, optimize_program, report_errors},
-        parse_all,
-    },
-    nargo_toml::{find_root, get_package_manifest, resolve_workspace_from_toml, PackageSelection},
-    noir_artifact_cli::fs::artifact::save_program_to_file,
-    noirc_driver::{CompilationResult, CompileOptions, CrateName, NOIR_ARTIFACT_VERSION_STRING},
-    provekit_common::{file::write, HashConfig, Prover, Verifier},
+    provekit_common::{file::write, HashConfig, Verifier},
+    provekit_prover::{write_pkp, write_pkp_mmap, Groth16CommitmentInfo, Groth16Prover, Prover},
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    rayon::prelude::*,
-    std::{
-        path::{Path, PathBuf},
-        str::FromStr,
-    },
-    tracing::instrument,
+    std::{path::PathBuf, str::FromStr},
+    tracing::{info, instrument},
 };
 
 #[derive(PartialEq, Eq, Debug)]
@@ -33,6 +22,24 @@ impl argh::FromArgValue for Compiler {
             "mavros" => Ok(Compiler::Mavros),
             other => Err(format!(
                 "Unknown compiler: {other}. Use \"noir\" or \"mavros\"."
+            )),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+enum Backend {
+    Whir,
+    Groth16,
+}
+
+impl argh::FromArgValue for Backend {
+    fn from_arg_value(value: &str) -> std::result::Result<Self, String> {
+        match value {
+            "whir" => Ok(Backend::Whir),
+            "groth16" => Ok(Backend::Groth16),
+            other => Err(format!(
+                "Unknown backend: {other}. Use \"whir\" or \"groth16\"."
             )),
         }
     }
@@ -55,49 +62,17 @@ pub struct Args {
     #[argh(option, long = "compiler", default = "Compiler::Noir")]
     compiler: Compiler,
 
-    /// name of the package to compile (noir only; default: enclosing package)
-    #[argh(option)]
-    package: Option<String>,
-
-    /// compile every package in the workspace (noir only)
-    #[argh(switch)]
-    workspace: bool,
-
-    /// override the target directory for compiled artifacts (noir only)
-    #[argh(option)]
-    target_dir: Option<PathBuf>,
-
-    /// treat warnings as errors (noir only)
-    #[argh(switch)]
-    deny_warnings: bool,
-
-    /// suppress warnings (noir only)
-    #[argh(switch)]
-    silence_warnings: bool,
-
-    /// print the ACIR for the compiled circuit (noir only)
-    #[argh(switch)]
-    print_acir: bool,
-
-    /// skip the under-constrained-values check (noir only)
-    #[argh(switch)]
-    skip_underconstrained_check: bool,
-
-    /// skip the Brillig call-constraints check (noir only)
-    #[argh(switch)]
-    skip_brillig_constraints_check: bool,
-
-    /// force a full recompilation, ignoring cached artifacts (noir only)
-    #[argh(switch)]
-    force: bool,
+    /// proof backend to use: "whir" (default) or "groth16"
+    #[argh(option, long = "backend", default = "Backend::Whir")]
+    backend: Backend,
 
     /// output path for the ProveKit Prover (PKP) key (default:
-    /// `<circuit>.pkp`)
+    /// `<circuit>.pkp` for Noir, `noir_proof_scheme.pkp` for Mavros)
     #[argh(option, long = "pkp", short = 'p')]
     pkp_path: Option<PathBuf>,
 
     /// output path for the ProveKit Verifier (PKV) key (default:
-    /// `<circuit>.pkv`)
+    /// `<circuit>.pkv` for Noir, `noir_proof_scheme.pkv` for Mavros)
     #[argh(option, long = "pkv", short = 'v')]
     pkv_path: Option<PathBuf>,
 
@@ -105,158 +80,194 @@ pub struct Args {
     /// blake3, poseidon2)
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
     hash: String,
+
+    /// use the mmap-friendly .pkp layout (Groth16 only). The file uses the
+    /// same .pkp extension as the legacy zstd format; readers auto-detect.
+    /// Larger artifact, near-instant load (rapidsnark-style).
+    #[argh(switch, long = "mmap")]
+    mmap: bool,
 }
 
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        let hash_config = HashConfig::from_str(&self.hash).map_err(|e| anyhow!("{}", e))?;
-        match self.compiler {
-            Compiler::Noir => self.run_noir(hash_config),
-            Compiler::Mavros => self.run_mavros(hash_config),
-        }
-    }
-}
+        let hash_config = HashConfig::from_str(&self.hash).map_err(|e| anyhow::anyhow!("{}", e))?;
+        let scheme = match self.compiler {
+            Compiler::Noir => NoirCompiler::from_file(&self.program_path, hash_config)
+                .context("while compiling Noir program")?,
+            Compiler::Mavros => {
+                let r1cs_path = self
+                    .r1cs_path
+                    .as_ref()
+                    .context("--r1cs is required when using the mavros compiler")?;
+                MavrosCompiler::compile(&self.program_path, r1cs_path, hash_config)
+                    .context("while compiling with Mavros")?
+            }
+        };
 
-impl Args {
-    fn run_noir(&self, hash_config: HashConfig) -> Result<()> {
-        // Canonicalize so compiled artifacts embed absolute source paths,
-        // matching `nargo compile` byte-for-byte in the `file_map` field.
-        let program_dir = std::fs::canonicalize(&self.program_path)
-            .with_context(|| format!("canonicalizing {}", self.program_path.display()))?;
-        let workspace_dir = find_root(&program_dir, true)?;
-        let package_dir = find_root(&program_dir, false)?;
+        // Default key paths must match what `prove` and `verify` look up by
+        // default. For Noir that's `<package>.pkp` / `<package>.pkv` derived
+        // from Nargo.toml; Mavros has no manifest, so fall back to the legacy
+        // `noir_proof_scheme.*` names.
+        let resolve_path = |opt: Option<&PathBuf>, ext: &str| -> Result<PathBuf> {
+            match (opt, &self.compiler) {
+                (Some(p), _) => Ok(p.clone()),
+                (None, Compiler::Noir) => resolve_key_path(None, ext),
+                (None, Compiler::Mavros) => Ok(PathBuf::from(format!("noir_proof_scheme.{ext}"))),
+            }
+        };
+        let pkp_path = resolve_path(self.pkp_path.as_ref(), "pkp")?;
+        let pkv_path = resolve_path(self.pkv_path.as_ref(), "pkv")?;
 
-        let selection = self.package_selection(&workspace_dir, &package_dir)?;
-        let mut workspace = resolve_workspace_from_toml(
-            &get_package_manifest(&workspace_dir)?,
-            selection,
-            Some(NOIR_ARTIFACT_VERSION_STRING.to_owned()),
-        )?;
-        workspace.target_dir = self.target_dir.clone();
-
-        let options = self.compile_options();
-        let mut file_manager = workspace.new_file_manager();
-        insert_all_files_for_workspace_into_file_manager(&workspace, &mut file_manager);
-        let parsed_files = parse_all(&file_manager);
-
-        let binary_packages: Vec<_> = workspace
-            .into_iter()
-            .filter(|p| p.is_binary())
-            .cloned()
-            .collect();
-
-        if binary_packages.is_empty() {
-            bail!("no binary packages found in workspace");
-        }
-        if binary_packages.len() > 1 && (self.pkp_path.is_some() || self.pkv_path.is_some()) {
-            bail!("--pkp/--pkv cannot be used with multiple binary packages");
+        if self.mmap && self.backend != Backend::Groth16 {
+            anyhow::bail!("--mmap is only supported with --backend groth16");
         }
 
-        let target_dir = workspace.target_directory_path();
+        match self.backend {
+            Backend::Whir => {
+                let prover = Prover::from_noir_proof_scheme(scheme.clone());
+                let verifier = Verifier::from_noir_proof_scheme(scheme);
 
-        let program_results: Vec<CompilationResult<_>> = binary_packages
-            .par_iter()
-            .map(|package| {
-                let (program, warnings) = compile_program(
-                    &file_manager,
-                    &parsed_files,
-                    &workspace,
-                    package,
-                    &options,
-                    None,
-                )?;
-                let program = optimize_program(program);
-                check_program(&program)?;
-                let artifact = program.into();
-                save_program_to_file(&artifact, &package.name, &target_dir)
-                    .expect("saving program artifact");
-                Ok((artifact, warnings))
-            })
-            .collect();
+                write_pkp(&prover, &pkp_path).context("while writing Provekit Prover")?;
+                write(&verifier, &pkv_path).context("while writing Provekit Verifier")?;
+            }
+            Backend::Groth16 => {
+                use {ark_serialize::CanonicalSerialize, provekit_common::NoirProofScheme};
 
-        let artifacts = report_errors(
-            collect_errors(program_results),
-            &file_manager,
-            options.deny_warnings,
-            options.silence_warnings,
-        )?;
+                // Extract R1CS and witness builders from the compiled scheme
+                let NoirProofScheme::Noir(d) = scheme else {
+                    anyhow::bail!("Groth16 backend is not supported with the Mavros compiler");
+                };
 
-        for (package, artifact) in binary_packages.iter().zip(artifacts) {
-            let scheme = NoirCompiler::from_program(artifact, hash_config)
-                .context("while building Noir proof scheme")?;
-            let pkp_path = self
-                .pkp_path
-                .clone()
-                .unwrap_or_else(|| format!("{}.pkp", package.name).into());
-            let pkv_path = self
-                .pkv_path
-                .clone()
-                .unwrap_or_else(|| format!("{}.pkv", package.name).into());
-            write(&Prover::from_noir_proof_scheme(scheme.clone()), &pkp_path)
-                .context("while writing prover key")?;
-            write(&Verifier::from_noir_proof_scheme(scheme), &pkv_path)
-                .context("while writing verifier key")?;
+                let abi = d.witness_generator.abi.clone();
+                let mut r1cs = d.r1cs;
+                let program = d.program;
+                let split_witness_builders = d.split_witness_builders;
+                let witness_generator = d.witness_generator;
+                let w1_size = d.whir_for_witness.w1_size;
+                let challenge_offsets = d.whir_for_witness.challenge_offsets.clone();
+
+                // The Noir compiler doesn't set num_public_inputs on the R1CS
+                // (WHIR handles public inputs separately). For Groth16, we need
+                // it to classify wires as public vs private. Compute from ABI.
+                {
+                    use noirc_abi::AbiVisibility;
+                    let mut n_public: usize = abi
+                        .parameters
+                        .iter()
+                        .filter(|p| p.is_public())
+                        .map(|p| p.typ.field_count() as usize)
+                        .sum();
+                    if let Some(ret) = &abi.return_type {
+                        if matches!(ret.visibility, AbiVisibility::Public) {
+                            n_public += ret.abi_type.field_count() as usize;
+                        }
+                    }
+                    r1cs.num_public_inputs = n_public;
+                }
+                let num_public = 1 + r1cs.num_public_inputs;
+
+                // Build BSB22 commitment info: WHIR-style, one Pedersen commitment
+                // over all private w1 wires, producing N challenges via hash_to_fr_multi.
+                let num_challenges = challenge_offsets.len();
+                let private_w1_wires: Vec<usize> = (num_public..w1_size).collect();
+                let public_committed: Vec<usize> = (1..num_public).collect();
+
+                let (commitment_info, groth16_ci, num_challenges_per_commitment) =
+                    if num_challenges > 0 && !private_w1_wires.is_empty() {
+                        // Single commitment: any internal ordering of
+                        // `challenge_indices` is fine as long as the prover
+                        // (which iterates `ci.challenge_indices`) and the
+                        // setup (which iterates `challenge_wire_indices`)
+                        // agree. We sort by wire index for determinism.
+                        let mut sorted_challenge_indices: Vec<usize> = challenge_offsets
+                            .iter()
+                            .map(|&offset| w1_size + offset)
+                            .collect();
+                        sorted_challenge_indices.sort_unstable();
+
+                        let ci = Groth16CommitmentInfo {
+                            public_committed:  public_committed.clone(),
+                            private_committed: private_w1_wires.clone(),
+                            challenge_indices: sorted_challenge_indices.clone(),
+                        };
+                        let g16_ci = vec![provekit_groth16::CommitmentInfo {
+                            public_and_commitment_committed: public_committed,
+                            private_committed:               private_w1_wires.clone(),
+                            challenge_indices:               sorted_challenge_indices,
+                            nb_public_committed:             r1cs.num_public_inputs,
+                        }];
+                        let ncpc = vec![num_challenges];
+                        (vec![ci], g16_ci, ncpc)
+                    } else {
+                        (vec![], vec![], vec![])
+                    };
+
+                info!(
+                    num_challenges,
+                    num_private_committed = private_w1_wires.len(),
+                    num_public_inputs = r1cs.num_public_inputs,
+                    w1_size,
+                    "Running Groth16 trusted setup..."
+                );
+                let (pk, vk) = provekit_groth16::setup::setup(
+                    &r1cs,
+                    &groth16_ci,
+                    &num_challenges_per_commitment,
+                )
+                .context("while running Groth16 trusted setup")?;
+
+                // The PK is held in typed form (`provekit_groth16::ProvingKey`)
+                // and round-trips through arkworks bytes via the custom Serde
+                // adapter when the .pkp is written. Only the VK still
+                // serializes to bytes here, since `Verifier` keeps it as
+                // `Vec<u8>` for cross-language interop.
+                let mut vk_bytes = Vec::new();
+                vk.serialize_uncompressed(&mut vk_bytes)
+                    .context("while serializing Groth16 verifying key")?;
+
+                info!(
+                    vk_size = vk_bytes.len(),
+                    vk_g1_k_len = vk.g1_k.len(),
+                    vk_commitment_keys_len = vk.commitment_keys.len(),
+                    vk_public_and_commitment_committed_len =
+                        vk.public_and_commitment_committed.len(),
+                    "Groth16 setup complete"
+                );
+
+                // Build + write the Verifier first; this owns the only live
+                // copy of `r1cs`. Then move that `r1cs` out of the Verifier
+                // into the Prover via partial move — no clone. The previous
+                // version cloned `r1cs` for the Prover and kept both structs
+                // resident simultaneously, doubling peak prepare-time RAM and
+                // OOMing CI hosts on SHA-style (hundreds-of-MB-R1CS) circuits.
+                let verifier = Verifier {
+                    hash_config,
+                    r1cs,
+                    whir_for_witness: None,
+                    abi,
+                    groth16_vk: Some(vk_bytes),
+                };
+                write(&verifier, &pkv_path).context("while writing Provekit Verifier")?;
+
+                let prover = Prover::Groth16(Groth16Prover {
+                    program,
+                    r1cs: verifier.r1cs,
+                    split_witness_builders,
+                    witness_generator,
+                    groth16_pk: pk.into(),
+                    commitment_info,
+                });
+
+                if self.mmap {
+                    write_pkp_mmap(&prover, &pkp_path)
+                        .context("while writing mmap-format Provekit Prover")?;
+                } else {
+                    write_pkp(&prover, &pkp_path).context("while writing Provekit Prover")?;
+                }
+            }
         }
+
         Ok(())
-    }
-
-    fn run_mavros(&self, hash_config: HashConfig) -> Result<()> {
-        let r1cs_path = self
-            .r1cs_path
-            .as_ref()
-            .context("--r1cs is required when using the mavros compiler")?;
-        let scheme = MavrosCompiler::compile(&self.program_path, r1cs_path, hash_config)
-            .context("while compiling with Mavros")?;
-        let pkp_path = resolve_key_path(self.pkp_path.as_deref(), "pkp")?;
-        let pkv_path = resolve_key_path(self.pkv_path.as_deref(), "pkv")?;
-        write(&Prover::from_noir_proof_scheme(scheme.clone()), &pkp_path)
-            .context("while writing prover key")?;
-        write(&Verifier::from_noir_proof_scheme(scheme), &pkv_path)
-            .context("while writing verifier key")?;
-        Ok(())
-    }
-
-    fn compile_options(&self) -> CompileOptions {
-        CompileOptions {
-            deny_warnings: self.deny_warnings,
-            silence_warnings: self.silence_warnings,
-            print_acir: self.print_acir,
-            skip_underconstrained_check: self.skip_underconstrained_check,
-            skip_brillig_constraints_check: self.skip_brillig_constraints_check,
-            force_compile: self.force,
-            ..CompileOptions::default()
-        }
-    }
-
-    fn package_selection(
-        &self,
-        workspace_dir: &Path,
-        package_dir: &Path,
-    ) -> Result<PackageSelection> {
-        if self.workspace {
-            return Ok(PackageSelection::All);
-        }
-        if let Some(name) = &self.package {
-            let crate_name: CrateName = name
-                .parse()
-                .map_err(|e| anyhow!("invalid package name `{name}`: {e}"))?;
-            return Ok(PackageSelection::Selected(crate_name));
-        }
-        // When CWD is inside a sub-package of a multi-package workspace, narrow
-        // to that package rather than compiling the whole workspace.
-        if workspace_dir != package_dir {
-            let inner = resolve_workspace_from_toml(
-                &get_package_manifest(package_dir)?,
-                PackageSelection::DefaultOrAll,
-                Some(NOIR_ARTIFACT_VERSION_STRING.to_owned()),
-            )?;
-            let package = inner
-                .into_iter()
-                .next()
-                .expect("a package manifest resolves to exactly one member");
-            return Ok(PackageSelection::Selected(package.name.clone()));
-        }
-        Ok(PackageSelection::DefaultOrAll)
     }
 }

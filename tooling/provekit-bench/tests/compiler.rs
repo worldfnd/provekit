@@ -4,8 +4,8 @@ use {
     nargo_cli::cli::compile_cmd::compile_workspace_full,
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
     noirc_driver::CompileOptions,
-    provekit_common::{HashConfig, Prover, Verifier},
-    provekit_prover::Prove,
+    provekit_common::{HashConfig, Verifier},
+    provekit_prover::{Prove, Prover},
     provekit_r1cs_compiler::NoirCompiler,
     provekit_verifier::Verify,
     serde::Deserialize,
@@ -283,7 +283,7 @@ fn test_public_input_binding_exploit() {
 
     // Tamper: the committed polynomial encodes result=16 at position 1, but we
     // claim result=42. The verifier should reject this.
-    proof.public_inputs = PublicInputs::from_vec(vec![FieldElement::from(42u64)]);
+    *proof.public_inputs_mut() = PublicInputs::from_vec(vec![FieldElement::from(42u64)]);
 
     let result = verifier.verify(&proof);
     assert!(

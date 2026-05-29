@@ -317,10 +317,13 @@ pub(crate) fn add_combined_binop_constraints(
     );
     let multiplicities_first_witness = r1cs_compiler.add_witness_builder(multiplicities_wb);
 
-    let sz =
-        r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
-    let rs =
-        r1cs_compiler.add_witness_builder(WitnessBuilder::Challenge(r1cs_compiler.num_witnesses()));
+    // Draw (sz, rs) from the global BSB22 power chains so this LogUp
+    // shares the same two `Challenge` roots used by every other LogUp
+    // sub-circuit (ROM, RAM, spread, range_check). `rs_sqrd` / `rs_cubed`
+    // below are *internal* powers of this instance's `rs` (used to fold
+    // the 4-column AND/XOR table); they stay as local `add_product`s.
+    let sz = r1cs_compiler.next_sz_power();
+    let rs = r1cs_compiler.next_rs_power();
     let rs_sqrd = r1cs_compiler.add_product(rs, rs);
     let rs_cubed = r1cs_compiler.add_product(rs_sqrd, rs);
     let challenges = LookupChallenges {

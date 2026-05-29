@@ -12,20 +12,20 @@ repository.workspace = true
 # Workspace crates
 provekit-common.workspace = true
 provekit-gnark.workspace = true
+provekit-groth16.workspace = true
 provekit-prover = { workspace = true, features = ["witness-generation", "parallel"] }
 provekit-r1cs-compiler.workspace = true
 provekit-verifier.workspace = true
 
 # Noir language
 acir.workspace = true
-nargo.workspace = true
 nargo_toml.workspace = true
-noir_artifact_cli.workspace = true
 noirc_abi.workspace = true
 noirc_driver.workspace = true
 
 # Cryptography and proof systems
 ark-ff.workspace = true
+ark-serialize.workspace = true
 
 # 3rd party
 anyhow.workspace = true

@@ -19,19 +19,17 @@ mod verifier;
 mod whir_r1cs;
 pub mod witness;
 
-use crate::{
-    interner::{InternedFieldElement, Interner},
-    sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
-};
 pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
     hash_config::HashConfig,
+    interner::{InternedFieldElement, Interner},
     mavros::{MavrosProver, MavrosSchemeData},
     noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
-    prover::{NoirProver, Prover},
+    prover::NoirProver,
     r1cs::R1CS,
+    sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
     transcript_sponge::TranscriptSponge,
     verifier::Verifier,
     whir_r1cs::{R1csHash, WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},

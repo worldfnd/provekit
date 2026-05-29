@@ -312,6 +312,45 @@ impl SparseMatrix {
         }
     }
 
+    /// Borrow the internal `new_row_indices` array. Used by mmap-format
+    /// writers that need the raw bytes.
+    pub fn new_row_indices_raw(&self) -> &[u32] {
+        &self.new_row_indices
+    }
+
+    /// Borrow the internal `col_indices` array (absolute, not
+    /// delta-encoded). Used by mmap-format writers that need the raw
+    /// bytes.
+    pub fn col_indices_raw(&self) -> &[u32] {
+        &self.col_indices
+    }
+
+    /// Borrow the internal `values` array (interner indices). Used by
+    /// mmap-format writers that need the raw bytes.
+    pub fn values_raw(&self) -> &[InternedFieldElement] {
+        &self.values
+    }
+
+    /// Construct a `SparseMatrix` directly from its three internal arrays.
+    /// Used by mmap-format readers that have just memcpy'd the bytes
+    /// from disk into owned `Vec`s. Skips the per-entry insertion path
+    /// that goes through `set` / `push_row` / delta decoding.
+    pub fn from_raw_parts(
+        num_rows: usize,
+        num_cols: usize,
+        new_row_indices: Vec<u32>,
+        col_indices: Vec<u32>,
+        values: Vec<InternedFieldElement>,
+    ) -> Self {
+        Self {
+            num_rows,
+            num_cols,
+            new_row_indices,
+            col_indices,
+            values,
+        }
+    }
+
     pub const fn hydrate<'a>(&'a self, interner: &'a Interner) -> HydratedSparseMatrix<'a> {
         HydratedSparseMatrix {
             matrix: self,

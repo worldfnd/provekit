@@ -538,9 +538,19 @@ pub(crate) fn add_spread_table_constraints(
         query_inputs,
     ));
 
-    // Challenges: sz and rs
-    let sz = compiler.add_witness_builder(WitnessBuilder::Challenge(compiler.num_witnesses()));
-    let rs = compiler.add_witness_builder(WitnessBuilder::Challenge(compiler.num_witnesses()));
+    // Challenges: sz and rs.
+    //
+    // Drawn from the global BSB22 power chains on the compiler. Instance
+    // #k of the spread table sees `(α^k, β^k)`; the two chains have
+    // independent roots, so `(sz, rs)` are statistically independent
+    // within this instance — exactly what the spread LogUp's bilinear
+    // `sz - input - rs · spread` requires for soundness.
+    //
+    // Without these helpers each spread instance would have allocated two
+    // fresh `Challenge` builders, inflating `N_CHALLENGE`. See
+    // [`NoirToR1CSCompiler::next_sz_power`] and `next_rs_power`.
+    let sz = compiler.next_sz_power();
+    let rs = compiler.next_rs_power();
 
     // Query-side: for each lookup, compute 1/(sz - input - rs*spread)
     let mut logup_summands: Vec<(FieldElement, usize)> = Vec::new();

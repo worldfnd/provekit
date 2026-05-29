@@ -10,8 +10,8 @@ use {
         utils::c_str_to_str,
     },
     noirc_abi::input_parser::Format,
-    provekit_common::{file, HashConfig, NoirProof, Prover, Verifier},
-    provekit_prover::Prove,
+    provekit_common::{file, HashConfig, NoirProof, Verifier},
+    provekit_prover::{deserialize_pkp, read_pkp, serialize_pkp, write_pkp, Prove, Prover},
     provekit_r1cs_compiler::NoirCompiler,
     provekit_verifier::Verify,
     std::{
@@ -240,7 +240,7 @@ pub unsafe extern "C" fn pk_load_prover(path: *const c_char, out: *mut *mut PKPr
 
         let result = (|| -> Result<*mut PKProver, PKStatus> {
             let path = c_str_to_str(path)?;
-            let prover: Prover = file::read(Path::new(&path)).map_err(|e| {
+            let prover: Prover = read_pkp(Path::new(&path)).map_err(|e| {
                 set_last_error(format!("{e:#}"));
                 PKStatus::SchemeReadError
             })?;
@@ -322,7 +322,7 @@ pub unsafe extern "C" fn pk_load_prover_bytes(
             // SAFETY: ptr/len validity is guaranteed by the caller (documented in #
             // Safety).
             let data = std::slice::from_raw_parts(ptr, len);
-            let prover: Prover = file::deserialize(data).map_err(|e| {
+            let prover: Prover = deserialize_pkp(data).map_err(|e| {
                 set_last_error(format!("{e:#}"));
                 PKStatus::SchemeReadError
             })?;
@@ -401,7 +401,7 @@ pub unsafe extern "C" fn pk_save_prover(prover: *const PKProver, path: *const c_
         let result = (|| -> Result<(), PKStatus> {
             let path = c_str_to_str(path)?;
             // SAFETY: prover is guaranteed non-null and valid by caller contract.
-            file::write(&(*prover).prover, Path::new(&path)).map_err(|e| {
+            write_pkp(&(*prover).prover, Path::new(&path)).map_err(|e| {
                 set_last_error(format!("{e:#}"));
                 PKStatus::FileWriteError
             })
@@ -472,7 +472,7 @@ pub unsafe extern "C" fn pk_serialize_prover(
         *out_buf = PKBuf::empty();
 
         // SAFETY: prover is guaranteed non-null and valid by caller contract.
-        match file::serialize(&(*prover).prover) {
+        match serialize_pkp(&(*prover).prover) {
             Ok(bytes) => {
                 *out_buf = PKBuf::from_vec(bytes);
                 PKStatus::Success.into()

@@ -40,17 +40,40 @@ cargo run --release --bin provekit-cli verify
 
 `prepare` writes a **ProveKit Prover** key (`.pkp`) and a **ProveKit Verifier** key (`.pkv`). `prove` reads the PKP plus `Prover.toml` and writes `proof.np`. `verify` reads the PKV and the proof.
 
+### On-chain verification (Groth16 backend)
+
+For proofs produced with `prepare --backend groth16`, the same PKV + proof can be checked by a Solidity verifier. Two commands generate the artefacts:
+
+```sh
+# Render a circuit-specific Solidity verifier from the PKV.
+cargo run --release --bin provekit-cli export-solidity \
+  --pkv <circuit>.pkv \
+  --template provekit/groth16/contracts/ProvekitGroth16Verifier.sol \
+  --out <circuit>Verifier.sol
+
+# Convert the proof to EVM big-endian calldata + a public-inputs file.
+cargo run --release --bin provekit-cli export-evm-proof \
+  --proof proof.np \
+  --out-dir out/
+```
+
+`export-solidity` substitutes all `CODEGEN` markers in the in-repo template with constants from the verifying key (VK scalars, G1/G2 coordinates, gnark-style negations, public-input bases). `export-evm-proof` produces `out/proof.hex` (uncompressed `Ar‖Bs‖Krs‖Commit‖PoK` in EVM big-endian) and `out/inputs.txt` (one decimal field element per line, sized to `N_PUB`). Deploy the rendered `.sol` and call `verifyProof(bytes, uint256[N])` with those two inputs. Single-commitment circuits only for now — see [`provekit/groth16/contracts/README.md`](./provekit/groth16/contracts/README.md) for scope, constraints, and the multi-commitment roadmap.
+
 ### Command reference
 
 | Command | Purpose | Key options |
 | :--- | :--- | :--- |
-| `prepare` | Compile a Noir package and write prover/verifier keys | `--pkp`/`-p`, `--pkv`/`-v`, `--hash`; default hash: `skyscraper` |
+| `prepare` | Compile a Noir package and write prover/verifier keys | `--pkp`/`-p`, `--pkv`/`-v`, `--hash`, `--backend`, `--mmap` (Groth16 only); default hash: `skyscraper`, default backend: `whir` |
 | `prove` | Produce `proof.np` from a prover key and inputs | `--prover`/`-p`, `--input`/`-i`, `--out`/`-o` |
 | `verify` | Verify a proof against a verifier key | `--verifier`/`-v`, `--proof` |
+| `export-solidity` | Render a circuit-specific Solidity verifier from a Groth16 PKV (substitutes `CODEGEN` markers in the template) | `--pkv`/`-v`, `--template`/`-t`, `--out`/`-o` |
+| `export-evm-proof` | Re-emit a Groth16 `proof.np` as EVM big-endian calldata + a public-inputs file for `verifyProof(bytes, uint256[N])` | `--proof`/`-p`, `--out-dir`/`-o` |
 
 Read the table per command: the short `-p` flag changes meaning between `prepare` and `prove`.
 
 Available `prepare --hash` choices are `skyscraper`, `sha256`, `keccak`, `blake3`, and `poseidon2`.
+
+Available `prepare --backend` choices are `whir` (default) and `groth16`.
 
 ## How It Works
 
@@ -109,6 +132,7 @@ For larger circuits and integration experiments, see [`noir-examples/`](./noir-e
 
 ## Advanced Usage
 
+- **Mmap-format `.pkp`** (Groth16 only): pass `--mmap` to `prepare` to write an mmap-friendly `.pkp` instead of the zstd-compressed default. Larger artifact (no compression, raw in-memory layout for curve-point and R1CS arrays), but near-instant load — the kernel pages bytes in lazily as the MSM touches them, matching rapidsnark's zkey-loading model. Both layouts share the `.pkp` extension; `prove` auto-detects via the file's `MMAP` sentinel.
 - **Direct R1CS frontend:** after generating Mavros artifacts, call `provekit-cli prepare --compiler mavros <artifacts.json> --r1cs <r1cs.bin>`.
 - **Recursive verifier inputs:** `provekit-cli generate-gnark-inputs <verifier.pkv> <proof.np>` writes `params_for_recursive_verifier` and `r1cs.json` by default; use `--params` and `--r1cs` to override those paths.
 - **Inspection commands:** use `circuit-stats` for Noir ACIR/R1CS structure, `analyze-pkp` for Noir prover-key size breakdowns, and `show-inputs` for public inputs.

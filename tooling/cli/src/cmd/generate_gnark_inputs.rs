@@ -1,6 +1,6 @@
 use {
     crate::Command,
-    anyhow::{Context, Result},
+    anyhow::{bail, Context, Result},
     argh::FromArgs,
     provekit_common::{file::read, NoirProof, Verifier},
     provekit_gnark::write_gnark_parameters_to_file,
@@ -47,6 +47,20 @@ impl Command for Args {
         // Read the proof
         let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
 
+        // The gnark recursive verifier only consumes WHIR proofs; refuse a
+        // Groth16 proof up front so we don't hit the panic in
+        // `NoirProof::whir_r1cs_proof()`.
+        let (public_inputs, whir_r1cs_proof) = match &proof {
+            NoirProof::Whir {
+                public_inputs,
+                whir_r1cs_proof,
+            } => (public_inputs, whir_r1cs_proof),
+            NoirProof::Groth16 { .. } => bail!(
+                "generate-gnark-inputs requires a WHIR proof; got a Groth16 proof which the gnark \
+                 recursive verifier does not consume"
+            ),
+        };
+
         let wfw = verifier
             .whir_for_witness
             .as_ref()
@@ -54,13 +68,13 @@ impl Command for Args {
 
         write_gnark_parameters_to_file(
             &wfw.whir_witness.blinded_commitment,
-            &proof.whir_r1cs_proof,
+            whir_r1cs_proof,
             wfw.m_0,
             wfw.m,
             wfw.a_num_terms,
             wfw.num_challenges,
             wfw.w1_size,
-            &proof.public_inputs,
+            public_inputs,
             &self.params_for_recursive_verifier,
         );
 

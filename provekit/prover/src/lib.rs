@@ -8,8 +8,8 @@ use {
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
-        utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, Prover,
-        PublicInputs, TranscriptSponge,
+        utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, PublicInputs,
+        TranscriptSponge,
     },
     std::mem::size_of,
     tracing::{debug, info_span, instrument},
@@ -30,12 +30,28 @@ pub(crate) mod bigint_mod;
 pub(crate) mod ec_arith;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
+// `pkp_io` depends on `xz2`/`zstd`/`bytes`, none of which build on wasm32.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod pkp_io;
+// Mmap-backed `.pkp` I/O (rapidsnark-style). Same extension as legacy `.pkp`,
+// distinguished by an in-file sentinel; see `pkp_mmap_io` module docs.
+#[cfg(not(target_arch = "wasm32"))]
+pub mod pkp_mmap_io;
+pub mod prover_types;
 pub(crate) mod r1cs;
 mod whir_r1cs;
 mod witness;
 
 // Public re-exports for items used by integration tests and benchmarks.
-pub use {ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
+#[cfg(not(target_arch = "wasm32"))]
+pub use pkp_io::{deserialize_pkp, read_pkp, serialize_pkp, write_pkp};
+#[cfg(not(target_arch = "wasm32"))]
+pub use pkp_mmap_io::{is_mmap_pkp, read_pkp_mmap, write_pkp_mmap};
+pub use {
+    ec_arith::ec_scalar_mul,
+    prover_types::{Groth16CommitmentInfo, Groth16PkSource, Groth16Prover, Prover},
+    r1cs::solve_witness_vec,
+};
 
 /// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
 /// `prove_with_witness` is available on all targets. `MavrosProver` does not
@@ -54,6 +70,38 @@ pub trait Prove {
 #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
 fn generate_noir_witness(
     prover: &mut NoirProver,
+    input_map: InputMap,
+) -> Result<WitnessMap<NoirElement>> {
+    let solver = Bn254BlackBoxSolver::default();
+    let mut output_buffer = Vec::new();
+    let mut foreign_call_executor = DefaultForeignCallBuilder {
+        output:       &mut output_buffer,
+        enable_mocks: false,
+        resolver_url: None,
+        root_path:    None,
+        package_name: None,
+    }
+    .build();
+
+    let initial_witness = prover.witness_generator.abi().encode(&input_map, None)?;
+
+    let mut witness_stack = nargo::ops::execute_program(
+        &prover.program,
+        initial_witness,
+        &solver,
+        &mut foreign_call_executor,
+    )?;
+
+    Ok(witness_stack
+        .pop()
+        .context("Missing witness results")?
+        .witness)
+}
+
+#[instrument(skip_all)]
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+fn generate_noir_witness_for_groth16(
+    prover: &mut Groth16Prover,
     input_map: InputMap,
 ) -> Result<WitnessMap<NoirElement>> {
     let solver = Bn254BlackBoxSolver::default();
@@ -260,7 +308,7 @@ impl Prove for NoirProver {
             .prove_noir(merlin, r1cs, commitments, full_witness, &public_inputs)
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof {
+        Ok(NoirProof::Whir {
             public_inputs,
             whir_r1cs_proof,
         })
@@ -354,7 +402,7 @@ impl Prove for MavrosProver {
             )
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof {
+        Ok(NoirProof::Whir {
             public_inputs,
             whir_r1cs_proof,
         })
@@ -380,12 +428,357 @@ impl Prove for MavrosProver {
     }
 }
 
+impl Prove for Groth16Prover {
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+    #[instrument(skip_all)]
+    fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
+        let witness = generate_noir_witness_for_groth16(&mut self, input_map)?;
+        self.prove_with_witness(witness)
+    }
+
+    #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
+    #[instrument(skip_all)]
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+        let (input_map, _return_value) =
+            read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
+        self.prove(input_map)
+    }
+
+    #[instrument(skip_all)]
+    fn prove_with_witness(
+        self,
+        acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
+    ) -> Result<NoirProof> {
+        use ark_serialize::CanonicalSerialize;
+
+        // Take ownership of each field so we can drop the large ones the
+        // moment they stop being used.
+        let Groth16Prover {
+            program,
+            r1cs,
+            split_witness_builders,
+            witness_generator,
+            groth16_pk: pk,
+            commitment_info,
+        } = self;
+
+        let mut public_input_indices = program.functions[0].public_inputs().indices();
+        public_input_indices.sort_unstable();
+        let public_inputs = if public_input_indices.is_empty() {
+            PublicInputs::new()
+        } else {
+            let values = public_input_indices
+                .iter()
+                .map(|&idx| {
+                    let noir_val = acir_witness_idx_to_value_map
+                        .get(&Witness::from(idx))
+                        .ok_or_else(|| anyhow::anyhow!("Missing public input at index {idx}"))?;
+                    Ok(noir_to_native(*noir_val))
+                })
+                .collect::<Result<Vec<_>>>()?;
+            PublicInputs::from_vec(values)
+        };
+
+        // ABI / circuit metadata aren't touched after public-input extraction.
+        // Dropping them shrinks resident memory before witness solving — the
+        // current peak phase.
+        drop(program);
+        drop(witness_generator);
+
+        let num_witnesses = r1cs.num_witnesses();
+
+        let has_commitments = !commitment_info.is_empty();
+
+        // Allocate witness vector
+        let mut witness: Vec<Option<FieldElement>> = vec![None; r1cs.num_witnesses_for_solving()];
+
+        // `solve_witness_vec` requires a `&mut ProverState` because the WHIR
+        // pipeline absorbs intermediate values into the transcript while
+        // solving. Groth16 doesn't share that protocol — its only Fiat-Shamir
+        // step is the BSB22 commitment hash, done explicitly below — so we
+        // pass a throwaway transcript here purely to satisfy the signature.
+        // Nothing absorbed into it ever leaves this function.
+        let dummy_instance: Vec<u8> = Vec::new();
+        let ds =
+            whir::transcript::DomainSeparator::protocol(&"groth16-dummy").instance(&dummy_instance);
+        let mut dummy_transcript = ProverState::new(&ds, TranscriptSponge::default());
+
+        // --- Phase 1: Solve w1 witnesses (pre-commitment) ---
+        {
+            let _s = info_span!("solve_groth16_w1").entered();
+            crate::r1cs::solve_witness_vec(
+                &mut witness,
+                split_witness_builders.w1_layers,
+                &acir_witness_idx_to_value_map,
+                &mut dummy_transcript,
+            )
+            .context("While solving Groth16 w1 witnesses")?;
+        }
+
+        // --- Phase 2: BSB22 Pedersen commitment (WHIR-style: one commit, N challenges)
+        // ---
+        let mut pedersen_commitments: Vec<ark_bn254::G1Affine> = Vec::new();
+        let mut committed_values: Vec<Vec<FieldElement>> = Vec::new();
+        let mut groth16_ci: Vec<provekit_groth16::CommitmentInfo> = Vec::new();
+
+        if has_commitments {
+            let _s = info_span!("groth16_bsb22_commit").entered();
+
+            // One commitment covering all private w1 wires
+            let ci = &commitment_info[0];
+
+            // Gather private committed witness values
+            let private_vals: Vec<FieldElement> = ci
+                .private_committed
+                .iter()
+                .map(|&wire_idx| {
+                    witness[wire_idx].ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "BSB22: private committed wire {wire_idx} not solved before commitment"
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            // Compute Pedersen commitment: C = Σ vᵢ · Basis[i]
+            let commitment = pk.view().commitment_keys[0].commit(&private_vals)?.0;
+
+            // Gather public values for hashing
+            let public_vals: Vec<FieldElement> = ci
+                .public_committed
+                .iter()
+                .map(|&wire_idx| {
+                    witness[wire_idx].ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "BSB22: public wire {wire_idx} not solved before commitment"
+                        )
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?;
+
+            // Derive N challenges from one commitment via hash_to_fr_multi
+            let challenge_data = {
+                use ark_serialize::CanonicalSerialize;
+                let mut data = Vec::new();
+                let mut commitment_bytes = Vec::new();
+                commitment
+                    .serialize_uncompressed(&mut commitment_bytes)
+                    .context("while serializing commitment")?;
+                data.extend_from_slice(&commitment_bytes);
+                for val in &public_vals {
+                    let bytes = provekit_groth16::prover::fr_to_bytes(val)?;
+                    data.extend_from_slice(&bytes);
+                }
+                data
+            };
+
+            let challenges = provekit_groth16::prover::hash_to_fr_multi(
+                &challenge_data,
+                provekit_groth16::COMMITMENT_DST,
+                ci.challenge_indices.len(),
+            )?;
+
+            // Insert each challenge into its wire index
+            for (challenge, &wire_idx) in challenges.iter().zip(ci.challenge_indices.iter()) {
+                witness[wire_idx] = Some(*challenge);
+            }
+
+            // Build groth16 CommitmentInfo for the inner prove() call.
+            groth16_ci.push(provekit_groth16::CommitmentInfo {
+                public_and_commitment_committed: ci.public_committed.clone(),
+                private_committed:               ci.private_committed.clone(),
+                challenge_indices:               ci.challenge_indices.clone(),
+                nb_public_committed:             ci.public_committed.len(),
+            });
+
+            pedersen_commitments.push(commitment);
+            committed_values.push(private_vals);
+        }
+
+        // --- Phase 3: Solve w2 witnesses (post-commitment, if any) ---
+        if has_commitments {
+            let _s = info_span!("solve_groth16_w2").entered();
+            crate::r1cs::solve_witness_vec(
+                &mut witness,
+                split_witness_builders.w2_layers,
+                &acir_witness_idx_to_value_map,
+                &mut dummy_transcript,
+            )
+            .context("While solving Groth16 w2 witnesses")?;
+        }
+
+        // Extract solved witness vector, then free the Option wrapper vec
+        let full_witness: Vec<FieldElement> = witness[..num_witnesses]
+            .iter()
+            .enumerate()
+            .map(|(i, w)| w.ok_or_else(|| anyhow::anyhow!("Witness {i} unsolved")))
+            .collect::<Result<Vec<_>>>()?;
+        drop(witness);
+        drop(acir_witness_idx_to_value_map);
+
+        // Compute R1CS solution vectors: A·w, B·w, C·w
+        let (a_evals, b_evals, c_evals) = {
+            let _s = info_span!("r1cs_matvec").entered();
+            let a = r1cs.a() * full_witness.as_slice();
+            let b = r1cs.b() * full_witness.as_slice();
+            let c = r1cs.c() * full_witness.as_slice();
+            (a, b, c)
+        };
+
+        // Save values needed later, then free R1CS (~200+ MB of sparse matrices)
+        let nb_public = 1 + r1cs.num_public_inputs;
+        let num_constraints = r1cs.num_constraints();
+        let challenge_wire_indices: Vec<usize> = commitment_info
+            .iter()
+            .flat_map(|ci| ci.challenge_indices.iter().copied())
+            .collect();
+        drop(r1cs);
+        drop(commitment_info);
+
+        // Borrowed view over the PK. Uniform across owned and mmap-backed
+        // sources — the mmap variant exposes the same slice shape, just
+        // pointing at file pages.
+        //
+        // Memory note: for the Owned source we explicitly drop the bases used
+        // by stage 1 (g1_a/g1_b/g2_b/infinity_a/b/non_inf_a/b/commitment_keys)
+        // before stage 2 (`prove_krs`) starts — see the `mem::take` block
+        // below. Without it, ~230 MB of stage-1-only bases stay resident while
+        // `prove_krs`'s MSM bucket allocator runs, doubling prove-time peak
+        // RSS on big circuits (SHA256: 848 MB → ~380 MB observed). The Mmap
+        // path skips this — its slices borrow into the file mapping, so
+        // there's nothing on the heap to release.
+        let mut pk = pk;
+        let domain_size;
+        let g1_delta;
+        {
+            let pk_view = pk.view();
+            domain_size = pk_view.domain_size;
+            g1_delta = pk_view.g1_delta;
+        }
+
+        // r/s and the δ multiples are needed by both the H-independent stages
+        // and `prove_krs`, so sample them before the rayon::join below.
+        use {ark_ec::CurveGroup, ark_std::UniformRand};
+        let mut rng = ark_std::rand::thread_rng();
+        let r_scalar = FieldElement::rand(&mut rng);
+        let s_scalar = FieldElement::rand(&mut rng);
+        let kr_scalar = -(r_scalar * s_scalar);
+        let r_delta = (ark_bn254::G1Projective::from(g1_delta) * r_scalar).into_affine();
+        let s_delta = (ark_bn254::G1Projective::from(g1_delta) * s_scalar).into_affine();
+        let kr_delta = (ark_bn254::G1Projective::from(g1_delta) * kr_scalar).into_affine();
+
+        let domain: ark_poly::Radix2EvaluationDomain<FieldElement> =
+            ark_poly::EvaluationDomain::new(num_constraints)
+                .ok_or_else(|| anyhow::anyhow!("failed to create FFT domain"))?;
+
+        // Stage 1: overlap the FFT-bound `compute_h` with the H-independent
+        // Groth16 stages (`bsb22_pok` + `prove_ar_bs_bs1`). `prove_ar_bs_bs1`
+        // serializes its three internal MSMs so only one bucket allocator
+        // is alive at a time — without that, FFT scratch and MSM buckets
+        // would stack and inflate peak under rayon contention.
+        let (h, branch_b) = {
+            let pk_view = pk.view();
+            rayon::join(
+                move || provekit_groth16::prover::compute_h(a_evals, b_evals, c_evals, &domain),
+                || -> Result<(
+                    ark_bn254::G1Affine,
+                    ark_bn254::G1Affine,
+                    ark_bn254::G2Affine,
+                    ark_bn254::G1Projective,
+                )> {
+                    let pok = provekit_groth16::prover::bsb22_pok(
+                        &pk_view.commitment_keys,
+                        &committed_values,
+                        &challenge_wire_indices,
+                        &full_witness,
+                    )
+                    .context("while computing BSB22 proof of knowledge")?;
+                    let (ar, bs, bs1) = provekit_groth16::prover::prove_ar_bs_bs1(
+                        pk_view.g1_a,
+                        pk_view.g1_b,
+                        pk_view.g2_b,
+                        pk_view.non_inf_a,
+                        pk_view.non_inf_b,
+                        &full_witness,
+                        pk_view.g1_alpha,
+                        pk_view.g1_beta,
+                        pk_view.g2_beta,
+                        pk_view.g2_delta,
+                        r_delta,
+                        s_delta,
+                        s_scalar,
+                    )
+                    .context("while computing Ar/Bs/Bs1")?;
+                    Ok((pok, ar, bs, bs1))
+                },
+            )
+        };
+
+        let h = h.context("while computing quotient polynomial H")?;
+        let (commitment_pok, ar, bs, bs1) = branch_b?;
+
+        // Free stage-1-only bases before stage 2's MSM bucket allocator runs.
+        // No-op for the Mmap variant (nothing on the heap to free).
+        if let Groth16PkSource::Owned(ref mut inner) = pk {
+            drop(std::mem::take(&mut inner.g1_a));
+            drop(std::mem::take(&mut inner.g1_b));
+            drop(std::mem::take(&mut inner.g2_b));
+            drop(std::mem::take(&mut inner.infinity_a));
+            drop(std::mem::take(&mut inner.infinity_b));
+            drop(std::mem::take(&mut inner.non_inf_a));
+            drop(std::mem::take(&mut inner.non_inf_b));
+            drop(std::mem::take(&mut inner.commitment_keys));
+        }
+
+        // Stage 2: prove_krs only needs g1_k and g1_z from the PK.
+        let pk_view = pk.view();
+        let krs = provekit_groth16::prover::prove_krs(
+            pk_view.g1_k,
+            pk_view.g1_z,
+            &h,
+            &full_witness,
+            nb_public,
+            &groth16_ci,
+            &challenge_wire_indices,
+            domain_size,
+            ar,
+            bs1,
+            kr_delta,
+            r_scalar,
+            s_scalar,
+        )
+        .context("while computing Krs")?;
+        drop(pk_view);
+        drop(pk);
+
+        let proof = provekit_groth16::Proof {
+            ar,
+            bs,
+            krs,
+            commitments: pedersen_commitments,
+            commitment_pok,
+        };
+
+        // Serialize proof
+        let mut proof_bytes = Vec::new();
+        proof
+            .serialize_compressed(&mut proof_bytes)
+            .context("while serializing Groth16 proof")?;
+
+        Ok(NoirProof::Groth16 {
+            public_inputs,
+            groth16_proof: proof_bytes,
+        })
+    }
+}
+
 impl Prove for Prover {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof> {
         match self {
             Prover::Noir(p) => p.prove(input_map),
             Prover::Mavros(p) => p.prove(input_map),
+            Prover::Groth16(p) => p.prove(input_map),
         }
     }
 
@@ -394,6 +787,7 @@ impl Prove for Prover {
         match self {
             Prover::Noir(p) => p.prove_with_toml(prover_toml),
             Prover::Mavros(p) => p.prove_with_toml(prover_toml),
+            Prover::Groth16(p) => p.prove_with_toml(prover_toml),
         }
     }
 
@@ -406,6 +800,7 @@ impl Prove for Prover {
             Prover::Mavros(_) => {
                 anyhow::bail!("Mavros prover is not supported on WASM")
             }
+            Prover::Groth16(p) => p.prove_with_witness(witness),
         }
     }
 }

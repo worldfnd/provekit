@@ -111,6 +111,36 @@ pub struct NoirToR1CSCompiler {
 
     /// The ACIR witness indices of the initial values of the memory blocks
     pub initial_memories: BTreeMap<usize, Vec<usize>>,
+
+    // BSB22 challenge power chains.
+    //
+    // Every LogUp-style sub-circuit (ROM, RAM, spread, binops, range_check)
+    // needs random challenges. Naively each instance allocates its own
+    // `WitnessBuilder::Challenge` pair, which inflates `N_CHALLENGE` and the
+    // verifier's on-chain MSM by 2 entries per instance.
+    //
+    // We instead allocate just two roots (`α = sz_root`, `β = rs_root`) once
+    // each, lazily on first use, and hand out per-instance challenges as
+    // in-circuit powers: instance #k gets `(α^k, β^k)`. The pairing equation
+    // enforces `α^k = α^(k-1) · α` via the `add_product` constraints, so:
+    //
+    //   - within one instance, `(α^k, β^k)` are statistically independent (α ⊥ β as Fiat-Shamir
+    //     samples), preserving each LogUp's required `sz`/`rs` independence.
+    //   - across instances, randomness is shared via powers — gnark's `multicommit` pattern (see
+    //     gnark/std/multicommit/nativecommit.go).
+    //
+    // Effect: `N_CHALLENGE` stays at 2 (just the two roots) regardless of
+    // how many LogUp instances the circuit has.
+    /// First Challenge wire for the `sz` power chain. Lazily allocated.
+    pub sz_root_challenge: Option<usize>,
+    /// Most recently emitted `α^k` from the sz chain (or `None` before any
+    /// call). After k calls to `next_sz_power()`, this is `α^k`.
+    sz_current_power:      Option<usize>,
+    /// First Challenge wire for the `rs` power chain. Lazily allocated, an
+    /// independent Fiat-Shamir sample from `sz_root_challenge`.
+    pub rs_root_challenge: Option<usize>,
+    /// Most recently emitted `β^k` from the rs chain.
+    rs_current_power:      Option<usize>,
 }
 
 pub(crate) fn ensure_field_element_fits_num_bits(
@@ -171,7 +201,59 @@ impl NoirToR1CSCompiler {
             acir_to_r1cs_witness_map: BTreeMap::new(),
             product_cache: std::collections::HashMap::new(),
             initial_memories: BTreeMap::new(),
+            sz_root_challenge: None,
+            sz_current_power: None,
+            rs_root_challenge: None,
+            rs_current_power: None,
         }
+    }
+
+    /// Return the next `α^k` wire from the BSB22 `sz` power chain.
+    ///
+    /// First call allocates the root challenge `α` as a
+    /// `WitnessBuilder::Challenge` and returns it (so instance #1 sees the
+    /// raw Fiat-Shamir sample, identical to the legacy code-path).
+    /// Subsequent calls emit `α², α³, …` as private wires via
+    /// [`Self::add_product`] — instance #k sees `α^k`.
+    ///
+    /// Every LogUp-style sub-circuit that previously allocated its own
+    /// `sz_challenge` should consume this instead. See the doc on
+    /// [`Self::sz_root_challenge`].
+    pub(crate) fn next_sz_power(&mut self) -> usize {
+        let root = match self.sz_root_challenge {
+            Some(w) => w,
+            None => {
+                let w = self.add_witness_builder(WitnessBuilder::Challenge(self.num_witnesses()));
+                self.sz_root_challenge = Some(w);
+                w
+            }
+        };
+        let next = match self.sz_current_power {
+            None => root,
+            Some(prev) => self.add_product(prev, root),
+        };
+        self.sz_current_power = Some(next);
+        next
+    }
+
+    /// Twin of [`Self::next_sz_power`] for the `rs` chain. The two chains
+    /// share no Fiat-Shamir state — `α` and `β` are independently sampled,
+    /// preserving per-LogUp `(sz, rs)` independence.
+    pub(crate) fn next_rs_power(&mut self) -> usize {
+        let root = match self.rs_root_challenge {
+            Some(w) => w,
+            None => {
+                let w = self.add_witness_builder(WitnessBuilder::Challenge(self.num_witnesses()));
+                self.rs_root_challenge = Some(w);
+                w
+            }
+        };
+        let next = match self.rs_current_power {
+            None => root,
+            Some(prev) => self.add_product(prev, root),
+        };
+        self.rs_current_power = Some(next);
+        next
     }
 
     /// Returns the R1CS and the witness map

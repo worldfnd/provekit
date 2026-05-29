@@ -2,15 +2,17 @@
 """Helpers for scripts/run_csp_benchmarks.sh.
 
 Subcommands:
-  parse-runs <bench_dir> <circuit>  Aggregate per-run measurements for one
-                                    circuit and emit a single CSV row to stdout.
+  parse-runs <bench_dir> <circuit> <backend>
+                                    Aggregate per-run measurements for one
+                                    (circuit, backend) pair and emit a single
+                                    CSV row to stdout.
   human-to-bytes <value>            Convert a human-formatted byte string from
                                     the prover trace ("1.23 GB", "456 MB", etc.)
                                     to an integer byte count. Used by tests.
 
 Bench layout produced by run_csp_benchmarks.sh::
 
-    <bench_dir>/per_circuit/<circuit>/
+    <bench_dir>/per_circuit/<circuit>/<backend>/
         prove_<i>.time          # `/usr/bin/time -f '%e %M'` output
         prove_<i>.stderr        # provekit-cli prove stderr (span_stats trace)
         verify_<i>.time
@@ -49,6 +51,16 @@ PEAK_MEMORY_RE = re.compile(
 # emitted by `tooling/cli/src/cmd/prove.rs` on every prove invocation.
 SCHEME_SIZE_RE = re.compile(
     r"Read Noir proof scheme\b.*?\bconstraints=(\d+)\b.*?\bwitnesses=(\d+)\b"
+)
+# Matches a span-close line like
+#   "╯ run: 76.5 ms duration, 1.35 MB peak memory, ..."
+# emitted by `tooling/cli/src/span_stats.rs`. The outermost span is named
+# "run" (`#[instrument]` on `Command::run`); we take the LAST occurrence in
+# the trace because spans close in LIFO order — the outer one closes last.
+# Sub-ms precision here beats `gtime -f '%e'`, which rounds to 10 ms and
+# collapses Groth16 verify times for small circuits to "0.00".
+RUN_DURATION_RE = re.compile(
+    r"\brun:\s*([0-9]+(?:\.[0-9]+)?)\s*(ns|[μu]s|ms|s)\s+duration\b"
 )
 
 
@@ -99,6 +111,35 @@ def parse_scheme_sizes(stderr_path: Path) -> tuple[int, int]:
     return int(match.group(1)), int(match.group(2))
 
 
+def parse_run_duration_ms(stderr_path: Path) -> float:
+    """Return the outermost `run` span's duration in milliseconds.
+
+    Returns 0.0 if the trace file is missing or contains no `run:` span-close
+    line. Used in preference to `gtime -f '%e'` for verify timing — gtime
+    rounds to 10 ms which collapses sub-10ms verifiers to zero.
+    """
+    if not stderr_path.is_file():
+        return 0.0
+    text = ANSI_RE.sub("", stderr_path.read_text(encoding="utf-8", errors="replace"))
+    matches = list(RUN_DURATION_RE.finditer(text))
+    if not matches:
+        return 0.0
+    last = matches[-1]
+    value = float(last.group(1))
+    unit = last.group(2)
+    # Convert to milliseconds. tracing's human formatter emits one of
+    # {ns, μs/us, ms, s} for sub-second / multi-second ranges.
+    if unit == "ns":
+        return value / 1_000_000.0
+    if unit in ("μs", "us"):
+        return value / 1_000.0
+    if unit == "ms":
+        return value
+    if unit == "s":
+        return value * 1_000.0
+    return 0.0
+
+
 def parse_time_file(time_path: Path) -> tuple[float, int]:
     """Read `/usr/bin/time -f '%e %M'` output: (wall_seconds, max_rss_kb).
 
@@ -129,8 +170,8 @@ def read_meta(meta_path: Path) -> dict[str, str]:
     return out
 
 
-def parse_runs(bench_dir: Path, circuit: str) -> str:
-    circuit_dir = bench_dir / "per_circuit" / circuit
+def parse_runs(bench_dir: Path, circuit: str, backend: str) -> str:
+    circuit_dir = bench_dir / "per_circuit" / circuit / backend
     meta = read_meta(circuit_dir / "meta.txt")
 
     prove_runs: list[tuple[float, int, int]] = []
@@ -156,7 +197,12 @@ def parse_runs(bench_dir: Path, circuit: str) -> str:
         if not time_path.is_file():
             break
         wall, _rss = parse_time_file(time_path)
-        verify_runs.append((wall, _rss))
+        # Prefer the trace-derived duration (sub-ms precision) over gtime's
+        # 10ms-resolution wall measurement. Fall back to the time-file value
+        # only if the trace is missing or the run span isn't present.
+        trace_ms = parse_run_duration_ms(circuit_dir / f"verify_{j}.stderr")
+        duration_ms = trace_ms if trace_ms > 0 else wall * 1000.0
+        verify_runs.append((duration_ms, _rss))
         j += 1
 
     if not prove_runs:
@@ -165,7 +211,7 @@ def parse_runs(bench_dir: Path, circuit: str) -> str:
     prove_time_ms = mean(r[0] for r in prove_runs) * 1000.0
     prover_rss_kb = mean(r[1] for r in prove_runs)
     prover_heap_bytes = mean(r[2] for r in prove_runs)
-    verifier_time_ms = mean(r[0] for r in verify_runs) * 1000.0 if verify_runs else 0.0
+    verifier_time_ms = mean(r[0] for r in verify_runs) if verify_runs else 0.0
 
     pkp_size = meta.get("pkp_size_bytes", "0")
     proof_size = meta.get("proof_size_bytes", "0")
@@ -173,6 +219,7 @@ def parse_runs(bench_dir: Path, circuit: str) -> str:
     return ",".join(
         [
             circuit,
+            backend,
             str(num_constraints),
             str(num_witnesses),
             f"{prove_time_ms:.1f}",
@@ -193,6 +240,7 @@ def main() -> int:
     p = sub.add_parser("parse-runs")
     p.add_argument("bench_dir", type=Path)
     p.add_argument("circuit")
+    p.add_argument("backend")
 
     p = sub.add_parser("human-to-bytes")
     p.add_argument("value")
@@ -200,7 +248,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.cmd == "parse-runs":
-        row = parse_runs(args.bench_dir, args.circuit)
+        row = parse_runs(args.bench_dir, args.circuit, args.backend)
         if row:
             print(row)
     elif args.cmd == "human-to-bytes":
