@@ -1,5 +1,3 @@
-import { decompressWitnessStack } from "@noir-lang/acvm_js";
-import { Noir } from "@noir-lang/noir_js";
 import * as ProvekitInspector from "provekit-inspector";
 import { createProveKit, type ProveKit, type ProveKitScheme, type WitnessProvider, type Proof as SdkProof } from "provekit-sdk";
 
@@ -22,6 +20,10 @@ function getErrorMessage(error: unknown): string {
 
 class BrowserWitnessProvider implements WitnessProvider {
   async generateWitness(inputs: Record<string, unknown>, circuit: unknown): Promise<Record<string, unknown>> {
+    const [{ decompressWitnessStack }, { Noir }] = await Promise.all([
+      import("@noir-lang/acvm_js"),
+      import("@noir-lang/noir_js"),
+    ]);
     const noir = new Noir(circuit as never);
     const { witness: compressedWitness } = await noir.execute(inputs as never);
     const witnessStack = decompressWitnessStack(compressedWitness);
