@@ -20,4 +20,9 @@ describe("index.html runtime contract", () => {
     expect(indexHtml).toContain('"@atheonxyz/verity"');
     expect(indexHtml).toContain('"provekit-inspector"');
   });
+
+  it("exposes passkey as a built-in circuit option", () => {
+    expect(indexHtml).toContain('data-circuit="passkey"');
+    expect(indexHtml).toContain("Passkey");
+  });
 });

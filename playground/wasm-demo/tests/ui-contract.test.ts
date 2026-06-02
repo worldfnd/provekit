@@ -21,6 +21,14 @@ describe("upload rules", () => {
   });
 });
 
+describe("built-in circuit names", () => {
+  it("includes passkey as a first-class non-custom circuit", async () => {
+    const { BUILT_IN_CIRCUITS } = await import("../src/app/types");
+
+    expect(BUILT_IN_CIRCUITS).toEqual(["sha256", "poseidon", "passkey"]);
+  });
+});
+
 describe("step visual state", () => {
   it("maps waiting, running, success, and failure text to the current UI contract", () => {
     expect(deriveStepVisualState("idle")).toEqual({

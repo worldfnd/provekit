@@ -6,8 +6,7 @@
  *   node scripts/setup.mjs
  *
  * Installs browser dependencies, builds the native CLI once, then prepares
- * both SHA256 and Poseidon circuits
- * into artifacts/sha256/ and artifacts/poseidon/ respectively.
+ * SHA256, Poseidon, and passkey circuits into artifacts/<name>/.
  */
 
 import { execSync, spawnSync } from "child_process";
@@ -16,7 +15,9 @@ import {
   mkdirSync,
   rmSync,
   copyFileSync,
+  cpSync,
   readFileSync,
+  readdirSync,
   writeFileSync,
 } from "fs";
 import { dirname, join, resolve } from "path";
@@ -29,6 +30,7 @@ const DEMO_DIR = resolve(__dirname, "..");
 const CIRCUITS = [
   { name: "sha256",   path: join(ROOT_DIR, "noir-examples/noir_sha256") },
   { name: "poseidon", path: join(ROOT_DIR, "noir-examples/poseidon-rounds") },
+  { name: "passkey",  path: join(ROOT_DIR, "noir-examples/passkey_p256") },
 ];
 
 // Colors for console output
@@ -79,6 +81,20 @@ function checkCommand(cmd, name) {
   return true;
 }
 
+function findWorkerHelper(snippetsDir) {
+  for (const entry of readdirSync(snippetsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !entry.name.startsWith("wasm-bindgen-rayon-")) {
+      continue;
+    }
+    const workerHelperPath = join(snippetsDir, entry.name, "src/workerHelpers.js");
+    if (existsSync(workerHelperPath)) {
+      return workerHelperPath;
+    }
+  }
+
+  throw new Error(`Could not find wasm-bindgen-rayon worker helper in ${snippetsDir}`);
+}
+
 /**
  * Get circuit name from Nargo.toml
  */
@@ -101,7 +117,7 @@ async function buildShared() {
   log("\n🔧 ProveKit Browser Demo Setup\n", colors.bright);
 
   // Check prerequisites
-  logStep("1/4", "Checking prerequisites...");
+  logStep("1/5", "Checking prerequisites...");
 
   if (!checkCommand("nargo", "Noir (nargo)")) {
     log(
@@ -118,7 +134,15 @@ async function buildShared() {
   }
   logSuccess("cargo found");
 
-  logStep("2/4", "Installing browser dependencies...");
+  if (!checkCommand("wasm-bindgen", "wasm-bindgen CLI")) {
+    log(
+      "\nInstall wasm-bindgen CLI:\n  cargo install wasm-bindgen-cli --version 0.2.100"
+    );
+    process.exit(1);
+  }
+  logSuccess("wasm-bindgen found");
+
+  logStep("2/5", "Installing browser dependencies...");
   if (!run("npm install --legacy-peer-deps", { cwd: DEMO_DIR })) {
     process.exit(1);
   }
@@ -133,8 +157,36 @@ async function buildShared() {
   }
   logSuccess("Removed stale demo-local runtime asset directories");
 
+  logStep("3/5", "Building local ProveKit WASM runtime...");
+  if (!run("cargo build --release --target wasm32-unknown-unknown -p provekit-wasm -Z build-std=panic_abort,std", { cwd: ROOT_DIR })) {
+    process.exit(1);
+  }
+  if (!run("wasm-bindgen --target web --out-dir tooling/provekit-wasm/pkg target/wasm32-unknown-unknown/release/provekit_wasm.wasm", { cwd: ROOT_DIR })) {
+    process.exit(1);
+  }
+
+  const wasmPkgDir = join(ROOT_DIR, "tooling/provekit-wasm/pkg");
+  const verityWasmDir = join(DEMO_DIR, "node_modules/@atheonxyz/verity/dist/wasm");
+  for (const file of [
+    "provekit_wasm.js",
+    "provekit_wasm.d.ts",
+    "provekit_wasm_bg.wasm",
+    "provekit_wasm_bg.wasm.d.ts",
+  ]) {
+    copyFileSync(join(wasmPkgDir, file), join(verityWasmDir, file));
+  }
+  rmSync(join(verityWasmDir, "snippets"), { recursive: true, force: true });
+  cpSync(join(wasmPkgDir, "snippets"), join(verityWasmDir, "snippets"), { recursive: true });
+  const workerHelperPath = findWorkerHelper(join(verityWasmDir, "snippets"));
+  const workerHelper = readFileSync(workerHelperPath, "utf-8");
+  writeFileSync(
+    workerHelperPath,
+    workerHelper.replace("await import('../../..')", "await import('../../../../provekit_wasm.js')")
+  );
+  logSuccess("Demo runtime updated from local provekit-wasm build");
+
   // Build native CLI
-  logStep("3/4", "Building native CLI...");
+  logStep("4/5", "Building native CLI...");
   if (!run("cargo build --profile release-fast --bin provekit-cli", { cwd: ROOT_DIR })) {
     process.exit(1);
   }
@@ -182,7 +234,7 @@ async function prepareCircuit({ name, path: circuitDir }) {
 
   if (
     !run(
-      `${cliPath} prepare ${circuitDest} --pkp ${proverBinPath} --pkv ${verifierBinPath} --hash blake3`,
+      `${cliPath} prepare ${circuitDir} --pkp ${proverBinPath} --pkv ${verifierBinPath} --hash blake3 --skip-brillig-constraints-check`,
       { cwd: artifactsDir }
     )
   ) {
@@ -224,7 +276,7 @@ async function prepareCircuit({ name, path: circuitDir }) {
 async function main() {
   await buildShared();
 
-  logStep("4/4", `Preparing ${CIRCUITS.length} circuits...`);
+  logStep("5/5", `Preparing ${CIRCUITS.length} circuits...`);
   for (const circuit of CIRCUITS) {
     await prepareCircuit(circuit);
   }

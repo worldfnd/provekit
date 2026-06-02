@@ -39,7 +39,9 @@ export async function initializeRuntime(logSink: LogWriter): Promise<Verity> {
 
   let threadSetting: number | false = false;
 
-  if (isIos) {
+  if (!isMobile) {
+    logSink.log("Running in single-threaded mode for local ProveKit WASM compatibility");
+  } else if (isIos) {
     logSink.log("📱 iOS detected - WebKit WASM threading is unreliable");
     logSink.log("Running in single-threaded mode (optimized for iOS)");
   } else if (!hasSharedArrayBuffer) {
