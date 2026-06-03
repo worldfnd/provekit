@@ -2,6 +2,7 @@ import * as ProvekitInspector from "provekit-inspector";
 import { createProveKit, type ProveKit, type ProveKitScheme, type WitnessProvider, type Proof as SdkProof } from "provekit-sdk";
 
 import { ArtifactLoader } from "./app/artifact-loader.js";
+import { BackendComparisonController } from "./app/backend-comparison.js";
 import { ChecklistPresenter } from "./app/checklist.js";
 import { CircuitController } from "./app/circuit-controller.js";
 import { collectDom } from "./app/dom.js";
@@ -129,6 +130,17 @@ class DemoApp {
     disposeActiveVerifier: () => this.disposeActiveVerifier(),
     refreshRunButton: () => this.circuits.refreshRunButton(),
   });
+  private readonly comparison = new BackendComparisonController({
+    dom: this.dom,
+    state: this.state,
+    logs: {
+      log: (message, type) => this.logs.log(message, type),
+      logMemory: (label, extras) => this.logMemory(label, extras),
+    },
+    artifacts: this.artifacts,
+    loadSchemes: (proverBytes, verifierBytes, mavrosArtifacts) => this.loadSchemes(proverBytes, verifierBytes, mavrosArtifacts),
+    waitForUi: () => this.waitForUi(),
+  });
   private readonly verifier = new VerifyController({
     dom: this.dom,
     state: this.state,
@@ -140,6 +152,7 @@ class DemoApp {
   constructor() {
     this.bindEvents();
     this.circuits.applyCircuit("passkey", false);
+    this.comparison.reset();
     void this.initialize();
   }
 
@@ -154,6 +167,10 @@ class DemoApp {
       void this.copyLogs();
     });
     this.circuits.bind();
+    this.dom.circuitButtons.forEach((button) => {
+      button.addEventListener("click", () => this.comparison.reset());
+    });
+    this.comparison.bind();
   }
 
   private async initialize(): Promise<void> {
@@ -169,6 +186,7 @@ class DemoApp {
       this.state.wasmReady = true;
       this.steps.setStatus(1, stepStatus.success("Loaded"));
       this.circuits.refreshRunButton();
+      this.comparison.refresh();
     } catch (error) {
       this.logs.log(`Error initializing proof runtime: ${getErrorMessage(error)}`, "error");
       this.steps.setStatus(1, stepStatus.error("Failed"));

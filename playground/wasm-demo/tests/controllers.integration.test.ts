@@ -27,6 +27,9 @@ function renderFixture(): void {
     <input id="fileInput" />
     <button id="btnSelectFiles"></button>
     <svg id="copyLogBtn" stroke="#555"></svg>
+    <button id="compareBtn" disabled></button>
+    <div id="comparisonStatus"></div>
+    <table><tbody id="comparisonBody"></tbody></table>
     <button class="circuit-btn active" data-circuit="passkey"></button>
     <button class="circuit-btn" data-circuit="webauthn"></button>
     ${[1, 2, 3, 4, 5].map((step) => `

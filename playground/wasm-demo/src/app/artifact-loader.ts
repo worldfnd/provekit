@@ -1,6 +1,6 @@
 import { parseSimpleToml } from "../../shared/toml-parser.mjs";
 
-import type { CircuitMetadata, CircuitName, CustomFiles, DiagnosticsWriter } from "./types.js";
+import type { BackendStatus, CircuitMetadata, CircuitName, CustomFiles, DiagnosticsWriter } from "./types.js";
 
 export interface ArtifactBundle {
   proverBytes: Uint8Array;
@@ -30,6 +30,18 @@ async function loadInputsJson(base: string): Promise<Record<string, unknown>> {
   return (await response.json()) as Record<string, unknown>;
 }
 
+async function loadBackendStatus(base: string): Promise<BackendStatus | null> {
+  try {
+    const response = await fetch(`${base}backend-status.json`);
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as BackendStatus;
+  } catch {
+    return null;
+  }
+}
+
 async function loadOptionalBytes(path: string): Promise<Uint8Array | undefined> {
   const response = await fetch(path);
   if (!response.ok) {
@@ -51,8 +63,43 @@ export class ArtifactLoader {
   async loadArtifacts(circuit: CircuitName, customFiles: CustomFiles): Promise<ArtifactBundle> {
     const bundle = circuit === "custom"
       ? await this.loadCustomArtifacts(customFiles)
-      : await this.loadBuiltInArtifacts(circuit);
+      : await this.loadArtifactSet(circuit);
 
+    return this.withStats(bundle);
+  }
+
+  async loadArtifactsById(artifactId: string): Promise<ArtifactBundle> {
+    return this.withStats(await this.loadArtifactSet(artifactId));
+  }
+
+  async loadInputs(circuit: CircuitName, customFiles: CustomFiles): Promise<Record<string, unknown>> {
+    if (circuit !== "custom") {
+      this.logs.log("Loading inputs...");
+      return this.loadInputsById(circuit);
+    }
+
+    const inputsFile = customFiles.inputs;
+    if (!inputsFile) {
+      throw new Error("Upload inputs.json or Prover.toml before running the custom circuit.");
+    }
+
+    if (inputsFile.name.toLowerCase().endsWith(".toml")) {
+      this.logs.log("Parsing Prover.toml...");
+      return parseSimpleToml(await inputsFile.text()) as Record<string, unknown>;
+    }
+
+    return JSON.parse(await inputsFile.text()) as Record<string, unknown>;
+  }
+
+  async loadInputsById(artifactId: string): Promise<Record<string, unknown>> {
+    return loadInputsJson(`artifacts/${artifactId}/`);
+  }
+
+  async loadStatusById(artifactId: string): Promise<BackendStatus | null> {
+    return loadBackendStatus(`artifacts/${artifactId}/`);
+  }
+
+  private async withStats(bundle: ArtifactBundle): Promise<ArtifactBundle> {
     logBinarySize(this.logs, "Prover artifact", bundle.proverBytes);
     logBinarySize(this.logs, "Verifier artifact", bundle.verifierBytes);
     this.logs.logMemory("After loading artifacts", {
@@ -77,28 +124,13 @@ export class ArtifactLoader {
     };
   }
 
-  async loadInputs(circuit: CircuitName, customFiles: CustomFiles): Promise<Record<string, unknown>> {
-    if (circuit !== "custom") {
-      this.logs.log("Loading inputs...");
-      return loadInputsJson(`artifacts/${circuit}/`);
-    }
-
-    const inputsFile = customFiles.inputs;
-    if (!inputsFile) {
-      throw new Error("Upload inputs.json or Prover.toml before running the custom circuit.");
-    }
-
-    if (inputsFile.name.toLowerCase().endsWith(".toml")) {
-      this.logs.log("Parsing Prover.toml...");
-      return parseSimpleToml(await inputsFile.text()) as Record<string, unknown>;
-    }
-
-    return JSON.parse(await inputsFile.text()) as Record<string, unknown>;
-  }
-
-  private async loadBuiltInArtifacts(circuit: Exclude<CircuitName, "custom">): Promise<ArtifactBundle> {
-    const base = `artifacts/${circuit}/`;
+  private async loadArtifactSet(artifactId: string): Promise<ArtifactBundle> {
+    const base = `artifacts/${artifactId}/`;
     const metadata = await loadMetadata(base);
+    const status = await loadBackendStatus(base);
+    if (status && !status.available) {
+      throw new Error(status.error ?? `${status.label ?? artifactId} artifacts are unavailable.`);
+    }
 
     this.logs.log(`Circuit: ${metadata?.name ?? "unknown"}`);
     this.logs.log("Loading prover (.pkp) and verifier (.pkv) artifacts...");

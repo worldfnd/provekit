@@ -591,6 +591,82 @@
       color: var(--accent-cyan);
     }
 
+    /* === Backend Comparison === */
+    .comparison-panel {
+      margin-bottom: 48px;
+    }
+    .comparison-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    .comparison-copy {
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      line-height: 1.5;
+      margin: 0;
+    }
+    .comparison-status {
+      color: var(--text-dark);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      margin-bottom: 14px;
+    }
+    .comparison-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+    }
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 760px;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+    }
+    .comparison-table th,
+    .comparison-table td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--card-border);
+      text-align: left;
+      vertical-align: top;
+    }
+    .comparison-table th {
+      color: var(--text-muted);
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: rgba(255, 255, 255, 0.02);
+    }
+    .comparison-table tr:last-child td {
+      border-bottom: none;
+    }
+    .comparison-row td:first-child {
+      color: var(--text-main);
+      font-weight: 700;
+    }
+    .comparison-success td:nth-child(2) { color: var(--success); }
+    .comparison-running td:nth-child(2) { color: var(--accent-cyan); }
+    .comparison-unavailable td:nth-child(2),
+    .comparison-error td:nth-child(2) {
+      color: var(--error);
+      white-space: normal;
+      word-break: break-word;
+    }
+    #compareBtn {
+      flex: 0 0 auto;
+      min-width: 170px;
+      background: #1A1D24;
+      color: var(--text-main);
+      border: 1px solid var(--divider);
+    }
+    #compareBtn:hover:not(:disabled) {
+      border-color: rgba(0, 229, 255, 0.5);
+      color: var(--accent-cyan);
+    }
+
     /* === Footer === */
     footer {
       display: flex;
@@ -666,6 +742,13 @@
       .actions-area {
         flex-direction: column;
         gap: 12px;
+      }
+      .comparison-header {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      #compareBtn {
+        width: 100%;
       }
       .terminal-card {
         height: 400px;
@@ -881,6 +964,35 @@
         <div class="metric-value cyan" id="witnessesUi">-</div>
       </div>
     </div>
+
+    <section class="card comparison-panel" id="comparisonPanel">
+      <div class="comparison-header">
+        <div>
+          <h2 class="card-title">BACKEND COMPARISON</h2>
+          <p class="comparison-copy">Mavros main is compared with the ACIR / ProveKit v1 path for the selected circuit.</p>
+        </div>
+        <button id="compareBtn" class="btn-action" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-7"/></svg>
+          RUN COMPARISON
+        </button>
+      </div>
+      <div class="comparison-status" id="comparisonStatus">Loading runtime...</div>
+      <div class="comparison-table-wrap">
+        <table class="comparison-table">
+          <thead>
+            <tr>
+              <th>Backend</th>
+              <th>Status</th>
+              <th>Proving Time</th>
+              <th>Constraints</th>
+              <th>Time Delta</th>
+              <th>Constraint Delta</th>
+            </tr>
+          </thead>
+          <tbody id="comparisonBody"></tbody>
+        </table>
+      </div>
+    </section>
 
 
 

@@ -15,6 +15,8 @@ export interface DiagnosticsWriter extends LogWriter {
   logMemory(label: string, extras?: Record<string, unknown>): void;
 }
 
+export type BackendId = "acir" | "mavros";
+
 export type CustomFiles = UploadState;
 
 export interface AppState {
@@ -27,6 +29,15 @@ export interface AppState {
 
 export interface CircuitMetadata {
   name?: string;
+  backend?: BackendId;
+  label?: string;
   constraints?: number;
   witnesses?: number;
+}
+
+export interface BackendStatus {
+  available: boolean;
+  backend?: BackendId;
+  label?: string;
+  error?: string;
 }

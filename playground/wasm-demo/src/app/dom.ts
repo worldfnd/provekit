@@ -32,6 +32,9 @@ export interface DemoDom {
   readonly fileInput: HTMLInputElement;
   readonly selectFilesButton: HTMLButtonElement;
   readonly copyLogsButton: HTMLElement;
+  readonly compareButton: HTMLButtonElement;
+  readonly comparisonStatus: HTMLElement;
+  readonly comparisonBody: HTMLElement;
   readonly circuitButtons: HTMLButtonElement[];
   readonly steps: StepElements[];
   readonly checklist: Record<UploadKey, ChecklistElements>;
@@ -92,6 +95,9 @@ export function collectDom(document: Document): DemoDom {
     fileInput: requireElement(document, "fileInput"),
     selectFilesButton: requireElement(document, "btnSelectFiles"),
     copyLogsButton: requireElement(document, "copyLogBtn"),
+    compareButton: requireElement(document, "compareBtn"),
+    comparisonStatus: requireElement(document, "comparisonStatus"),
+    comparisonBody: requireElement(document, "comparisonBody"),
     circuitButtons: Array.from(document.querySelectorAll<HTMLButtonElement>(".circuit-btn")),
     steps: [1, 2, 3, 4, 5].map((stepNumber) => collectStep(document, stepNumber)),
     checklist: {

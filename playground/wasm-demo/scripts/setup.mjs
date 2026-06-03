@@ -16,6 +16,7 @@ import {
   rmSync,
   copyFileSync,
   readFileSync,
+  readdirSync,
   writeFileSync,
 } from "fs";
 import { dirname, join, resolve } from "path";
@@ -25,6 +26,7 @@ import { parseSimpleToml } from "../shared/toml-parser.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, "../../..");
 const DEMO_DIR = resolve(__dirname, "..");
+const MAVROS_REV = "171483ed4b88971feb4f958b6e7860b34a216b2d";
 const CIRCUITS = [
   { name: "passkey", path: join(ROOT_DIR, "noir-examples/passkey_p256") },
   { name: "webauthn", path: join(ROOT_DIR, "playground/noir-webauthn-demo") },
@@ -69,6 +71,34 @@ function run(cmd, opts = {}) {
   }
 }
 
+function truncateOutput(output) {
+  const text = String(output ?? "").trim();
+  if (text.length <= 800) {
+    return text;
+  }
+  return `...${text.slice(-800)}`;
+}
+
+function runArgs(args, opts = {}) {
+  log(`  $ ${args.map(shellQuote).join(" ")}`, colors.yellow);
+  const result = spawnSync(args[0], args.slice(1), {
+    encoding: "utf-8",
+    stdio: "pipe",
+    ...opts,
+  });
+  if (result.stdout) {
+    process.stdout.write(result.stdout);
+  }
+  if (result.stderr) {
+    process.stderr.write(result.stderr);
+  }
+  return {
+    ok: result.status === 0,
+    output: [result.stdout, result.stderr].filter(Boolean).join("\n"),
+    status: result.status,
+  };
+}
+
 function shellQuote(value) {
   return `'${String(value).replaceAll("'", "'\\''")}'`;
 }
@@ -100,6 +130,63 @@ function resolvePackageRunner() {
   }
 
   return "npm";
+}
+
+function findMavrosManifest() {
+  if (process.env.MAVROS_MANIFEST && existsSync(process.env.MAVROS_MANIFEST)) {
+    return process.env.MAVROS_MANIFEST;
+  }
+
+  const checkoutsDir = join(process.env.HOME ?? "", ".cargo/git/checkouts");
+  if (!existsSync(checkoutsDir)) {
+    return null;
+  }
+
+  for (const repoDir of readdirSync(checkoutsDir)) {
+    if (!repoDir.startsWith("mavros-")) {
+      continue;
+    }
+    const repoPath = join(checkoutsDir, repoDir);
+    for (const revDir of readdirSync(repoPath)) {
+      if (!MAVROS_REV.startsWith(revDir) && !revDir.startsWith(MAVROS_REV.slice(0, 7))) {
+        continue;
+      }
+      const manifest = join(repoPath, revDir, "Cargo.toml");
+      if (existsSync(manifest)) {
+        return manifest;
+      }
+    }
+  }
+
+  return null;
+}
+
+function findMavrosCommand() {
+  if (process.env.MAVROS_BIN && existsSync(process.env.MAVROS_BIN)) {
+    return [process.env.MAVROS_BIN];
+  }
+
+  const manifest = findMavrosManifest();
+  if (!manifest) {
+    return null;
+  }
+
+  for (const profile of ["release", "debug"]) {
+    const candidate = join(dirname(manifest), "target", profile, "mavros");
+    if (existsSync(candidate)) {
+      return [candidate];
+    }
+  }
+
+  return [
+    "cargo",
+    "+stable",
+    "run",
+    "--manifest-path", manifest,
+    "-p", "mavros-compiler",
+    "--bin", "mavros",
+    "--",
+  ];
 }
 
 /**
@@ -162,7 +249,40 @@ async function buildShared() {
   logSuccess("Native CLI built");
 }
 
-async function prepareCircuit({ name, path: circuitDir }) {
+function writeInputsAndMetadata({ artifactsDir, circuitDir, circuitName, backend, label }) {
+  const proverTomlSrc = join(circuitDir, "Prover.toml");
+  const proverTomlDest = join(artifactsDir, "Prover.toml");
+  copyFileSync(proverTomlSrc, proverTomlDest);
+  logSuccess("Prover.toml copied");
+
+  const tomlContent = readFileSync(proverTomlSrc, "utf-8");
+  const inputs = parseSimpleToml(tomlContent);
+  const inputsJsonPath = join(artifactsDir, "inputs.json");
+  writeFileSync(inputsJsonPath, JSON.stringify(inputs, null, 2));
+  logSuccess("inputs.json created");
+
+  const metadataPath = join(artifactsDir, "metadata.json");
+  writeFileSync(
+    metadataPath,
+    JSON.stringify(
+      {
+        name: circuitName,
+        path: circuitDir,
+        backend,
+        label,
+      },
+      null,
+      2
+    )
+  );
+  logSuccess("metadata.json created");
+}
+
+function writeBackendStatus(artifactsDir, status) {
+  writeFileSync(join(artifactsDir, "backend-status.json"), JSON.stringify(status, null, 2));
+}
+
+async function prepareAcirCircuit({ name, path: circuitDir }) {
   const artifactsDir = join(DEMO_DIR, "artifacts", name);
   if (!existsSync(artifactsDir)) {
     mkdirSync(artifactsDir, { recursive: true });
@@ -175,7 +295,7 @@ async function prepareCircuit({ name, path: circuitDir }) {
   }
 
   const circuitName = getCircuitName(circuitDir);
-  log(`\n📦 Preparing circuit: ${name} (${circuitName})`, colors.bright);
+  log(`\n📦 Preparing ACIR circuit: ${name} (${circuitName})`, colors.bright);
   log(`   Path: ${circuitDir}`);
 
   // Prepare prover/verifier artifacts
@@ -210,40 +330,122 @@ async function prepareCircuit({ name, path: circuitDir }) {
 
   // Copy Prover.toml and convert to inputs.json
   logStep(`${name}`, "Preparing inputs...");
-  const proverTomlSrc = join(circuitDir, "Prover.toml");
-  const proverTomlDest = join(artifactsDir, "Prover.toml");
-  copyFileSync(proverTomlSrc, proverTomlDest);
-  logSuccess("Prover.toml copied");
+  writeInputsAndMetadata({
+    artifactsDir,
+    circuitDir,
+    circuitName,
+    backend: "acir",
+    label: "ACIR / ProveKit v1",
+  });
+  writeBackendStatus(artifactsDir, {
+    available: true,
+    backend: "acir",
+    label: "ACIR / ProveKit v1",
+  });
+}
 
-  // Convert Prover.toml to inputs.json for browser demo
-  const tomlContent = readFileSync(proverTomlSrc, "utf-8");
-  const inputs = parseSimpleToml(tomlContent);
-  const inputsJsonPath = join(artifactsDir, "inputs.json");
-  writeFileSync(inputsJsonPath, JSON.stringify(inputs, null, 2));
-  logSuccess("inputs.json created");
+async function prepareMavrosCircuit({ name, path: circuitDir }) {
+  const artifactsDir = join(DEMO_DIR, "artifacts", `${name}-mavros`);
+  rmSync(artifactsDir, { recursive: true, force: true });
+  mkdirSync(artifactsDir, { recursive: true });
 
-  // Save circuit metadata
-  const metadataPath = join(artifactsDir, "metadata.json");
-  writeFileSync(
-    metadataPath,
-    JSON.stringify(
-      {
-        name: circuitName,
-        path: circuitDir,
-      },
-      null,
-      2
-    )
-  );
-  logSuccess("metadata.json created");
+  if (!existsSync(circuitDir)) {
+    logError(`Circuit directory not found: ${circuitDir}`);
+    process.exit(1);
+  }
+
+  const circuitName = getCircuitName(circuitDir);
+  log(`\n📦 Preparing Mavros circuit: ${name} (${circuitName})`, colors.bright);
+  log(`   Path: ${circuitDir}`);
+
+  logStep(`${name}-mavros`, "Preparing inputs...");
+  writeInputsAndMetadata({
+    artifactsDir,
+    circuitDir,
+    circuitName,
+    backend: "mavros",
+    label: "Mavros main",
+  });
+
+  const mavrosCommand = findMavrosCommand();
+  if (!mavrosCommand) {
+    const error = `Mavros ${MAVROS_REV} checkout not found. Set MAVROS_BIN or MAVROS_MANIFEST to enable Mavros comparison artifacts.`;
+    logError(error);
+    writeBackendStatus(artifactsDir, {
+      available: false,
+      backend: "mavros",
+      label: "Mavros main",
+      error,
+    });
+    return;
+  }
+
+  const mavrosDir = join(artifactsDir, "mavros");
+  mkdirSync(mavrosDir, { recursive: true });
+  const basicPath = join(mavrosDir, "basic.json");
+  const r1csPath = join(mavrosDir, "r1cs.bin");
+
+  logStep(`${name}-mavros`, "Compiling Mavros basic/R1CS artifacts...");
+  const compileResult = runArgs([
+    ...mavrosCommand,
+    "compile",
+    circuitDir,
+    "--r1cs-output", r1csPath,
+    "--binary-output", basicPath,
+  ], { cwd: artifactsDir });
+  if (!compileResult.ok) {
+    const error = `Mavros compile failed: ${truncateOutput(compileResult.output)}`;
+    logError(error);
+    writeBackendStatus(artifactsDir, {
+      available: false,
+      backend: "mavros",
+      label: "Mavros main",
+      error,
+    });
+    return;
+  }
+
+  logStep(`${name}-mavros`, "Preparing prover/verifier artifacts...");
+  const cliPath = join(ROOT_DIR, "target/release-fast/provekit-cli");
+  const proverBinPath = join(artifactsDir, "prover.pkp");
+  const verifierBinPath = join(artifactsDir, "verifier.pkv");
+  const prepareResult = runArgs([
+    cliPath,
+    "prepare",
+    basicPath,
+    "--compiler", "mavros",
+    "--r1cs", r1csPath,
+    "--pkp", proverBinPath,
+    "--pkv", verifierBinPath,
+    "--hash", "blake3",
+  ], { cwd: artifactsDir });
+  if (!prepareResult.ok) {
+    const error = `ProveKit Mavros prepare failed: ${truncateOutput(prepareResult.output)}`;
+    logError(error);
+    writeBackendStatus(artifactsDir, {
+      available: false,
+      backend: "mavros",
+      label: "Mavros main",
+      error,
+    });
+    return;
+  }
+
+  writeBackendStatus(artifactsDir, {
+    available: false,
+    backend: "mavros",
+    label: "Mavros main",
+    error: "Mavros prover artifacts were prepared, but browser witgen.wasm/ad.wasm modules were not emitted by the available Mavros CLI.",
+  });
 }
 
 async function main() {
   await buildShared();
 
-  logStep("5/5", `Preparing ${CIRCUITS.length} circuits...`);
+  logStep("5/5", `Preparing ${CIRCUITS.length} circuits and comparison backends...`);
   for (const circuit of CIRCUITS) {
-    await prepareCircuit(circuit);
+    await prepareAcirCircuit(circuit);
+    await prepareMavrosCircuit(circuit);
   }
 
   log("\n\u2705 Setup complete!\n", colors.green + colors.bright);

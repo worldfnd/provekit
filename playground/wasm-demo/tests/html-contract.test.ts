@@ -28,4 +28,11 @@ describe("index.html runtime contract", () => {
     expect(indexHtml).toContain("Passkey");
     expect(indexHtml).toContain("WebAuthn");
   });
+
+  it("exposes the backend comparison panel", () => {
+    expect(indexHtml).toContain('id="compareBtn"');
+    expect(indexHtml).toContain('id="comparisonBody"');
+    expect(indexHtml).toContain("Mavros main");
+    expect(indexHtml).toContain("ACIR / ProveKit v1");
+  });
 });
