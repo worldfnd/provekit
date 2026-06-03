@@ -1,0 +1,8 @@
+[package]
+name = "noir_webauthn_demo"
+type = "bin"
+compiler_version = ">=1.0.0"
+authors = [""]
+
+[dependencies]
+webauthn = { path = "vendor/noir_webauthn" }
