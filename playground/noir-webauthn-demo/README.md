@@ -41,6 +41,8 @@ Upstream `verify_signature` checks that the base64url challenge appears at the
 given index inside `clientDataJSON`, computes the WebAuthn signed message
 digest, and verifies the P-256 ECDSA signature. This demo preserves that shape,
 but replaces the final ECDSA black box with explicit BigCurve constraints.
+The explicit ECDSA check rejects zero/out-of-range `r` and `s`, computes
+`R = (e / s)G + (r / s)Q`, and checks `R.x mod n == r`.
 
 ## Commands
 

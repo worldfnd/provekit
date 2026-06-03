@@ -65,16 +65,24 @@ fn verify_p256_signature(
         s[i] = signature[i + 32];
     }
 
-    let r_x = Secp256r1_Fq::from_be_bytes(r);
     let r = Secp256r1_Fr::from_be_bytes(r);
     let s = Secp256r1_Fr::from_be_bytes(s);
+    r.validate_in_field();
+    s.validate_in_field();
+    r.assert_is_not_equal(Secp256r1_Fr::zero());
+    s.assert_is_not_equal(Secp256r1_Fr::zero());
 
     let s_g = Secp256r1Scalar::from_bignum(message / s);
     let s_p = Secp256r1Scalar::from_bignum(r / s);
     let r_point = Secp256r1::evaluate_linear_expression([gen, public], [s_g, s_p], []);
 
+    let mut r_point_x = Secp256r1_Fr::zero();
+    for i in 0..Secp256r1_Fr::num_limbs(Secp256r1_Fr::zero()) {
+        r_point_x.set_limb(i, r_point.x.get_limb(i));
+    }
+
     assert(!r_point.is_infinity);
-    assert(r_point.x == r_x);
+    assert(r_point_x == r);
     assert(r_point.y == Secp256r1_Fq::from_be_bytes(r_point_y));
 }
 
