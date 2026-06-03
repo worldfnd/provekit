@@ -98,7 +98,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             "Unexpected witness length for R1CS instance"
         );
         ensure!(
-            witness_size <= 1 << self.m,
+            witness_size <= self.domain_size(),
             "R1CS witness length exceeds scheme capacity"
         );
         ensure!(

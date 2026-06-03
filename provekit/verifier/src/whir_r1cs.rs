@@ -109,7 +109,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 
         let blinding_eval = data_from_sumcheck_verifier.blinding_eval;
         let blinding_weights = expand_powers::<4>(&data_from_sumcheck_verifier.alpha);
-        let domain_size = 1usize << self.m;
+        let domain_size = self.domain_size();
         let blinding_covector = OffsetCovector::new(blinding_weights, self.w1_size, domain_size);
 
         let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if let Some(commitment_2) = commitment_2 {

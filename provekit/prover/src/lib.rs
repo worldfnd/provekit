@@ -30,8 +30,8 @@ pub(crate) mod bigint_mod;
 pub(crate) mod ec_arith;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
+mod logging;
 pub(crate) mod r1cs;
-mod tracing;
 mod whir_r1cs;
 mod witness;
 
@@ -185,7 +185,7 @@ impl Prove for NoirProver {
                 .collect::<Result<Vec<_>>>()?
         };
 
-        crate::tracing::log_commit_input("noir_w1", &w1, 1usize << self.whir_for_witness.m);
+        crate::logging::log_commit_input("noir_w1", &w1, self.whir_for_witness.domain_size());
         let commitment_1 = self
             .whir_for_witness
             .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
@@ -223,7 +223,7 @@ impl Prove for NoirProver {
                     .collect::<Result<Vec<_>>>()?
             };
 
-            crate::tracing::log_commit_input("noir_w2", &w2, 1usize << self.whir_for_witness.m);
+            crate::logging::log_commit_input("noir_w2", &w2, self.whir_for_witness.domain_size());
             let commitment_2 = self
                 .whir_for_witness
                 .commit(&mut merlin, num_witnesses, num_constraints, w2, false)
@@ -301,25 +301,17 @@ impl Prove for MavrosProver {
         let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 
         info!(
-            algebraic_size = self.witness_layout.algebraic_size,
-            multiplicities_size = self.witness_layout.multiplicities_size,
-            challenges_size = self.witness_layout.challenges_size,
-            tables_data_size = self.witness_layout.tables_data_size,
-            lookups_data_size = self.witness_layout.lookups_data_size,
-            pre_commitment_size = self.witness_layout.pre_commitment_size(),
-            post_commitment_size = self.witness_layout.post_commitment_size(),
-            total_witness_size = self.witness_layout.size(),
-            constraints_algebraic_size = self.constraints_layout.algebraic_size,
-            constraints_total_size = self.constraints_layout.size(),
-            scheme_domain_len = 1usize << self.whir_for_witness.m,
+            ?self.witness_layout,
+            ?self.constraints_layout,
+            scheme_domain_len = self.whir_for_witness.domain_size(),
             "Mavros witness layout"
         );
 
         let w1 = phase1.out_wit_pre_comm.clone();
-        crate::tracing::log_commit_input(
+        crate::logging::log_commit_input(
             "mavros_w1_pre_commitment",
             &w1,
-            1usize << self.whir_for_witness.m,
+            self.whir_for_witness.domain_size(),
         );
         let commitment_1 = self
             .whir_for_witness
@@ -346,10 +338,10 @@ impl Prove for MavrosProver {
 
             let mut witgen_result = witgen_result;
             let w2 = take(&mut witgen_result.out_wit_post_comm);
-            crate::tracing::log_commit_input(
+            crate::logging::log_commit_input(
                 "mavros_w2_post_commitment",
                 &w2,
-                1usize << self.whir_for_witness.m,
+                self.whir_for_witness.domain_size(),
             );
             let commitment_2 = self
                 .whir_for_witness
