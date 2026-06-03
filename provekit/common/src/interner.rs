@@ -4,7 +4,7 @@ use {
     std::collections::HashMap,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub struct Interner {
     #[serde(with = "serde_ark")]
     values: Vec<FieldElement>,
@@ -14,6 +14,16 @@ pub struct Interner {
     /// `intern` after deserialize.
     #[serde(skip)]
     index:  HashMap<FieldElement, usize>,
+}
+
+/// `index` is `#[serde(skip)]` and rebuilt lazily, so a roundtripped
+/// `Interner` has an empty map until the next `intern` call. Compare only
+/// the canonical `values` field — handles based on `values` indices are
+/// stable across map state, and the map is just an O(1) lookup cache.
+impl PartialEq for Interner {
+    fn eq(&self, other: &Self) -> bool {
+        self.values == other.values
+    }
 }
 
 impl Default for Interner {
