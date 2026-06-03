@@ -1,7 +1,10 @@
 import type { Proof, VerifierScheme } from "./proof-types.js";
 import type { UploadState } from "./upload-rules.js";
 
-export type CircuitName = "sha256" | "poseidon" | "custom";
+export const BUILT_IN_CIRCUITS = ["sha256", "poseidon", "passkey"] as const;
+
+export type BuiltInCircuitName = (typeof BUILT_IN_CIRCUITS)[number];
+export type CircuitName = BuiltInCircuitName | "custom";
 export type LogType = "info" | "success" | "warn" | "error";
 
 export interface LogWriter {

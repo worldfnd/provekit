@@ -35,6 +35,22 @@ function commandExists(cmd) {
   return spawnSync("which", [cmd], { stdio: "ignore" }).status === 0;
 }
 
+function resolvePackageRunner() {
+  if (process.env.PROVEKIT_JS_RUNNER) {
+    return process.env.PROVEKIT_JS_RUNNER;
+  }
+  if (commandExists("bun")) {
+    return "bun";
+  }
+
+  const homeBun = join(process.env.HOME ?? "", ".bun/bin/bun");
+  if (existsSync(homeBun)) {
+    return homeBun;
+  }
+
+  return "npm";
+}
+
 function patchRayonWorkerImport() {
   const snippetsDir = join(OUT_DIR, "snippets");
   if (!existsSync(snippetsDir)) {
@@ -63,7 +79,7 @@ function patchRayonWorkerImport() {
 }
 
 function stageSdk() {
-  run("npm run build", { cwd: SDK_DIR });
+  run(`${resolvePackageRunner()} run build`, { cwd: SDK_DIR });
   rmSync(SDK_OUT_DIR, { recursive: true, force: true });
   mkdirSync(SDK_OUT_DIR, { recursive: true });
   cpSync(SDK_DIST_DIR, SDK_OUT_DIR, { recursive: true });

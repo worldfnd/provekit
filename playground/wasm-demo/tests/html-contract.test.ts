@@ -21,4 +21,9 @@ describe("index.html runtime contract", () => {
     expect(indexHtml).toContain('"provekit-inspector"');
     expect(indexHtml).toContain('"provekit-sdk"');
   });
+
+  it("exposes passkey as a built-in circuit option", () => {
+    expect(indexHtml).toContain('data-circuit="passkey"');
+    expect(indexHtml).toContain("Passkey");
+  });
 });

@@ -29,6 +29,7 @@ function renderFixture(): void {
     <svg id="copyLogBtn" stroke="#555"></svg>
     <button class="circuit-btn active" data-circuit="sha256"></button>
     <button class="circuit-btn" data-circuit="poseidon"></button>
+    <button class="circuit-btn" data-circuit="passkey"></button>
     <button class="circuit-btn" data-circuit="custom"></button>
     ${[1, 2, 3, 4, 5].map((step) => `
       <div id="step${step}-container" class="step-item">
@@ -116,6 +117,18 @@ describe("CircuitController", () => {
     expect(dom.verifyButton.disabled).toBe(true);
     expect(dom.proofCard.style.display).toBe("none");
     expect(dom.steps[0].status.textContent).toBe("Waiting...");
+  });
+
+  it("treats passkey as a built-in P-256 circuit ready to run after runtime load", () => {
+    const { controller, dom, state } = setupCircuitHarness("sha256");
+
+    controller.applyCircuit("passkey", false);
+
+    expect(state.activeCircuit).toBe("passkey");
+    expect(dom.customConfigPanel.style.display).toBe("none");
+    expect(dom.runButton.disabled).toBe(false);
+    expect(dom.circuitDescription.textContent).toContain("P-256 passkey signature");
+    expect(dom.stepsTitle.textContent).toBe("PROOF GENERATION STEPS [PASSKEY]");
   });
 
   it("unlocks custom proving only after all required files are uploaded", () => {

@@ -3,11 +3,10 @@
  * Setup script for the ProveKit browser demo.
  *
  * Usage:
- *   node scripts/setup.mjs
+ *   bun scripts/setup.mjs
  *
  * Installs browser dependencies, builds the browser WASM package and native
- * CLI once, then prepares both SHA256 and Poseidon circuits into
- * artifacts/sha256/ and artifacts/poseidon/ respectively.
+ * CLI once, then prepares the built-in circuits under artifacts/<name>/.
  */
 
 import { execSync, spawnSync } from "child_process";
@@ -29,6 +28,7 @@ const DEMO_DIR = resolve(__dirname, "..");
 const CIRCUITS = [
   { name: "sha256",   path: join(ROOT_DIR, "noir-examples/noir_sha256") },
   { name: "poseidon", path: join(ROOT_DIR, "noir-examples/poseidon-rounds") },
+  { name: "passkey",  path: join(ROOT_DIR, "noir-examples/passkey_p256") },
 ];
 
 // Colors for console output
@@ -70,6 +70,10 @@ function run(cmd, opts = {}) {
   }
 }
 
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
 function checkCommand(cmd, name) {
   const result = spawnSync("which", [cmd], { stdio: "pipe" });
   if (result.status !== 0) {
@@ -77,6 +81,26 @@ function checkCommand(cmd, name) {
     return false;
   }
   return true;
+}
+
+function commandExists(cmd) {
+  return spawnSync("which", [cmd], { stdio: "ignore" }).status === 0;
+}
+
+function resolvePackageRunner() {
+  if (process.env.PROVEKIT_JS_RUNNER) {
+    return process.env.PROVEKIT_JS_RUNNER;
+  }
+  if (commandExists("bun")) {
+    return "bun";
+  }
+
+  const homeBun = join(process.env.HOME ?? "", ".bun/bin/bun");
+  if (existsSync(homeBun)) {
+    return homeBun;
+  }
+
+  return "npm";
 }
 
 /**
@@ -102,16 +126,6 @@ async function buildShared() {
 
   // Check prerequisites
   logStep("1/5", "Checking prerequisites...");
-
-  if (!checkCommand("nargo", "Noir (nargo)")) {
-    log(
-      "\nInstall Noir:\n  curl -L https://raw.githubusercontent.com/noir-lang/noirup/refs/heads/main/install | bash"
-    );
-    log("  noirup --version v1.0.0-beta.19");
-    process.exit(1);
-  }
-  logSuccess("nargo found");
-
   if (!checkCommand("cargo", "Rust (cargo)")) {
     log("\nInstall Rust: https://rustup.rs");
     process.exit(1);
@@ -119,7 +133,9 @@ async function buildShared() {
   logSuccess("cargo found");
 
   logStep("2/5", "Installing browser dependencies...");
-  if (!run("npm install --legacy-peer-deps", { cwd: DEMO_DIR })) {
+  const packageRunner = resolvePackageRunner();
+  const installCommand = packageRunner.endsWith("npm") ? `${packageRunner} install --legacy-peer-deps` : `${packageRunner} install`;
+  if (!run(installCommand, { cwd: DEMO_DIR })) {
     process.exit(1);
   }
 
@@ -134,7 +150,7 @@ async function buildShared() {
   logSuccess("Removed stale demo-local runtime asset directories");
 
   logStep("3/5", "Building browser WASM package...");
-  if (!run("node scripts/build-provekit-wasm.mjs", { cwd: DEMO_DIR })) {
+  if (!run(`${shellQuote(packageRunner)} run wasm:build`, { cwd: DEMO_DIR })) {
     process.exit(1);
   }
   logSuccess("Browser WASM package built");
@@ -163,32 +179,28 @@ async function prepareCircuit({ name, path: circuitDir }) {
   log(`\n📦 Preparing circuit: ${name} (${circuitName})`, colors.bright);
   log(`   Path: ${circuitDir}`);
 
-  // Compile Noir circuit
-  logStep(`${name}`, `Compiling Noir circuit (${circuitName})...`);
-  if (!run("nargo compile", { cwd: circuitDir })) {
-    process.exit(1);
-  }
-  logSuccess("Circuit compiled");
-
-  // Copy compiled circuit
-  const circuitSrc = join(circuitDir, `target/${circuitName}.json`);
-  const circuitDest = join(artifactsDir, "circuit.json");
-  if (!existsSync(circuitSrc)) {
-    logError(`Compiled circuit not found: ${circuitSrc}`);
-    process.exit(1);
-  }
-  copyFileSync(circuitSrc, circuitDest);
-  logSuccess(`Circuit artifact copied (${circuitName}.json -> circuit.json)`);
-
   // Prepare prover/verifier artifacts
   logStep(`${name}`, "Preparing prover/verifier artifacts...");
   const cliPath = join(ROOT_DIR, "target/release-fast/provekit-cli");
   const proverBinPath = join(artifactsDir, "prover.pkp");
   const verifierBinPath = join(artifactsDir, "verifier.pkv");
 
+  rmSync(join(artifactsDir, "mavros"), { recursive: true, force: true });
+  for (const staleModule of ["witgen.wasm", "witgen.wasm.meta.json", "witgen.ll", "ad.wasm", "ad.wasm.meta.json", "ad.ll"]) {
+    rmSync(join(artifactsDir, staleModule), { force: true });
+  }
+
   if (
     !run(
-      `${cliPath} prepare ${circuitDest} --pkp ${proverBinPath} --pkv ${verifierBinPath} --hash blake3`,
+      [
+        shellQuote(cliPath),
+        "prepare",
+        shellQuote(circuitDir),
+        "--pkp", shellQuote(proverBinPath),
+        "--pkv", shellQuote(verifierBinPath),
+        "--hash blake3",
+        "--skip-brillig-constraints-check",
+      ].join(" "),
       { cwd: artifactsDir }
     )
   ) {
@@ -237,7 +249,7 @@ async function main() {
 
   log("\n\u2705 Setup complete!\n", colors.green + colors.bright);
   log("Run the demo with:", colors.bright);
-  log("  npm run serve            # Build and start the browser demo server");
+  log("  bun run serve            # Build and start the browser demo server");
   log("  # Open http://localhost:8080\n");
 }
 

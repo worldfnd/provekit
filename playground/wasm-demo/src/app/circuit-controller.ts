@@ -8,6 +8,7 @@ import { classifyUpload, isCustomReady } from "./upload-rules.js";
 const CIRCUIT_DESCRIPTIONS: Record<CircuitName, string> = {
   sha256: "17 chained SHA-256 rounds over a 32-byte state.",
   poseidon: "Poseidon2 permutation × 1,000 rounds over 4 field elements.",
+  passkey: "P-256 passkey signature over a SHA-256 commitment to a private challenge secret.",
   custom: "Upload your own Noir circuit artifacts to benchmark proof generation and verification.",
 };
 

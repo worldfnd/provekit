@@ -4,14 +4,14 @@
   "description": "ProveKit WASM browser demo",
   "type": "module",
   "scripts": {
-    "setup": "node scripts/setup.mjs",
-    "wasm:build": "node scripts/build-provekit-wasm.mjs",
+    "setup": "export PATH=\"$HOME/.bun/bin:$PATH\"; bun scripts/setup.mjs",
+    "wasm:build": "export PATH=\"$HOME/.bun/bin:$PATH\"; bun scripts/build-provekit-wasm.mjs",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src tests vitest.config.ts",
-    "test": "vitest run",
-    "demo:web": "npm run wasm:build && npm run build && node scripts/serve.mjs",
-    "serve": "npm run wasm:build && npm run build && node scripts/serve.mjs",
+    "test": "export PATH=\"$HOME/.bun/bin:$PATH\"; bun --bun vitest run",
+    "demo:web": "export PATH=\"$HOME/.bun/bin:$PATH\"; bun run wasm:build && bun run build && bun scripts/serve.mjs",
+    "serve": "export PATH=\"$HOME/.bun/bin:$PATH\"; bun run wasm:build && bun run build && bun scripts/serve.mjs",
     "clean": "rm -rf dist artifacts vendor pkg pkg-web pkg-local"
   },
   "dependencies": {

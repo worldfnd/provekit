@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { deriveStepVisualState } from "../src/app/status-visuals";
+import { BUILT_IN_CIRCUITS } from "../src/app/types";
 import { classifyUpload, isCustomReady } from "../src/app/upload-rules";
 
 describe("upload rules", () => {
@@ -20,6 +21,12 @@ describe("upload rules", () => {
     expect(isCustomReady({}, true)).toBe(false);
     expect(isCustomReady({ prover: mockFile, verifier: mockFile, inputs: mockFile }, false)).toBe(false);
     expect(isCustomReady({ prover: mockFile, verifier: mockFile, inputs: mockFile }, true)).toBe(true);
+  });
+});
+
+describe("built-in circuit names", () => {
+  it("includes passkey as a first-class non-custom circuit", () => {
+    expect(BUILT_IN_CIRCUITS).toEqual(["sha256", "poseidon", "passkey"]);
   });
 });
 
