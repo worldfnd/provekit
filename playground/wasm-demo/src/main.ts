@@ -94,7 +94,7 @@ class DemoApp {
   private readonly witnessProvider = new BrowserWitnessProvider();
   private provekit: ProveKit | null = null;
   private readonly state: AppState = {
-    activeCircuit: "sha256",
+    activeCircuit: "passkey",
     customFiles: {},
     wasmReady: false,
     lastProof: null,
@@ -139,7 +139,7 @@ class DemoApp {
 
   constructor() {
     this.bindEvents();
-    this.circuits.applyCircuit("sha256", false);
+    this.circuits.applyCircuit("passkey", false);
     void this.initialize();
   }
 

@@ -22,8 +22,10 @@ describe("index.html runtime contract", () => {
     expect(indexHtml).toContain('"provekit-sdk"');
   });
 
-  it("exposes passkey as a built-in circuit option", () => {
+  it("exposes passkey and WebAuthn as built-in circuit options", () => {
     expect(indexHtml).toContain('data-circuit="passkey"');
+    expect(indexHtml).toContain('data-circuit="webauthn"');
     expect(indexHtml).toContain("Passkey");
+    expect(indexHtml).toContain("WebAuthn");
   });
 });

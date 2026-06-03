@@ -25,8 +25,8 @@ describe("upload rules", () => {
 });
 
 describe("built-in circuit names", () => {
-  it("includes passkey as a first-class non-custom circuit", () => {
-    expect(BUILT_IN_CIRCUITS).toEqual(["sha256", "poseidon", "passkey"]);
+  it("includes passkey and WebAuthn as first-class non-custom circuits", () => {
+    expect(BUILT_IN_CIRCUITS).toEqual(["passkey", "webauthn"]);
   });
 });
 

@@ -701,22 +701,16 @@
     <!-- Header -->
     <header class="page-header">
       <div class="header-text">
-        <h1>Benchmarking Dashboard</h1>
-        <p id="circuitDescription">SHA-256 over a 1024-byte input.</p>
+        <h1>Passkey Proof Dashboard</h1>
+        <p id="circuitDescription">P-256 passkey signature over a SHA-256 commitment to a private challenge secret.</p>
       </div>
       
       <div class="circuit-selector-group" id="circuitSelector">
-        <button class="circuit-btn active" data-circuit="sha256">
-          SHA256
-        </button>
-        <button class="circuit-btn" data-circuit="poseidon">
-          Poseidon
-        </button>
-        <button class="circuit-btn" data-circuit="passkey">
+        <button class="circuit-btn active" data-circuit="passkey">
           Passkey
         </button>
-        <button class="circuit-btn" data-circuit="custom">
-          Custom
+        <button class="circuit-btn" data-circuit="webauthn">
+          WebAuthn
         </button>
       </div>
     </header>

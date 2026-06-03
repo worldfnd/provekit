@@ -27,10 +27,8 @@ function renderFixture(): void {
     <input id="fileInput" />
     <button id="btnSelectFiles"></button>
     <svg id="copyLogBtn" stroke="#555"></svg>
-    <button class="circuit-btn active" data-circuit="sha256"></button>
-    <button class="circuit-btn" data-circuit="poseidon"></button>
-    <button class="circuit-btn" data-circuit="passkey"></button>
-    <button class="circuit-btn" data-circuit="custom"></button>
+    <button class="circuit-btn active" data-circuit="passkey"></button>
+    <button class="circuit-btn" data-circuit="webauthn"></button>
     ${[1, 2, 3, 4, 5].map((step) => `
       <div id="step${step}-container" class="step-item">
         <div id="step${step}-icon" class="step-icon">${step}</div>
@@ -48,7 +46,7 @@ function renderFixture(): void {
   `;
 }
 
-function createState(activeCircuit: CircuitName = "sha256"): AppState {
+function createState(activeCircuit: CircuitName = "passkey"): AppState {
   return {
     activeCircuit,
     customFiles: {},
@@ -71,7 +69,7 @@ function createLogs() {
   };
 }
 
-function setupCircuitHarness(activeCircuit: CircuitName = "sha256") {
+function setupCircuitHarness(activeCircuit: CircuitName = "passkey") {
   renderFixture();
   const dom = collectDom(document);
   const logs = createLogs();
@@ -110,9 +108,9 @@ describe("CircuitController", () => {
     dom.verifyButton.disabled = false;
     dom.proofCard.style.display = "block";
 
-    controller.applyCircuit("poseidon", false);
+    controller.applyCircuit("webauthn", false);
 
-    expect(state.activeCircuit).toBe("poseidon");
+    expect(state.activeCircuit).toBe("webauthn");
     expect(state.customFiles).toEqual({});
     expect(dom.verifyButton.disabled).toBe(true);
     expect(dom.proofCard.style.display).toBe("none");
@@ -120,7 +118,7 @@ describe("CircuitController", () => {
   });
 
   it("treats passkey as a built-in P-256 circuit ready to run after runtime load", () => {
-    const { controller, dom, state } = setupCircuitHarness("sha256");
+    const { controller, dom, state } = setupCircuitHarness("webauthn");
 
     controller.applyCircuit("passkey", false);
 
@@ -132,7 +130,7 @@ describe("CircuitController", () => {
   });
 
   it("unlocks custom proving only after all required files are uploaded", () => {
-    const { controller, dom, state } = setupCircuitHarness("sha256");
+    const { controller, dom, state } = setupCircuitHarness("passkey");
     controller.bind();
     controller.applyCircuit("custom", false);
 
@@ -157,7 +155,7 @@ describe("CircuitController", () => {
 
   it("requires confirmation before accepting custom Mavros WASM artifacts", () => {
     const confirmSpy = vi.spyOn(globalThis, "confirm").mockReturnValue(false);
-    const { controller, dom, logs, state } = setupCircuitHarness("sha256");
+    const { controller, dom, logs, state } = setupCircuitHarness("passkey");
     controller.bind();
     controller.applyCircuit("custom", false);
 

@@ -26,9 +26,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, "../../..");
 const DEMO_DIR = resolve(__dirname, "..");
 const CIRCUITS = [
-  { name: "sha256",   path: join(ROOT_DIR, "noir-examples/noir_sha256") },
-  { name: "poseidon", path: join(ROOT_DIR, "noir-examples/poseidon-rounds") },
-  { name: "passkey",  path: join(ROOT_DIR, "noir-examples/passkey_p256") },
+  { name: "passkey", path: join(ROOT_DIR, "noir-examples/passkey_p256") },
+  { name: "webauthn", path: join(ROOT_DIR, "playground/noir-webauthn-demo") },
 ];
 
 // Colors for console output

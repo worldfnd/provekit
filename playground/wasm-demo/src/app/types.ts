@@ -1,7 +1,7 @@
 import type { Proof, VerifierScheme } from "./proof-types.js";
 import type { UploadState } from "./upload-rules.js";
 
-export const BUILT_IN_CIRCUITS = ["sha256", "poseidon", "passkey"] as const;
+export const BUILT_IN_CIRCUITS = ["passkey", "webauthn"] as const;
 
 export type BuiltInCircuitName = (typeof BUILT_IN_CIRCUITS)[number];
 export type CircuitName = BuiltInCircuitName | "custom";
