@@ -17,7 +17,9 @@ describe("index.html runtime contract", () => {
   });
 
   it("retains the browser import map required by the static-serve TypeScript path", () => {
-    expect(indexHtml).not.toContain('"@atheonxyz/verity"');
+    expect(indexHtml).toContain('"verity-provekit-wasm"');
+    expect(indexHtml).toContain('"@provekit-v1/noir_js"');
+    expect(indexHtml).toContain('"@provekit-v1/acvm_js"');
     expect(indexHtml).toContain('"provekit-inspector"');
     expect(indexHtml).toContain('"provekit-sdk"');
   });
@@ -33,6 +35,6 @@ describe("index.html runtime contract", () => {
     expect(indexHtml).toContain('id="compareBtn"');
     expect(indexHtml).toContain('id="comparisonBody"');
     expect(indexHtml).toContain("Mavros main");
-    expect(indexHtml).toContain("ACIR / ProveKit v1");
+    expect(indexHtml).toContain("ProveKit v1 ACIR (Verity WASM)");
   });
 });

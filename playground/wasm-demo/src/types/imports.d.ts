@@ -24,6 +24,37 @@ declare module "provekit-inspector" {
   }
 }
 
+declare module "verity-provekit-wasm" {
+  export default function initVerityProvekitWasm(moduleOrPath?: unknown): Promise<unknown>;
+  export function initPanicHook(): void;
+
+  export class Prover {
+    constructor(bytes: Uint8Array);
+    getCircuit(): Uint8Array;
+    proveBytes(witnessMap: Record<string, unknown>): Uint8Array;
+    free(): void;
+  }
+
+  export class Verifier {
+    constructor(bytes: Uint8Array);
+    verifyBytes(proof: Uint8Array): void;
+    free(): void;
+  }
+}
+
+declare module "@provekit-v1/noir_js" {
+  export class Noir {
+    constructor(circuit: never);
+    execute(inputs: never): Promise<{ witness: Uint8Array }>;
+  }
+}
+
+declare module "@provekit-v1/acvm_js" {
+  export function decompressWitnessStack(
+    witness: Uint8Array,
+  ): Array<{ witness: Map<number | string | { inner?: unknown }, unknown> }>;
+}
+
 declare module "provekit-sdk" {
   export type ProvingInput = Record<string, unknown>;
   export type BytesInput = Uint8Array | ArrayBuffer | ArrayBufferView | RequestInfo | URL | string;

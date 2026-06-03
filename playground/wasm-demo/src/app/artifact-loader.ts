@@ -1,6 +1,6 @@
 import { parseSimpleToml } from "../../shared/toml-parser.mjs";
 
-import type { BackendStatus, CircuitMetadata, CircuitName, CustomFiles, DiagnosticsWriter } from "./types.js";
+import type { BackendStatus, BuiltInCircuitName, CircuitMetadata, CircuitName, CustomFiles, DiagnosticsWriter } from "./types.js";
 
 export interface ArtifactBundle {
   proverBytes: Uint8Array;
@@ -8,6 +8,10 @@ export interface ArtifactBundle {
   witgenWasmBytes?: Uint8Array;
   adWasmBytes?: Uint8Array;
   metadata: CircuitMetadata | null;
+}
+
+export function builtInArtifactId(circuit: BuiltInCircuitName): string {
+  return `${circuit}-mavros`;
 }
 
 async function loadMetadata(base: string): Promise<CircuitMetadata | null> {
@@ -63,7 +67,7 @@ export class ArtifactLoader {
   async loadArtifacts(circuit: CircuitName, customFiles: CustomFiles): Promise<ArtifactBundle> {
     const bundle = circuit === "custom"
       ? await this.loadCustomArtifacts(customFiles)
-      : await this.loadArtifactSet(circuit);
+      : await this.loadArtifactSet(builtInArtifactId(circuit));
 
     return this.withStats(bundle);
   }
@@ -75,7 +79,7 @@ export class ArtifactLoader {
   async loadInputs(circuit: CircuitName, customFiles: CustomFiles): Promise<Record<string, unknown>> {
     if (circuit !== "custom") {
       this.logs.log("Loading inputs...");
-      return this.loadInputsById(circuit);
+      return this.loadInputsById(builtInArtifactId(circuit));
     }
 
     const inputsFile = customFiles.inputs;

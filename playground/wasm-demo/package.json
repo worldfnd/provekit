@@ -15,10 +15,13 @@
     "clean": "rm -rf dist artifacts vendor pkg pkg-web pkg-local"
   },
   "dependencies": {
+    "@atheonxyz/verity": "0.3.2-alpha",
     "@noir-lang/acvm_js": "1.0.0-beta.19",
     "@noir-lang/noir_js": "1.0.0-beta.19",
     "@noir-lang/noirc_abi": "1.0.0-beta.19",
     "@noir-lang/types": "1.0.0-beta.19",
+    "@provekit-v1/acvm_js": "npm:@noir-lang/acvm_js@1.0.0-beta.11",
+    "@provekit-v1/noir_js": "npm:@noir-lang/noir_js@1.0.0-beta.11",
     "pako": "^2.1.0"
   },
   "devDependencies": {

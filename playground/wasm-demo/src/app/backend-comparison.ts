@@ -29,6 +29,10 @@ interface BackendComparisonDeps {
     verifierBytes: Uint8Array,
     provingModules?: { witnessBytes?: Uint8Array; derivativesBytes?: Uint8Array },
   ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }>;
+  loadVerityV1Schemes(
+    proverBytes: Uint8Array,
+    verifierBytes: Uint8Array,
+  ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }>;
   waitForUi(): Promise<void>;
 }
 
@@ -53,7 +57,7 @@ function escapeHtml(value: string): string {
     .replaceAll("'", "&#39;");
 }
 
-function targetsFor(circuit: "passkey" | "webauthn"): ComparisonTarget[] {
+export function targetsFor(circuit: "passkey" | "webauthn"): ComparisonTarget[] {
   return [
     {
       backend: "mavros",
@@ -61,9 +65,9 @@ function targetsFor(circuit: "passkey" | "webauthn"): ComparisonTarget[] {
       artifactId: `${circuit}-mavros`,
     },
     {
-      backend: "acir",
-      label: "ACIR / ProveKit v1",
-      artifactId: circuit,
+      backend: "verity-v1",
+      label: "ProveKit v1 ACIR (Verity WASM)",
+      artifactId: `${circuit}-v1`,
     },
   ];
 }
@@ -152,10 +156,12 @@ export class BackendComparisonController {
       this.deps.logs.log(`[${target.label}] Loading artifacts...`);
       const { proverBytes, verifierBytes, witgenWasmBytes, adWasmBytes, metadata } =
         await this.deps.artifacts.loadArtifactsById(target.artifactId);
-      ({ prover, verifier } = await this.deps.loadSchemes(proverBytes, verifierBytes, {
-        witnessBytes: witgenWasmBytes,
-        derivativesBytes: adWasmBytes,
-      }));
+      ({ prover, verifier } = target.backend === "verity-v1"
+        ? await this.deps.loadVerityV1Schemes(proverBytes, verifierBytes)
+        : await this.deps.loadSchemes(proverBytes, verifierBytes, {
+            witnessBytes: witgenWasmBytes,
+            derivativesBytes: adWasmBytes,
+          }));
 
       const inputs = await this.deps.artifacts.loadInputsById(target.artifactId);
       await this.deps.waitForUi();
@@ -198,18 +204,18 @@ export class BackendComparisonController {
   }
 
   private render(): void {
-    const acir = this.results.find((result) => result.target.backend === "acir" && result.status === "success");
+    const v1 = this.results.find((result) => result.target.backend === "verity-v1" && result.status === "success");
     const mavros = this.results.find((result) => result.target.backend === "mavros" && result.status === "success");
 
     this.deps.dom.comparisonBody.innerHTML = this.results.map((result) => {
-      const timeDelta = result === mavros && acir?.provingMs && result.provingMs
-        ? `${((result.provingMs - acir.provingMs) / 1000).toFixed(2)}s`
-        : result === acir
+      const timeDelta = result === mavros && v1?.provingMs && result.provingMs
+        ? `${((result.provingMs - v1.provingMs) / 1000).toFixed(2)}s`
+        : result === v1
           ? "baseline"
           : "-";
-      const constraintDelta = result === mavros && typeof acir?.constraints === "number" && typeof result.constraints === "number"
-        ? (result.constraints - acir.constraints).toLocaleString()
-        : result === acir
+      const constraintDelta = result === mavros && typeof v1?.constraints === "number" && typeof result.constraints === "number"
+        ? (result.constraints - v1.constraints).toLocaleString()
+        : result === v1
           ? "baseline"
           : "-";
 

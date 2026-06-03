@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { builtInArtifactId } from "../src/app/artifact-loader";
+import { targetsFor } from "../src/app/backend-comparison";
 import { deriveStepVisualState } from "../src/app/status-visuals";
 import { BUILT_IN_CIRCUITS } from "../src/app/types";
 import { classifyUpload, isCustomReady } from "../src/app/upload-rules";
@@ -27,6 +29,33 @@ describe("upload rules", () => {
 describe("built-in circuit names", () => {
   it("includes passkey and WebAuthn as first-class non-custom circuits", () => {
     expect(BUILT_IN_CIRCUITS).toEqual(["passkey", "webauthn"]);
+  });
+
+  it("routes built-in proving to patched-branch Mavros artifacts", () => {
+    expect(builtInArtifactId("passkey")).toBe("passkey-mavros");
+    expect(builtInArtifactId("webauthn")).toBe("webauthn-mavros");
+  });
+});
+
+describe("backend comparison targets", () => {
+  it("compares patched Mavros against distinct v1 Verity WASM artifacts", () => {
+    expect(targetsFor("passkey")).toEqual([
+      {
+        backend: "mavros",
+        label: "Mavros main",
+        artifactId: "passkey-mavros",
+      },
+      {
+        backend: "verity-v1",
+        label: "ProveKit v1 ACIR (Verity WASM)",
+        artifactId: "passkey-v1",
+      },
+    ]);
+
+    expect(targetsFor("webauthn").map(({ artifactId }) => artifactId)).toEqual([
+      "webauthn-mavros",
+      "webauthn-v1",
+    ]);
   });
 });
 

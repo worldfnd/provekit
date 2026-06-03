@@ -13,6 +13,7 @@ import { initializeRuntime, readCircuitStatsFromPkp } from "./app/proof-runtime.
 import { RunController } from "./app/run-controller.js";
 import { StepPresenter, stepStatus } from "./app/steps.js";
 import type { AppState } from "./app/types.js";
+import { loadVerityV1Schemes } from "./app/verity-v1-runtime.js";
 import { VerifyController } from "./app/verify-controller.js";
 
 function getErrorMessage(error: unknown): string {
@@ -139,6 +140,7 @@ class DemoApp {
     },
     artifacts: this.artifacts,
     loadSchemes: (proverBytes, verifierBytes, mavrosArtifacts) => this.loadSchemes(proverBytes, verifierBytes, mavrosArtifacts),
+    loadVerityV1Schemes: (proverBytes, verifierBytes) => this.loadVerityV1Schemes(proverBytes, verifierBytes),
     waitForUi: () => this.waitForUi(),
   });
   private readonly verifier = new VerifyController({
@@ -258,6 +260,17 @@ class DemoApp {
       prover: new SdkProverScheme(scheme),
       verifier: new SdkVerifierScheme(scheme),
     };
+  }
+
+  private async loadVerityV1Schemes(
+    proverBytes: Uint8Array,
+    verifierBytes: Uint8Array,
+  ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }> {
+    this.logs.log("Loading Verity ProveKit v1 WASM prover and verifier...");
+    const loadStart = performance.now();
+    const schemes = await loadVerityV1Schemes(proverBytes, verifierBytes);
+    this.logs.log(`Verity v1 scheme load time: ${(performance.now() - loadStart).toFixed(0)}ms`);
+    return schemes;
   }
 
   private async copyLogs(): Promise<void> {

@@ -17,7 +17,10 @@
       "@noir-lang/acvm_js": "./node_modules/@noir-lang/acvm_js/web/acvm_js.js",
       "@noir-lang/noirc_abi": "./node_modules/@noir-lang/noirc_abi/web/noirc_abi_wasm.js",
       "@noir-lang/types": "./node_modules/@noir-lang/types/lib/esm/types.js",
+      "@provekit-v1/noir_js": "./node_modules/@provekit-v1/noir_js/lib/index.mjs",
+      "@provekit-v1/acvm_js": "./node_modules/@provekit-v1/acvm_js/web/acvm_js.js",
       "pako": "./node_modules/pako/dist/pako.esm.mjs",
+      "verity-provekit-wasm": "./node_modules/@atheonxyz/verity/dist/wasm/provekit_wasm.js",
       "provekit-inspector": "./pkg-local/provekit_wasm.js",
       "provekit-sdk": "./pkg-local/provekit-sdk/index.js"
     }
@@ -969,7 +972,7 @@
       <div class="comparison-header">
         <div>
           <h2 class="card-title">BACKEND COMPARISON</h2>
-          <p class="comparison-copy">Mavros main is compared with the ACIR / ProveKit v1 path for the selected circuit.</p>
+          <p class="comparison-copy">Mavros main is compared with ProveKit v1 ACIR (Verity WASM) for the selected circuit.</p>
         </div>
         <button id="compareBtn" class="btn-action" disabled>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-7"/></svg>

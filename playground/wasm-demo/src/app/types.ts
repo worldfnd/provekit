@@ -15,7 +15,7 @@ export interface DiagnosticsWriter extends LogWriter {
   logMemory(label: string, extras?: Record<string, unknown>): void;
 }
 
-export type BackendId = "acir" | "mavros";
+export type BackendId = "acir" | "mavros" | "verity-v1";
 
 export type CustomFiles = UploadState;
 
