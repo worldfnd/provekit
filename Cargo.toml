@@ -14,6 +14,7 @@ members = [
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
   "tooling/provekit-gnark",
+  "tooling/provekit-wasm",
   "tooling/verifier-server",
   # "ntt",
 ]
@@ -105,6 +106,7 @@ provekit-prover = { path = "provekit/prover", version = "1.0.0" }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "1.0.0" }
 provekit-verifier = { path = "provekit/verifier", version = "1.0.0" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
+provekit-wasm = { path = "tooling/provekit-wasm" }
 
 # 3rd party
 anyhow = "1.0.93"
@@ -153,9 +155,18 @@ zerocopy = "0.8.25"
 zeroize = "1.8.1"
 zstd = "0.13"
 
-# WASM feature unification: direct dep on getrandom v0.2 activates `js`
-# backend for transitive rand_core 0.6 (via k256 -> provekit_acvm_blackbox_solver).
+# WASM-specific dependencies
+console_error_panic_hook = "0.1"
 getrandom = { version = "0.2", features = ["js"] }
+getrandom03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+# Required by transitive deps (e.g. rand_core 0.10) when building wasm32-unknown-unknown.
+getrandom04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+js-sys = "0.3"
+lzma-rs = "0.3"
+ruzstd = "0.8"
+serde-wasm-bindgen = "0.6"
+wasm-bindgen = "0.2"
+wasm-bindgen-rayon = "1.2"
 
 # Noir language dependencies
 acir = { package = "provekit_acir", version = "1.0.0-beta.11-alpha.1" }

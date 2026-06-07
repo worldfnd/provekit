@@ -8,3 +8,15 @@ rustflags = ["-C", "target-feature=+simd128,+relaxed-simd"]
 [target.wasm32-wasip1]
 runner = "wasmtime run --dir . "
 rustflags = ["-C", "target-feature=+simd128,+relaxed-simd"]
+
+[target.wasm32-unknown-unknown]
+rustflags = [
+    "-C", "target-feature=+atomics,+bulk-memory,+mutable-globals,+simd128,+relaxed-simd,-reference-types",
+    "-C", "link-arg=--shared-memory",
+    "-C", "link-arg=--import-memory",
+    "-C", "link-arg=--max-memory=4294967296",
+    "-C", "link-arg=--export=__wasm_init_tls",
+    "-C", "link-arg=--export=__tls_size",
+    "-C", "link-arg=--export=__tls_align",
+    "-C", "link-arg=--export=__tls_base",
+]
