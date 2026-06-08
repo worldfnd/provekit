@@ -120,6 +120,13 @@ impl SPARKProver for SPARKScheme {
             !requests.is_empty(),
             "SPARK prover needs at least one request"
         );
+        ensure!(
+            requests
+                .iter()
+                .all(|r| r.point_to_evaluate.row == requests[0].point_to_evaluate.row),
+            "SPARK multi-query batching requires all requests to share the same row \
+             evaluation point"
+        );
 
         let padded_num_entries = spark_data.matrix.coo.val.len();
 
