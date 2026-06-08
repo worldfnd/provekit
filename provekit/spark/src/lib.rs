@@ -9,12 +9,12 @@ pub mod utils;
 pub mod verifier;
 
 pub use {
-    prover::{SPARKProver, SPARKScheme as SPARKProverScheme},
+    prover::{SparkProver, SparkScheme as SparkProverScheme},
     setup::preprocess_spark,
     types::{
-        MatrixDimensions, SPARKProof, SPARKSetup, SPARKWHIRConfigs, SparkProverContext,
+        MatrixDimensions, SparkProof, SparkSetup, SparkWhirConfigs, SparkProverContext,
         SparkWitnesses,
     },
     utils::calculate_memory,
-    verifier::{SPARKScheme as SPARKVerifierScheme, SPARKVerifier},
+    verifier::{SparkScheme as SparkVerifierScheme, SparkVerifier},
 };

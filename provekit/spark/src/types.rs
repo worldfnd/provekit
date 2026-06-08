@@ -17,20 +17,20 @@ use {
 pub type WhirWitness = irs_commit::Witness<FieldElement, FieldElement>;
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct SPARKSetup {
-    pub whir_configs:      SPARKWHIRConfigs,
+pub struct SparkSetup {
+    pub whir_configs:      SparkWhirConfigs,
     pub matrix_dimensions: MatrixDimensions,
     pub transcript:        WhirR1CSProof,
 }
 
-impl FileFormat for SPARKSetup {
+impl FileFormat for SparkSetup {
     const FORMAT: [u8; 8] = SPARK_SETUP_FORMAT;
     const EXTENSION: &'static str = "spc";
     const VERSION: (u16, u16) = SPARK_SETUP_VERSION;
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
-impl MaybeHashAware for SPARKSetup {
+impl MaybeHashAware for SparkSetup {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         None
     }
@@ -38,16 +38,16 @@ impl MaybeHashAware for SPARKSetup {
 
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct SPARKProof(pub WhirR1CSProof);
+pub struct SparkProof(pub WhirR1CSProof);
 
-impl FileFormat for SPARKProof {
+impl FileFormat for SparkProof {
     const FORMAT: [u8; 8] = SPARK_PROOF_FORMAT;
     const EXTENSION: &'static str = "sp";
     const VERSION: (u16, u16) = SPARK_PROOF_VERSION;
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
-impl MaybeHashAware for SPARKProof {
+impl MaybeHashAware for SparkProof {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         None
     }
@@ -61,7 +61,7 @@ pub struct MatrixDimensions {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct SPARKWHIRConfigs {
+pub struct SparkWhirConfigs {
     pub row:                WhirConfig,
     pub col:                WhirConfig,
     pub num_terms_2batched: WhirConfig,
@@ -181,7 +181,7 @@ pub struct SparkWitnesses {
 pub struct SparkProverContext {
     pub matrix:    SparkMatrix,
     pub witnesses: SparkWitnesses,
-    pub setup:     SPARKSetup,
+    pub setup:     SparkSetup,
 }
 
 impl FileFormat for SparkProverContext {

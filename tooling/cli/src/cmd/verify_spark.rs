@@ -3,7 +3,7 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{file::read, spark::R1CSSparkQuery},
-    provekit_spark::{SPARKProof, SPARKSetup, SPARKVerifier, SPARKVerifierScheme},
+    provekit_spark::{SparkProof, SparkSetup, SparkVerifier, SparkVerifierScheme},
     std::{fs::File, io::BufReader, path::PathBuf},
     tracing::instrument,
 };
@@ -36,10 +36,10 @@ impl Command for Args {
         );
 
         let (proof, (setup, queries)) = rayon::join(
-            || read::<SPARKProof>(&self.proof_path).context("while reading SPARK proof"),
+            || read::<SparkProof>(&self.proof_path).context("while reading SPARK proof"),
             || {
                 rayon::join(
-                    || read::<SPARKSetup>(&self.setup_path).context("while reading SPARK setup"),
+                    || read::<SparkSetup>(&self.setup_path).context("while reading SPARK setup"),
                     || {
                         self.query_paths
                             .iter()
@@ -53,7 +53,7 @@ impl Command for Args {
         let setup = setup?;
         let queries = queries?;
 
-        SPARKVerifierScheme
+        SparkVerifierScheme
             .verify(proof, &setup, &queries)
             .context("while verifying SPARK proof")?;
 

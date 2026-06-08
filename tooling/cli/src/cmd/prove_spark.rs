@@ -7,7 +7,7 @@ use {
         spark::R1CSSparkQuery,
         Prover,
     },
-    provekit_spark::{SPARKProver as _, SPARKProverScheme, SparkProverContext},
+    provekit_spark::{SparkProver as _, SparkProverScheme, SparkProverContext},
     std::{
         fs::File,
         io::BufReader,
@@ -65,7 +65,7 @@ impl Command for Args {
         let num_nonzero = context.matrix.coo.val.len();
 
         let scheme =
-            SPARKProverScheme::new(num_constraints, num_witnesses, num_nonzero, hash_config);
+            SparkProverScheme::new(num_constraints, num_witnesses, num_nonzero, hash_config);
         let spark_proof = scheme
             .prove(&context, &queries)
             .context("generating SPARK proof")?;

@@ -4,7 +4,7 @@ use {
         memory::{prove_axis_init_final_product, AxisConfig},
         sumcheck::run_spark_sumcheck,
         types::{
-            Challenges, EValuesForMatrix, MatrixDimensions, Memory, SPARKProof, SPARKWHIRConfigs,
+            Challenges, EValuesForMatrix, MatrixDimensions, Memory, SparkProof, SparkWhirConfigs,
             SparkMatrix, SparkProverContext, WhirWitness,
         },
         utils::{alphas_from_spark, calculate_memory},
@@ -33,16 +33,16 @@ use {
     },
 };
 
-pub trait SPARKProver {
+pub trait SparkProver {
     fn prove(
         &self,
         spark_data: &SparkProverContext,
         request: &[R1CSSparkQuery],
-    ) -> Result<SPARKProof>;
+    ) -> Result<SparkProof>;
 }
 
-pub struct SPARKScheme {
-    pub whir_configs:      SPARKWHIRConfigs,
+pub struct SparkScheme {
+    pub whir_configs:      SparkWhirConfigs,
     pub matrix_dimensions: MatrixDimensions,
 }
 
@@ -67,7 +67,7 @@ pub fn new_whir_config_for_size(
     WhirConfig::new(1 << nv, &whir_params)
 }
 
-impl SPARKScheme {
+impl SparkScheme {
     pub fn new_for_r1cs(r1cs: &provekit_common::R1CS, hash_config: HashConfig) -> Self {
         let num_rows = 2 * r1cs.num_constraints();
         let num_cols = 2 * r1cs.num_witnesses();
@@ -94,7 +94,7 @@ impl SPARKScheme {
             new_whir_config_for_size(next_power_of_two(padded_num_entries), 5, hash_id);
 
         Self {
-            whir_configs:      SPARKWHIRConfigs {
+            whir_configs:      SparkWhirConfigs {
                 row:                row_config,
                 col:                col_config,
                 num_terms_2batched: num_terms_2batched_config,
@@ -109,13 +109,13 @@ impl SPARKScheme {
     }
 }
 
-impl SPARKProver for SPARKScheme {
+impl SparkProver for SparkScheme {
     #[instrument(skip_all)]
     fn prove(
         &self,
         spark_data: &SparkProverContext,
         requests: &[R1CSSparkQuery],
-    ) -> Result<SPARKProof> {
+    ) -> Result<SparkProof> {
         ensure!(
             !requests.is_empty(),
             "SPARK prover needs at least one request"
@@ -203,7 +203,7 @@ impl SPARKProver for SPARKScheme {
         )?;
 
         let proof = merlin.proof();
-        Ok(SPARKProof(WhirR1CSProof {
+        Ok(SparkProof(WhirR1CSProof {
             narg_string: proof.narg_string,
             hints: proof.hints,
             #[cfg(debug_assertions)]
@@ -258,7 +258,7 @@ fn prove_spark(
     e_values: &EValuesForMatrix,
     claimed_value: FieldElement,
     memory: &Memory,
-    whir_configs: &SPARKWHIRConfigs,
+    whir_configs: &SparkWhirConfigs,
 ) -> Result<()> {
     let e_values_witness = commit_e_values(merlin, whir_configs, e_values);
 
@@ -286,7 +286,7 @@ fn memory_checking(
     e_values: &EValuesForMatrix,
     e_values_witness: &WhirWitness,
     memory: &Memory,
-    whir_configs: &SPARKWHIRConfigs,
+    whir_configs: &SparkWhirConfigs,
     folding_randomness: &[FieldElement],
     sumcheck_final_folds: [FieldElement; 3],
 ) -> Result<()> {
@@ -362,7 +362,7 @@ fn prove_combined_rs_ws_product(
     e_values: &EValuesForMatrix,
     e_values_witness: &WhirWitness,
     vals_rs_ws_witness: &WhirWitness,
-    whir_configs: &SPARKWHIRConfigs,
+    whir_configs: &SparkWhirConfigs,
     challenges: &Challenges,
     folding_randomness: &[FieldElement],
     sumcheck_final_folds: [FieldElement; 3],
@@ -524,7 +524,7 @@ fn prove_combined_rs_ws_product(
 #[instrument(skip_all)]
 fn commit_e_values(
     merlin: &mut ProverState<TranscriptSponge>,
-    whir_configs: &SPARKWHIRConfigs,
+    whir_configs: &SparkWhirConfigs,
     e_values: &EValuesForMatrix,
 ) -> WhirWitness {
     whir_configs

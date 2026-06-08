@@ -1,7 +1,7 @@
 use {
     crate::{
-        prover::SPARKScheme as SPARKProverScheme,
-        types::{SPARKSetup, SparkMatrix, SparkWitnesses},
+        prover::SparkScheme as SparkProverScheme,
+        types::{SparkSetup, SparkMatrix, SparkWitnesses},
     },
     anyhow::Result,
     provekit_common::{FieldElement, HashConfig, TranscriptSponge, WhirR1CSProof},
@@ -22,11 +22,11 @@ pub(crate) struct PrecomputedCommitments {
 pub fn preprocess_spark(
     matrix: &SparkMatrix,
     hash_config: HashConfig,
-) -> (SPARKSetup, SparkWitnesses) {
+) -> (SparkSetup, SparkWitnesses) {
     let num_rows = matrix.timestamps.final_row.len();
     let num_cols = matrix.timestamps.final_col.len();
     let nonzero_terms = matrix.coo.val.len();
-    let scheme = SPARKProverScheme::new(num_rows, num_cols, nonzero_terms, hash_config);
+    let scheme = SparkProverScheme::new(num_rows, num_cols, nonzero_terms, hash_config);
 
     let ds = DomainSeparator::protocol(&scheme.whir_configs).instance(&Empty);
     let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
@@ -51,7 +51,7 @@ pub fn preprocess_spark(
         .commit(&mut merlin, &[&matrix.timestamps.final_col]);
 
     let proof = merlin.proof();
-    let setup = SPARKSetup {
+    let setup = SparkSetup {
         whir_configs:      scheme.whir_configs,
         matrix_dimensions: scheme.matrix_dimensions,
         transcript:        WhirR1CSProof {
@@ -69,7 +69,7 @@ pub fn preprocess_spark(
     (setup, witnesses)
 }
 
-impl SPARKSetup {
+impl SparkSetup {
     pub(crate) fn extract_commitments(&self) -> Result<PrecomputedCommitments> {
         let setup_ds = DomainSeparator::protocol(&self.whir_configs).instance(&Empty);
         let setup_proof = Proof {

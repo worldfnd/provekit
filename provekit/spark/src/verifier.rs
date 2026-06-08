@@ -4,7 +4,7 @@ use {
         memory::verify_axis,
         setup::PrecomputedCommitments,
         sumcheck::{run_parallel_sumchecks_verifier, run_sumcheck_verifier_spark},
-        types::{MatrixDimensions, SPARKProof, SPARKSetup, SPARKWHIRConfigs},
+        types::{MatrixDimensions, SparkProof, SparkSetup, SparkWhirConfigs},
     },
     anyhow::{ensure, Context, Result},
     ark_ff::{AdditiveGroup, Field, Zero},
@@ -20,23 +20,23 @@ use {
     },
 };
 
-pub trait SPARKVerifier {
+pub trait SparkVerifier {
     fn verify(
         &self,
-        proof: SPARKProof,
-        setup: &SPARKSetup,
+        proof: SparkProof,
+        setup: &SparkSetup,
         requests: &[R1CSSparkQuery],
     ) -> Result<()>;
 }
 
-pub struct SPARKScheme;
+pub struct SparkScheme;
 
-impl SPARKVerifier for SPARKScheme {
+impl SparkVerifier for SparkScheme {
     #[instrument(skip_all)]
     fn verify(
         &self,
-        proof: SPARKProof,
-        setup: &SPARKSetup,
+        proof: SparkProof,
+        setup: &SparkSetup,
         requests: &[R1CSSparkQuery],
     ) -> Result<()> {
         ensure!(
@@ -153,7 +153,7 @@ impl SPARKVerifier for SPARKScheme {
 
 #[instrument(skip_all)]
 pub(crate) fn verify_spark_single_matrix(
-    whir_configs: &SPARKWHIRConfigs,
+    whir_configs: &SparkWhirConfigs,
     matrix_dimensions: MatrixDimensions,
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     precomputed_commitments: &PrecomputedCommitments,
