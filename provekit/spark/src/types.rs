@@ -21,6 +21,7 @@ pub struct SparkSetup {
     pub whir_configs:      SparkWhirConfigs,
     pub matrix_dimensions: MatrixDimensions,
     pub transcript:        WhirR1CSProof,
+    pub hash_config:       HashConfig,
 }
 
 impl FileFormat for SparkSetup {

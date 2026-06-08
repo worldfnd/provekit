@@ -57,7 +57,7 @@ impl SparkVerifier for SparkScheme {
                 .session(&setup.transcript.narg_string)
                 .instance(&batch.hash_bytes()?),
             &whir_proof,
-            TranscriptSponge::default(),
+            TranscriptSponge::from_config(setup.hash_config),
         );
 
         let request: SparkColQuery = if batch.queries.len() == 1 {

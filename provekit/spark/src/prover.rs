@@ -127,7 +127,7 @@ impl SparkProver for SparkScheme {
             &DomainSeparator::protocol(&self.whir_configs)
                 .session(&spark_data.setup.transcript.narg_string)
                 .instance(&batch.hash_bytes()?),
-            TranscriptSponge::default(),
+            TranscriptSponge::from_config(spark_data.setup.hash_config),
         );
 
         let request: SparkColQuery = if batch.queries.len() == 1 {

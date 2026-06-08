@@ -29,7 +29,7 @@ pub fn preprocess_spark(
     let scheme = SparkProverScheme::new(num_rows, num_cols, nonzero_terms, hash_config);
 
     let ds = DomainSeparator::protocol(&scheme.whir_configs).instance(&Empty);
-    let mut merlin = ProverState::new(&ds, TranscriptSponge::default());
+    let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(hash_config));
 
     let vals_rs_ws_witness = scheme
         .whir_configs
@@ -60,6 +60,7 @@ pub fn preprocess_spark(
             #[cfg(debug_assertions)]
             pattern: proof.pattern,
         },
+        hash_config,
     };
     let witnesses = SparkWitnesses {
         vals_rs_ws_witness,
@@ -78,7 +79,11 @@ impl SparkSetup {
             #[cfg(debug_assertions)]
             pattern: self.transcript.pattern.clone(),
         };
-        let mut side = VerifierState::new(&setup_ds, &setup_proof, TranscriptSponge::default());
+        let mut side = VerifierState::new(
+            &setup_ds,
+            &setup_proof,
+            TranscriptSponge::from_config(self.hash_config),
+        );
 
         let vals_rsws = self
             .whir_configs
