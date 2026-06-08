@@ -1,8 +1,5 @@
 use {
-    super::{
-        prepare::{build_spark_r1cs_mavros, build_spark_r1cs_noir},
-        Command,
-    },
+    super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{
@@ -10,7 +7,7 @@ use {
         spark::R1CSSparkQuery,
         Prover,
     },
-    provekit_spark::{types::SparkMatrix, SPARKProver as _, SPARKProverScheme, SparkProverContext},
+    provekit_spark::{SPARKProver as _, SPARKProverScheme, SparkProverContext},
     std::{
         fs::File,
         io::BufReader,
@@ -36,9 +33,14 @@ pub struct Args {
     )]
     spark_dir: PathBuf,
 
-    /// path to the R1CS file (required for the mavros compiler)
-    #[argh(option, long = "r1cs")]
-    r1cs_path: Option<PathBuf>,
+    /// path to the SPARK prover context (matrix + witnesses + setup) written
+    /// by `prepare --spark`
+    #[argh(
+        option,
+        long = "spctx",
+        default = "PathBuf::from(\"noir_proof_scheme.spctx\")"
+    )]
+    spctx_path: PathBuf,
 }
 
 impl Command for Args {
@@ -54,16 +56,9 @@ impl Command for Args {
             return Ok(());
         }
 
-        // TODO: preprocessing should be done once on the setup side, not per prove
-        // invocation.
-        let spark_matrix = build_spark_matrix(&prover, self.r1cs_path.as_deref())?;
         let hash_config = prover.whir_for_witness().hash_config;
-        let (setup, witnesses) = provekit_spark::preprocess_spark(&spark_matrix, hash_config);
-        let context = SparkProverContext {
-            matrix: spark_matrix,
-            witnesses,
-            setup,
-        };
+        let context: SparkProverContext = read(&self.spctx_path)
+            .with_context(|| format!("reading SPARK prover context from {:?}", self.spctx_path))?;
 
         let num_constraints = context.matrix.timestamps.final_row.len();
         let num_witnesses = context.matrix.timestamps.final_col.len();
@@ -96,24 +91,4 @@ fn collect_queries(dir: &Path) -> Result<Vec<R1CSSparkQuery>> {
         out.push(query);
     }
     Ok(out)
-}
-
-fn build_spark_matrix(prover: &Prover, r1cs_path: Option<&Path>) -> Result<SparkMatrix> {
-    let whir = prover.whir_for_witness().clone();
-    match prover {
-        Prover::Noir(p) => {
-            build_spark_r1cs_noir(&p.r1cs, whir.m_0, whir.m, whir.w1_size, whir.num_challenges)
-        }
-        Prover::Mavros(_) => {
-            let r1cs_path = r1cs_path
-                .context("--r1cs is required for SPARK proving with the mavros compiler")?;
-            build_spark_r1cs_mavros(
-                r1cs_path,
-                whir.m_0,
-                whir.m,
-                whir.w1_size,
-                whir.num_challenges,
-            )
-        }
-    }
 }

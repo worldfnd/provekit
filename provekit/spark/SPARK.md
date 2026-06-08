@@ -7,8 +7,9 @@ Reference for this implementation
 ## Proposed prototype workflow
 1. Provekit prepare step
     - Compiles the circuit and writes the prover/verifier artifacts (`.pkp`, `.pkv`).
-    - With `--spark`, also runs SPARK preprocessing once and writes the SPARK
-      setup transcript (`.spc`).
+    - With `--spark`, also runs SPARK preprocessing once and writes both the
+      SPARK setup transcript for the verifier (`.spc`) and the bundled SPARK
+      prover context containing the matrix, witnesses and setup (`.spctx`).
 
 2. Provekit prove step
     - Runs the provekit prover and obtains the Noir proof plus the deferred
@@ -16,9 +17,10 @@ Reference for this implementation
     - Writes each query as `spark_query_<i>.json` to `--spark-queries-dir`.
 
 3. Provekit prove-spark step
-    - Reads queries from `--spark-dir` and produces a single batched SPARK
-      proof (`spark_proof.sp` written back to the same directory). When the
-      query set has more than one entry the prover RLC's them with a
+    - Reads the SPARK prover context (`--spctx`) produced in step 1 and the
+      queries from `--spark-dir`, then produces a single batched SPARK proof
+      (`spark_proof.sp` written back to the same directory). When the query
+      set has more than one entry the prover RLC's them with a
       transcript-derived `beta` and runs a parallel sumcheck before falling
       into the single-query SPARK protocol; with one query it goes straight to
       that protocol.
@@ -71,12 +73,13 @@ cd noir-examples/noir-passport-monolithic/complete_age_check
 nargo compile
 
 # 1. Prepare the circuit (compiles and writes prover/verifier artifacts plus
-#    the SPARK setup transcript).
+#    the SPARK setup transcript and the bundled SPARK prover context).
 cargo run --release --bin provekit-cli -- prepare ./target/complete_age_check.json \
   --pkp ./benchmark-inputs/complete-age-check.pkp \
   --pkv ./benchmark-inputs/complete-age-check.pkv \
   --spark \
-  --spc ./benchmark-inputs/complete-age-check.spc
+  --spc ./benchmark-inputs/complete-age-check.spc \
+  --spctx ./benchmark-inputs/complete-age-check.spctx
 
 # 2. Prove (generates Noir proof + writes SPARK queries to disk).
 #    `--produce-spark-query` is required, otherwise no queries are written.
@@ -88,10 +91,12 @@ cargo run --release --bin provekit-cli -- prove \
   --produce-spark-query
 
 # 3. Generate one batched SPARK proof covering every query written in step 2.
-#    The prover reads all `spark_query_*.json` files in --spark-dir, batches
-#    them, and writes a single ./spark_proofs/spark_proof.sp.
+#    The prover reads all `spark_query_*.json` files in --spark-dir plus the
+#    SPARK prover context from --spctx, batches the queries, and writes a
+#    single ./spark_proofs/spark_proof.sp.
 cargo run --release --bin provekit-cli -- prove-spark ./benchmark-inputs/complete-age-check.pkp \
-  --spark-dir ./spark_proofs
+  --spark-dir ./spark_proofs \
+  --spctx ./benchmark-inputs/complete-age-check.spctx
 
 # 4. Natively verify the Noir proof. Native verification evaluates MLE directly. Spark proofs are useful only in the recursive verifier.
 cargo run --release --bin provekit-cli -- verify \

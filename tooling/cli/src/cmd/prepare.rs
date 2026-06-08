@@ -16,7 +16,7 @@ use {
         Verifier, R1CS,
     },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    provekit_spark::types::{COOMatrix, SparkMatrix, TimeStamps},
+    provekit_spark::types::SparkMatrix,
     rayon::prelude::*,
     std::{
         path::{Path, PathBuf},
@@ -122,6 +122,15 @@ pub struct Args {
         default = "PathBuf::from(\"noir_proof_scheme.spc\")"
     )]
     spc_path: PathBuf,
+
+    /// output path for the bundled SPARK prover context — matrix, witnesses
+    /// and setup (used with --spark)
+    #[argh(
+        option,
+        long = "spctx",
+        default = "PathBuf::from(\"noir_proof_scheme.spctx\")"
+    )]
+    spctx_path: PathBuf,
 }
 
 impl Command for Args {
@@ -245,10 +254,18 @@ impl Args {
         }
         provekit_common::register_ntt();
         let matrix = build_spark_matrix_for_scheme(scheme, self.r1cs_path.as_deref())?;
-        let (setup, _witnesses) = provekit_spark::preprocess_spark(&matrix, hash_config);
+        let (setup, witnesses) = provekit_spark::preprocess_spark(&matrix, hash_config);
         write(&setup, &self.spc_path)
             .with_context(|| format!("writing SPARK setup to {:?}", self.spc_path))?;
         info!("Wrote SPARK setup to {:?}", self.spc_path);
+        let context = provekit_spark::SparkProverContext {
+            matrix,
+            witnesses,
+            setup,
+        };
+        write(&context, &self.spctx_path)
+            .with_context(|| format!("writing SPARK prover context to {:?}", self.spctx_path))?;
+        info!("Wrote SPARK prover context to {:?}", self.spctx_path);
         Ok(())
     }
 
@@ -379,7 +396,7 @@ pub fn build_spark_r1cs_noir(
         val.push(FieldElement::from(0u64));
     }
 
-    Ok(build_spark_matrix(row, col, val, 2 * row_cnt, 2 * col_cnt))
+    Ok(SparkMatrix::new(row, col, val, 2 * row_cnt, 2 * col_cnt))
 }
 
 pub fn build_spark_r1cs_mavros(
@@ -449,54 +466,6 @@ pub fn build_spark_r1cs_mavros(
         val.push(FieldElement::from(0u64));
     }
 
-    Ok(build_spark_matrix(row, col, val, 2 * row_cnt, 2 * col_cnt))
+    Ok(SparkMatrix::new(row, col, val, 2 * row_cnt, 2 * col_cnt))
 }
 
-pub fn build_spark_matrix(
-    row: Vec<usize>,
-    col: Vec<usize>,
-    val: Vec<FieldElement>,
-    num_rows: usize,
-    num_cols: usize,
-) -> SparkMatrix {
-    let len = row.len();
-    let mut read_row_counters = vec![0usize; num_rows];
-    let mut read_col_counters = vec![0usize; num_cols];
-    let mut read_row = Vec::with_capacity(len);
-    let mut read_col = Vec::with_capacity(len);
-
-    for i in 0..len {
-        read_row.push(FieldElement::from(read_row_counters[row[i]] as u64));
-        read_row_counters[row[i]] += 1;
-        read_col.push(FieldElement::from(read_col_counters[col[i]] as u64));
-        read_col_counters[col[i]] += 1;
-    }
-
-    let final_row = read_row_counters
-        .iter()
-        .map(|&x| FieldElement::from(x as u64))
-        .collect();
-    let final_col = read_col_counters
-        .iter()
-        .map(|&x| FieldElement::from(x as u64))
-        .collect();
-
-    let row_field = row.iter().map(|&r| FieldElement::from(r as u64)).collect();
-    let col_field = col.iter().map(|&c| FieldElement::from(c as u64)).collect();
-
-    SparkMatrix {
-        coo:        COOMatrix {
-            row,
-            col,
-            row_field,
-            col_field,
-            val,
-        },
-        timestamps: TimeStamps {
-            read_row,
-            read_col,
-            final_row,
-            final_col,
-        },
-    }
-}

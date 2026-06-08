@@ -31,3 +31,6 @@ pub const SPARK_PROOF_VERSION: (u16, u16) = (1, 0);
 
 pub const SPARK_SETUP_FORMAT: [u8; 8] = *b"SparkStp";
 pub const SPARK_SETUP_VERSION: (u16, u16) = (1, 0);
+
+pub const SPARK_CONTEXT_FORMAT: [u8; 8] = *b"SparkCtx";
+pub const SPARK_CONTEXT_VERSION: (u16, u16) = (1, 0);

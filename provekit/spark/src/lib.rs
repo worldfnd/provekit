@@ -1,6 +1,7 @@
 pub mod gpa;
 pub mod memory;
 pub mod prover;
+mod serde_whir_witness;
 pub mod setup;
 pub mod sumcheck;
 pub mod types;
