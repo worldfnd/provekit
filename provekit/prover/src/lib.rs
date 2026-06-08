@@ -8,7 +8,7 @@ use {
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
-        spark::R1CSSparkQuery, utils::noir_to_native, FieldElement, NoirElement, NoirProof,
+        spark::SparkQueryBatch, utils::noir_to_native, FieldElement, NoirElement, NoirProof,
         NoirProver, Prover, PublicInputs, TranscriptSponge,
     },
     std::mem::size_of,
@@ -41,25 +41,25 @@ pub use {ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
 /// `prove_with_witness` is available on all targets. `MavrosProver` does not
 /// support `prove_with_witness` (errors at runtime).
 ///
-/// All methods return the `NoirProof` plus a `Vec<R1CSSparkQuery>` of SPARK
+/// All methods return the `NoirProof` plus a `Option<SparkQueryBatch>` of SPARK
 /// queries produced as a side output. Callers that don't need the queries
 /// can discard with `let (proof, _) = ...`. SPARK query generation is
 /// off by default; enable it by calling
 /// [`Prover::set_produce_spark_query`](provekit_common::Prover::set_produce_spark_query).
 pub trait Prove {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
-    fn prove(self, input_map: InputMap) -> Result<(NoirProof, Vec<R1CSSparkQuery>)>;
+    fn prove(self, input_map: InputMap) -> Result<(NoirProof, Option<SparkQueryBatch>)>;
 
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove_with_toml(
         self,
         prover_toml: impl AsRef<Path>,
-    ) -> Result<(NoirProof, Vec<R1CSSparkQuery>)>;
+    ) -> Result<(NoirProof, Option<SparkQueryBatch>)>;
 
     fn prove_with_witness(
         self,
         witness: WitnessMap<NoirElement>,
-    ) -> Result<(NoirProof, Vec<R1CSSparkQuery>)>;
+    ) -> Result<(NoirProof, Option<SparkQueryBatch>)>;
 }
 
 #[instrument(skip_all)]
@@ -97,7 +97,7 @@ fn generate_noir_witness(
 impl Prove for NoirProver {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
-    fn prove(mut self, input_map: InputMap) -> Result<(NoirProof, Vec<R1CSSparkQuery>)> {
+    fn prove(mut self, input_map: InputMap) -> Result<(NoirProof, Option<SparkQueryBatch>)> {
         let witness = generate_noir_witness(&mut self, input_map)?;
         self.prove_with_witness(witness)
     }
@@ -107,7 +107,7 @@ impl Prove for NoirProver {
     fn prove_with_toml(
         self,
         prover_toml: impl AsRef<Path>,
-    ) -> Result<(NoirProof, Vec<R1CSSparkQuery>)> {
+    ) -> Result<(NoirProof, Option<SparkQueryBatch>)> {
         let (input_map, _return_value) =
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
         self.prove(input_map)
@@ -117,7 +117,7 @@ impl Prove for NoirProver {
     fn prove_with_witness(
         self,
         acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
-    ) -> Result<(NoirProof, Vec<R1CSSparkQuery>)> {
+    ) -> Result<(NoirProof, Option<SparkQueryBatch>)> {
         provekit_common::register_ntt();
 
         let mut public_input_indices = self.program.functions[0].public_inputs().indices();
@@ -295,7 +295,7 @@ impl Prove for NoirProver {
 #[cfg(not(target_arch = "wasm32"))]
 impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
-    fn prove(mut self, input_map: InputMap) -> Result<(NoirProof, Vec<R1CSSparkQuery>)> {
+    fn prove(mut self, input_map: InputMap) -> Result<(NoirProof, Option<SparkQueryBatch>)> {
         provekit_common::register_ntt();
 
         let params = crate::input_utils::ordered_params_from_btreemap(&self.abi, &input_map)?;
@@ -394,7 +394,7 @@ impl Prove for MavrosProver {
     fn prove_with_toml(
         self,
         prover_toml: impl AsRef<Path>,
-    ) -> Result<(NoirProof, Vec<R1CSSparkQuery>)> {
+    ) -> Result<(NoirProof, Option<SparkQueryBatch>)> {
         let project_path = prover_toml
             .as_ref()
             .parent()
@@ -408,7 +408,7 @@ impl Prove for MavrosProver {
     fn prove_with_witness(
         self,
         _witness: WitnessMap<NoirElement>,
-    ) -> Result<(NoirProof, Vec<R1CSSparkQuery>)> {
+    ) -> Result<(NoirProof, Option<SparkQueryBatch>)> {
         Err(anyhow::anyhow!(
             "prove_with_witness is not supported for Mavros prover"
         ))
@@ -417,7 +417,7 @@ impl Prove for MavrosProver {
 
 impl Prove for Prover {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
-    fn prove(self, input_map: InputMap) -> Result<(NoirProof, Vec<R1CSSparkQuery>)> {
+    fn prove(self, input_map: InputMap) -> Result<(NoirProof, Option<SparkQueryBatch>)> {
         match self {
             Prover::Noir(p) => p.prove(input_map),
             Prover::Mavros(p) => p.prove(input_map),
@@ -428,7 +428,7 @@ impl Prove for Prover {
     fn prove_with_toml(
         self,
         prover_toml: impl AsRef<Path>,
-    ) -> Result<(NoirProof, Vec<R1CSSparkQuery>)> {
+    ) -> Result<(NoirProof, Option<SparkQueryBatch>)> {
         match self {
             Prover::Noir(p) => p.prove_with_toml(prover_toml),
             Prover::Mavros(p) => p.prove_with_toml(prover_toml),
@@ -438,7 +438,7 @@ impl Prove for Prover {
     fn prove_with_witness(
         self,
         witness: WitnessMap<NoirElement>,
-    ) -> Result<(NoirProof, Vec<R1CSSparkQuery>)> {
+    ) -> Result<(NoirProof, Option<SparkQueryBatch>)> {
         match self {
             Prover::Noir(p) => p.prove_with_witness(witness),
             #[cfg(not(target_arch = "wasm32"))]

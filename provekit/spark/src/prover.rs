@@ -12,7 +12,7 @@ use {
     anyhow::{ensure, Result},
     ark_ff::{AdditiveGroup, Field, Zero},
     provekit_common::{
-        spark::{hash_query_set, Point, R1CSSparkQuery},
+        spark::{SparkColQuery, SparkQueryBatch},
         utils::{
             next_power_of_two,
             sumcheck::{
@@ -37,7 +37,7 @@ pub trait SparkProver {
     fn prove(
         &self,
         spark_data: &SparkProverContext,
-        request: &[R1CSSparkQuery],
+        batch: &SparkQueryBatch,
     ) -> Result<SparkProof>;
 }
 
@@ -114,18 +114,11 @@ impl SparkProver for SparkScheme {
     fn prove(
         &self,
         spark_data: &SparkProverContext,
-        requests: &[R1CSSparkQuery],
+        batch: &SparkQueryBatch,
     ) -> Result<SparkProof> {
         ensure!(
-            !requests.is_empty(),
-            "SPARK prover needs at least one request"
-        );
-        ensure!(
-            requests
-                .iter()
-                .all(|r| r.point_to_evaluate.row == requests[0].point_to_evaluate.row),
-            "SPARK multi-query batching requires all requests to share the same row \
-             evaluation point"
+            !batch.queries.is_empty(),
+            "SPARK prover needs at least one query"
         );
 
         let padded_num_entries = spark_data.matrix.coo.val.len();
@@ -133,17 +126,17 @@ impl SparkProver for SparkScheme {
         let mut merlin = ProverState::new(
             &DomainSeparator::protocol(&self.whir_configs)
                 .session(&spark_data.setup.transcript.narg_string)
-                .instance(&hash_query_set(requests)),
+                .instance(&batch.hash_bytes()?),
             TranscriptSponge::default(),
         );
 
-        let request = if requests.len() == 1 {
-            requests[0].clone()
+        let request: SparkColQuery = if batch.queries.len() == 1 {
+            batch.queries[0].clone()
         } else {
             let alphas = alphas_from_spark(
                 &spark_data.matrix,
                 &spark_data.setup.matrix_dimensions,
-                &requests[0].point_to_evaluate.row,
+                &batch.row,
             );
 
             let beta: FieldElement = merlin.verifier_message();
@@ -152,17 +145,17 @@ impl SparkProver for SparkScheme {
             let mut hypercube = vec![FieldElement::ZERO; domain_size];
             let mut claimed_evals = [FieldElement::ZERO; 3];
             let mut beta_pow = FieldElement::ONE;
-            for request in requests {
+            for query in &batch.queries {
                 let eq = calculate_evaluations_over_boolean_hypercube_for_eq(
-                    &request.point_to_evaluate.col,
+                    &query.col,
                     domain_size,
                 );
                 for (slot, &e) in hypercube.iter_mut().zip(eq.iter()) {
                     *slot += beta_pow * e;
                 }
-                claimed_evals[0] += beta_pow * request.claimed_a;
-                claimed_evals[1] += beta_pow * request.claimed_b;
-                claimed_evals[2] += beta_pow * request.claimed_c;
+                claimed_evals[0] += beta_pow * query.claimed_a;
+                claimed_evals[1] += beta_pow * query.claimed_b;
+                claimed_evals[2] += beta_pow * query.claimed_c;
                 beta_pow *= beta;
             }
 
@@ -170,14 +163,11 @@ impl SparkProver for SparkScheme {
             let (folded_values, folding_randomness) =
                 run_parallel_sumchecks(&mut merlin, &hypercube, alpha_refs, claimed_evals)?;
 
-            R1CSSparkQuery {
-                point_to_evaluate: Point {
-                    row: requests[0].point_to_evaluate.row.clone(),
-                    col: folding_randomness,
-                },
-                claimed_a:         folded_values[1],
-                claimed_b:         folded_values[2],
-                claimed_c:         folded_values[3],
+            SparkColQuery {
+                col:       folding_randomness,
+                claimed_a: folded_values[1],
+                claimed_b: folded_values[2],
+                claimed_c: folded_values[3],
             }
         };
 
@@ -191,7 +181,8 @@ impl SparkProver for SparkScheme {
         let combined = request.claimed_a + r * request.claimed_b + r * r * request.claimed_c;
         let claimed_value = combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
 
-        let (memory, e_values) = compute_spark_data(&request, b1, spark_data, padded_num_entries);
+        let (memory, e_values) =
+            compute_spark_data(&batch.row, &request, b1, spark_data, padded_num_entries);
 
         prove_spark(
             &mut merlin,
@@ -214,16 +205,13 @@ impl SparkProver for SparkScheme {
 
 #[instrument(skip_all)]
 fn compute_spark_data(
-    request: &R1CSSparkQuery,
+    row: &[FieldElement],
+    request: &SparkColQuery,
     b1: FieldElement,
     spark_data: &SparkProverContext,
     padded_num_entries: usize,
 ) -> (Memory, EValuesForMatrix) {
-    let memory = calculate_memory(
-        b1,
-        &request.point_to_evaluate.row,
-        &request.point_to_evaluate.col,
-    );
+    let memory = calculate_memory(b1, row, &request.col);
     let e_values = compute_e_values(spark_data, &memory, padded_num_entries);
     (memory, e_values)
 }

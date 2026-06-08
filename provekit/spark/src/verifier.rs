@@ -9,7 +9,7 @@ use {
     anyhow::{ensure, Context, Result},
     ark_ff::{AdditiveGroup, Field, Zero},
     provekit_common::{
-        spark::{hash_query_set, Point, R1CSSparkQuery},
+        spark::{SparkColQuery, SparkQueryBatch},
         utils::{next_power_of_two, sumcheck::calculate_eq},
         FieldElement, TranscriptSponge,
     },
@@ -25,7 +25,7 @@ pub trait SparkVerifier {
         &self,
         proof: SparkProof,
         setup: &SparkSetup,
-        requests: &[R1CSSparkQuery],
+        batch: &SparkQueryBatch,
     ) -> Result<()>;
 }
 
@@ -37,18 +37,11 @@ impl SparkVerifier for SparkScheme {
         &self,
         proof: SparkProof,
         setup: &SparkSetup,
-        requests: &[R1CSSparkQuery],
+        batch: &SparkQueryBatch,
     ) -> Result<()> {
         ensure!(
-            !requests.is_empty(),
-            "SPARK verifier needs at least one request"
-        );
-        ensure!(
-            requests
-                .iter()
-                .all(|r| r.point_to_evaluate.row == requests[0].point_to_evaluate.row),
-            "SPARK multi-query batching requires all requests to share the same row \
-             evaluation point"
+            !batch.queries.is_empty(),
+            "SPARK verifier needs at least one query"
         );
 
         let precomputed_commitments = setup.extract_commitments()?;
@@ -62,22 +55,22 @@ impl SparkVerifier for SparkScheme {
         let mut arthur = VerifierState::new(
             &DomainSeparator::protocol(&setup.whir_configs)
                 .session(&setup.transcript.narg_string)
-                .instance(&hash_query_set(requests)),
+                .instance(&batch.hash_bytes()?),
             &whir_proof,
             TranscriptSponge::default(),
         );
 
-        let request = if requests.len() == 1 {
-            requests[0].clone()
+        let request: SparkColQuery = if batch.queries.len() == 1 {
+            batch.queries[0].clone()
         } else {
             let beta: FieldElement = arthur.verifier_message();
 
             let mut claimed_evals = [FieldElement::ZERO; 3];
             let mut beta_pow = FieldElement::ONE;
-            for request in requests {
-                claimed_evals[0] += beta_pow * request.claimed_a;
-                claimed_evals[1] += beta_pow * request.claimed_b;
-                claimed_evals[2] += beta_pow * request.claimed_c;
+            for query in &batch.queries {
+                claimed_evals[0] += beta_pow * query.claimed_a;
+                claimed_evals[1] += beta_pow * query.claimed_b;
+                claimed_evals[2] += beta_pow * query.claimed_c;
                 beta_pow *= beta;
             }
 
@@ -93,9 +86,8 @@ impl SparkVerifier for SparkScheme {
 
             let mut h_at_fr = FieldElement::ZERO;
             let mut beta_pow = FieldElement::ONE;
-            for request in requests {
-                h_at_fr +=
-                    beta_pow * calculate_eq(&request.point_to_evaluate.col, &folding_randomness);
+            for query in &batch.queries {
+                h_at_fr += beta_pow * calculate_eq(&query.col, &folding_randomness);
                 beta_pow *= beta;
             }
             ensure!(
@@ -111,14 +103,11 @@ impl SparkVerifier for SparkScheme {
                 "parallel sumcheck final-equation check failed (c)"
             );
 
-            R1CSSparkQuery {
-                point_to_evaluate: Point {
-                    row: requests[0].point_to_evaluate.row.clone(),
-                    col: folding_randomness,
-                },
-                claimed_a:         folded[0],
-                claimed_b:         folded[1],
-                claimed_c:         folded[2],
+            SparkColQuery {
+                col:       folding_randomness,
+                claimed_a: folded[0],
+                claimed_b: folded[1],
+                claimed_c: folded[2],
             }
         };
 
@@ -132,20 +121,18 @@ impl SparkVerifier for SparkScheme {
         let combined = request.claimed_a + r * request.claimed_b + r * r * request.claimed_c;
         let claimed_value = combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
 
-        let mut new_request = request.clone();
-        new_request.point_to_evaluate.row = std::iter::once(b1)
-            .chain(new_request.point_to_evaluate.row.clone())
-            .collect();
-        new_request.point_to_evaluate.col = std::iter::once(b1)
-            .chain(new_request.point_to_evaluate.col.clone())
-            .collect();
+        let extended_row: Vec<FieldElement> =
+            std::iter::once(b1).chain(batch.row.iter().copied()).collect();
+        let extended_col: Vec<FieldElement> =
+            std::iter::once(b1).chain(request.col.iter().copied()).collect();
 
         verify_spark_single_matrix(
             &setup.whir_configs,
             setup.matrix_dimensions.clone(),
             &mut arthur,
             &precomputed_commitments,
-            &new_request,
+            &extended_row,
+            &extended_col,
             &claimed_value,
         )
     }
@@ -157,7 +144,8 @@ pub(crate) fn verify_spark_single_matrix(
     matrix_dimensions: MatrixDimensions,
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     precomputed_commitments: &PrecomputedCommitments,
-    request: &R1CSSparkQuery,
+    row: &[FieldElement],
+    col: &[FieldElement],
     claimed_value: &FieldElement,
 ) -> Result<()> {
     let e_values_commitment = whir_configs
@@ -309,7 +297,7 @@ pub(crate) fn verify_spark_single_matrix(
         matrix_dimensions.num_rows,
         &whir_configs.row,
         &precomputed_commitments.a_row_finalts,
-        |eval_rand| calculate_eq(&request.point_to_evaluate.row, eval_rand),
+        |eval_rand| calculate_eq(row, eval_rand),
         &tau,
         &gamma,
         &claimed_row_rs,
@@ -321,7 +309,7 @@ pub(crate) fn verify_spark_single_matrix(
         matrix_dimensions.num_cols,
         &whir_configs.col,
         &precomputed_commitments.a_col_finalts,
-        |eval_rand| calculate_eq(&request.point_to_evaluate.col, eval_rand),
+        |eval_rand| calculate_eq(col, eval_rand),
         &tau,
         &gamma,
         &claimed_col_rs,

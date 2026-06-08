@@ -83,18 +83,15 @@ impl Command for Args {
                 .context("While verifying Noir proof")?;
         }
 
-        if !spark_queries.is_empty() {
+        if let Some(batch) = &spark_queries {
             std::fs::create_dir_all(&self.spark_queries_dir)
                 .with_context(|| format!("creating {:?}", self.spark_queries_dir))?;
-            for (index, query) in spark_queries.iter().enumerate() {
-                let query_path = self
-                    .spark_queries_dir
-                    .join(format!("spark_query_{index}.json"));
-                let query_file = std::fs::File::create(&query_path)
-                    .with_context(|| format!("creating {query_path:?}"))?;
-                serde_json::to_writer_pretty(query_file, query).context("writing spark query")?;
-                info!("Wrote SPARK query to {query_path:?}");
-            }
+            let queries_path = self.spark_queries_dir.join("spark_queries.json");
+            let queries_file = std::fs::File::create(&queries_path)
+                .with_context(|| format!("creating {queries_path:?}"))?;
+            serde_json::to_writer_pretty(queries_file, batch)
+                .context("writing SPARK queries")?;
+            info!(count = batch.queries.len(), "Wrote SPARK queries to {queries_path:?}");
         }
 
         Ok(())

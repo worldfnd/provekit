@@ -8,7 +8,7 @@ use {
             compute_public_eval, expand_powers, make_challenge_weight, make_public_weight,
             OffsetCovector,
         },
-        spark::{Point, R1CSSparkQuery},
+        spark::{SparkColQuery, SparkQueryBatch},
         utils::{
             pad_to_power_of_two,
             sumcheck::{
@@ -64,7 +64,7 @@ pub trait WhirR1CSProver {
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
         produce_spark_query: bool,
-    ) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)>;
+    ) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)>;
 
     #[cfg(not(target_arch = "wasm32"))]
     #[allow(clippy::too_many_arguments)]
@@ -78,7 +78,7 @@ pub trait WhirR1CSProver {
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
         produce_spark_query: bool,
-    ) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)>;
+    ) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)>;
 }
 
 impl WhirR1CSProver for WhirR1CSScheme {
@@ -152,7 +152,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
         produce_spark_query: bool,
-    ) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)> {
+    ) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
         let (a, b, c) = calculate_witness_bounds(&r1cs, &full_witness);
@@ -206,7 +206,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
         produce_spark_query: bool,
-    ) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)> {
+    ) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
         let blinding = commitments[0]
@@ -267,7 +267,7 @@ fn prove_from_alphas(
     commitments: Vec<WhirR1CSCommitment>,
     public_inputs: &PublicInputs,
     produce_spark_query: bool,
-) -> Result<(WhirR1CSProof, Vec<R1CSSparkQuery>)> {
+) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)> {
     let public_inputs_hash = public_inputs.hash(scheme.hash_config);
     let public_inputs_len = public_inputs.len();
 
@@ -277,7 +277,7 @@ fn prove_from_alphas(
 
     let domain_size = 1usize << scheme.m;
 
-    let spark_queries: Vec<R1CSSparkQuery> = if is_single {
+    let spark_queries: Option<SparkQueryBatch> = if is_single {
         // Single commitment path
         let commitment = commitments
             .into_iter()
@@ -340,18 +340,17 @@ fn prove_from_alphas(
                 .try_into()
                 .expect("exactly 3 alpha-weight evaluations");
 
-            let query = R1CSSparkQuery {
-                point_to_evaluate: Point {
-                    row: alpha,
-                    col: final_claim.evaluation_point,
-                },
-                claimed_a:         evaluations[0],
-                claimed_b:         evaluations[1],
-                claimed_c:         evaluations[2],
-            };
-            vec![query]
+            Some(SparkQueryBatch {
+                row:     alpha,
+                queries: vec![SparkColQuery {
+                    col:       final_claim.evaluation_point,
+                    claimed_a: evaluations[0],
+                    claimed_b: evaluations[1],
+                    claimed_c: evaluations[2],
+                }],
+            })
         } else {
-            Vec::new()
+            None
         }
     } else {
         // Dual commitment path
@@ -521,31 +520,28 @@ fn prove_from_alphas(
             (Some(claimed1), Some(claimed2)) => {
                 let mut col1 = final_claim1.evaluation_point.clone();
                 col1.insert(0, FieldElement::zero());
-                let query1 = R1CSSparkQuery {
-                    point_to_evaluate: Point {
-                        row: alpha.clone(),
-                        col: col1,
-                    },
-                    claimed_a:         claimed1[0],
-                    claimed_b:         claimed1[1],
-                    claimed_c:         claimed1[2],
+                let query1 = SparkColQuery {
+                    col:       col1,
+                    claimed_a: claimed1[0],
+                    claimed_b: claimed1[1],
+                    claimed_c: claimed1[2],
                 };
 
                 let mut col2 = final_claim2.evaluation_point.clone();
                 col2.insert(0, FieldElement::one());
-                let query2 = R1CSSparkQuery {
-                    point_to_evaluate: Point {
-                        row: alpha,
-                        col: col2,
-                    },
-                    claimed_a:         claimed2[0],
-                    claimed_b:         claimed2[1],
-                    claimed_c:         claimed2[2],
+                let query2 = SparkColQuery {
+                    col:       col2,
+                    claimed_a: claimed2[0],
+                    claimed_b: claimed2[1],
+                    claimed_c: claimed2[2],
                 };
 
-                vec![query1, query2]
+                Some(SparkQueryBatch {
+                    row:     alpha,
+                    queries: vec![query1, query2],
+                })
             }
-            _ => Vec::new(),
+            _ => None,
         }
     };
 

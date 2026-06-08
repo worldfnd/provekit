@@ -4,15 +4,11 @@ use {
     argh::FromArgs,
     provekit_common::{
         file::{read, write},
-        spark::R1CSSparkQuery,
+        spark::SparkQueryBatch,
         Prover,
     },
     provekit_spark::{SparkProver as _, SparkProverScheme, SparkProverContext},
-    std::{
-        fs::File,
-        io::BufReader,
-        path::{Path, PathBuf},
-    },
+    std::{fs::File, io::BufReader, path::PathBuf},
     tracing::{info, instrument},
 };
 
@@ -24,8 +20,8 @@ pub struct Args {
     #[argh(positional)]
     prover_path: PathBuf,
 
-    /// directory containing `spark_query_<i>.json` files; SPARK proofs are
-    /// written here as `spark_proof_<i>.sp` (default: ./spark_proofs)
+    /// directory containing `spark_queries.json`; the SPARK proof is written
+    /// here as `spark_proof.sp` (default: ./spark_proofs)
     #[argh(
         option,
         long = "spark-dir",
@@ -50,11 +46,12 @@ impl Command for Args {
 
         let prover: Prover = read(&self.prover_path).context("while reading Provekit Prover")?;
 
-        let queries = collect_queries(&self.spark_dir)?;
-        if queries.is_empty() {
-            info!("No SPARK queries found in {:?}", self.spark_dir);
+        let queries_path = self.spark_dir.join("spark_queries.json");
+        if !queries_path.exists() {
+            info!("No SPARK queries found at {queries_path:?}");
             return Ok(());
         }
+        let batch = read_queries(&queries_path)?;
 
         let hash_config = prover.whir_for_witness().hash_config;
         let context: SparkProverContext = read(&self.spctx_path)
@@ -67,7 +64,7 @@ impl Command for Args {
         let scheme =
             SparkProverScheme::new(num_constraints, num_witnesses, num_nonzero, hash_config);
         let spark_proof = scheme
-            .prove(&context, &queries)
+            .prove(&context, &batch)
             .context("generating SPARK proof")?;
         let proof_path = self.spark_dir.join("spark_proof.sp");
         write(&spark_proof, &proof_path)
@@ -78,17 +75,7 @@ impl Command for Args {
     }
 }
 
-fn collect_queries(dir: &Path) -> Result<Vec<R1CSSparkQuery>> {
-    let mut out = Vec::new();
-    for index in 0usize.. {
-        let path = dir.join(format!("spark_query_{index}.json"));
-        if !path.exists() {
-            break;
-        }
-        let file = File::open(&path).with_context(|| format!("opening {path:?}"))?;
-        let query: R1CSSparkQuery = serde_json::from_reader(BufReader::new(file))
-            .with_context(|| format!("parsing {path:?}"))?;
-        out.push(query);
-    }
-    Ok(out)
+fn read_queries(path: &PathBuf) -> Result<SparkQueryBatch> {
+    let file = File::open(path).with_context(|| format!("opening {path:?}"))?;
+    serde_json::from_reader(BufReader::new(file)).with_context(|| format!("parsing {path:?}"))
 }
