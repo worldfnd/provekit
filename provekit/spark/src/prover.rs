@@ -294,27 +294,31 @@ fn memory_checking(
         sumcheck_final_folds,
     )?;
 
+    let final_row_field = data.matrix.timestamps.final_row_field();
     prove_axis_init_final_product(
         merlin,
         AxisConfig {
             eq_memory:       &memory.eq_rx,
-            final_timestamp: &data.matrix.timestamps.final_row,
+            final_timestamp: &final_row_field,
             whir_config:     &whir_configs.row,
         },
         &data.witnesses.final_row_ts_witness,
         &challenges,
     )?;
+    drop(final_row_field);
 
+    let final_col_field = data.matrix.timestamps.final_col_field();
     prove_axis_init_final_product(
         merlin,
         AxisConfig {
             eq_memory:       &memory.eq_ry,
-            final_timestamp: &data.matrix.timestamps.final_col,
+            final_timestamp: &final_col_field,
             whir_config:     &whir_configs.col,
         },
         &data.witnesses.final_col_ts_witness,
         &challenges,
     )?;
+    drop(final_col_field);
 
     Ok(())
 }
@@ -358,8 +362,10 @@ fn prove_combined_rs_ws_product(
     let gamma_sq = challenges.gamma * challenges.gamma;
     let one = FieldElement::ONE;
 
-    let row_field = &matrix.coo.row_field;
-    let col_field = &matrix.coo.col_field;
+    let row_field = matrix.coo.row_field();
+    let col_field = matrix.coo.col_field();
+    let read_row_field = matrix.timestamps.read_row_field();
+    let read_col_field = matrix.timestamps.read_col_field();
     let n = row_field.len();
 
     let gpa_leaves_flat = tracing::info_span!("build_rs_ws_pairs").in_scope(|| {
@@ -377,11 +383,11 @@ fn prove_combined_rs_ws_product(
             .for_each(|(i, (((rs_r, ws_r), rs_c), ws_c))| {
                 let row_base = row_field[i] * gamma_sq
                     + e_values.e_rx[i] * challenges.gamma
-                    + matrix.timestamps.read_row[i]
+                    + read_row_field[i]
                     - challenges.tau;
                 let col_base = col_field[i] * gamma_sq
                     + e_values.e_ry[i] * challenges.gamma
-                    + matrix.timestamps.read_col[i]
+                    + read_col_field[i]
                     - challenges.tau;
                 *rs_r = row_base;
                 *ws_r = row_base + one;
@@ -395,10 +401,10 @@ fn prove_combined_rs_ws_product(
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
 
     let polys: [&[FieldElement]; 4] = [
-        row_field,
-        &matrix.timestamps.read_row,
-        col_field,
-        &matrix.timestamps.read_col,
+        &row_field,
+        &read_row_field,
+        &col_field,
+        &read_col_field,
     ];
     let [row_address_eval, row_timestamp_eval, col_address_eval, col_timestamp_eval]: [_; 4] =
         tracing::info_span!("multilinear_extend_rs_ws")
@@ -417,10 +423,10 @@ fn prove_combined_rs_ws_product(
     merlin.prover_hint_ark(&col_timestamp_eval);
 
     let pairs: [(&[FieldElement], &[FieldElement]); 5] = [
-        (row_field, folding_randomness),
-        (&matrix.timestamps.read_row, folding_randomness),
-        (col_field, folding_randomness),
-        (&matrix.timestamps.read_col, folding_randomness),
+        (&row_field, folding_randomness),
+        (&read_row_field, folding_randomness),
+        (&col_field, folding_randomness),
+        (&read_col_field, folding_randomness),
         (&matrix.coo.val, evaluation_randomness),
     ];
     let [row_field_at_fold, read_row_at_fold, col_field_at_fold, read_col_at_fold, vals_at_eval]: [_; 5] =
@@ -462,10 +468,10 @@ fn prove_combined_rs_ws_product(
         merlin,
         vec![
             Cow::Borrowed(&matrix.coo.val),
-            Cow::Borrowed(row_field),
-            Cow::Borrowed(&matrix.timestamps.read_row),
-            Cow::Borrowed(col_field),
-            Cow::Borrowed(&matrix.timestamps.read_col),
+            Cow::Borrowed(&row_field),
+            Cow::Borrowed(&read_row_field),
+            Cow::Borrowed(&col_field),
+            Cow::Borrowed(&read_col_field),
         ],
         vec![Cow::Borrowed(vals_rs_ws_witness)],
         vec![

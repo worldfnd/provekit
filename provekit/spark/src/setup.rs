@@ -31,24 +31,33 @@ pub fn preprocess_spark(
     let ds = DomainSeparator::protocol(&scheme.whir_configs).instance(&Empty);
     let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(hash_config));
 
+    let row_field = matrix.coo.row_field();
+    let col_field = matrix.coo.col_field();
+    let read_row_field = matrix.timestamps.read_row_field();
+    let read_col_field = matrix.timestamps.read_col_field();
     let vals_rs_ws_witness = scheme
         .whir_configs
         .num_terms_5batched
         .commit(&mut merlin, &[
             &matrix.coo.val,
-            &matrix.coo.row_field,
-            &matrix.timestamps.read_row,
-            &matrix.coo.col_field,
-            &matrix.timestamps.read_col,
+            &row_field,
+            &read_row_field,
+            &col_field,
+            &read_col_field,
         ]);
+    drop((row_field, col_field, read_row_field, read_col_field));
+    let final_row_field = matrix.timestamps.final_row_field();
     let final_row_ts_witness = scheme
         .whir_configs
         .row
-        .commit(&mut merlin, &[&matrix.timestamps.final_row]);
+        .commit(&mut merlin, &[&final_row_field]);
+    drop(final_row_field);
+    let final_col_field = matrix.timestamps.final_col_field();
     let final_col_ts_witness = scheme
         .whir_configs
         .col
-        .commit(&mut merlin, &[&matrix.timestamps.final_col]);
+        .commit(&mut merlin, &[&final_col_field]);
+    drop(final_col_field);
 
     let proof = merlin.proof();
     let setup = SparkSetup {

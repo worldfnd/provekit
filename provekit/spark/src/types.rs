@@ -85,39 +85,23 @@ impl SparkMatrix {
         num_cols: usize,
     ) -> Self {
         let len = row.len();
-        let mut read_row_counters = vec![0usize; num_rows];
-        let mut read_col_counters = vec![0usize; num_cols];
+        let mut read_row_counters = vec![0u32; num_rows];
+        let mut read_col_counters = vec![0u32; num_cols];
         let mut read_row = Vec::with_capacity(len);
         let mut read_col = Vec::with_capacity(len);
         for i in 0..len {
-            read_row.push(FieldElement::from(read_row_counters[row[i]] as u64));
+            read_row.push(read_row_counters[row[i]]);
             read_row_counters[row[i]] += 1;
-            read_col.push(FieldElement::from(read_col_counters[col[i]] as u64));
+            read_col.push(read_col_counters[col[i]]);
             read_col_counters[col[i]] += 1;
         }
-        let final_row = read_row_counters
-            .iter()
-            .map(|&x| FieldElement::from(x as u64))
-            .collect();
-        let final_col = read_col_counters
-            .iter()
-            .map(|&x| FieldElement::from(x as u64))
-            .collect();
-        let row_field = row.iter().map(|&r| FieldElement::from(r as u64)).collect();
-        let col_field = col.iter().map(|&c| FieldElement::from(c as u64)).collect();
         Self {
-            coo:        COOMatrix {
-                row,
-                col,
-                row_field,
-                col_field,
-                val,
-            },
+            coo:        COOMatrix { row, col, val },
             timestamps: TimeStamps {
                 read_row,
                 read_col,
-                final_row,
-                final_col,
+                final_row: read_row_counters,
+                final_col: read_col_counters,
             },
         }
     }
@@ -125,19 +109,63 @@ impl SparkMatrix {
 
 #[derive(Debug, Clone)]
 pub struct COOMatrix {
-    pub row:       Vec<usize>,
-    pub col:       Vec<usize>,
-    pub row_field: Vec<FieldElement>,
-    pub col_field: Vec<FieldElement>,
-    pub val:       Vec<FieldElement>,
+    pub row: Vec<usize>,
+    pub col: Vec<usize>,
+    pub val: Vec<FieldElement>,
+}
+
+impl COOMatrix {
+    pub fn row_field(&self) -> Vec<FieldElement> {
+        self.row
+            .iter()
+            .map(|&r| FieldElement::from(r as u64))
+            .collect()
+    }
+
+    pub fn col_field(&self) -> Vec<FieldElement> {
+        self.col
+            .iter()
+            .map(|&c| FieldElement::from(c as u64))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct TimeStamps {
-    pub read_row:  Vec<FieldElement>,
-    pub read_col:  Vec<FieldElement>,
-    pub final_row: Vec<FieldElement>,
-    pub final_col: Vec<FieldElement>,
+    pub read_row:  Vec<u32>,
+    pub read_col:  Vec<u32>,
+    pub final_row: Vec<u32>,
+    pub final_col: Vec<u32>,
+}
+
+impl TimeStamps {
+    pub fn read_row_field(&self) -> Vec<FieldElement> {
+        self.read_row
+            .iter()
+            .map(|&x| FieldElement::from(u64::from(x)))
+            .collect()
+    }
+
+    pub fn read_col_field(&self) -> Vec<FieldElement> {
+        self.read_col
+            .iter()
+            .map(|&x| FieldElement::from(u64::from(x)))
+            .collect()
+    }
+
+    pub fn final_row_field(&self) -> Vec<FieldElement> {
+        self.final_row
+            .iter()
+            .map(|&x| FieldElement::from(u64::from(x)))
+            .collect()
+    }
+
+    pub fn final_col_field(&self) -> Vec<FieldElement> {
+        self.final_col
+            .iter()
+            .map(|&x| FieldElement::from(u64::from(x)))
+            .collect()
+    }
 }
 
 #[derive(Serialize, Deserialize)]
