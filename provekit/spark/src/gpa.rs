@@ -234,45 +234,33 @@ pub struct GPASumcheckResult {
     pub randomness:          Vec<FieldElement>,
 }
 
-#[instrument(skip_all)]
-pub fn gpa_sumcheck_verifier2(
+fn read_msgs<const N: usize>(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
+    label: &str,
+) -> anyhow::Result<[FieldElement; N]> {
+    let mut out = [FieldElement::ZERO; N];
+    for (i, slot) in out.iter_mut().enumerate() {
+        *slot = arthur
+            .prover_message()
+            .map_err(|_| anyhow::anyhow!("Failed to read {label} [{i}]"))?;
+    }
+    Ok(out)
+}
+
+fn run_gpa_layers(
+    arthur: &mut VerifierState<'_, TranscriptSponge>,
+    start_layer: usize,
     height_of_binary_tree: usize,
-) -> anyhow::Result<GPASumcheckResult> {
-    let mut prev_randomness;
+    mut sumcheck_value: FieldElement,
+    mut prev_randomness: Vec<FieldElement>,
+    cubic_label: &str,
+    line_label: &str,
+) -> anyhow::Result<(FieldElement, Vec<FieldElement>)> {
     let mut current_randomness = Vec::<FieldElement>::new();
 
-    let claimed_0: FieldElement = arthur
-        .prover_message()
-        .map_err(|_| anyhow::anyhow!("Failed to read GPA2 claimed_0"))?;
-    let claimed_1: FieldElement = arthur
-        .prover_message()
-        .map_err(|_| anyhow::anyhow!("Failed to read GPA2 claimed_1"))?;
-    let claimed_values = [claimed_0, claimed_1];
-
-    let line_challenge: FieldElement = arthur.verifier_message();
-
-    let mut sumcheck_value = eval_line(&claimed_values, &line_challenge);
-    current_randomness.push(line_challenge);
-    prev_randomness = current_randomness;
-    current_randomness = Vec::new();
-
-    for layer_idx in 1..height_of_binary_tree - 1 {
+    for layer_idx in start_layer..height_of_binary_tree - 1 {
         for _ in 0..layer_idx {
-            let cubic_coeffs: [FieldElement; 4] = [
-                arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read GPA2 cubic coeff [0]"))?,
-                arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read GPA2 cubic coeff [1]"))?,
-                arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read GPA2 cubic coeff [2]"))?,
-                arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read GPA2 cubic coeff [3]"))?,
-            ];
+            let cubic_coeffs = read_msgs::<4>(arthur, cubic_label)?;
             let sumcheck_challenge: FieldElement = arthur.verifier_message();
 
             ensure!(
@@ -286,14 +274,7 @@ pub fn gpa_sumcheck_verifier2(
             sumcheck_value = eval_cubic_poly(cubic_coeffs, sumcheck_challenge);
         }
 
-        let line_coeffs: [FieldElement; 2] = [
-            arthur
-                .prover_message()
-                .map_err(|_| anyhow::anyhow!("Failed to read GPA2 line coeff [0]"))?,
-            arthur
-                .prover_message()
-                .map_err(|_| anyhow::anyhow!("Failed to read GPA2 line coeff [1]"))?,
-        ];
+        let line_coeffs = read_msgs::<2>(arthur, line_label)?;
         let line_challenge: FieldElement = arthur.verifier_message();
 
         let expected_line_value = calculate_eq(&prev_randomness, &current_randomness)
@@ -310,12 +291,36 @@ pub fn gpa_sumcheck_verifier2(
         sumcheck_value = eval_line(&line_coeffs, &line_challenge);
     }
 
-    let claimed_values = [claimed_values[0], claimed_values[0] + claimed_values[1]].to_vec();
+    Ok((sumcheck_value, prev_randomness))
+}
+
+#[instrument(skip_all)]
+pub fn gpa_sumcheck_verifier2(
+    arthur: &mut VerifierState<'_, TranscriptSponge>,
+    height_of_binary_tree: usize,
+) -> anyhow::Result<GPASumcheckResult> {
+    let claimed_values = read_msgs::<2>(arthur, "GPA2 claimed value")?;
+    let line_challenge: FieldElement = arthur.verifier_message();
+
+    let initial_sumcheck_value = eval_line(&claimed_values, &line_challenge);
+    let initial_randomness = vec![line_challenge];
+
+    let (last_sumcheck_value, randomness) = run_gpa_layers(
+        arthur,
+        1,
+        height_of_binary_tree,
+        initial_sumcheck_value,
+        initial_randomness,
+        "GPA2 cubic coeff",
+        "GPA2 line coeff",
+    )?;
+
+    let claimed_values = vec![claimed_values[0], claimed_values[0] + claimed_values[1]];
 
     Ok(GPASumcheckResult {
         claimed_values,
-        last_sumcheck_value: sumcheck_value,
-        randomness: prev_randomness,
+        last_sumcheck_value,
+        randomness,
     })
 }
 
@@ -324,95 +329,37 @@ pub fn gpa_sumcheck_verifier4(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     height_of_binary_tree: usize,
 ) -> anyhow::Result<GPASumcheckResult> {
-    let claimed_values: [FieldElement; 4] = [
-        arthur
-            .prover_message()
-            .map_err(|_| anyhow::anyhow!("Failed to read GPA4 claimed value [0]"))?,
-        arthur
-            .prover_message()
-            .map_err(|_| anyhow::anyhow!("Failed to read GPA4 claimed value [1]"))?,
-        arthur
-            .prover_message()
-            .map_err(|_| anyhow::anyhow!("Failed to read GPA4 claimed value [2]"))?,
-        arthur
-            .prover_message()
-            .map_err(|_| anyhow::anyhow!("Failed to read GPA4 claimed value [3]"))?,
-    ];
+    let claimed_values = read_msgs::<4>(arthur, "GPA4 claimed value")?;
     let r0: FieldElement = arthur.verifier_message();
     let r1: FieldElement = arthur.verifier_message();
-    let mut prev_randomness = vec![r0, r1];
-    let mut current_randomness = Vec::<FieldElement>::new();
+    let initial_randomness = vec![r0, r1];
 
-    let mut sumcheck_value = claimed_values[0]
-        + claimed_values[1] * prev_randomness[1]
-        + claimed_values[2] * prev_randomness[0]
-        + claimed_values[3] * prev_randomness[0] * prev_randomness[1];
+    let initial_sumcheck_value = claimed_values[0]
+        + claimed_values[1] * r1
+        + claimed_values[2] * r0
+        + claimed_values[3] * r0 * r1;
 
-    for layer_idx in 2..height_of_binary_tree - 1 {
-        for _ in 0..layer_idx {
-            let cubic_coeffs: [FieldElement; 4] = [
-                arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read GPA4 cubic coeff [0]"))?,
-                arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read GPA4 cubic coeff [1]"))?,
-                arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read GPA4 cubic coeff [2]"))?,
-                arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read GPA4 cubic coeff [3]"))?,
-            ];
-            let sumcheck_challenge: FieldElement = arthur.verifier_message();
+    let (last_sumcheck_value, randomness) = run_gpa_layers(
+        arthur,
+        2,
+        height_of_binary_tree,
+        initial_sumcheck_value,
+        initial_randomness,
+        "GPA4 cubic coeff",
+        "GPA4 line coeff",
+    )?;
 
-            ensure!(
-                eval_cubic_poly(cubic_coeffs, FieldElement::ZERO)
-                    + eval_cubic_poly(cubic_coeffs, FieldElement::ONE)
-                    == sumcheck_value,
-                "Sumcheck verification failed at layer {layer_idx}"
-            );
-
-            current_randomness.push(sumcheck_challenge);
-            sumcheck_value = eval_cubic_poly(cubic_coeffs, sumcheck_challenge);
-        }
-
-        let line_coeffs: [FieldElement; 2] = [
-            arthur
-                .prover_message()
-                .map_err(|_| anyhow::anyhow!("Failed to read GPA4 line coeff [0]"))?,
-            arthur
-                .prover_message()
-                .map_err(|_| anyhow::anyhow!("Failed to read GPA4 line coeff [1]"))?,
-        ];
-        let line_challenge: FieldElement = arthur.verifier_message();
-
-        let expected_line_value = calculate_eq(&prev_randomness, &current_randomness)
-            * eval_line(&line_coeffs, &FieldElement::ZERO)
-            * eval_line(&line_coeffs, &FieldElement::ONE);
-        ensure!(
-            expected_line_value == sumcheck_value,
-            "Line evaluation mismatch"
-        );
-
-        current_randomness.push(line_challenge);
-        prev_randomness = current_randomness;
-        current_randomness = Vec::new();
-        sumcheck_value = eval_line(&line_coeffs, &line_challenge);
-    }
-
-    let claimed_values = [
+    let claimed_values = vec![
         claimed_values[0],
         claimed_values[0] + claimed_values[1],
         claimed_values[0] + claimed_values[2],
         claimed_values[0] + claimed_values[1] + claimed_values[2] + claimed_values[3],
-    ]
-    .to_vec();
+    ];
 
     Ok(GPASumcheckResult {
         claimed_values,
-        last_sumcheck_value: sumcheck_value,
-        randomness: prev_randomness,
+        last_sumcheck_value,
+        randomness,
     })
 }
 
