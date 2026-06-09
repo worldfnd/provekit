@@ -450,53 +450,12 @@ jobs:
           if-no-files-found: warn
 
   android:
-    name: Android BrowserStack benchmark (${{ matrix.android_shard.function_slug }} / ${{ matrix.android_shard.device_slug }})
+    name: Android BrowserStack benchmark
     needs: ios
     if: always() && (inputs.platform == 'android' || inputs.platform == 'both')
     runs-on: macos-14
-    timeout-minutes: 100
+    timeout-minutes: 360
     environment: Browserstack
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        android_shard:
-          - function: bench_mobile::bench_oprf_prove
-            function_slug: oprf
-            device: Samsung Galaxy S24-14.0
-            device_slug: s24
-          - function: bench_mobile::bench_oprf_prove
-            function_slug: oprf
-            device: Google Pixel 7-13.0
-            device_slug: pixel7
-          - function: bench_mobile::bench_oprf_prove
-            function_slug: oprf
-            device: Samsung Galaxy M32-11.0
-            device_slug: galaxy-m32
-          - function: bench_mobile::bench_passport_fragmented_age_check_prove
-            function_slug: fragmented
-            device: Samsung Galaxy S24-14.0
-            device_slug: s24
-          - function: bench_mobile::bench_passport_fragmented_age_check_prove
-            function_slug: fragmented
-            device: Google Pixel 7-13.0
-            device_slug: pixel7
-          - function: bench_mobile::bench_passport_fragmented_age_check_prove
-            function_slug: fragmented
-            device: Samsung Galaxy M32-11.0
-            device_slug: galaxy-m32
-          - function: bench_mobile::bench_passport_complete_age_check_prove
-            function_slug: monolithic
-            device: Samsung Galaxy S24-14.0
-            device_slug: s24
-          - function: bench_mobile::bench_passport_complete_age_check_prove
-            function_slug: monolithic
-            device: Google Pixel 7-13.0
-            device_slug: pixel7
-          - function: bench_mobile::bench_passport_complete_age_check_prove
-            function_slug: monolithic
-            device: Samsung Galaxy M32-11.0
-            device_slug: galaxy-m32
     env:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
@@ -695,8 +654,7 @@ jobs:
         working-directory: caller
         shell: bash
         env:
-          FUNCTIONS: ${{ matrix.android_shard.function }}
-          ANDROID_DEVICE_SPEC: ${{ matrix.android_shard.device }}
+          FUNCTIONS: ${{ inputs.functions_android != '' && inputs.functions_android || inputs.functions }}
           ITERATIONS: ${{ inputs.iterations }}
           WARMUP: ${{ inputs.warmup }}
           RELEASE_FLAG: ${{ inputs.build_release && '--release' || '' }}
@@ -728,9 +686,6 @@ jobs:
           fi
 
           echo "Running Android benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
-          if [[ -n "${ANDROID_DEVICE_SPEC:-}" ]]; then
-            ANDROID_DEVICE_SPECS="${ANDROID_DEVICE_SPEC}"
-          fi
           echo "Android devices: ${ANDROID_DEVICE_SPECS}"
           echo "Android fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
           max_attempts=1
@@ -1116,7 +1071,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mobench-results-android-${{ matrix.android_shard.function_slug }}-${{ matrix.android_shard.device_slug }}
+          name: mobench-results-android
           path: |
             caller/target/mobench/ci/android/**
             caller/target/browserstack/android/**
@@ -1176,9 +1131,8 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          pattern: mobench-results-android-*
+          name: mobench-results-android
           path: results/android
-          merge-multiple: true
 
       - name: Setup Python for plot rendering
         uses: actions/setup-python@v5
