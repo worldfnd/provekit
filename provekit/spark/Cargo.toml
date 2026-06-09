@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 provekit-common.workspace = true
 ark-ff.workspace = true
+ark-serialize.workspace = true
 ark-std.workspace = true
 anyhow.workspace = true
 serde.workspace = true

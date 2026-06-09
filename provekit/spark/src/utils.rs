@@ -1,11 +1,24 @@
 pub use crate::types::Memory;
 use {
     crate::types::{MatrixDimensions, SparkMatrix},
+    anyhow::{anyhow, Result},
     ark_ff::Zero,
+    ark_serialize::CanonicalDeserialize,
     provekit_common::{
         utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, FieldElement,
+        TranscriptSponge,
     },
+    whir::transcript::VerifierState,
 };
+
+pub fn read_hint<T: CanonicalDeserialize>(
+    arthur: &mut VerifierState<'_, TranscriptSponge>,
+    label: &str,
+) -> Result<T> {
+    arthur
+        .prover_hint_ark()
+        .map_err(|e| anyhow!("Failed to read {label} hint: {e}"))
+}
 
 #[tracing::instrument(skip_all)]
 pub fn alphas_from_spark(

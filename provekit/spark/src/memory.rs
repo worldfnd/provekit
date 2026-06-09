@@ -2,6 +2,7 @@ use {
     crate::{
         gpa::{calculate_adr, gpa_sumcheck_verifier2, run_gpa2},
         types::{Challenges, WhirWitness},
+        utils::read_hint,
     },
     anyhow::{ensure, Result},
     ark_ff::AdditiveGroup,
@@ -105,9 +106,7 @@ pub fn verify_axis(
     let init_mem = init_mem_fn(evaluation_randomness);
     let init_opening = init_adr * gamma_sq + init_mem * gamma - tau;
 
-    let final_cntr: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read final counter hint"))?;
+    let final_cntr: FieldElement = read_hint(arthur, "final counter")?;
 
     let eval_weight = MultilinearExtension::new(evaluation_randomness.to_vec());
     let finalts_claim = whir_config

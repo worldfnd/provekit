@@ -5,6 +5,7 @@ use {
         setup::PrecomputedCommitments,
         sumcheck::{run_parallel_sumchecks_verifier, run_sumcheck_verifier_spark},
         types::{MatrixDimensions, SparkProof, SparkSetup, SparkWhirConfigs},
+        utils::read_hint,
     },
     anyhow::{ensure, Context, Result},
     ark_ff::{AdditiveGroup, Field, Zero},
@@ -161,9 +162,8 @@ pub(crate) fn verify_spark_single_matrix(
     .context("While verifying SPARK sumcheck")?;
     let eval_weight = MultilinearExtension::new(randomness);
 
-    let sumcheck_hints: [FieldElement; 3] = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read SPARK sumcheck final folds hint"))?;
+    let sumcheck_hints: [FieldElement; 3] =
+        read_hint(arthur, "SPARK sumcheck final folds")?;
 
     ensure!(
         last_sumcheck_value == sumcheck_hints[0] * sumcheck_hints[1] * sumcheck_hints[2],
@@ -185,37 +185,19 @@ pub(crate) fn verify_spark_single_matrix(
     let claimed_col_rs = gpa_result.claimed_values[2];
     let claimed_col_ws = gpa_result.claimed_values[3];
 
-    let row_adr: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read row_adr hint"))?;
-    let row_timestamp: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read row_timestamp hint"))?;
-    let col_adr: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read col_adr hint"))?;
-    let col_timestamp: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read col_timestamp hint"))?;
+    let row_adr: FieldElement = read_hint(arthur, "row_adr")?;
+    let row_timestamp: FieldElement = read_hint(arthur, "row_timestamp")?;
+    let col_adr: FieldElement = read_hint(arthur, "col_adr")?;
+    let col_timestamp: FieldElement = read_hint(arthur, "col_timestamp")?;
 
     let gpa_eval_weight = MultilinearExtension::new(evaluation_randomness.to_vec());
     let gpa_eval_lf: &dyn whir::algebra::linear_form::LinearForm<FieldElement> = &gpa_eval_weight;
 
-    let row_field_at_fold: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read row_field_at_fold hint"))?;
-    let read_row_at_fold: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read read_row_at_fold hint"))?;
-    let col_field_at_fold: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read col_field_at_fold hint"))?;
-    let read_col_at_fold: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read read_col_at_fold hint"))?;
-    let vals_at_eval: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read vals_at_eval hint"))?;
+    let row_field_at_fold: FieldElement = read_hint(arthur, "row_field_at_fold")?;
+    let read_row_at_fold: FieldElement = read_hint(arthur, "read_row_at_fold")?;
+    let col_field_at_fold: FieldElement = read_hint(arthur, "col_field_at_fold")?;
+    let read_col_at_fold: FieldElement = read_hint(arthur, "read_col_at_fold")?;
+    let vals_at_eval: FieldElement = read_hint(arthur, "vals_at_eval")?;
 
     let fold_lf_for_vals_rs_ws = MultilinearExtension::new(eval_weight.point.clone());
     let eval_lf_for_vals_rs_ws = MultilinearExtension::new(evaluation_randomness.to_vec());
@@ -244,12 +226,8 @@ pub(crate) fn verify_spark_single_matrix(
         ])
         .map_err(|e| anyhow::anyhow!("FinalClaim check failed for vals_rs_ws: {e}"))?;
 
-    let row_mem: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read row_mem hint"))?;
-    let col_mem: FieldElement = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read col_mem hint"))?;
+    let row_mem: FieldElement = read_hint(arthur, "row_mem")?;
+    let col_mem: FieldElement = read_hint(arthur, "col_mem")?;
 
     let e_values_combined_claim = whir_configs
         .num_terms_2batched

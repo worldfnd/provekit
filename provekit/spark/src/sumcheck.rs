@@ -1,4 +1,5 @@
 use {
+    crate::utils::read_hint,
     anyhow::{ensure, Result},
     ark_std::{One, Zero},
     provekit_common::{
@@ -150,9 +151,7 @@ pub fn run_parallel_sumchecks_verifier(
         claimed_values[2] = eval_quadratic_poly(c_coeffs, alpha_i);
     }
 
-    let folded: [FieldElement; 3] = arthur
-        .prover_hint_ark()
-        .map_err(|_| anyhow::anyhow!("Failed to read parallel sumcheck folded values"))?;
+    let folded: [FieldElement; 3] = read_hint(arthur, "parallel sumcheck folded values")?;
 
     Ok((claimed_values, folded, folding_randomness))
 }
