@@ -16,7 +16,7 @@ use {
         Verifier, R1CS,
     },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
-    provekit_spark::types::SparkMatrix,
+    provekit_spark::SparkMatrix,
     rayon::prelude::*,
     std::{
         path::{Path, PathBuf},

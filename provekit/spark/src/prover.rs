@@ -33,15 +33,7 @@ use {
     },
 };
 
-pub trait SparkProver {
-    fn prove(
-        &self,
-        spark_data: &SparkProverContext,
-        batch: &SparkQueryBatch,
-    ) -> Result<SparkProof>;
-}
-
-pub struct SparkScheme {
+pub struct SparkProverScheme {
     pub whir_configs:      SparkWhirConfigs,
     pub matrix_dimensions: MatrixDimensions,
 }
@@ -67,7 +59,7 @@ pub fn new_whir_config_for_size(
     WhirConfig::new(1 << nv, &whir_params)
 }
 
-impl SparkScheme {
+impl SparkProverScheme {
     pub fn new_for_r1cs(r1cs: &provekit_common::R1CS, hash_config: HashConfig) -> Self {
         let num_rows = 2 * r1cs.num_constraints();
         let num_cols = 2 * r1cs.num_witnesses();
@@ -109,9 +101,9 @@ impl SparkScheme {
     }
 }
 
-impl SparkProver for SparkScheme {
+impl SparkProverScheme {
     #[instrument(skip_all)]
-    fn prove(
+    pub fn prove(
         &self,
         spark_data: &SparkProverContext,
         batch: &SparkQueryBatch,

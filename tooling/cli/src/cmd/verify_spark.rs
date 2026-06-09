@@ -3,7 +3,7 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     provekit_common::{file::read, spark::SparkQueryBatch},
-    provekit_spark::{SparkProof, SparkSetup, SparkVerifier, SparkVerifierScheme},
+    provekit_spark::{SparkProof, SparkSetup, SparkVerifierScheme},
     std::{fs::File, io::BufReader, path::PathBuf},
     tracing::instrument,
 };

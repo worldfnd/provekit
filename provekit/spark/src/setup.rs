@@ -1,6 +1,6 @@
 use {
     crate::{
-        prover::SparkScheme as SparkProverScheme,
+        prover::SparkProverScheme,
         types::{SparkSetup, SparkMatrix, SparkWitnesses},
     },
     anyhow::Result,

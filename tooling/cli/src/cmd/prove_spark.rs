@@ -7,7 +7,7 @@ use {
         spark::SparkQueryBatch,
         Prover,
     },
-    provekit_spark::{SparkProver as _, SparkProverScheme, SparkProverContext},
+    provekit_spark::{SparkProverContext, SparkProverScheme},
     std::{fs::File, io::BufReader, path::PathBuf},
     tracing::{info, instrument},
 };

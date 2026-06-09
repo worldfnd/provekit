@@ -21,20 +21,11 @@ use {
     },
 };
 
-pub trait SparkVerifier {
-    fn verify(
-        &self,
-        proof: SparkProof,
-        setup: &SparkSetup,
-        batch: &SparkQueryBatch,
-    ) -> Result<()>;
-}
+pub struct SparkVerifierScheme;
 
-pub struct SparkScheme;
-
-impl SparkVerifier for SparkScheme {
+impl SparkVerifierScheme {
     #[instrument(skip_all)]
-    fn verify(
+    pub fn verify(
         &self,
         proof: SparkProof,
         setup: &SparkSetup,

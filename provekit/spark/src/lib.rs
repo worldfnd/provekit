@@ -1,20 +1,20 @@
-pub mod gpa;
-pub mod memory;
-pub mod prover;
+pub(crate) mod gpa;
+pub(crate) mod memory;
+pub(crate) mod prover;
 mod serde_whir_witness;
-pub mod setup;
-pub mod sumcheck;
-pub mod types;
-pub mod utils;
-pub mod verifier;
+pub(crate) mod setup;
+pub(crate) mod sumcheck;
+pub(crate) mod types;
+pub(crate) mod utils;
+pub(crate) mod verifier;
 
 pub use {
-    prover::{SparkProver, SparkScheme as SparkProverScheme},
+    prover::SparkProverScheme,
     setup::preprocess_spark,
     types::{
-        MatrixDimensions, SparkProof, SparkSetup, SparkWhirConfigs, SparkProverContext,
-        SparkWitnesses,
+        MatrixDimensions, SparkMatrix, SparkProof, SparkProverContext, SparkSetup,
+        SparkWhirConfigs, SparkWitnesses,
     },
     utils::calculate_memory,
-    verifier::{SparkScheme as SparkVerifierScheme, SparkVerifier},
+    verifier::SparkVerifierScheme,
 };
