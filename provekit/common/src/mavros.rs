@@ -11,16 +11,14 @@ use {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MavrosProver {
     #[serde(with = "crate::utils::serde_jsonify")]
-    pub abi:                 Abi,
-    pub num_public_inputs:   usize,
-    pub whir_for_witness:    WhirR1CSScheme,
-    pub witgen_binary:       Vec<u64>,
-    pub ad_binary:           Vec<u64>,
-    pub constraints_layout:  ConstraintsLayout,
-    pub witness_layout:      WitnessLayout,
-    pub hash_config:         HashConfig,
-    #[serde(skip, default)]
-    pub produce_spark_query: bool,
+    pub abi:                Abi,
+    pub num_public_inputs:  usize,
+    pub whir_for_witness:   WhirR1CSScheme,
+    pub witgen_binary:      Vec<u64>,
+    pub ad_binary:          Vec<u64>,
+    pub constraints_layout: ConstraintsLayout,
+    pub witness_layout:     WitnessLayout,
+    pub hash_config:        HashConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

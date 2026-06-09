@@ -18,8 +18,6 @@ pub struct NoirProver {
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme,
-    #[serde(skip, default)]
-    pub produce_spark_query:    bool,
 }
 
 /// On-disk **ProveKit Prover** (PKP) — the prover-side scheme that gets
@@ -48,26 +46,17 @@ impl Prover {
                 split_witness_builders: d.split_witness_builders,
                 witness_generator:      d.witness_generator,
                 whir_for_witness:       d.whir_for_witness,
-                produce_spark_query:    false,
             }),
             NoirProofScheme::Mavros(d) => Prover::Mavros(MavrosProver {
-                abi:                 d.abi,
-                num_public_inputs:   d.num_public_inputs,
-                whir_for_witness:    d.whir_for_witness,
-                witgen_binary:       d.witgen_binary,
-                ad_binary:           d.ad_binary,
-                constraints_layout:  d.constraints_layout,
-                witness_layout:      d.witness_layout,
-                hash_config:         d.hash_config,
-                produce_spark_query: false,
+                abi:                d.abi,
+                num_public_inputs:  d.num_public_inputs,
+                whir_for_witness:   d.whir_for_witness,
+                witgen_binary:      d.witgen_binary,
+                ad_binary:          d.ad_binary,
+                constraints_layout: d.constraints_layout,
+                witness_layout:     d.witness_layout,
+                hash_config:        d.hash_config,
             }),
-        }
-    }
-
-    pub fn set_produce_spark_query(&mut self, value: bool) {
-        match self {
-            Prover::Noir(p) => p.produce_spark_query = value,
-            Prover::Mavros(p) => p.produce_spark_query = value,
         }
     }
 

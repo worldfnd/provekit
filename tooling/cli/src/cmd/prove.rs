@@ -61,15 +61,21 @@ impl Command for Args {
             .clone()
             .unwrap_or_else(|| PathBuf::from("./Prover.toml"));
 
-        let mut prover: Prover = read(&prover_path).context("while reading Provekit Prover")?;
+        let prover: Prover = read(&prover_path).context("while reading Provekit Prover")?;
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
-        prover.set_produce_spark_query(self.produce_spark_query);
-
-        let (proof, spark_queries) = prover
-            .prove_with_toml(&input_path)
-            .context("While proving Noir program statement")?;
+        let (proof, spark_queries) = if self.produce_spark_query {
+            let (proof, batch) = prover
+                .prove_with_spark_toml(&input_path)
+                .context("While proving Noir program statement")?;
+            (proof, Some(batch))
+        } else {
+            let proof = prover
+                .prove_with_toml(&input_path)
+                .context("While proving Noir program statement")?;
+            (proof, None)
+        };
 
         write(&proof, &self.proof_path).context("while writing proof")?;
 

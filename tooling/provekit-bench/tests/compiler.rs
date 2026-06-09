@@ -87,7 +87,7 @@ fn test_noir_compiler_with_hash_config(
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
-    let (proof, _) = prover
+    let proof = prover
         .prove_with_toml(&witness_file_path)
         .expect("While proving Noir program statement");
 
@@ -269,7 +269,7 @@ fn test_public_input_binding_exploit() {
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
     // Prove honestly (a=5, b=3 → result = (5+3)*(5-3) = 16)
-    let (mut proof, _) = prover
+    let mut proof = prover
         .prove_with_toml(&witness_file_path)
         .expect("While proving Noir program statement");
 
@@ -322,7 +322,7 @@ fn test_verifier_rejects_mismatched_hash_config() {
     let mut matching_verifier = Verifier::from_noir_proof_scheme(prover_schema);
     let mut mismatched_verifier = Verifier::from_noir_proof_scheme(verifier_schema);
 
-    let (proof, _spark_queries) = prover
+    let proof = prover
         .prove_with_toml(&witness_file_path)
         .expect("While proving Noir program statement");
 

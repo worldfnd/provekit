@@ -117,7 +117,6 @@ impl Prover {
             .ok_or_else(|| JsError::new("Prover has been consumed by a previous prove() call"))?;
         inner
             .prove_with_witness(witness)
-            .map(|(proof, _)| proof)
             .context("Failed to generate proof")
             .map_err(|err| JsError::new(&format!("{err:#}")))
     }
