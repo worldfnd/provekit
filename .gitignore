@@ -16,6 +16,7 @@
 *.np
 *.sp
 *.spc
+*.spctx
 spark_proofs/
 params_for_recursive_verifier
 params

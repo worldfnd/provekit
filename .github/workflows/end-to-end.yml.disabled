@@ -57,77 +57,48 @@ jobs:
       - name: Clean stale benchmark artifacts
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
-          rm -f ./benchmark-inputs/*.pkp ./benchmark-inputs/*.pkv ./benchmark-inputs/*.np ./benchmark-inputs/*.sp ./benchmark-inputs/*.spc
-          rm -rf ./benchmark-inputs/*-spark
+          rm -f ./benchmark-inputs/*.pkp ./benchmark-inputs/*.pkv ./benchmark-inputs/*.np
           echo "Cleaned stale benchmark artifacts"
 
-      - name: Prepare circuits
+      - name: Prepare circuits 
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Preparing $circuit"
-            ../../../target/release/provekit-cli prepare \
-              ./target/$circuit.json \
-              --pkp ./benchmark-inputs/$circuit.pkp \
-              --pkv ./benchmark-inputs/$circuit.pkv \
-              --spark \
-              --spc ./benchmark-inputs/$circuit.spc
+            cargo run --release --bin provekit-cli prepare ./target/$circuit.json \
+              --pkp ./benchmark-inputs/$circuit-prover.pkp \
+              --pkv ./benchmark-inputs/$circuit-verifier.pkv
             echo "Prepared $circuit"
           done
 
-      - name: Prove all circuits
+      - name: Generate proofs for all circuits
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Proving $circuit"
-            ../../../target/release/provekit-cli prove \
-              ./benchmark-inputs/$circuit.pkp \
+            cargo run --release --bin provekit-cli prove \
+              ./benchmark-inputs/$circuit-prover.pkp \
               ./benchmark-inputs/tbs_720/$circuit.toml \
-              -o ./benchmark-inputs/$circuit-proof.np \
-              --spark-queries-dir ./benchmark-inputs/$circuit-spark \
-              --produce-spark-query
+              -o ./benchmark-inputs/$circuit-proof.np
             echo "Proved $circuit"
           done
 
-      - name: Generate SPARK proofs for all circuits
-        working-directory: noir-examples/noir-passport/merkle_age_check
-        run: |
-          for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
-            echo "SPARK proving $circuit"
-            ../../../target/release/provekit-cli prove-spark \
-              ./benchmark-inputs/$circuit.pkp \
-              --spark-dir ./benchmark-inputs/$circuit-spark
-            echo "SPARK proved $circuit"
-          done
-
-      - name: Natively verify Noir proofs for all circuits
+      - name: Verify proofs for all circuits
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Verifying $circuit"
-            ../../../target/release/provekit-cli verify \
-              ./benchmark-inputs/$circuit.pkv \
+            cargo run --release --bin provekit-cli verify \
+              ./benchmark-inputs/$circuit-verifier.pkv \
               ./benchmark-inputs/$circuit-proof.np
             echo "Verified $circuit"
-          done
-
-      - name: Verify SPARK proofs for all circuits
-        working-directory: noir-examples/noir-passport/merkle_age_check
-        run: |
-          for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
-            echo "SPARK verifying $circuit"
-            ../../../target/release/provekit-cli verify-spark \
-              ./benchmark-inputs/$circuit-spark/spark_proof.sp \
-              ./benchmark-inputs/$circuit.spc \
-              ./benchmark-inputs/$circuit-spark/spark_query_*.json
-            echo "SPARK verified $circuit"
           done
 
       - name: Generate Gnark inputs
         working-directory: noir-examples/noir-passport/merkle_age_check
         run: |
-          ../../../target/release/provekit-cli generate-gnark-inputs \
-            ./benchmark-inputs/t_attest.pkv \
+          cargo run --release --bin provekit-cli generate-gnark-inputs \
+            ./benchmark-inputs/t_attest-verifier.pkv \
             ./benchmark-inputs/t_attest-proof.np
           
 
