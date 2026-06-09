@@ -46,6 +46,19 @@ pub struct WhirR1CSCommitment {
     pub blinding:   Option<BlindingState>,
 }
 
+struct ProveFromAlphasCtx<'a> {
+    scheme:              &'a WhirR1CSScheme,
+    merlin:              ProverState<TranscriptSponge>,
+    alpha:               Vec<FieldElement>,
+    alphas:              [Vec<FieldElement>; 3],
+    blinding_eval:       FieldElement,
+    blinding_offset:     usize,
+    blinding_weights:    Vec<FieldElement>,
+    commitments:         Vec<WhirR1CSCommitment>,
+    public_inputs:       &'a PublicInputs,
+    produce_spark_query: bool,
+}
+
 pub trait WhirR1CSProver {
     fn commit(
         &self,
@@ -179,8 +192,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         let blinding_offset = blinding.offset;
         let blinding_weights = expand_powers::<4>(&alpha);
-        prove_from_alphas(
-            self,
+        prove_from_alphas(ProveFromAlphasCtx {
+            scheme: self,
             merlin,
             alpha,
             alphas,
@@ -190,7 +203,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             commitments,
             public_inputs,
             produce_spark_query,
-        )
+        })
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -239,8 +252,8 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let blinding_offset = blinding.offset;
         let blinding_weights = expand_powers::<4>(&alpha);
 
-        prove_from_alphas(
-            self,
+        prove_from_alphas(ProveFromAlphasCtx {
+            scheme: self,
             merlin,
             alpha,
             alphas,
@@ -250,24 +263,26 @@ impl WhirR1CSProver for WhirR1CSScheme {
             commitments,
             public_inputs,
             produce_spark_query,
-        )
+        })
     }
 }
 
 #[instrument(skip_all)]
-#[allow(clippy::too_many_arguments)]
 fn prove_from_alphas(
-    scheme: &WhirR1CSScheme,
-    mut merlin: ProverState<TranscriptSponge>,
-    alpha: Vec<FieldElement>,
-    alphas: [Vec<FieldElement>; 3],
-    blinding_eval: FieldElement,
-    blinding_offset: usize,
-    blinding_weights: Vec<FieldElement>,
-    commitments: Vec<WhirR1CSCommitment>,
-    public_inputs: &PublicInputs,
-    produce_spark_query: bool,
+    ctx: ProveFromAlphasCtx<'_>,
 ) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)> {
+    let ProveFromAlphasCtx {
+        scheme,
+        mut merlin,
+        alpha,
+        alphas,
+        blinding_eval,
+        blinding_offset,
+        blinding_weights,
+        commitments,
+        public_inputs,
+        produce_spark_query,
+    } = ctx;
     let public_inputs_hash = public_inputs.hash(scheme.hash_config);
     let public_inputs_len = public_inputs.len();
 
