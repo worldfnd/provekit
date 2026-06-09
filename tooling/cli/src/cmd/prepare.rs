@@ -13,7 +13,7 @@ use {
     noirc_driver::{CompilationResult, CompileOptions, CrateName, NOIR_ARTIFACT_VERSION_STRING},
     provekit_common::{
         file::write, utils::next_power_of_two, FieldElement, HashConfig, NoirProofScheme, Prover,
-        Verifier, R1CS,
+        SparkSetup, Verifier, R1CS,
     },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     provekit_spark::SparkMatrix,
@@ -111,17 +111,10 @@ pub struct Args {
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
     hash: String,
 
-    /// also run SPARK preprocessing and write the SPARK setup transcript
+    /// also run SPARK preprocessing; the setup is folded into the PKV and the
+    /// prover context is written to `--spctx`
     #[argh(switch, long = "spark")]
     spark: bool,
-
-    /// output path for the SPARK setup transcript (used with --spark)
-    #[argh(
-        option,
-        long = "spc",
-        default = "PathBuf::from(\"noir_proof_scheme.spc\")"
-    )]
-    spc_path: PathBuf,
 
     /// output path for the bundled SPARK prover context — matrix, witnesses
     /// and setup (used with --spark)
@@ -214,7 +207,7 @@ impl Args {
         for (package, artifact) in binary_packages.iter().zip(artifacts) {
             let scheme = NoirCompiler::from_program(artifact, hash_config)
                 .context("while building Noir proof scheme")?;
-            self.maybe_write_spark(&scheme, hash_config)?;
+            let spark_setup = self.maybe_build_spark(&scheme, hash_config)?;
             let pkp_path = self
                 .pkp_path
                 .clone()
@@ -225,8 +218,9 @@ impl Args {
                 .unwrap_or_else(|| format!("{}.pkv", package.name).into());
             write(&Prover::from_noir_proof_scheme(scheme.clone()), &pkp_path)
                 .context("while writing prover key")?;
-            write(&Verifier::from_noir_proof_scheme(scheme), &pkv_path)
-                .context("while writing verifier key")?;
+            let mut verifier = Verifier::from_noir_proof_scheme(scheme);
+            verifier.spark_setup = spark_setup;
+            write(&verifier, &pkv_path).context("while writing verifier key")?;
         }
         Ok(())
     }
@@ -238,35 +232,41 @@ impl Args {
             .context("--r1cs is required when using the mavros compiler")?;
         let scheme = MavrosCompiler::compile(&self.program_path, r1cs_path, hash_config)
             .context("while compiling with Mavros")?;
-        self.maybe_write_spark(&scheme, hash_config)?;
+        let spark_setup = self.maybe_build_spark(&scheme, hash_config)?;
         let pkp_path = resolve_key_path(self.pkp_path.as_deref(), "pkp")?;
         let pkv_path = resolve_key_path(self.pkv_path.as_deref(), "pkv")?;
         write(&Prover::from_noir_proof_scheme(scheme.clone()), &pkp_path)
             .context("while writing prover key")?;
-        write(&Verifier::from_noir_proof_scheme(scheme), &pkv_path)
-            .context("while writing verifier key")?;
+        let mut verifier = Verifier::from_noir_proof_scheme(scheme);
+        verifier.spark_setup = spark_setup;
+        write(&verifier, &pkv_path).context("while writing verifier key")?;
         Ok(())
     }
 
-    fn maybe_write_spark(&self, scheme: &NoirProofScheme, hash_config: HashConfig) -> Result<()> {
+    /// Run SPARK preprocessing if `--spark` is set: write the prover context
+    /// (`.spctx`) and return the [`SparkSetup`] for the caller to fold into the
+    /// PKV. The verifier consumes the setup from the trusted PKV; there is no
+    /// standalone `.spc` artifact.
+    fn maybe_build_spark(
+        &self,
+        scheme: &NoirProofScheme,
+        hash_config: HashConfig,
+    ) -> Result<Option<SparkSetup>> {
         if !self.spark {
-            return Ok(());
+            return Ok(None);
         }
         provekit_common::register_ntt();
         let matrix = build_spark_matrix_for_scheme(scheme, self.r1cs_path.as_deref())?;
         let (setup, witnesses) = provekit_spark::preprocess_spark(&matrix, hash_config);
-        write(&setup, &self.spc_path)
-            .with_context(|| format!("writing SPARK setup to {:?}", self.spc_path))?;
-        info!("Wrote SPARK setup to {:?}", self.spc_path);
         let context = provekit_spark::SparkProverContext {
             matrix,
             witnesses,
-            setup,
+            setup: setup.clone(),
         };
         write(&context, &self.spctx_path)
             .with_context(|| format!("writing SPARK prover context to {:?}", self.spctx_path))?;
         info!("Wrote SPARK prover context to {:?}", self.spctx_path);
-        Ok(())
+        Ok(Some(setup))
     }
 
     fn compile_options(&self) -> CompileOptions {

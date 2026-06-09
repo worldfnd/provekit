@@ -2,8 +2,8 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, spark::SparkQueryBatch},
-    provekit_spark::{SparkProof, SparkSetup, SparkVerifierScheme},
+    provekit_common::{file::read, spark::SparkQueryBatch, Verifier},
+    provekit_spark::{SparkProof, SparkVerifierScheme},
     std::{fs::File, io::BufReader, path::PathBuf},
     tracing::instrument,
 };
@@ -16,9 +16,9 @@ pub struct Args {
     #[argh(positional)]
     proof_path: PathBuf,
 
-    /// path to the SPARK setup transcript (.spc) produced by `serve`
+    /// path to the ProveKit Verifier key (.pkv) produced by `prepare --spark`
     #[argh(positional)]
-    setup_path: PathBuf,
+    pkv_path: PathBuf,
 
     /// path to the SPARK queries JSON file (`spark_queries.json`) written by
     /// `prove`
@@ -31,11 +31,11 @@ impl Command for Args {
     fn run(&self) -> Result<()> {
         provekit_common::register_ntt();
 
-        let (proof, (setup, queries)) = rayon::join(
+        let (proof, (verifier, queries)) = rayon::join(
             || read::<SparkProof>(&self.proof_path).context("while reading SPARK proof"),
             || {
                 rayon::join(
-                    || read::<SparkSetup>(&self.setup_path).context("while reading SPARK setup"),
+                    || read::<Verifier>(&self.pkv_path).context("while reading Provekit Verifier"),
                     || {
                         read_queries(&self.queries_path)
                             .with_context(|| format!("while reading {:?}", self.queries_path))
@@ -44,8 +44,15 @@ impl Command for Args {
             },
         );
         let proof = proof?;
-        let setup = setup?;
+        let verifier = verifier?;
         let batch = queries?;
+
+        let setup = verifier.spark_setup.as_ref().with_context(|| {
+            format!(
+                "PKV {:?} does not contain a SPARK setup; re-run `prepare --spark`",
+                self.pkv_path
+            )
+        })?;
 
         anyhow::ensure!(
             !batch.queries.is_empty(),
@@ -54,7 +61,7 @@ impl Command for Args {
         );
 
         SparkVerifierScheme
-            .verify(proof, &setup, &batch)
+            .verify(proof, setup, &batch)
             .context("while verifying SPARK proof")?;
 
         Ok(())

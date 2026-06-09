@@ -2,7 +2,7 @@ use {
     crate::{
         gpa::gpa_sumcheck_verifier4,
         memory::verify_axis,
-        setup::PrecomputedCommitments,
+        setup::{extract_commitments, PrecomputedCommitments},
         sumcheck::{run_parallel_sumchecks_verifier, run_sumcheck_verifier_spark},
         types::{MatrixDimensions, SparkProof, SparkSetup, SparkWhirConfigs},
         utils::read_hint,
@@ -36,7 +36,7 @@ impl SparkVerifierScheme {
             "SPARK verifier needs at least one query"
         );
 
-        let precomputed_commitments = setup.extract_commitments()?;
+        let precomputed_commitments = extract_commitments(setup)?;
 
         let whir_proof = Proof {
             narg_string: proof.0.narg_string,

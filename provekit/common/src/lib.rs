@@ -33,6 +33,7 @@ pub use {
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
     prover::{NoirProver, Prover},
     r1cs::R1CS,
+    spark::{MatrixDimensions, SparkSetup, SparkWhirConfigs},
     transcript_sponge::TranscriptSponge,
     verifier::Verifier,
     whir_r1cs::{R1csHash, WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},

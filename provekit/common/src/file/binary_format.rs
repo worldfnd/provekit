@@ -18,7 +18,7 @@ pub const PROVER_FORMAT: [u8; 8] = *b"PrvKitPr";
 pub const PROVER_VERSION: (u16, u16) = (1, 2);
 
 pub const VERIFIER_FORMAT: [u8; 8] = *b"PrvKitVr";
-pub const VERIFIER_VERSION: (u16, u16) = (1, 3);
+pub const VERIFIER_VERSION: (u16, u16) = (1, 4);
 
 pub const NOIR_PROOF_SCHEME_FORMAT: [u8; 8] = *b"NrProScm";
 pub const NOIR_PROOF_SCHEME_VERSION: (u16, u16) = (1, 2);

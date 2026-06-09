@@ -1,5 +1,10 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::file::{
+    binary_format::{SPARK_SETUP_FORMAT, SPARK_SETUP_VERSION},
+    Compression, FileFormat, MaybeHashAware,
+};
 use {
-    crate::{utils::serde_ark, FieldElement},
+    crate::{utils::serde_ark, FieldElement, HashConfig, WhirConfig, WhirR1CSProof},
     anyhow::{Context, Result},
     serde::{Deserialize, Serialize},
     sha3::{Digest, Sha3_256},
@@ -37,5 +42,51 @@ impl SparkQueryBatch {
         let bytes =
             postcard::to_allocvec(self).context("serializing SparkQueryBatch for hash_bytes")?;
         Ok(Sha3_256::digest(&bytes).into())
+    }
+}
+
+/// Dimensions of the (padded) sparse R1CS matrix that SPARK is committing to.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct MatrixDimensions {
+    pub num_rows:      usize,
+    pub num_cols:      usize,
+    pub nonzero_terms: usize,
+}
+
+/// WHIR configurations used by SPARK for each committed polynomial axis.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SparkWhirConfigs {
+    pub row:                WhirConfig,
+    pub col:                WhirConfig,
+    pub num_terms_2batched: WhirConfig,
+    pub num_terms_5batched: WhirConfig,
+}
+
+/// Verifier-side SPARK setup: WHIR configs, matrix dimensions, the preprocessed
+/// commitment transcript, and the hash config used to seed Fiat-Shamir.
+///
+/// This struct is embedded in [`Verifier`](crate::Verifier) so the SPARK
+/// commitments come from the trusted `.pkv` key rather than an attacker-
+/// supplied setup file.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SparkSetup {
+    pub whir_configs:      SparkWhirConfigs,
+    pub matrix_dimensions: MatrixDimensions,
+    pub transcript:        WhirR1CSProof,
+    pub hash_config:       HashConfig,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl FileFormat for SparkSetup {
+    const FORMAT: [u8; 8] = SPARK_SETUP_FORMAT;
+    const EXTENSION: &'static str = "spc";
+    const VERSION: (u16, u16) = SPARK_SETUP_VERSION;
+    const COMPRESSION: Compression = Compression::Zstd;
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl MaybeHashAware for SparkSetup {
+    fn maybe_hash_config(&self) -> Option<HashConfig> {
+        None
     }
 }

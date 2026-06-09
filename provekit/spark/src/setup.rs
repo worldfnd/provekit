@@ -79,41 +79,39 @@ pub fn preprocess_spark(
     (setup, witnesses)
 }
 
-impl SparkSetup {
-    pub(crate) fn extract_commitments(&self) -> Result<PrecomputedCommitments> {
-        let setup_ds = DomainSeparator::protocol(&self.whir_configs).instance(&Empty);
-        let setup_proof = Proof {
-            narg_string: self.transcript.narg_string.clone(),
-            hints: self.transcript.hints.clone(),
-            #[cfg(debug_assertions)]
-            pattern: self.transcript.pattern.clone(),
-        };
-        let mut side = VerifierState::new(
-            &setup_ds,
-            &setup_proof,
-            TranscriptSponge::from_config(self.hash_config),
-        );
+pub(crate) fn extract_commitments(setup: &SparkSetup) -> Result<PrecomputedCommitments> {
+    let setup_ds = DomainSeparator::protocol(&setup.whir_configs).instance(&Empty);
+    let setup_proof = Proof {
+        narg_string: setup.transcript.narg_string.clone(),
+        hints: setup.transcript.hints.clone(),
+        #[cfg(debug_assertions)]
+        pattern: setup.transcript.pattern.clone(),
+    };
+    let mut side = VerifierState::new(
+        &setup_ds,
+        &setup_proof,
+        TranscriptSponge::from_config(setup.hash_config),
+    );
 
-        let vals_rsws = self
-            .whir_configs
-            .num_terms_5batched
-            .receive_commitment(&mut side)
-            .map_err(|e| anyhow::anyhow!("Failed to reconstruct vals_rsws commitment: {e}"))?;
-        let a_row_finalts = self
-            .whir_configs
-            .row
-            .receive_commitment(&mut side)
-            .map_err(|e| anyhow::anyhow!("Failed to reconstruct row finalts commitment: {e}"))?;
-        let a_col_finalts = self
-            .whir_configs
-            .col
-            .receive_commitment(&mut side)
-            .map_err(|e| anyhow::anyhow!("Failed to reconstruct col finalts commitment: {e}"))?;
+    let vals_rsws = setup
+        .whir_configs
+        .num_terms_5batched
+        .receive_commitment(&mut side)
+        .map_err(|e| anyhow::anyhow!("Failed to reconstruct vals_rsws commitment: {e}"))?;
+    let a_row_finalts = setup
+        .whir_configs
+        .row
+        .receive_commitment(&mut side)
+        .map_err(|e| anyhow::anyhow!("Failed to reconstruct row finalts commitment: {e}"))?;
+    let a_col_finalts = setup
+        .whir_configs
+        .col
+        .receive_commitment(&mut side)
+        .map_err(|e| anyhow::anyhow!("Failed to reconstruct col finalts commitment: {e}"))?;
 
-        Ok(PrecomputedCommitments {
-            vals_rsws,
-            a_row_finalts,
-            a_col_finalts,
-        })
-    }
+    Ok(PrecomputedCommitments {
+        vals_rsws,
+        a_row_finalts,
+        a_col_finalts,
+    })
 }

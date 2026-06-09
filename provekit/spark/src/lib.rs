@@ -9,12 +9,10 @@ pub(crate) mod utils;
 pub(crate) mod verifier;
 
 pub use {
+    provekit_common::{MatrixDimensions, SparkSetup, SparkWhirConfigs},
     prover::SparkProverScheme,
     setup::preprocess_spark,
-    types::{
-        MatrixDimensions, SparkMatrix, SparkProof, SparkProverContext, SparkSetup,
-        SparkWhirConfigs, SparkWitnesses,
-    },
+    types::{SparkMatrix, SparkProof, SparkProverContext, SparkWitnesses},
     utils::calculate_memory,
     verifier::SparkVerifierScheme,
 };
