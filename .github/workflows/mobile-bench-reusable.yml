@@ -111,55 +111,13 @@ env:
 
 jobs:
   ios:
-    name: iOS BrowserStack benchmark (${{ matrix.ios_shard.function_slug }} / ${{ matrix.ios_shard.device_slug }} / batch ${{ matrix.ios_batch }})
+    name: iOS BrowserStack benchmark
     if: inputs.platform == 'ios' || inputs.platform == 'both'
     runs-on: macos-15
     environment: Browserstack
     concurrency:
       group: mobench-browserstack-device-cloud
       cancel-in-progress: false
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        ios_shard:
-          - function: bench_mobile::bench_passport_complete_age_check_prove
-            function_slug: monolithic
-            device: iPhone SE 2022-15
-            device_slug: iphone-se-2022
-          - function: bench_mobile::bench_passport_complete_age_check_prove
-            function_slug: monolithic
-            device: iPhone 14-16
-            device_slug: iphone-14
-          - function: bench_mobile::bench_passport_complete_age_check_prove
-            function_slug: monolithic
-            device: iPhone 16 Pro Max-18
-            device_slug: iphone-16-pro-max
-          - function: bench_mobile::bench_passport_fragmented_age_check_prove
-            function_slug: fragmented
-            device: iPhone SE 2022-15
-            device_slug: iphone-se-2022
-          - function: bench_mobile::bench_passport_fragmented_age_check_prove
-            function_slug: fragmented
-            device: iPhone 14-16
-            device_slug: iphone-14
-          - function: bench_mobile::bench_passport_fragmented_age_check_prove
-            function_slug: fragmented
-            device: iPhone 16 Pro Max-18
-            device_slug: iphone-16-pro-max
-          - function: bench_mobile::bench_oprf_prove
-            function_slug: oprf
-            device: iPhone SE 2022-15
-            device_slug: iphone-se-2022
-          - function: bench_mobile::bench_oprf_prove
-            function_slug: oprf
-            device: iPhone 14-16
-            device_slug: iphone-14
-          - function: bench_mobile::bench_oprf_prove
-            function_slug: oprf
-            device: iPhone 16 Pro Max-18
-            device_slug: iphone-16-pro-max
-        ios_batch: [1, 2, 3, 4, 5]
     env:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
@@ -332,9 +290,7 @@ jobs:
         working-directory: caller
         shell: bash
         env:
-          FUNCTIONS: ${{ matrix.ios_shard.function }}
-          IOS_MATRIX_DEVICE: ${{ matrix.ios_shard.device }}
-          IOS_BATCH_INDEX: ${{ matrix.ios_batch }}
+          FUNCTIONS: ${{ inputs.functions_ios != '' && inputs.functions_ios || inputs.functions }}
           ITERATIONS: ${{ inputs.iterations }}
           WARMUP: ${{ inputs.warmup }}
           RELEASE_FLAG: ${{ inputs.build_release && '--release' || '' }}
@@ -366,7 +322,7 @@ jobs:
           fi
 
           echo "Running iOS benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
-          echo "iOS devices: ${IOS_MATRIX_DEVICE}"
+          echo "iOS devices: ${IOS_DEVICE_SPECS}"
           echo "iOS fallback devices: ${IOS_FALLBACK_DEVICE_SPECS}"
           echo "iOS fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
           max_attempts=2
@@ -409,7 +365,7 @@ jobs:
           }
 
           ios_devices=()
-          IFS=',' read -r -a raw_ios_devices <<<"${IOS_MATRIX_DEVICE}"
+          IFS=',' read -r -a raw_ios_devices <<<"${IOS_DEVICE_SPECS}"
           for ios_device in "${raw_ios_devices[@]}"; do
             ios_device="$(echo "$ios_device" | xargs)"
             if [[ -n "$ios_device" ]]; then
@@ -498,36 +454,36 @@ jobs:
                   done
                 }
 
-                batch_index="${IOS_BATCH_INDEX}"
-                sample_start=$(((batch_index - 1) * ios_split_batch_size + 1))
-                if [ "${sample_start}" -gt "${function_iterations}" ]; then
-                  echo "Skipping iOS split batch ${batch_index}; ${function_iterations} iteration(s) require fewer batches."
-                  continue
-                fi
+                batch_count=$(((function_iterations + ios_split_batch_size - 1) / ios_split_batch_size))
+                for ((batch_index = 1; batch_index <= batch_count; batch_index++)); do
+                  sample_start=$(((batch_index - 1) * ios_split_batch_size + 1))
+                  remaining=$((function_iterations - sample_start + 1))
+                  batch_iterations="${ios_split_batch_size}"
+                  if [ "${remaining}" -lt "${batch_iterations}" ]; then
+                    batch_iterations="${remaining}"
+                  fi
+                  batch_warmup=0
+                  if [ "${batch_index}" -eq 1 ]; then
+                    batch_warmup="${function_warmup}"
+                  fi
 
-                remaining=$((function_iterations - sample_start + 1))
-                batch_iterations="${ios_split_batch_size}"
-                if [ "${remaining}" -lt "${batch_iterations}" ]; then
-                  batch_iterations="${remaining}"
-                fi
-                batch_warmup=0
-                if [ "${batch_index}" -eq 1 ]; then
-                  batch_warmup="${function_warmup}"
-                fi
-
-                if ! run_ios_split_invocation "sample" "${batch_index}" "${batch_iterations}" "${batch_warmup}" "${split_output_dir}/sample-${batch_index}" "target/browserstack/ios/${function_slug}/${device_slug}/sample-${batch_index}"; then
+                  if ! run_ios_split_invocation "sample" "${batch_index}" "${batch_iterations}" "${batch_warmup}" "${split_output_dir}/sample-${batch_index}" "target/browserstack/ios/${function_slug}/${device_slug}/sample-${batch_index}"; then
                     split_failed="true"
-                fi
+                    break
+                  fi
+                done
 
                 if [[ "${split_failed}" == "true" ]]; then
                   exit 1
                 fi
 
-                continue
-              fi
+                python3 .github/scripts/merge_mobench_split_runs.py \
+                  --samples-dir "${split_output_dir}" \
+                  --output-dir "${result_output_dir}" \
+                  --iterations "${function_iterations}" \
+                  --warmup "${function_warmup}" \
+                  --target ios
 
-              if [ "${IOS_BATCH_INDEX}" -ne 1 ]; then
-                echo "Skipping non-split iOS batch ${IOS_BATCH_INDEX}; non-100-run jobs only use batch 1."
                 continue
               fi
 
@@ -590,7 +546,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mobench-results-ios-${{ matrix.ios_shard.function_slug }}-${{ matrix.ios_shard.device_slug }}-batch-${{ matrix.ios_batch }}
+          name: mobench-results-ios
           path: |
             caller/target/mobench/ci/ios/**
             caller/target/browserstack/ios/**
@@ -600,53 +556,12 @@ jobs:
           if-no-files-found: warn
 
   android:
-    name: Android BrowserStack benchmark (${{ matrix.android_shard.function_slug }} / ${{ matrix.android_shard.device_slug }})
+    name: Android BrowserStack benchmark
     needs: ios
     if: always() && (inputs.platform == 'android' || inputs.platform == 'both')
     runs-on: macos-14
-    timeout-minutes: 100
+    timeout-minutes: 360
     environment: Browserstack
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        android_shard:
-          - function: bench_mobile::bench_oprf_prove
-            function_slug: oprf
-            device: Samsung Galaxy S24-14.0
-            device_slug: s24
-          - function: bench_mobile::bench_oprf_prove
-            function_slug: oprf
-            device: Google Pixel 7-13.0
-            device_slug: pixel7
-          - function: bench_mobile::bench_oprf_prove
-            function_slug: oprf
-            device: Samsung Galaxy M32-11.0
-            device_slug: galaxy-m32
-          - function: bench_mobile::bench_passport_fragmented_age_check_prove
-            function_slug: fragmented
-            device: Samsung Galaxy S24-14.0
-            device_slug: s24
-          - function: bench_mobile::bench_passport_fragmented_age_check_prove
-            function_slug: fragmented
-            device: Google Pixel 7-13.0
-            device_slug: pixel7
-          - function: bench_mobile::bench_passport_fragmented_age_check_prove
-            function_slug: fragmented
-            device: Samsung Galaxy M32-11.0
-            device_slug: galaxy-m32
-          - function: bench_mobile::bench_passport_complete_age_check_prove
-            function_slug: monolithic
-            device: Samsung Galaxy S24-14.0
-            device_slug: s24
-          - function: bench_mobile::bench_passport_complete_age_check_prove
-            function_slug: monolithic
-            device: Google Pixel 7-13.0
-            device_slug: pixel7
-          - function: bench_mobile::bench_passport_complete_age_check_prove
-            function_slug: monolithic
-            device: Samsung Galaxy M32-11.0
-            device_slug: galaxy-m32
     env:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
@@ -845,8 +760,7 @@ jobs:
         working-directory: caller
         shell: bash
         env:
-          FUNCTIONS: ${{ matrix.android_shard.function }}
-          ANDROID_DEVICE_SPEC: ${{ matrix.android_shard.device }}
+          FUNCTIONS: ${{ inputs.functions_android != '' && inputs.functions_android || inputs.functions }}
           ITERATIONS: ${{ inputs.iterations }}
           WARMUP: ${{ inputs.warmup }}
           RELEASE_FLAG: ${{ inputs.build_release && '--release' || '' }}
@@ -878,9 +792,6 @@ jobs:
           fi
 
           echo "Running Android benchmarks with profile ${MOBENCH_DEVICE_PROFILE}"
-          if [[ -n "${ANDROID_DEVICE_SPEC:-}" ]]; then
-            ANDROID_DEVICE_SPECS="${ANDROID_DEVICE_SPEC}"
-          fi
           echo "Android devices: ${ANDROID_DEVICE_SPECS}"
           echo "Android fetch timeout: ${MOBENCH_FETCH_TIMEOUT_SECS}s"
           max_attempts=1
@@ -1266,7 +1177,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mobench-results-android-${{ matrix.android_shard.function_slug }}-${{ matrix.android_shard.device_slug }}
+          name: mobench-results-android
           path: |
             caller/target/mobench/ci/android/**
             caller/target/browserstack/android/**
@@ -1318,18 +1229,16 @@ jobs:
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          pattern: mobench-results-ios-*
+          name: mobench-results-ios
           path: results/ios
-          merge-multiple: true
 
       - name: Download Android results
         if: always()
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          pattern: mobench-results-android-*
+          name: mobench-results-android
           path: results/android
-          merge-multiple: true
 
       - name: Merge split iOS shard results
         if: always()
