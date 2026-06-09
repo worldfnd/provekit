@@ -4,8 +4,8 @@ use {
         memory::{prove_axis_init_final_product, AxisConfig},
         sumcheck::run_spark_sumcheck,
         types::{
-            Challenges, EValuesForMatrix, MatrixDimensions, Memory, SparkProof, SparkWhirConfigs,
-            SparkMatrix, SparkProverContext, WhirWitness,
+            Challenges, EValuesForMatrix, MatrixDimensions, Memory, SparkMatrix, SparkProof,
+            SparkProverContext, SparkWhirConfigs, WhirWitness,
         },
         utils::{alphas_from_spark, calculate_memory},
     },
@@ -138,10 +138,8 @@ impl SparkProverScheme {
             let mut claimed_evals = [FieldElement::ZERO; 3];
             let mut beta_pow = FieldElement::ONE;
             for query in &batch.queries {
-                let eq = calculate_evaluations_over_boolean_hypercube_for_eq(
-                    &query.col,
-                    domain_size,
-                );
+                let eq =
+                    calculate_evaluations_over_boolean_hypercube_for_eq(&query.col, domain_size);
                 for (slot, &e) in hypercube.iter_mut().zip(eq.iter()) {
                     *slot += beta_pow * e;
                 }
@@ -392,12 +390,7 @@ fn prove_combined_rs_ws_product(
 
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
 
-    let polys: [&[FieldElement]; 4] = [
-        &row_field,
-        &read_row_field,
-        &col_field,
-        &read_col_field,
-    ];
+    let polys: [&[FieldElement]; 4] = [&row_field, &read_row_field, &col_field, &read_col_field];
     let [row_address_eval, row_timestamp_eval, col_address_eval, col_timestamp_eval]: [_; 4] =
         tracing::info_span!("multilinear_extend_rs_ws")
             .in_scope(|| {

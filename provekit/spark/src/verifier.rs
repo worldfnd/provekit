@@ -113,10 +113,12 @@ impl SparkVerifierScheme {
         let combined = request.claimed_a + r * request.claimed_b + r * r * request.claimed_c;
         let claimed_value = combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
 
-        let extended_row: Vec<FieldElement> =
-            std::iter::once(b1).chain(batch.row.iter().copied()).collect();
-        let extended_col: Vec<FieldElement> =
-            std::iter::once(b1).chain(request.col.iter().copied()).collect();
+        let extended_row: Vec<FieldElement> = std::iter::once(b1)
+            .chain(batch.row.iter().copied())
+            .collect();
+        let extended_col: Vec<FieldElement> = std::iter::once(b1)
+            .chain(request.col.iter().copied())
+            .collect();
 
         verify_spark_single_matrix(
             &setup.whir_configs,
@@ -153,8 +155,7 @@ pub(crate) fn verify_spark_single_matrix(
     .context("While verifying SPARK sumcheck")?;
     let eval_weight = MultilinearExtension::new(randomness);
 
-    let sumcheck_hints: [FieldElement; 3] =
-        read_hint(arthur, "SPARK sumcheck final folds")?;
+    let sumcheck_hints: [FieldElement; 3] = read_hint(arthur, "SPARK sumcheck final folds")?;
 
     ensure!(
         last_sumcheck_value == sumcheck_hints[0] * sumcheck_hints[1] * sumcheck_hints[2],

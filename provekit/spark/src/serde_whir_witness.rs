@@ -1,9 +1,7 @@
 use {
     crate::types::WhirWitness,
     provekit_common::{utils::serde_ark_vec, FieldElement},
-    serde::{
-        ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer,
-    },
+    serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer},
     whir::protocols::{
         irs_commit::{Evaluations, Witness},
         matrix_commit,

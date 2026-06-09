@@ -13,8 +13,8 @@ use {
             pad_to_power_of_two,
             sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, calculate_witness_bounds,
-                eval_cubic_poly, multiply_transposed_by_eq_alpha,
-                sumcheck_fold_map_reduce, transpose_r1cs_matrices,
+                eval_cubic_poly, multiply_transposed_by_eq_alpha, sumcheck_fold_map_reduce,
+                transpose_r1cs_matrices,
             },
             HALF,
         },

@@ -95,9 +95,11 @@ impl Command for Args {
             let queries_path = self.spark_queries_dir.join("spark_queries.json");
             let queries_file = std::fs::File::create(&queries_path)
                 .with_context(|| format!("creating {queries_path:?}"))?;
-            serde_json::to_writer_pretty(queries_file, batch)
-                .context("writing SPARK queries")?;
-            info!(count = batch.queries.len(), "Wrote SPARK queries to {queries_path:?}");
+            serde_json::to_writer_pretty(queries_file, batch).context("writing SPARK queries")?;
+            info!(
+                count = batch.queries.len(),
+                "Wrote SPARK queries to {queries_path:?}"
+            );
         }
 
         Ok(())

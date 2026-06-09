@@ -20,7 +20,8 @@ pub struct Args {
     #[argh(positional)]
     setup_path: PathBuf,
 
-    /// path to the SPARK queries JSON file (`spark_queries.json`) written by `prove`
+    /// path to the SPARK queries JSON file (`spark_queries.json`) written by
+    /// `prove`
     #[argh(positional)]
     queries_path: PathBuf,
 }

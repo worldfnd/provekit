@@ -468,4 +468,3 @@ pub fn build_spark_r1cs_mavros(
 
     Ok(SparkMatrix::new(row, col, val, 2 * row_cnt, 2 * col_cnt))
 }
-

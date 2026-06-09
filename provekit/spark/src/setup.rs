@@ -1,7 +1,7 @@
 use {
     crate::{
         prover::SparkProverScheme,
-        types::{SparkSetup, SparkMatrix, SparkWitnesses},
+        types::{SparkMatrix, SparkSetup, SparkWitnesses},
     },
     anyhow::Result,
     provekit_common::{FieldElement, HashConfig, TranscriptSponge, WhirR1CSProof},
@@ -61,9 +61,9 @@ pub fn preprocess_spark(
 
     let proof = merlin.proof();
     let setup = SparkSetup {
-        whir_configs:      scheme.whir_configs,
+        whir_configs: scheme.whir_configs,
         matrix_dimensions: scheme.matrix_dimensions,
-        transcript:        WhirR1CSProof {
+        transcript: WhirR1CSProof {
             narg_string: proof.narg_string,
             hints: proof.hints,
             #[cfg(debug_assertions)]
