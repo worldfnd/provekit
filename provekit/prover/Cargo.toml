@@ -12,13 +12,17 @@ repository.workspace = true
 default = ["witness-generation", "parallel", "bn254"]
 # At least one field feature must be enabled; `bn254` takes precedence when
 # both are on. Pair `goldilocks` with `--no-default-features`.
+# `provekit-verifier/<field>` forwards the field selection to the dev-dep used
+# by `roundtrip_tests`, so `cargo test -p provekit-prover` builds the verifier
+# over the same field as common (it has no field feature of its own otherwise).
 bn254 = [
     "provekit-common/bn254",
     "provekit-common/provekit_ntt",
+    "provekit-verifier/bn254",
     "dep:mavros-vm",
     "dep:mavros-artifacts",
 ]
-goldilocks = ["provekit-common/goldilocks"]
+goldilocks = ["provekit-common/goldilocks", "provekit-verifier/goldilocks"]
 witness-generation = ["bn254", "nargo", "bn254_blackbox_solver", "noir_artifact_cli"]
 parallel = ["provekit-common/parallel"]
 
