@@ -9,6 +9,7 @@ use {
         utils::{next_power_of_two, serde_hex},
         FieldElement, HashConfig, R1CS,
     },
+    anyhow::{ensure, Result},
     serde::{Deserialize, Serialize},
     whir::{
         algebra::embedding::Identity,
@@ -87,8 +88,11 @@ const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 /// Constructors for [`WhirR1CSScheme`], sizing the WHIR configuration from an
 /// R1CS instance (or raw dimensions) and stamping the instance-binding
 /// `r1cs_hash`.
-pub trait WhirR1CSSchemeBuilder {
+pub trait WhirR1CSSchemeBuilder: Sized {
     /// Build a scheme for `r1cs`, stamping `r1cs_hash = r1cs.hash()`.
+    ///
+    /// Errors if `num_challenges != challenge_offsets.len()` or if `w1_size`
+    /// exceeds the R1CS witness count.
     fn new_for_r1cs(
         r1cs: &R1CS,
         w1_size: usize,
@@ -96,9 +100,12 @@ pub trait WhirR1CSSchemeBuilder {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self;
+    ) -> Result<Self>;
 
     /// Build a scheme from a Mavros R1CS, leaving `r1cs_hash` unset.
+    ///
+    /// Errors on the same dimension inconsistencies as
+    /// [`Self::new_from_dimensions`].
     #[cfg(all(feature = "bn254", not(target_arch = "wasm32")))]
     fn new_from_mavros_r1cs(
         r1cs: &MavrosR1CS,
@@ -107,9 +114,12 @@ pub trait WhirR1CSSchemeBuilder {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self;
+    ) -> Result<Self>;
 
     /// Build a scheme from raw dimensions, leaving `r1cs_hash` unset.
+    ///
+    /// Errors if `num_challenges != challenge_offsets.len()` or if `w1_size`
+    /// exceeds `num_witnesses`.
     fn new_from_dimensions(
         num_witnesses: usize,
         num_constraints: usize,
@@ -119,7 +129,7 @@ pub trait WhirR1CSSchemeBuilder {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self;
+    ) -> Result<Self>;
 
     /// Build the WHIR ZK configuration for `num_variables` (clamped to the
     /// protocol minimum) and `num_polynomials`.
@@ -138,17 +148,16 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self {
-        assert_eq!(
-            num_challenges,
-            challenge_offsets.len(),
+    ) -> Result<Self> {
+        ensure!(
+            num_challenges == challenge_offsets.len(),
             "num_challenges ({num_challenges}) != challenge_offsets.len() ({})",
             challenge_offsets.len()
         );
         let total_witnesses = r1cs.num_witnesses();
-        assert!(
+        ensure!(
             w1_size <= total_witnesses,
-            "w1_size exceeds total witnesses"
+            "w1_size ({w1_size}) exceeds total witnesses ({total_witnesses})"
         );
         let w2_size = total_witnesses - w1_size;
 
@@ -164,7 +173,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m_raw += 1;
         }
 
-        Self {
+        Ok(Self {
             m: m_raw,
             w1_size,
             m_0,
@@ -175,7 +184,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             has_public_inputs,
             r1cs_hash: r1cs.hash(),
             hash_config,
-        }
+        })
     }
 
     fn new_whir_zk_config_for_size(
@@ -211,7 +220,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self {
+    ) -> Result<Self> {
         let num_witnesses = r1cs.witness_layout.size();
         let num_constraints = r1cs.constraints.len();
         let a_num_entries: usize = r1cs.constraints.iter().map(|c| c.a.len()).sum();
@@ -237,12 +246,15 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self {
-        debug_assert_eq!(
-            num_challenges,
-            challenge_offsets.len(),
+    ) -> Result<Self> {
+        ensure!(
+            num_challenges == challenge_offsets.len(),
             "num_challenges ({num_challenges}) != challenge_offsets.len() ({})",
             challenge_offsets.len()
+        );
+        ensure!(
+            w1_size <= num_witnesses,
+            "w1_size ({w1_size}) exceeds total witnesses ({num_witnesses})"
         );
         let m_raw = next_power_of_two(num_witnesses);
         let m0_raw = next_power_of_two(num_constraints);
@@ -255,7 +267,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m += 1;
         }
 
-        Self {
+        Ok(Self {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
@@ -266,7 +278,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             has_public_inputs,
             r1cs_hash: R1csHash::UNSET,
             hash_config,
-        }
+        })
     }
 }
 

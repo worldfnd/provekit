@@ -52,7 +52,7 @@ fn prove(
         vec![],
         true,
         HASH,
-    );
+    )?;
 
     let instance = public_inputs.hash_bytes(HASH);
     let ds = scheme.create_domain_separator().instance(&instance);

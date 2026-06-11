@@ -105,7 +105,7 @@ impl NoirCompiler {
             challenge_offsets,
             has_public_inputs,
             hash_config,
-        );
+        )?;
 
         Ok(NoirProofScheme::Noir(NoirSchemeData {
             program: program.bytecode,
@@ -178,7 +178,7 @@ impl MavrosCompiler {
             challenge_offsets,
             num_public_inputs > 0,
             hash_config,
-        );
+        )?;
         whir_for_witness.r1cs_hash = r1cs.hash();
 
         Ok(NoirProofScheme::Mavros(MavrosSchemeData {
