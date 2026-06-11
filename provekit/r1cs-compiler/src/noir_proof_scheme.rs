@@ -1,8 +1,5 @@
 use {
-    crate::{
-        noir_to_r1cs, whir_r1cs::WhirR1CSSchemeBuilder,
-        witness_generator::NoirWitnessGeneratorBuilder,
-    },
+    crate::{noir_to_r1cs, witness_generator::NoirWitnessGeneratorBuilder},
     anyhow::{ensure, Context as _, Result},
     mavros_artifacts::R1CS as MavrosR1CS,
     noirc_abi::AbiVisibility,
@@ -10,7 +7,7 @@ use {
     provekit_common::{
         utils::{convert_mavros_r1cs_to_provekit, PrintAbi},
         witness::{NoirWitnessGenerator, WitnessBuilder},
-        MavrosSchemeData, NoirProofScheme, NoirSchemeData, WhirR1CSScheme,
+        MavrosSchemeData, NoirProofScheme, NoirSchemeData, WhirR1CSScheme, WhirR1CSSchemeBuilder,
     },
     serde::Deserialize,
     std::{collections::HashSet, fs::File, path::Path},
