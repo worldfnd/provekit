@@ -7,23 +7,31 @@
 
 use {
     crate::{utils::field_to_bytes_le, FieldElement},
-    ark_ff::{BigInt, PrimeField},
     serde::{Deserialize, Serialize},
-    std::{fmt, sync::LazyLock},
+    std::fmt,
+};
+#[cfg(feature = "bn254")]
+use {
+    ark_ff::{BigInt, PrimeField},
+    std::sync::LazyLock,
 };
 
 /// Hash algorithm configuration that can be selected at runtime.
 ///
 /// Each variant selects the same algorithm for Merkle commitments,
-/// Fiat-Shamir sponge, and public-input binding. [`Self::Skyscraper`] is the
-/// default.
+/// Fiat-Shamir sponge, and public-input binding. Skyscraper and Poseidon2
+/// are BN254-only constructions and exist only under the `bn254` feature;
+/// the default is Skyscraper under `bn254` and [`Self::Sha256`] under
+/// `goldilocks`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum HashConfig {
+    #[cfg(feature = "bn254")]
     #[default]
     #[serde(alias = "sky")]
     Skyscraper,
 
+    #[cfg_attr(all(feature = "goldilocks", not(feature = "bn254")), default)]
     #[serde(alias = "sha", alias = "sha-256")]
     Sha256,
 
@@ -33,6 +41,7 @@ pub enum HashConfig {
     #[serde(alias = "blake-3", alias = "b3")]
     Blake3,
 
+    #[cfg(feature = "bn254")]
     #[serde(alias = "pos2", alias = "p2")]
     Poseidon2,
 }
@@ -54,6 +63,7 @@ pub enum HashConfig {
 /// Regression trip-wires: the KATs in `witness::tests` freeze the
 /// byte-exact output of each variant under this constant.
 const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V1";
+#[cfg(feature = "bn254")]
 static PUBLIC_INPUTS_DST_FE: LazyLock<FieldElement> = LazyLock::new(|| {
     use sha2::{Digest, Sha256};
     FieldElement::from_le_bytes_mod_order(&Sha256::digest(PUBLIC_INPUTS_DST))
@@ -64,10 +74,12 @@ impl HashConfig {
     #[must_use]
     pub fn name(&self) -> &'static str {
         match self {
+            #[cfg(feature = "bn254")]
             Self::Skyscraper => "skyscraper",
             Self::Sha256 => "sha256",
             Self::Keccak => "keccak",
             Self::Blake3 => "blake3",
+            #[cfg(feature = "bn254")]
             Self::Poseidon2 => "poseidon2",
         }
     }
@@ -76,10 +88,12 @@ impl HashConfig {
     #[must_use]
     pub fn engine_id(&self) -> whir::engines::EngineId {
         match self {
+            #[cfg(feature = "bn254")]
             Self::Skyscraper => crate::skyscraper::SKYSCRAPER,
             Self::Sha256 => whir::hash::SHA2,
             Self::Keccak => whir::hash::KECCAK,
             Self::Blake3 => whir::hash::BLAKE3,
+            #[cfg(feature = "bn254")]
             Self::Poseidon2 => crate::poseidon2::POSEIDON2,
         }
     }
@@ -88,10 +102,12 @@ impl HashConfig {
     #[must_use]
     pub fn to_byte(&self) -> u8 {
         match self {
+            #[cfg(feature = "bn254")]
             Self::Skyscraper => 0,
             Self::Sha256 => 1,
             Self::Keccak => 2,
             Self::Blake3 => 3,
+            #[cfg(feature = "bn254")]
             Self::Poseidon2 => 4,
         }
     }
@@ -100,10 +116,12 @@ impl HashConfig {
     #[must_use]
     pub fn from_byte(byte: u8) -> Option<Self> {
         match byte {
+            #[cfg(feature = "bn254")]
             0 => Some(Self::Skyscraper),
             1 => Some(Self::Sha256),
             2 => Some(Self::Keccak),
             3 => Some(Self::Blake3),
+            #[cfg(feature = "bn254")]
             4 => Some(Self::Poseidon2),
             _ => None,
         }
@@ -114,10 +132,12 @@ impl HashConfig {
     pub fn parse(s: &str) -> Option<Self> {
         let lower = s.to_lowercase();
         match lower.as_str() {
+            #[cfg(feature = "bn254")]
             "skyscraper" | "sky" => Some(Self::Skyscraper),
             "sha256" | "sha" | "sha-256" => Some(Self::Sha256),
             "keccak" | "keccak-256" | "shake" => Some(Self::Keccak),
             "blake3" | "blake-3" | "b3" => Some(Self::Blake3),
+            #[cfg(feature = "bn254")]
             "poseidon2" | "pos2" | "p2" => Some(Self::Poseidon2),
             _ => None,
         }
@@ -142,10 +162,12 @@ impl HashConfig {
     #[must_use]
     pub fn hash_field_elements(self, elements: &[FieldElement]) -> FieldElement {
         match self {
+            #[cfg(feature = "bn254")]
             Self::Skyscraper => hash_skyscraper(elements),
             Self::Sha256 => hash_digest::<sha2::Sha256>(PUBLIC_INPUTS_DST, elements),
             Self::Keccak => hash_digest::<sha3::Keccak256>(PUBLIC_INPUTS_DST, elements),
             Self::Blake3 => hash_blake3(PUBLIC_INPUTS_DST, elements),
+            #[cfg(feature = "bn254")]
             Self::Poseidon2 => hash_poseidon2(elements),
         }
     }
@@ -161,10 +183,13 @@ impl std::str::FromStr for HashConfig {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        #[cfg(feature = "bn254")]
+        const VALID: &str = "skyscraper, sha256, keccak, blake3, poseidon2";
+        #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+        const VALID: &str = "sha256, keccak, blake3";
         Self::parse(s).ok_or_else(|| {
             format!(
-                "Invalid hash configuration: '{}'. Valid options: skyscraper, sha256, keccak, \
-                 blake3, poseidon2",
+                "Invalid hash configuration: '{}'. Valid options: {VALID}",
                 s
             )
         })
@@ -173,6 +198,7 @@ impl std::str::FromStr for HashConfig {
 
 /// Pairwise Skyscraper compression; empty input hashes to 0. Not
 /// domain-separated (see [`PUBLIC_INPUTS_DST`]).
+#[cfg(feature = "bn254")]
 #[inline]
 fn hash_skyscraper(elements: &[FieldElement]) -> FieldElement {
     #[inline]
@@ -189,12 +215,36 @@ fn hash_skyscraper(elements: &[FieldElement]) -> FieldElement {
     }
 }
 
-/// DST-tagged [`sha2::digest::Digest`] hash (SHA-256, Keccak-256) over
-/// `elements`.
+/// Reduces a hash digest into a [`FieldElement`] (BN254: straight
+/// little-endian mod-p reduction; ~2⁻²⁵⁴ bias — negligible for FS instance
+/// binding, but not a uniform field sampler).
+#[cfg(feature = "bn254")]
+#[inline]
+fn digest_to_field(digest: &[u8]) -> FieldElement {
+    FieldElement::from_le_bytes_mod_order(digest)
+}
+
+/// Reduces a hash digest into a [`FieldElement`] by reducing into the
+/// Goldilocks base field and embedding into the cubic extension.
 ///
-/// The final [`FieldElement::from_le_bytes_mod_order`] reduction introduces
-/// ~2⁻²⁵⁴ bias — negligible for FS instance binding, but this is not a
-/// uniform field sampler.
+/// NOTE: the image lies in the base subfield — only ~64 bits of entropy in
+/// the field representation. That is fine for public-input/DST *binding*
+/// (collision resistance lives in the 256-bit digest; real public-input
+/// soundness is the sumcheck public-eval check), but this value must NEVER
+/// feed challenge derivation. Optional strengthening: split the digest into
+/// 3 chunks via `from_base_prime_field_elems` for a ~192-bit image.
+#[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+#[inline]
+fn digest_to_field(digest: &[u8]) -> FieldElement {
+    use {
+        ark_ff::{Field, PrimeField},
+        whir::algebra::fields::Field64,
+    };
+    FieldElement::from_base_prime_field(Field64::from_le_bytes_mod_order(digest))
+}
+
+/// DST-tagged [`sha2::digest::Digest`] hash (SHA-256, Keccak-256) over
+/// `elements`, reduced to a field element via [`digest_to_field`].
 #[inline]
 fn hash_digest<D>(dst: &[u8], elements: &[FieldElement]) -> FieldElement
 where
@@ -205,7 +255,7 @@ where
     for fe in elements {
         hasher.update(field_to_bytes_le(*fe));
     }
-    FieldElement::from_le_bytes_mod_order(&hasher.finalize())
+    digest_to_field(&hasher.finalize())
 }
 
 /// Poseidon2 one-shot hash over `elements` (including empty input).
@@ -216,6 +266,7 @@ where
 /// [`poseidon2::poseidon2_hash`] separately provides **length** domain-
 /// separation, so the two combined mirror what SHA/Keccak/BLAKE3 get via
 /// the raw [`PUBLIC_INPUTS_DST`] byte prefix.
+#[cfg(feature = "bn254")]
 #[inline]
 fn hash_poseidon2(elements: &[FieldElement]) -> FieldElement {
     let mut tagged = Vec::with_capacity(elements.len() + 1);
@@ -234,7 +285,7 @@ fn hash_blake3(dst: &[u8], elements: &[FieldElement]) -> FieldElement {
     for fe in elements {
         hasher.update(&field_to_bytes_le(*fe));
     }
-    FieldElement::from_le_bytes_mod_order(hasher.finalize().as_bytes())
+    digest_to_field(hasher.finalize().as_bytes())
 }
 
 #[cfg(test)]
@@ -244,6 +295,7 @@ mod tests {
     /// All known variants. If a new variant is added to `HashConfig`, this
     /// list must be updated — causing the exhaustiveness tests below to fail
     /// until `from_byte` / `to_byte` are also updated.
+    #[cfg(feature = "bn254")]
     const ALL_VARIANTS: &[HashConfig] = &[
         HashConfig::Skyscraper,
         HashConfig::Sha256,
@@ -251,6 +303,9 @@ mod tests {
         HashConfig::Blake3,
         HashConfig::Poseidon2,
     ];
+    #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+    const ALL_VARIANTS: &[HashConfig] =
+        &[HashConfig::Sha256, HashConfig::Keccak, HashConfig::Blake3];
 
     #[test]
     fn from_byte_roundtrips_with_to_byte() {
@@ -264,10 +319,10 @@ mod tests {
 
     #[test]
     fn from_byte_returns_none_for_invalid() {
-        let first_invalid = ALL_VARIANTS.len() as u8;
+        // 5 is the first byte beyond the full (bn254) variant space.
         assert!(
-            HashConfig::from_byte(first_invalid).is_none(),
-            "from_byte({first_invalid}) should be None"
+            HashConfig::from_byte(5).is_none(),
+            "from_byte(5) should be None"
         );
         assert!(
             HashConfig::from_byte(u8::MAX).is_none(),
@@ -275,6 +330,16 @@ mod tests {
         );
     }
 
+    /// Goldilocks builds must reject the BN254-only header bytes
+    /// (0 = Skyscraper, 4 = Poseidon2) gracefully rather than panic.
+    #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+    #[test]
+    fn from_byte_rejects_bn254_only_headers() {
+        assert!(HashConfig::from_byte(0).is_none(), "byte 0 is Skyscraper");
+        assert!(HashConfig::from_byte(4).is_none(), "byte 4 is Poseidon2");
+    }
+
+    #[cfg(feature = "bn254")]
     #[test]
     fn to_byte_values_are_contiguous_from_zero() {
         let mut bytes: Vec<u8> = ALL_VARIANTS.iter().map(|v| v.to_byte()).collect();

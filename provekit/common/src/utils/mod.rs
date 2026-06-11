@@ -9,6 +9,7 @@ pub mod sumcheck;
 pub use self::print_abi::PrintAbi;
 
 /// Deserializes a BN254 field element from up to 32 little-endian bytes.
+#[cfg(feature = "bn254")]
 #[inline]
 pub fn bytes_to_field(bytes: &[u8]) -> FieldElement {
     FieldElement::from_le_bytes_mod_order(bytes)
@@ -17,6 +18,7 @@ pub fn bytes_to_field(bytes: &[u8]) -> FieldElement {
 /// Serializes a BN254 field element to its canonical 32-byte little-endian
 /// representation. Zero-allocation: copies the 4 canonical limbs directly
 /// instead of routing through `BigInt::to_bytes_le`'s `Vec<u8>`.
+#[cfg(feature = "bn254")]
 #[inline]
 pub fn field_to_bytes_le(fe: FieldElement) -> [u8; 32] {
     let limbs = fe.into_bigint().0;
@@ -27,21 +29,40 @@ pub fn field_to_bytes_le(fe: FieldElement) -> [u8; 32] {
     out
 }
 
+/// Serializes a `Field64_3` element to its canonical 24-byte little-endian
+/// representation (three 8-byte Goldilocks base-field coefficients).
+#[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+#[inline]
+pub fn field_to_bytes_le(fe: FieldElement) -> [u8; 24] {
+    use ark_serialize::CanonicalSerialize;
+    let mut out = Vec::with_capacity(24);
+    fe.serialize_compressed(&mut out)
+        .expect("Field64_3 serialization is infallible");
+    out.try_into().expect("Field64_3 serializes to 24 bytes")
+}
+
 use {
-    crate::{FieldElement, NoirElement},
-    ark_ff::{BigInt, Field, PrimeField},
-    ruint::{aliases::U256, uint},
+    crate::FieldElement,
+    ark_ff::Field,
     std::{
         fmt::{Display, Formatter, Result as FmtResult},
         mem::MaybeUninit,
+        sync::LazyLock,
     },
     tracing::instrument,
 };
+#[cfg(feature = "bn254")]
+use {
+    crate::NoirElement,
+    ark_ff::{BigInt, PrimeField},
+};
 
-/// 1/2 for the BN254
-pub const HALF: FieldElement = uint_to_field(uint!(
-    10944121435919637611123202872628637544274182200208017171849102093287904247809_U256
-));
+/// 1/2 in the proof field.
+pub static HALF: LazyLock<FieldElement> = LazyLock::new(|| {
+    FieldElement::from(2u64)
+        .inverse()
+        .expect("2 is invertible in a field of odd characteristic")
+});
 
 /// Target single-thread workload size for `T`.
 /// Should ideally be a multiple of a cache line (64 bytes)
@@ -76,11 +97,8 @@ fn unzip_double_array<T: Sized, const N: usize, const M: usize>(
     (left, right)
 }
 
-pub const fn uint_to_field(i: U256) -> FieldElement {
-    FieldElement::new(BigInt(i.into_limbs()))
-}
-
 /// Convert a Noir field element to a native `FieldElement`
+#[cfg(feature = "bn254")]
 #[inline(always)]
 pub fn noir_to_native(n: NoirElement) -> FieldElement {
     let limbs = n.into_repr().into_bigint().0;
@@ -181,7 +199,7 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
     inverses
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "bn254", not(target_arch = "wasm32")))]
 pub fn convert_mavros_r1cs_to_provekit(mavros_r1cs: &mavros_artifacts::R1CS) -> crate::R1CS {
     let num_witnesses = mavros_r1cs.witness_layout.size();
     let num_constraints = mavros_r1cs.constraints.len();
