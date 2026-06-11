@@ -1,5 +1,6 @@
-#[cfg(test)]
+#[cfg(all(test, feature = "bn254"))]
 use crate::r1cs::R1CSSolver;
+#[cfg(feature = "bn254")]
 use {
     crate::{
         r1cs::{CompressedLayers, CompressedR1CS},
@@ -20,27 +21,42 @@ use {
     bn254_blackbox_solver::Bn254BlackBoxSolver, nargo::foreign_calls::DefaultForeignCallBuilder,
     noir_artifact_cli::fs::inputs::read_inputs_from_file, noirc_abi::InputMap,
 };
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "bn254", not(target_arch = "wasm32")))]
 use {
     mavros_vm::interpreter as mavros_interpreter, provekit_common::MavrosProver, std::path::Path,
     whir::transcript::VerifierMessage,
 };
 
+#[cfg(feature = "bn254")]
 pub(crate) mod bigint_mod;
+#[cfg(feature = "bn254")]
 pub(crate) mod ec_arith;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "bn254", not(target_arch = "wasm32")))]
 pub mod input_utils;
+#[cfg(feature = "bn254")]
 mod logging;
+#[cfg(feature = "bn254")]
 pub(crate) mod r1cs;
+#[cfg(test)]
+mod roundtrip_tests;
+// Private under bn254 (the `Prove` trait is the public entry point); public
+// under goldilocks, where `WhirR1CSProver` is the only proving API for
+// hand-built R1CS instances.
+#[cfg(feature = "bn254")]
 mod whir_r1cs;
+#[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+pub mod whir_r1cs;
+#[cfg(feature = "bn254")]
 mod witness;
 
 // Public re-exports for items used by integration tests and benchmarks.
+#[cfg(feature = "bn254")]
 pub use {ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
 
 /// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
 /// `prove_with_witness` is available on all targets. `MavrosProver` does not
 /// support `prove_with_witness` (errors at runtime).
+#[cfg(feature = "bn254")]
 pub trait Prove {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof>;
@@ -83,6 +99,7 @@ fn generate_noir_witness(
         .witness)
 }
 
+#[cfg(feature = "bn254")]
 impl Prove for NoirProver {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
@@ -271,7 +288,7 @@ impl Prove for NoirProver {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "bn254", not(target_arch = "wasm32")))]
 impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
     fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
@@ -405,6 +422,7 @@ impl Prove for MavrosProver {
     }
 }
 
+#[cfg(feature = "bn254")]
 impl Prove for Prover {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof> {

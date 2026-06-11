@@ -28,7 +28,7 @@ use {
         transcript::{ProverState, VerifierMessage},
     },
 };
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "bn254", not(target_arch = "wasm32")))]
 use {
     mavros_artifacts::{ConstraintsLayout, WitnessLayout},
     mavros_vm::interpreter::WitgenResult,
@@ -64,7 +64,7 @@ pub trait WhirR1CSProver {
         public_inputs: &PublicInputs,
     ) -> Result<WhirR1CSProof>;
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "bn254", not(target_arch = "wasm32")))]
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
@@ -186,7 +186,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         )
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(all(feature = "bn254", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
     fn prove_mavros(
         &self,
@@ -578,7 +578,7 @@ pub fn run_zk_sumcheck_prover(
         let g_at_minus_one = g_poly[0] - g_poly[1] + g_poly[2] - g_poly[3];
         let combined_at_em1 = hhat_i_at_em1 + rho * g_at_minus_one;
 
-        combined_hhat_i_coeffs[2] = HALF
+        combined_hhat_i_coeffs[2] = *HALF
             * (saved_val_for_sumcheck_equality_assertion + combined_at_em1
                 - combined_hhat_i_coeffs[0]
                 - combined_hhat_i_coeffs[0]
