@@ -23,27 +23,66 @@ use {
 /// are BN254-only constructions and exist only under the `bn254` feature;
 /// the default is Skyscraper under `bn254` and [`Self::Sha256`] under
 /// `goldilocks`.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+///
+/// Serialization is hand-written (see the `Serialize`/`Deserialize` impls
+/// below) rather than derived: the derive numbers variants positionally, so
+/// `#[cfg]`-gating Skyscraper/Poseidon2 out of a goldilocks build silently
+/// shifts every remaining index (`Sha256` becomes `0` instead of `1`, etc.),
+/// which would let a postcard/CBOR-encoded config written by one field build
+/// decode as the wrong variant under the other. The manual impls route binary
+/// formats through the field-independent [`Self::to_byte`]/[`Self::from_byte`]
+/// (the same stable byte used in proof-file headers) and human-readable
+/// formats through [`Self::name`]/[`Self::parse`].
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum HashConfig {
     #[cfg(feature = "bn254")]
     #[default]
-    #[serde(alias = "sky")]
     Skyscraper,
 
     #[cfg_attr(all(feature = "goldilocks", not(feature = "bn254")), default)]
-    #[serde(alias = "sha", alias = "sha-256")]
     Sha256,
 
-    #[serde(alias = "keccak-256", alias = "shake")]
     Keccak,
 
-    #[serde(alias = "blake-3", alias = "b3")]
     Blake3,
 
     #[cfg(feature = "bn254")]
-    #[serde(alias = "pos2", alias = "p2")]
     Poseidon2,
+}
+
+impl Serialize for HashConfig {
+    /// Human-readable formats (JSON, …) get the canonical name string; binary
+    /// formats (postcard, CBOR, …) get the field-independent [`Self::to_byte`]
+    /// value. Under `bn254` both forms are byte-identical to the old derive,
+    /// so existing proofs/schemes are unaffected.
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        if serializer.is_human_readable() {
+            serializer.serialize_str(self.name())
+        } else {
+            serializer.serialize_u8(self.to_byte())
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for HashConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+        if deserializer.is_human_readable() {
+            let name = String::deserialize(deserializer)?;
+            Self::parse(&name)
+                .ok_or_else(|| D::Error::custom(format!("unknown hash configuration: {name:?}")))
+        } else {
+            let byte = u8::deserialize(deserializer)?;
+            Self::from_byte(byte)
+                .ok_or_else(|| D::Error::custom(format!("invalid hash configuration byte: {byte}")))
+        }
+    }
 }
 
 /// Domain-separation tag for public-input instance binding.
@@ -224,23 +263,34 @@ fn digest_to_field(digest: &[u8]) -> FieldElement {
     FieldElement::from_le_bytes_mod_order(digest)
 }
 
-/// Reduces a hash digest into a [`FieldElement`] by reducing into the
-/// Goldilocks base field and embedding into the cubic extension.
+/// Reduces a hash digest into a [`FieldElement`] by spreading it across all
+/// three coordinates of the Goldilocks cubic extension.
 ///
-/// NOTE: the image lies in the base subfield — only ~64 bits of entropy in
-/// the field representation. That is fine for public-input/DST *binding*
-/// (collision resistance lives in the 256-bit digest; real public-input
-/// soundness is the sumcheck public-eval check), but this value must NEVER
-/// feed challenge derivation. Optional strengthening: split the digest into
-/// 3 chunks via `from_base_prime_field_elems` for a ~192-bit image.
+/// The digest is split into three contiguous chunks, each reduced mod the
+/// ~64-bit Goldilocks base prime, so the image is the full ~192-bit cubic
+/// extension rather than the ~64-bit base subfield a single reduction would
+/// produce. This value is *both* the Fiat-Shamir instance tag and the absorbed
+/// public-inputs hash the verifier recomputes and compares.
+///
+/// Why spread: the collision resistance of a binding hash is the birthday
+/// bound over its image (~2^(bits/2)), not the image size. A base-subfield
+/// image (~2⁶⁴ values) would give only ~2³² resistance; the full extension
+/// (~2¹⁹²) gives ~2⁹⁶, itself bounded by the 256-bit digest's own ~2¹²⁸. ~2⁹⁶
+/// is still below the 128-bit WHIR target, but this tag is *defense-in-depth*,
+/// not the sole binding: public-input binding is enforced independently by the
+/// verifier's direct value check (`verify_public_input_binding`, soundness
+/// error ~deg/|F|), so soundness does not rest on this hash's collision
+/// resistance. Like the BN254 sibling, this is a binding hash, not a uniform
+/// field sampler.
 #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
 #[inline]
 fn digest_to_field(digest: &[u8]) -> FieldElement {
-    use {
-        ark_ff::{Field, PrimeField},
-        whir::algebra::fields::Field64,
-    };
-    FieldElement::from_base_prime_field(Field64::from_le_bytes_mod_order(digest))
+    use {ark_ff::PrimeField, whir::algebra::fields::Field64};
+    let chunk = digest.len().div_ceil(3);
+    let c0 = Field64::from_le_bytes_mod_order(&digest[..chunk.min(digest.len())]);
+    let c1 = Field64::from_le_bytes_mod_order(digest.get(chunk..2 * chunk).unwrap_or(&[]));
+    let c2 = Field64::from_le_bytes_mod_order(digest.get(2 * chunk..).unwrap_or(&[]));
+    FieldElement::new(c0, c1, c2)
 }
 
 /// DST-tagged [`sha2::digest::Digest`] hash (SHA-256, Keccak-256) over
@@ -306,6 +356,72 @@ mod tests {
     #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
     const ALL_VARIANTS: &[HashConfig] =
         &[HashConfig::Sha256, HashConfig::Keccak, HashConfig::Blake3];
+
+    /// Binary serde must encode the field-independent [`HashConfig::to_byte`]
+    /// value, NOT serde's positional variant index. Otherwise cfg-gating
+    /// Skyscraper/Poseidon2 out of a goldilocks build shifts `Sha256` from 1
+    /// to 0, silently colliding with Skyscraper's byte across field builds.
+    #[test]
+    fn binary_serde_is_field_independent_to_byte() {
+        for &v in ALL_VARIANTS {
+            let bytes = postcard::to_allocvec(&v).unwrap();
+            assert_eq!(
+                bytes,
+                vec![v.to_byte()],
+                "{v:?}: postcard must equal to_byte()"
+            );
+            let back: HashConfig = postcard::from_bytes(&bytes).unwrap();
+            assert_eq!(back, v, "{v:?}: postcard roundtrip");
+        }
+        // Pinned: these bytes must be identical in every field build.
+        assert_eq!(postcard::to_allocvec(&HashConfig::Sha256).unwrap(), vec![
+            1u8
+        ]);
+        assert_eq!(postcard::to_allocvec(&HashConfig::Keccak).unwrap(), vec![
+            2u8
+        ]);
+        assert_eq!(postcard::to_allocvec(&HashConfig::Blake3).unwrap(), vec![
+            3u8
+        ]);
+    }
+
+    /// Human-readable serde uses the canonical name string (stable across
+    /// fields) and round-trips, including the legacy aliases via `parse`.
+    #[test]
+    fn human_readable_serde_is_canonical_name() {
+        for &v in ALL_VARIANTS {
+            let json = serde_json::to_string(&v).unwrap();
+            assert_eq!(
+                json,
+                format!("\"{}\"", v.name()),
+                "{v:?}: json must be name()"
+            );
+            let back: HashConfig = serde_json::from_str(&json).unwrap();
+            assert_eq!(back, v, "{v:?}: json roundtrip");
+        }
+        assert_eq!(
+            serde_json::to_string(&HashConfig::Sha256).unwrap(),
+            "\"sha256\""
+        );
+        let aliased: HashConfig = serde_json::from_str("\"sha-256\"").unwrap();
+        assert_eq!(aliased, HashConfig::Sha256, "legacy alias must still parse");
+    }
+
+    /// A goldilocks build must *reject* binary bytes for variants it does not
+    /// have (0 = Skyscraper, 4 = Poseidon2) rather than silently misdecode —
+    /// this is the cross-field-substitution guard the derive lacked.
+    #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+    #[test]
+    fn binary_serde_rejects_bn254_only_bytes() {
+        assert!(
+            postcard::from_bytes::<HashConfig>(&[0u8]).is_err(),
+            "byte 0 (Skyscraper) must be rejected, not decoded as Sha256"
+        );
+        assert!(
+            postcard::from_bytes::<HashConfig>(&[4u8]).is_err(),
+            "byte 4 (Poseidon2) must be rejected"
+        );
+    }
 
     #[test]
     fn from_byte_roundtrips_with_to_byte() {

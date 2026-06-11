@@ -46,6 +46,38 @@ use crate::{
 pub use ark_bn254::Fr as FieldElement;
 #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
 pub use whir::algebra::fields::Field64_3 as FieldElement;
+
+/// Which field [`FieldElement`] resolved to in this build: `true` for the
+/// BN254 scalar field, `false` for the Goldilocks cubic extension. Because
+/// `bn254` wins precedence when both features are on, this tracks the actual
+/// type — not merely whether `goldilocks` was requested.
+///
+/// Downstream crates that carry their own `bn254`/`goldilocks` features assert
+/// their intent against this via [`assert_field_matches_common`], so Cargo
+/// feature unification (a sibling forcing `provekit-common/bn254` while the
+/// crate was built for `goldilocks`) becomes a build error rather than silently
+/// compiling field-gated code over the wrong `FieldElement`.
+pub const FIELD_IS_BN254: bool = cfg!(feature = "bn254");
+
+/// Compile-time guard that the invoking crate's field feature matches
+/// [`FIELD_IS_BN254`] (i.e. `provekit-common`'s resolved [`FieldElement`]).
+///
+/// Invoke once at crate root in any crate that has its own `bn254`/`goldilocks`
+/// features and uses [`FieldElement`]. `cfg!(feature = "bn254")` is evaluated
+/// in the caller, so a divergence introduced by feature unification fails the
+/// build with a clear message instead of producing a wrong-field binary.
+#[macro_export]
+macro_rules! assert_field_matches_common {
+    () => {
+        const _: () = ::core::assert!(
+            ::core::cfg!(feature = "bn254") == $crate::FIELD_IS_BN254,
+            "this crate's field feature disagrees with provekit-common's resolved FieldElement: a \
+             sibling crate likely enabled provekit-common/bn254 via Cargo feature unification \
+             while this crate was built for goldilocks. Build every provekit crate in the \
+             dependency graph over the same field.",
+        );
+    };
+}
 #[cfg(feature = "bn254")]
 pub use {
     acir::FieldElement as NoirElement,

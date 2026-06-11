@@ -213,6 +213,25 @@ mod tests {
         }
     }
 
+    /// Regression: the binding hash must span all three cubic-extension
+    /// coordinates, not collapse into the ~64-bit base subfield. A
+    /// base-subfield image leaves the upper 16 bytes (coords `c1`, `c2`)
+    /// zero and caps public-input binding collision resistance at ~2⁶⁴,
+    /// below the 128-bit security target. See `digest_to_field` in
+    /// `hash_config`.
+    #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+    #[test]
+    fn goldilocks_binding_hash_spans_full_extension() {
+        for config in ALL_CONFIGS {
+            let bytes = field_to_bytes_le(pi(&[1, 2]).hash(config));
+            assert_ne!(
+                bytes[8..24],
+                [0u8; 16],
+                "{config:?}: binding hash collapsed into the ~64-bit base subfield"
+            );
+        }
+    }
+
     // --- empty input ---
 
     #[cfg(feature = "bn254")]

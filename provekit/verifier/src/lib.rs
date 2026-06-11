@@ -1,5 +1,10 @@
 pub mod whir_r1cs;
 
+// Guard against Cargo feature unification building this verifier over the wrong
+// `provekit_common::FieldElement` (a sibling forcing `provekit-common/bn254`
+// while this verifier is built for goldilocks).
+provekit_common::assert_field_matches_common!();
+
 #[cfg(feature = "bn254")]
 use {
     crate::whir_r1cs::WhirR1CSVerifier,

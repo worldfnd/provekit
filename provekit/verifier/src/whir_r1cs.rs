@@ -43,6 +43,12 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         public_inputs: &PublicInputs,
         r1cs: &R1CS,
     ) -> Result<()> {
+        // Register the NTT/hash engines this verify path retrieves. The bn254
+        // `Verify` wrapper also calls this, but under goldilocks that wrapper is
+        // gone and this is the sole (public) entry point; `register_ntt` is
+        // idempotent, so the double call under bn254 is a no-op.
+        provekit_common::register_ntt();
+
         let actual_r1cs_hash = r1cs.hash();
         anyhow::ensure!(
             self.r1cs_hash == actual_r1cs_hash,

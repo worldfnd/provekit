@@ -49,6 +49,12 @@ pub mod whir_r1cs;
 #[cfg(feature = "bn254")]
 mod witness;
 
+// Guard against Cargo feature unification building this prover's field-gated
+// code (notably the goldilocks-only public `whir_r1cs` API) over the wrong
+// `provekit_common::FieldElement` — e.g. when a sibling crate forces
+// `provekit-common/bn254` while this prover is built for goldilocks.
+provekit_common::assert_field_matches_common!();
+
 // Public re-exports for items used by integration tests and benchmarks.
 #[cfg(feature = "bn254")]
 pub use {ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
