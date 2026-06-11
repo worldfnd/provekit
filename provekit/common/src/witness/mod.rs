@@ -1,9 +1,19 @@
+// The witness builders are Noir/BN254-coupled (BigInt decompositions, EC
+// gadgets, Noir witness maps); Phase 1 of the goldilocks build hand-builds
+// R1CS witnesses instead.
+#[cfg(feature = "bn254")]
 mod binops;
+#[cfg(feature = "bn254")]
 mod digits;
+#[cfg(feature = "bn254")]
 mod limbs;
+#[cfg(feature = "bn254")]
 mod ram;
+#[cfg(feature = "bn254")]
 mod scheduling;
+#[cfg(feature = "bn254")]
 mod witness_builder;
+#[cfg(feature = "bn254")]
 mod witness_generator;
 
 use {
@@ -14,6 +24,7 @@ use {
     ark_ff::One,
     serde::{Deserialize, Serialize},
 };
+#[cfg(feature = "bn254")]
 pub use {
     binops::BINOP_ATOMIC_BITS,
     digits::{decompose_into_digits, DigitalDecompositionWitnesses},
@@ -98,10 +109,23 @@ impl PublicInputs {
     ///
     /// Used as the Fiat-Shamir instance tag binding the transcript to these
     /// public inputs.
+    #[cfg(feature = "bn254")]
     #[inline]
     #[must_use]
     pub fn hash_bytes(&self, config: HashConfig) -> [u8; 32] {
         field_to_bytes_le(self.hash(config))
+    }
+
+    /// Returns [`Self::hash`] as a 32-byte little-endian instance tag: the
+    /// canonical 24-byte `Field64_3` serialization, zero-padded to keep the
+    /// transcript instance width stable.
+    #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+    #[inline]
+    #[must_use]
+    pub fn hash_bytes(&self, config: HashConfig) -> [u8; 32] {
+        let mut out = [0u8; 32];
+        out[..24].copy_from_slice(&field_to_bytes_le(self.hash(config)));
+        out
     }
 }
 
@@ -115,6 +139,7 @@ impl Default for PublicInputs {
 mod tests {
     use {super::*, proptest::prelude::*};
 
+    #[cfg(feature = "bn254")]
     const ALL_CONFIGS: [HashConfig; 5] = [
         HashConfig::Skyscraper,
         HashConfig::Sha256,
@@ -122,6 +147,9 @@ mod tests {
         HashConfig::Blake3,
         HashConfig::Poseidon2,
     ];
+    #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+    const ALL_CONFIGS: [HashConfig; 3] =
+        [HashConfig::Sha256, HashConfig::Keccak, HashConfig::Blake3];
 
     fn fe(n: u64) -> FieldElement {
         FieldElement::from(n)
@@ -157,6 +185,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn hash_bytes_is_le_serialization_of_hash() {
         let inputs = pi(&[7, 13]);
@@ -169,8 +198,24 @@ mod tests {
         }
     }
 
+    #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+    #[test]
+    fn hash_bytes_is_padded_le_serialization_of_hash() {
+        let inputs = pi(&[7, 13]);
+        for config in ALL_CONFIGS {
+            let bytes = inputs.hash_bytes(config);
+            assert_eq!(
+                bytes[..24],
+                field_to_bytes_le(inputs.hash(config)),
+                "{config:?}: hash_bytes[..24] must equal LE(hash())"
+            );
+            assert_eq!(bytes[24..], [0u8; 8], "{config:?}: padding must be zero");
+        }
+    }
+
     // --- empty input ---
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn skyscraper_empty_returns_zero() {
         // Transcript-visible back-compat: Skyscraper hashes [] to 0.
@@ -262,6 +307,7 @@ mod tests {
     // mod-reduction, Skyscraper compression order) will fail these and must be
     // a deliberate, reviewed format change.
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn kat_empty_skyscraper() {
         // Skyscraper on empty input is 0 by construction; no DST.
@@ -269,6 +315,7 @@ mod tests {
         assert_eq!(got, [0u8; 32], "Skyscraper empty-input KAT drift");
     }
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn kat_one_two_skyscraper() {
         let got = pi(&[1, 2]).hash_bytes(HashConfig::Skyscraper);
@@ -283,42 +330,49 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn kat_empty_sha256() {
         let got = PublicInputs::new().hash_bytes(HashConfig::Sha256);
         assert_eq!(got, KAT_EMPTY_SHA256, "SHA-256 empty-input KAT drift");
     }
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn kat_one_two_sha256() {
         let got = pi(&[1, 2]).hash_bytes(HashConfig::Sha256);
         assert_eq!(got, KAT_ONE_TWO_SHA256, "SHA-256 [1, 2] KAT drift");
     }
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn kat_empty_keccak() {
         let got = PublicInputs::new().hash_bytes(HashConfig::Keccak);
         assert_eq!(got, KAT_EMPTY_KECCAK, "Keccak-256 empty-input KAT drift");
     }
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn kat_one_two_keccak() {
         let got = pi(&[1, 2]).hash_bytes(HashConfig::Keccak);
         assert_eq!(got, KAT_ONE_TWO_KECCAK, "Keccak-256 [1, 2] KAT drift");
     }
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn kat_empty_blake3() {
         let got = PublicInputs::new().hash_bytes(HashConfig::Blake3);
         assert_eq!(got, KAT_EMPTY_BLAKE3, "BLAKE3 empty-input KAT drift");
     }
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn kat_one_two_blake3() {
         let got = pi(&[1, 2]).hash_bytes(HashConfig::Blake3);
         assert_eq!(got, KAT_ONE_TWO_BLAKE3, "BLAKE3 [1, 2] KAT drift");
     }
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn kat_empty_poseidon2() {
         // Non-zero: even with no user inputs, the DST field element is
@@ -327,6 +381,7 @@ mod tests {
         assert_eq!(got, KAT_EMPTY_POSEIDON2, "Poseidon2 empty-input KAT drift");
     }
 
+    #[cfg(feature = "bn254")]
     #[test]
     fn kat_one_two_poseidon2() {
         let got = pi(&[1, 2]).hash_bytes(HashConfig::Poseidon2);
@@ -335,31 +390,37 @@ mod tests {
 
     // Frozen outputs. Regenerate only for a deliberate, reviewed format change.
 
+    #[cfg(feature = "bn254")]
     const KAT_EMPTY_SHA256: [u8; 32] = [
         0xc6, 0xa2, 0x48, 0x23, 0x44, 0xd4, 0x29, 0xf5, 0x53, 0x37, 0xc3, 0xb6, 0x87, 0xb5, 0xc3,
         0x54, 0x47, 0x5c, 0x7c, 0x7f, 0x17, 0xac, 0x26, 0xeb, 0x47, 0x92, 0x78, 0x00, 0x11, 0xfe,
         0xa0, 0x26,
     ];
+    #[cfg(feature = "bn254")]
     const KAT_ONE_TWO_SHA256: [u8; 32] = [
         0x0f, 0x7b, 0x4c, 0xec, 0x9b, 0x45, 0x3f, 0xe5, 0x2f, 0xf4, 0x32, 0x96, 0x96, 0x60, 0xd2,
         0xd8, 0x92, 0x5e, 0x7c, 0x34, 0xdd, 0x27, 0x59, 0x05, 0x7f, 0xc0, 0xf2, 0x73, 0x43, 0x53,
         0x76, 0x1d,
     ];
+    #[cfg(feature = "bn254")]
     const KAT_EMPTY_KECCAK: [u8; 32] = [
         0xb2, 0x2f, 0xf9, 0x91, 0x4f, 0xaf, 0xbd, 0xd0, 0x3c, 0x4f, 0xa2, 0x7a, 0xb0, 0x8a, 0x34,
         0x5f, 0x0e, 0x1c, 0x62, 0x53, 0xf4, 0xc0, 0x02, 0x37, 0x2b, 0xaa, 0x50, 0x3c, 0x82, 0xb1,
         0x2d, 0x23,
     ];
+    #[cfg(feature = "bn254")]
     const KAT_ONE_TWO_KECCAK: [u8; 32] = [
         0xb1, 0xe0, 0x10, 0xfa, 0x01, 0x19, 0xcf, 0x35, 0x85, 0xac, 0x34, 0xb3, 0xdb, 0xb0, 0x11,
         0x17, 0x57, 0xa9, 0x63, 0xff, 0x8d, 0x3c, 0x76, 0xc9, 0xf7, 0xc6, 0x79, 0xb0, 0xfb, 0xf1,
         0x41, 0x16,
     ];
+    #[cfg(feature = "bn254")]
     const KAT_EMPTY_BLAKE3: [u8; 32] = [
         0x7b, 0x01, 0x61, 0xea, 0x26, 0xb6, 0x36, 0xbc, 0x69, 0x23, 0xf3, 0x87, 0x7d, 0x4d, 0xca,
         0xb8, 0xf7, 0xa9, 0xb4, 0x8d, 0x38, 0x56, 0x01, 0x13, 0x93, 0x57, 0xa0, 0x55, 0x37, 0x0c,
         0xda, 0x27,
     ];
+    #[cfg(feature = "bn254")]
     const KAT_ONE_TWO_BLAKE3: [u8; 32] = [
         0x84, 0x08, 0x71, 0x4e, 0xb3, 0xb2, 0x8e, 0x8f, 0xd6, 0xb5, 0xd0, 0x3d, 0x35, 0x99, 0x08,
         0x4e, 0x47, 0x7d, 0x1f, 0xf9, 0xf5, 0x79, 0xc1, 0x46, 0xb4, 0x28, 0x84, 0xa5, 0x6b, 0xc5,
@@ -369,11 +430,13 @@ mod tests {
     // the empty-input case is still a one-element absorb of the DST tag
     // (role-DS) with the length-IV set for `n = 1`. The DST field element
     // is derived as SHA256(PUBLIC_INPUTS_DST) reduced mod p.
+    #[cfg(feature = "bn254")]
     const KAT_EMPTY_POSEIDON2: [u8; 32] = [
         0x88, 0x8d, 0xd0, 0xb7, 0xbb, 0x12, 0xee, 0x46, 0xf0, 0x73, 0x14, 0x15, 0x2c, 0xec, 0x94,
         0xf8, 0x5f, 0x5a, 0xbd, 0x58, 0xe3, 0xfd, 0x8a, 0x96, 0xb5, 0x18, 0x4c, 0x23, 0xd8, 0x7d,
         0xf3, 0x01,
     ];
+    #[cfg(feature = "bn254")]
     const KAT_ONE_TWO_POSEIDON2: [u8; 32] = [
         0x54, 0xfa, 0xbf, 0xce, 0x1b, 0xe4, 0xbb, 0xe9, 0x92, 0xb0, 0x6a, 0x42, 0xeb, 0xf7, 0x2d,
         0xf4, 0x47, 0x8a, 0x2d, 0xb1, 0x9c, 0x5f, 0x35, 0xbf, 0x7c, 0x62, 0xba, 0x9d, 0x65, 0x67,
@@ -382,6 +445,7 @@ mod tests {
 
     // --- property tests ---
 
+    #[cfg(feature = "bn254")]
     fn any_hash_config() -> impl Strategy<Value = HashConfig> {
         prop_oneof![
             Just(HashConfig::Skyscraper),
@@ -389,6 +453,15 @@ mod tests {
             Just(HashConfig::Keccak),
             Just(HashConfig::Blake3),
             Just(HashConfig::Poseidon2),
+        ]
+    }
+
+    #[cfg(all(feature = "goldilocks", not(feature = "bn254")))]
+    fn any_hash_config() -> impl Strategy<Value = HashConfig> {
+        prop_oneof![
+            Just(HashConfig::Sha256),
+            Just(HashConfig::Keccak),
+            Just(HashConfig::Blake3),
         ]
     }
 

@@ -3,6 +3,8 @@ mod buf_ext;
 mod counting_writer;
 mod json;
 
+#[cfg(feature = "bn254")]
+use crate::{NoirProof, NoirProofScheme, Prover, Verifier};
 use {
     self::{
         bin::{
@@ -13,7 +15,7 @@ use {
         counting_writer::CountingWriter,
         json::{read_json, write_json},
     },
-    crate::{HashConfig, NoirProof, NoirProofScheme, Prover, Verifier},
+    crate::HashConfig,
     anyhow::Result,
     serde::{Deserialize, Serialize},
     std::{ffi::OsStr, path::Path},
@@ -34,6 +36,7 @@ pub(crate) trait MaybeHashAware {
 }
 
 /// Impl for Prover (has hash config).
+#[cfg(feature = "bn254")]
 impl MaybeHashAware for Prover {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         match self {
@@ -44,6 +47,7 @@ impl MaybeHashAware for Prover {
 }
 
 /// Impl for Verifier (has hash config).
+#[cfg(feature = "bn254")]
 impl MaybeHashAware for Verifier {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         Some(self.hash_config)
@@ -51,6 +55,7 @@ impl MaybeHashAware for Verifier {
 }
 
 /// Impl for NoirProof (no hash config).
+#[cfg(feature = "bn254")]
 impl MaybeHashAware for NoirProof {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         None
@@ -58,6 +63,7 @@ impl MaybeHashAware for NoirProof {
 }
 
 /// Impl for NoirProofScheme (has hash config).
+#[cfg(feature = "bn254")]
 impl MaybeHashAware for NoirProofScheme {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         match self {
@@ -67,6 +73,7 @@ impl MaybeHashAware for NoirProofScheme {
     }
 }
 
+#[cfg(feature = "bn254")]
 impl FileFormat for NoirProofScheme {
     const FORMAT: [u8; 8] = crate::binary_format::NOIR_PROOF_SCHEME_FORMAT;
     const EXTENSION: &'static str = "nps";
@@ -74,6 +81,7 @@ impl FileFormat for NoirProofScheme {
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
+#[cfg(feature = "bn254")]
 impl FileFormat for Prover {
     const FORMAT: [u8; 8] = crate::binary_format::PROVER_FORMAT;
     const EXTENSION: &'static str = "pkp";
@@ -81,6 +89,7 @@ impl FileFormat for Prover {
     const COMPRESSION: Compression = Compression::Xz;
 }
 
+#[cfg(feature = "bn254")]
 impl FileFormat for Verifier {
     const FORMAT: [u8; 8] = crate::binary_format::VERIFIER_FORMAT;
     const EXTENSION: &'static str = "pkv";
@@ -88,6 +97,7 @@ impl FileFormat for Verifier {
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
+#[cfg(feature = "bn254")]
 impl FileFormat for NoirProof {
     const FORMAT: [u8; 8] = crate::binary_format::NOIR_PROOF_FORMAT;
     const EXTENSION: &'static str = "np";
