@@ -9,8 +9,17 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-default = ["witness-generation", "parallel"]
-witness-generation = ["nargo", "bn254_blackbox_solver", "noir_artifact_cli"]
+default = ["witness-generation", "parallel", "bn254"]
+# At least one field feature must be enabled; `bn254` takes precedence when
+# both are on. Pair `goldilocks` with `--no-default-features`.
+bn254 = [
+    "provekit-common/bn254",
+    "provekit-common/provekit_ntt",
+    "dep:mavros-vm",
+    "dep:mavros-artifacts",
+]
+goldilocks = ["provekit-common/goldilocks"]
+witness-generation = ["bn254", "nargo", "bn254_blackbox_solver", "noir_artifact_cli"]
 parallel = ["provekit-common/parallel"]
 
 [dependencies]
@@ -37,8 +46,13 @@ tracing.workspace = true
 bn254_blackbox_solver = { workspace = true, optional = true }
 nargo = { workspace = true, optional = true }
 noir_artifact_cli = { workspace = true, optional = true }
-mavros-vm.workspace = true
-mavros-artifacts.workspace = true
+mavros-vm = { workspace = true, optional = true }
+mavros-artifacts = { workspace = true, optional = true }
+
+[dev-dependencies]
+# No default features: the field feature must unify from this crate's own
+# `bn254`/`goldilocks` selection, not be forced to bn254 by the dev-dep.
+provekit-verifier = { workspace = true, default-features = false }
 
 [lints]
 workspace = true

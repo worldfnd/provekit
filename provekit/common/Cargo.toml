@@ -9,9 +9,16 @@ homepage.workspace = true
 repository.workspace = true
 
 [features]
-default = ["parallel"]
+default = ["parallel", "bn254"]
+# At least one field feature must be enabled; `bn254` takes precedence when
+# both are on (so `--all-features` builds as BN254). `bn254` is the
+# production default; `goldilocks` selects the Goldilocks cubic extension
+# (Field64_3, ~192 bits) for off-chain, crate-scoped builds only — always
+# pair it with `--no-default-features`.
+bn254 = ["dep:mavros-vm", "dep:mavros-artifacts"]
+goldilocks = []
 parallel = []
-provekit_ntt = []
+provekit_ntt = ["bn254"]
 
 [dependencies]
 # Workspace crates
@@ -53,8 +60,8 @@ zerocopy.workspace = true
 # Target-specific dependencies: only on non-WASM targets
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zstd.workspace = true
-mavros-vm.workspace = true
-mavros-artifacts.workspace = true
+mavros-vm = { workspace = true, optional = true }
+mavros-artifacts = { workspace = true, optional = true }
 xz2.workspace = true
 
 [package.metadata.cargo-machete]
@@ -69,6 +76,7 @@ proptest.workspace = true
 [[bench]]
 name = "rs_bench"
 harness = false
+required-features = ["bn254"]
 
 [lints]
 workspace = true

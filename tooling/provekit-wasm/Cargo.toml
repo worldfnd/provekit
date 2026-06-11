@@ -22,9 +22,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Workspace crates - enable parallel features with wasm-bindgen-rayon
-provekit-common.workspace = true
-provekit-prover = { workspace = true, default-features = false, features = ["parallel"] }
-provekit-verifier.workspace = true
+provekit-common = { workspace = true, features = ["bn254", "parallel", "provekit_ntt"] }
+provekit-prover = { workspace = true, default-features = false, features = ["bn254", "parallel"] }
+provekit-verifier = { workspace = true, features = ["bn254"] }
 
 # Noir language
 acir.workspace = true

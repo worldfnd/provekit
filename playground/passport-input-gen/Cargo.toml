@@ -21,7 +21,7 @@ ark-ff.workspace = true
 base64.workspace = true
 hex.workspace = true
 noirc_abi.workspace = true
-provekit-common.workspace = true
+provekit-common = { workspace = true, features = ["bn254", "parallel", "provekit_ntt"] }
 provekit-prover = { workspace = true, features = ["witness-generation"] }
 serde.workspace = true
 serde_json.workspace = true

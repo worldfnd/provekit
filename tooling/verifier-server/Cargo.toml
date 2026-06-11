@@ -10,7 +10,7 @@ repository.workspace = true
 
 [dependencies]
 # Workspace crates
-provekit-common.workspace = true
+provekit-common = { workspace = true, features = ["bn254", "parallel", "provekit_ntt"] }
 provekit-gnark.workspace = true
 
 # 3rd party

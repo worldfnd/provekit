@@ -8,6 +8,19 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[features]
+default = ["bn254"]
+# At least one field feature must be enabled; `bn254` takes precedence when
+# both are on. Pair `goldilocks` with `--no-default-features`.
+# `provekit_ntt`/`parallel` mirror what the workspace-wide BN254 build
+# enabled before the field split.
+bn254 = [
+    "provekit-common/bn254",
+    "provekit-common/provekit_ntt",
+    "provekit-common/parallel",
+]
+goldilocks = ["provekit-common/goldilocks"]
+
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true

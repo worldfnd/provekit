@@ -10,10 +10,10 @@ repository.workspace = true
 
 [dependencies]
 # Workspace crates
-provekit-common.workspace = true
+provekit-common = { workspace = true, features = ["bn254", "parallel", "provekit_ntt"] }
 provekit-prover = { workspace = true, features = ["witness-generation", "parallel"] }
 provekit-r1cs-compiler.workspace = true
-provekit-verifier.workspace = true
+provekit-verifier = { workspace = true, features = ["bn254"] }
 
 # Noir language
 acir.workspace = true

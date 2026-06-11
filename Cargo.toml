@@ -97,12 +97,15 @@ poseidon2 = { path = "poseidon2" }
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
-provekit-common = { path = "provekit/common" , features = ["provekit_ntt"]}
+# No default features: consumers pick the field (`bn254`/`goldilocks`) plus
+# `parallel`/`provekit_ntt` explicitly — required so the goldilocks build can
+# exclude the default `bn254` feature.
+provekit-common = { path = "provekit/common", default-features = false }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
 provekit-prover = { path = "provekit/prover", default-features = false }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
-provekit-verifier = { path = "provekit/verifier" }
+provekit-verifier = { path = "provekit/verifier", default-features = false }
 provekit-verifier-server = { path = "tooling/verifier-server" }
 provekit-wasm = { path = "tooling/provekit-wasm" }
 
