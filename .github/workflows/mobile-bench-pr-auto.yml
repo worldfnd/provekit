@@ -3,7 +3,7 @@ name: Mobile Bench PR Auto
 on:
   push:
     branches:
-      - dcbuild3r/main-mobench-fixtures
+      - dcbuilder/pr429-main-mobench-fixtures
   pull_request:
     types: [labeled]
   workflow_run:
