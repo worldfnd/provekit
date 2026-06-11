@@ -3,7 +3,7 @@ name: Mobile Bench PR Auto
 on:
   push:
     branches:
-      - dcbuild3r/mobench-v1-browserstack
+      - dcbuilder/pr430-mobench-v1-browserstack
   pull_request:
     types: [labeled]
   workflow_run:
