@@ -1,0 +1,79 @@
+---
+title: Quickstart
+description: Run the end-to-end ProveKit proof flow against the checked-in example circuit.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+This quickstart takes you through the shortest reliable path through ProveKit: compile the checked-in `noir-examples/basic` circuit, generate a proof from its prover inputs, and verify the proof locally. About five minutes.
+
+You'll need `provekit-cli` available (`cargo install provekit-cli` or a source checkout) and a copy of `noir-examples/basic/` to run against. See [Installation and setup](/getting-started/installation/) if either is missing.
+
+The commands below assume `provekit-cli` is on your PATH. **Source-checkout users:** substitute `cargo run --release --bin provekit-cli --` for `provekit-cli` in every command.
+
+## Run your first proof
+
+<Steps>
+1. Enter the example Noir package.
+
+   ```sh
+   cd noir-examples/basic
+   ```
+
+2. Prepare the prover and verifier keys.
+
+   ```sh
+   provekit-cli prepare
+   ```
+
+3. Generate a proof from `Prover.toml`.
+
+   ```sh
+   provekit-cli prove
+   ```
+
+4. Verify the proof locally.
+
+   ```sh
+   provekit-cli verify
+   ```
+</Steps>
+
+<Aside type="tip" title="What success looks like">
+`verify` returns exit code `0` when the proof is valid. If verification fails, re-run `prepare` in the same package directory before investigating further. A stale `.pkp` / `.pkv` pair is the most common cause.
+</Aside>
+
+## What each command reads and writes
+
+| Step | Command | Reads | Writes |
+| :--- | :--- | :--- | :--- |
+| 1 | `prepare` | `Nargo.toml`, `src/main.nr`, Noir dependencies | `basic.pkp`, `basic.pkv`, Noir `target/` artifacts |
+| 2 | `prove` | `basic.pkp`, `Prover.toml` | `proof.np` |
+| 3 | `verify` | `basic.pkv`, `proof.np` | exit status only, no output file |
+
+`basic.pkp`, `basic.pkv`, and `proof.np` are generated. Don't commit them unless a downstream integration explicitly relies on checked-in fixtures.
+
+## Generated artifacts
+
+| Artifact | Purpose | Default location |
+| :--- | :--- | :--- |
+| `basic.pkp` | Prover key written by `prepare`. | Named after the enclosing Noir package. |
+| `basic.pkv` | Verifier key written by `prepare`. | Named after the enclosing Noir package. |
+| `proof.np` | Proof written by `prove`, consumed by `verify`. | `./proof.np` (override with `prove --out`). |
+| `Prover.toml` | Prover inputs for the example circuit. | Checked into `noir-examples/basic/`. |
+
+## Clean up
+
+Return the example directory to a source-only state:
+
+```sh
+rm -f basic.pkp basic.pkv proof.np
+rm -rf target
+```
+
+## Where to go next
+
+- [End-to-end overview](/e2e/overview/), working-directory and artifact rules across every integration path.
+- [Generate artifacts](/e2e/generate-artifacts/), explicit output paths, hash choices, and recursive-verifier exports.
+- [Artifact lifecycle](/concepts/artifact-lifecycle/), pairing, regeneration, and custody rules before sharing files.
+- [Common errors](/troubleshooting/common-errors/), if `prepare`, `prove`, or `verify` can't find expected files.

@@ -1,0 +1,129 @@
+---
+title: Generate artifacts
+description: Produce reproducible ProveKit keys, proofs, and recursive-verifier exports with explicit paths.
+---
+
+import { Aside, Steps } from '@astrojs/starlight/components';
+
+Use this guide when you need reproducible artifact paths for tests, demos, CI jobs, release bundles, or downstream integrations.
+
+## Default artifact flow
+
+From `noir-examples/basic`:
+
+```sh
+cargo run --release --bin provekit-cli -- prepare
+cargo run --release --bin provekit-cli -- prove
+cargo run --release --bin provekit-cli -- verify
+```
+
+This writes:
+
+| File | Created by | Consumed by |
+| :--- | :--- | :--- |
+| `basic.pkp` | `prepare` | `prove` |
+| `basic.pkv` | `prepare` | `verify`, `show-inputs`, `generate-gnark-inputs` |
+| `proof.np` | `prove` | `verify`, `show-inputs`, `generate-gnark-inputs` |
+| `target/basic.json` | Noir compilation during `prepare` | ProveKit internals and inspection workflows |
+
+## Explicit artifact directory
+
+<Steps>
+1. Enter the Noir package and create an output directory.
+
+   ```sh
+   cd noir-examples/basic
+   mkdir -p artifacts
+   ```
+
+2. Prepare key material.
+
+   ```sh
+   cargo run --release --bin provekit-cli -- prepare . \
+     --pkp ./artifacts/basic.pkp \
+     --pkv ./artifacts/basic.pkv
+   ```
+
+3. Generate a proof.
+
+   ```sh
+   cargo run --release --bin provekit-cli -- prove \
+     --prover ./artifacts/basic.pkp \
+     --input ./Prover.toml \
+     --out ./artifacts/proof.np
+   ```
+
+4. Verify the proof.
+
+   ```sh
+   cargo run --release --bin provekit-cli -- verify \
+     --verifier ./artifacts/basic.pkv \
+     --proof ./artifacts/proof.np
+   ```
+</Steps>
+
+## Hash choice
+
+`prepare` defaults to `skyscraper`. The CLI also accepts `sha256`, `keccak`, `blake3`, and `poseidon2` via `--hash`:
+
+```sh
+cargo run --release --bin provekit-cli -- prepare . --hash blake3
+```
+
+The hash is part of the artifact's identity. Regenerate the prover key, verifier key, and every proof after changing it.
+
+<Aside type="caution" title="Record the hash choice">
+Include the `--hash` value in release notes, CI logs, checksums, and any manifest that ships with `.pkp`, `.pkv`, proof, or recursive-verifier files.
+</Aside>
+
+## Inspect public inputs
+
+Decode public inputs as part of integration testing:
+
+```sh
+cargo run --release --bin provekit-cli -- show-inputs --hex \
+  ./artifacts/basic.pkv \
+  ./artifacts/proof.np
+```
+
+Review the output with the application owner. Verification proves the proof is valid for the verifier key, your application still owns the decision about whether those inputs authorize the requested action.
+
+## Recursive-verifier export
+
+After the proof verifies, export inputs for the Go/gnark recursive verifier:
+
+```sh
+cargo run --release --bin provekit-cli -- generate-gnark-inputs \
+  ./artifacts/basic.pkv \
+  ./artifacts/proof.np \
+  --params ./artifacts/params_for_recursive_verifier \
+  --r1cs ./artifacts/r1cs.json
+```
+
+The command reads the verifier key and proof, then writes the recursive parameters and an R1CS JSON. Keep those outputs paired with the exact `basic.pkv` and `proof.np` that produced them.
+
+## CI evidence template
+
+A release-producing CI job should persist at least:
+
+```text
+commit:          <git sha>
+rust-toolchain:  <contents of rust-toolchain.toml>
+lockfile:        Cargo.lock
+compiler:        noir
+prepare_hash:    skyscraper
+commands:
+  - cargo run --release --bin provekit-cli -- prepare ...
+  - cargo run --release --bin provekit-cli -- prove ...
+  - cargo run --release --bin provekit-cli -- verify ...
+artifacts:
+  - artifacts/basic.pkp  <checksum>
+  - artifacts/basic.pkv  <checksum>
+  - artifacts/proof.np   <checksum>
+```
+
+## Cleanup
+
+```sh
+rm -rf artifacts target basic.pkp basic.pkv proof.np params_for_recursive_verifier r1cs.json
+```

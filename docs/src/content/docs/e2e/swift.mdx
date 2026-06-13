@@ -1,0 +1,61 @@
+---
+title: Swift end-to-end
+description: Integrate ProveKit on iOS via the Verity Swift SDK and Swift Package Manager.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This guide uses the [Verity](https://github.com/atheonxyz/verity) Swift SDK, which wraps the shared Verity dispatcher and the ProveKit backend for iOS.
+
+<Aside type="caution" title="iOS only">
+ProveKit does not currently run on macOS. The Verity Swift package declares macOS support upstream, but the native artifacts ProveKit ships target iOS architectures only. Treat any macOS deployment as unsupported.
+</Aside>
+
+## Package declaration
+
+```swift
+// Package.swift
+dependencies: [
+    .package(url: "https://github.com/atheonxyz/verity", from: "0.3.2")
+],
+targets: [
+    .target(name: "MyApp", dependencies: [
+        .product(name: "Verity", package: "verity")
+    ])
+]
+```
+
+The `from: "0.3.2"` resolution uses the SDK's published binary xcframework; no local build required.
+
+## Minimal flow
+
+```swift
+import Verity
+
+let verity = try Verity(backend: .provekit)
+
+let prover   = try verity.loadProver(from: "scheme.pkp")
+let verifier = try verity.loadVerifier(from: "scheme.pkv")
+
+let witness = Witness(values: ["age": "25", "threshold": "18"])
+let proof   = try prover.prove(witness: witness)
+
+let valid = try verifier.verify(proof: proof)
+precondition(valid, "proof did not verify")
+
+prover.close()
+verifier.close()
+```
+
+Use `loadProver(data:)` and `loadVerifier(data:)` when the app downloads or bundles artifacts as `Data`. `Witness` accepts a `[String: String]` of field-element strings, a TOML path, or a JSON string, whichever shape your inputs already have.
+
+## Integration notes
+
+- Call ProveKit's memory configuration before constructing `Verity` when the app needs mobile RAM limits or file-backed memory.
+- `prover.close()` and `verifier.close()` release the underlying native handles. Always call them on cleanup paths (`defer { … }` or scope-bound wrappers); the wrapping `Verity` instance does not auto-release them.
+
+## Related pages
+
+- [End-to-end overview](/e2e/overview/)
+- [Generate artifacts](/e2e/generate-artifacts/)
+- [Integrations overview](/integrations/overview/)
