@@ -3208,7 +3208,7 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 [[package]]
 name = "mavros-artifacts"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=3e47fd58001a0109a0314bc080b5246fd807ba04#3e47fd58001a0109a0314bc080b5246fd807ba04"
+source = "git+https://github.com/reilabs/mavros?rev=7550b42e03d35b44781ff37f15b50773eb2a6fa0#7550b42e03d35b44781ff37f15b50773eb2a6fa0"
 dependencies = [
  "ark-bn254",
  "ark-ff 0.5.0",
@@ -3217,13 +3217,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "mavros-opcode-gen"
+version = "0.1.0"
+source = "git+https://github.com/reilabs/mavros?rev=7550b42e03d35b44781ff37f15b50773eb2a6fa0#7550b42e03d35b44781ff37f15b50773eb2a6fa0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "stringcase",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "mavros-vm"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=3e47fd58001a0109a0314bc080b5246fd807ba04#3e47fd58001a0109a0314bc080b5246fd807ba04"
+source = "git+https://github.com/reilabs/mavros?rev=7550b42e03d35b44781ff37f15b50773eb2a6fa0#7550b42e03d35b44781ff37f15b50773eb2a6fa0"
 dependencies = [
  "ark-ff 0.5.0",
  "mavros-artifacts",
- "opcode-gen",
+ "mavros-opcode-gen",
  "tracing",
 ]
 
@@ -3984,17 +3995,6 @@ name = "once_cell_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
-
-[[package]]
-name = "opcode-gen"
-version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=3e47fd58001a0109a0314bc080b5246fd807ba04#3e47fd58001a0109a0314bc080b5246fd807ba04"
-dependencies = [
- "proc-macro2",
- "quote",
- "stringcase",
- "syn 2.0.117",
-]
 
 [[package]]
 name = "openssl"

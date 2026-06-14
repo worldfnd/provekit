@@ -70,10 +70,7 @@ impl Prover {
     pub fn size(&self) -> (usize, usize) {
         match self {
             Prover::Noir(p) => (p.r1cs.num_constraints(), p.r1cs.num_witnesses()),
-            Prover::Mavros(p) => (
-                p.constraints_layout.algebraic_size,
-                p.witness_layout.algebraic_size,
-            ),
+            Prover::Mavros(p) => (p.constraints_layout.size(), p.witness_layout.size()),
         }
     }
 

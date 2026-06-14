@@ -5,14 +5,14 @@ use {
         r1cs::{CompressedLayers, CompressedR1CS},
         whir_r1cs::WhirR1CSProver,
     },
+    ::tracing::{debug, info, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
         utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, Prover,
         PublicInputs, TranscriptSponge,
     },
-    std::mem::size_of,
-    tracing::{debug, info_span, instrument},
+    std::mem::{size_of, take},
     whir::transcript::ProverState,
 };
 #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
@@ -30,6 +30,7 @@ pub(crate) mod bigint_mod;
 pub(crate) mod ec_arith;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
+mod logging;
 pub(crate) mod r1cs;
 mod whir_r1cs;
 mod witness;
@@ -185,6 +186,7 @@ impl Prove for NoirProver {
                 .collect::<Result<Vec<_>>>()?
         };
 
+        crate::logging::log_commit_input("noir_w1", &w1, self.whir_for_witness.domain_size());
         let commitment_1 = self
             .whir_for_witness
             .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
@@ -222,6 +224,7 @@ impl Prove for NoirProver {
                     .collect::<Result<Vec<_>>>()?
             };
 
+            crate::logging::log_commit_input("noir_w2", &w2, self.whir_for_witness.domain_size());
             let commitment_2 = self
                 .whir_for_witness
                 .commit(&mut merlin, num_witnesses, num_constraints, w2, false)
@@ -281,6 +284,7 @@ impl Prove for MavrosProver {
             self.constraints_layout,
             &params,
         );
+        drop(self.witgen_binary);
 
         let num_public_inputs = self.num_public_inputs;
         let public_inputs = if num_public_inputs == 0 {
@@ -297,56 +301,76 @@ impl Prove for MavrosProver {
             .instance(&instance);
         let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 
+        info!(
+            ?self.witness_layout,
+            ?self.constraints_layout,
+            scheme_domain_len = self.whir_for_witness.domain_size(),
+            "Mavros witness layout"
+        );
+
+        let w1 = phase1.out_wit_pre_comm.clone();
+        crate::logging::log_commit_input(
+            "mavros_w1_pre_commitment",
+            &w1,
+            self.whir_for_witness.domain_size(),
+        );
         let commitment_1 = self
             .whir_for_witness
             .commit(
                 &mut merlin,
                 self.witness_layout.size(),
                 self.constraints_layout.algebraic_size,
-                phase1.out_wit_pre_comm.clone(),
+                w1,
                 true,
             )
             .context("While committing to w1")?;
 
-        let commitments = if self.whir_for_witness.num_challenges > 0 {
+        let (commitments, witgen_result) = if self.whir_for_witness.num_challenges > 0 {
             let challenges: Vec<FieldElement> = (0..self.witness_layout.challenges_size)
                 .map(|_| merlin.verifier_message())
                 .collect();
 
             let witgen_result = mavros_interpreter::run_phase2(
-                phase1.clone(),
+                phase1,
                 &challenges,
                 self.witness_layout,
                 self.constraints_layout,
             );
 
+            let mut witgen_result = witgen_result;
+            let w2 = take(&mut witgen_result.out_wit_post_comm);
+            crate::logging::log_commit_input(
+                "mavros_w2_post_commitment",
+                &w2,
+                self.whir_for_witness.domain_size(),
+            );
             let commitment_2 = self
                 .whir_for_witness
                 .commit(
                     &mut merlin,
                     self.witness_layout.size(),
                     self.constraints_layout.algebraic_size,
-                    witgen_result.out_wit_post_comm.clone(),
+                    w2,
                     false,
                 )
                 .context("While committing to w2")?;
 
-            vec![commitment_1, commitment_2]
+            (vec![commitment_1, commitment_2], witgen_result)
         } else {
-            mavros_interpreter::run_phase2(
-                phase1.clone(),
+            let witgen_result = mavros_interpreter::run_phase2(
+                phase1,
                 &[],
                 self.witness_layout,
                 self.constraints_layout,
             );
-            vec![commitment_1]
+            (vec![commitment_1], witgen_result)
         };
 
         let whir_r1cs_proof = self
             .whir_for_witness
             .prove_mavros(
                 merlin,
-                phase1,
+                witgen_result,
                 commitments,
                 &public_inputs,
                 self.witness_layout,

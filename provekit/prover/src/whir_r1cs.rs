@@ -1,4 +1,5 @@
 use {
+    ::tracing::instrument,
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
     ark_std::{One, Zero},
@@ -21,7 +22,6 @@ use {
         WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
-    tracing::instrument,
     whir::{
         algebra::{dot, linear_form::LinearForm},
         protocols::whir_zk::Witness as WhirZkWitness,
@@ -31,7 +31,7 @@ use {
 #[cfg(not(target_arch = "wasm32"))]
 use {
     mavros_artifacts::{ConstraintsLayout, WitnessLayout},
-    mavros_vm::interpreter::Phase1Result,
+    mavros_vm::interpreter::WitgenResult,
 };
 
 pub struct BlindingState {
@@ -68,7 +68,7 @@ pub trait WhirR1CSProver {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        phase1: Phase1Result,
+        witgen: WitgenResult,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
@@ -98,7 +98,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             "Unexpected witness length for R1CS instance"
         );
         ensure!(
-            witness_size <= 1 << self.m,
+            witness_size <= self.domain_size(),
             "R1CS witness length exceeds scheme capacity"
         );
         ensure!(
@@ -191,7 +191,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
     fn prove_mavros(
         &self,
         mut merlin: ProverState<TranscriptSponge>,
-        phase1: Phase1Result,
+        witgen: WitgenResult,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
@@ -205,7 +205,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             .as_ref()
             .expect("c1 must carry blinding state");
 
-        let [a, b, c] = [phase1.out_a, phase1.out_b, phase1.out_c];
+        let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
             a,
             b,
@@ -221,7 +221,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
         let (ad_a, ad_b, ad_c, _) = mavros_vm::interpreter::run_ad(
             ad_binary,
-            &eq_alpha[..constraints_layout.algebraic_size],
+            &eq_alpha[..constraints_layout.size()],
             witness_layout,
             constraints_layout,
         );

@@ -1,5 +1,6 @@
 use {
     crate::witness::witness_builder::WitnessBuilderSolver,
+    ::tracing::instrument,
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
     provekit_common::{
@@ -7,7 +8,6 @@ use {
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
         FieldElement, NoirElement, TranscriptSponge, R1CS,
     },
-    tracing::instrument,
     whir::transcript::ProverState,
 };
 

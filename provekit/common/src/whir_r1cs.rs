@@ -54,6 +54,11 @@ pub struct WhirR1CSScheme {
 }
 
 impl WhirR1CSScheme {
+    /// Return the witness commitment domain size.
+    pub const fn domain_size(&self) -> usize {
+        1usize << self.m
+    }
+
     /// Create a domain separator for the provekit outer protocol.
     ///
     /// The domain separator serializes the entire scheme (including
