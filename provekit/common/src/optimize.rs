@@ -14,11 +14,12 @@
 use {
     crate::{
         witness::{DependencyInfo, WitnessBuilder},
-        FieldElement, InternedFieldElement, SparseMatrix, R1CS,
+        FieldElement, Interner, SparseMatrix, R1CS,
     },
     anyhow::{bail, Context as _, Result},
     ark_ff::Field,
     ark_std::{One, Zero},
+    rayon::iter::{IntoParallelRefIterator, ParallelIterator},
     std::collections::{HashMap, HashSet},
     tracing::{debug, info},
 };
@@ -274,46 +275,81 @@ pub fn optimize_r1cs(
             .map(|(col, val)| (val, col))
             .collect();
     }
+    info!("Gaussian elimination: phase 2b (backward chains) complete");
 
-    // Phase 3: Apply substitutions to all remaining (non-eliminated) constraints
-    let eliminated_row_set: HashSet<usize> = eliminated_rows.iter().copied().collect();
+    // Phase 3+4: Rebuild A, B, C in a single pass.
+    //
+    // The previous in-place implementation called `SparseMatrix::replace_row`
+    // for every (row, matrix) with a pivot. That function's length-change
+    // branch shifts every entry after the row plus updates every subsequent
+    // row-index — an O(N) bookkeeping cost paid up to 3·survivors times,
+    // giving O(N²) total. For circuits with hundreds of thousands of
+    // constraints this dominated the whole optimize pass.
+    //
+    // We now:
+    //   1. Build a flat pivot lookup (Vec<u32>) instead of a HashMap — O(1) lookup
+    //      without hashing in the inner row loop.
+    //   2. Classify each surviving row in parallel as either PassThrough (no pivot
+    //      — output is identical to source row) or Substituted (pivots expanded
+    //      into substitution terms). Read-only access to the interner here; no
+    //      value is dehydrated unless it has to be.
+    //   3. Run A, B, C in parallel via rayon::join.
+    //   4. Assemble each new matrix sequentially: PassThrough rows are bulk
+    //      memcpy'd from the source slices (existing InternedFieldElement handles
+    //      remain valid because the interner only appends); only Substituted rows
+    //      pay the per-value `intern` cost. Eliminated rows are simply not emitted,
+    //      so Phase 4's row-removal fuses in for free.
+    //
+    // Total work is O(E') in the size of the output matrix instead of O(N²),
+    // and intern cost scales with substituted entries only, not total entries.
+    let num_constraints_before_removal = r1cs.num_constraints();
+    let num_cols = r1cs.num_witnesses();
 
-    // Build a lookup: pivot_col -> substitution index
-    let mut sub_map: HashMap<usize, usize> = HashMap::new();
+    let mut sub_lookup: Vec<u32> = vec![u32::MAX; num_cols];
     for (idx, sub) in substitutions.iter().enumerate() {
-        sub_map.insert(sub.pivot_col, idx);
+        sub_lookup[sub.pivot_col] = idx as u32;
     }
 
-    for row in 0..r1cs.num_constraints() {
-        if eliminated_row_set.contains(&row) {
-            continue;
-        }
-        apply_substitutions_to_row(
-            &mut r1cs.a,
-            row,
-            &substitutions,
-            &sub_map,
-            &mut r1cs.interner,
-        )?;
-        apply_substitutions_to_row(
-            &mut r1cs.b,
-            row,
-            &substitutions,
-            &sub_map,
-            &mut r1cs.interner,
-        )?;
-        apply_substitutions_to_row(
-            &mut r1cs.c,
-            row,
-            &substitutions,
-            &sub_map,
-            &mut r1cs.interner,
-        )?;
+    let mut is_eliminated = vec![false; num_constraints_before_removal];
+    for &r in &eliminated_rows {
+        is_eliminated[r] = true;
     }
+    let survivors: Vec<usize> = (0..num_constraints_before_removal)
+        .filter(|r| !is_eliminated[*r])
+        .collect();
 
-    // Phase 4: Remove eliminated constraint rows
-    eliminated_rows.sort();
-    r1cs.remove_constraints(&eliminated_rows);
+    let (new_a_rows, (new_b_rows, new_c_rows)) = {
+        let subs = substitutions.as_slice();
+        let lookup = sub_lookup.as_slice();
+        let survs = survivors.as_slice();
+        let interner = &r1cs.interner;
+        let (a, b, c) = (&r1cs.a, &r1cs.b, &r1cs.c);
+        rayon::join(
+            || rebuild_matrix_rows(a, "A", interner, subs, lookup, survs),
+            || {
+                rayon::join(
+                    || rebuild_matrix_rows(b, "B", interner, subs, lookup, survs),
+                    || rebuild_matrix_rows(c, "C", interner, subs, lookup, survs),
+                )
+            },
+        )
+    };
+    let new_a_rows = new_a_rows?;
+    let new_b_rows = new_b_rows?;
+    let new_c_rows = new_c_rows?;
+    info!("Gaussian elimination: phase 3 (rebuild rows in parallel) complete");
+
+    // Disjoint-field borrows: &r1cs.a (read for memcpy) lives only inside the
+    // call to `finalize_matrix`, then `r1cs.a` is reassigned. Same for b and c.
+    // `r1cs.interner` is borrowed mutably for `intern()` calls; disjoint from
+    // the matrix fields.
+    let new_a = finalize_matrix(new_a_rows, &r1cs.a, num_cols, &mut r1cs.interner);
+    r1cs.a = new_a;
+    let new_b = finalize_matrix(new_b_rows, &r1cs.b, num_cols, &mut r1cs.interner);
+    r1cs.b = new_b;
+    let new_c = finalize_matrix(new_c_rows, &r1cs.c, num_cols, &mut r1cs.interner);
+    r1cs.c = new_c;
+    info!("Gaussian elimination: phase 4 (intern + assemble matrices) complete");
 
     let constraints_after = r1cs.num_constraints();
     let eliminated = substitutions.len();
@@ -331,6 +367,7 @@ pub fn optimize_r1cs(
         witness_map,
         acir_public_inputs_indices_set,
     )?;
+    info!("Gaussian elimination: phase 5 (remove dead columns) complete");
     r1cs.num_virtual = col_stats.num_virtual;
 
     let stats = OptimizationStats {
@@ -775,81 +812,143 @@ fn remove_dead_columns(
     })
 }
 
-/// Apply all relevant substitutions to a single row of a matrix.
+/// Per-row result of the parallel rebuild pass.
 ///
-/// Since Phase 2b resolves backward chains (later pivots referenced by
-/// earlier substitutions), every substitution's terms now reference only
-/// non-pivot columns. A single pass suffices.
-fn apply_substitutions_to_row(
-    matrix: &mut SparseMatrix,
-    row: usize,
+/// `PassThrough { src_row }` — no pivot occurred in this row, so the output
+/// row is byte-for-byte identical to the source row at index `src_row` in
+/// the *original* matrix. Finalization bulk-copies the source matrix's
+/// `col_indices` and `values` slices directly; no dehydrate, no arithmetic,
+/// no re-intern.
+///
+/// `Substituted(entries)` — at least one pivot expanded into substitution
+/// terms. Values are raw `FieldElement`s (sorted by column, duplicates
+/// merged, zeros dropped) and must be interned during finalization.
+enum RebuiltRow {
+    PassThrough { src_row: usize },
+    Substituted(Vec<(u32, FieldElement)>),
+}
+
+/// Classify and compute new entries for every survivor row, in parallel.
+/// Reads only from `&Interner` — safe to share across A/B/C and across rows.
+fn rebuild_matrix_rows(
+    matrix: &SparseMatrix,
+    matrix_name: &'static str,
+    interner: &Interner,
     substitutions: &[Substitution],
-    sub_map: &HashMap<usize, usize>,
-    interner: &mut crate::Interner,
-) -> Result<()> {
-    let (row_cols, row_vals) = matrix.row_slices(row);
+    sub_lookup: &[u32],
+    survivors: &[usize],
+) -> Result<Vec<RebuiltRow>> {
+    survivors
+        .par_iter()
+        .map(|&row| -> Result<RebuiltRow> {
+            let (row_cols, row_vals) = matrix.row_slices(row);
 
-    let mut expanded_len = 0usize;
-    let mut has_pivot = false;
-    for col in row_cols {
-        if let Some(&sub_idx) = sub_map.get(&(*col as usize)) {
-            has_pivot = true;
-            expanded_len += substitutions[sub_idx].terms.len();
-        } else {
-            expanded_len += 1;
-        }
-    }
-
-    if !has_pivot {
-        return Ok(());
-    }
-
-    // Expand the row into raw contributions, then sort+merge. This avoids the
-    // hashing overhead of per-row HashMap accumulation in the hottest path.
-    let mut expanded_entries: Vec<(usize, FieldElement)> = Vec::with_capacity(expanded_len);
-
-    for (&col, &interned_val) in row_cols.iter().zip(row_vals.iter()) {
-        let col = col as usize;
-        let val = interner
-            .get(interned_val)
-            .context("interned value missing during constraint substitution")?;
-
-        if let Some(&sub_idx) = sub_map.get(&col) {
-            // This column is a pivot — replace with substitution terms
-            let sub = &substitutions[sub_idx];
-            for (sub_coeff, sub_col) in &sub.terms {
-                expanded_entries.push((*sub_col, val * sub_coeff));
+            let has_pivot = row_cols.iter().any(|&c| sub_lookup[c as usize] != u32::MAX);
+            if !has_pivot {
+                return Ok(RebuiltRow::PassThrough { src_row: row });
             }
-        } else {
-            // Normal column — keep as-is
-            expanded_entries.push((col, val));
-        }
-    }
 
-    expanded_entries.sort_unstable_by_key(|(col, _)| *col);
-
-    let mut sorted_entries: Vec<(usize, InternedFieldElement)> =
-        Vec::with_capacity(expanded_entries.len());
-    let mut iter = expanded_entries.into_iter();
-    if let Some((mut current_col, mut current_val)) = iter.next() {
-        for (col, val) in iter {
-            if col == current_col {
-                current_val += val;
-            } else {
-                if !current_val.is_zero() {
-                    sorted_entries.push((current_col, interner.intern(current_val)));
+            // Slow path: expand pivot terms, sort, merge.
+            let mut expanded_len = 0usize;
+            for &col in row_cols {
+                let sub_idx = sub_lookup[col as usize];
+                if sub_idx == u32::MAX {
+                    expanded_len += 1;
+                } else {
+                    expanded_len += substitutions[sub_idx as usize].terms.len();
                 }
-                current_col = col;
-                current_val = val;
             }
-        }
-        if !current_val.is_zero() {
-            sorted_entries.push((current_col, interner.intern(current_val)));
+
+            let mut expanded: Vec<(u32, FieldElement)> = Vec::with_capacity(expanded_len);
+            for (&col, &iv) in row_cols.iter().zip(row_vals.iter()) {
+                let val = interner.get(iv).with_context(|| {
+                    format!(
+                        "interned value missing during GE substitution at matrix {matrix_name} \
+                         row {row} col {col}"
+                    )
+                })?;
+                let sub_idx = sub_lookup[col as usize];
+                if sub_idx == u32::MAX {
+                    expanded.push((col, val));
+                } else {
+                    let sub = &substitutions[sub_idx as usize];
+                    for (sub_coeff, sub_col) in &sub.terms {
+                        expanded.push((*sub_col as u32, val * sub_coeff));
+                    }
+                }
+            }
+
+            expanded.sort_unstable_by_key(|&(c, _)| c);
+
+            let mut merged: Vec<(u32, FieldElement)> = Vec::with_capacity(expanded.len());
+            let flush = |col: u32, val: FieldElement, dst: &mut Vec<(u32, FieldElement)>| {
+                if !val.is_zero() {
+                    dst.push((col, val));
+                }
+            };
+            let mut iter = expanded.into_iter();
+            if let Some((mut cur_col, mut cur_val)) = iter.next() {
+                for (c, v) in iter {
+                    if c == cur_col {
+                        cur_val += v;
+                    } else {
+                        flush(cur_col, cur_val, &mut merged);
+                        cur_col = c;
+                        cur_val = v;
+                    }
+                }
+                flush(cur_col, cur_val, &mut merged);
+            }
+            Ok(RebuiltRow::Substituted(merged))
+        })
+        .collect()
+}
+
+/// Assemble a `SparseMatrix` from parallel-computed rows.
+///
+/// `PassThrough` rows are bulk-copied from the source matrix's raw slices.
+/// `Substituted` rows pay the per-value `intern` cost. Sequential because
+/// `Interner::intern` mutates the dedup table.
+fn finalize_matrix(
+    rows: Vec<RebuiltRow>,
+    source: &SparseMatrix,
+    num_cols: usize,
+    interner: &mut Interner,
+) -> SparseMatrix {
+    let num_rows = rows.len();
+    let total_entries: usize = rows
+        .iter()
+        .map(|r| match r {
+            RebuiltRow::PassThrough { src_row } => source.row_range(*src_row).len(),
+            RebuiltRow::Substituted(entries) => entries.len(),
+        })
+        .sum();
+
+    let mut new_row_indices = Vec::with_capacity(num_rows);
+    let mut col_indices = Vec::with_capacity(total_entries);
+    let mut values = Vec::with_capacity(total_entries);
+
+    let src_cols = source.col_indices_raw();
+    let src_vals = source.values_raw();
+
+    for row in rows {
+        new_row_indices.push(col_indices.len() as u32);
+        match row {
+            RebuiltRow::PassThrough { src_row } => {
+                let range = source.row_range(src_row);
+                col_indices.extend_from_slice(&src_cols[range.clone()]);
+                values.extend_from_slice(&src_vals[range]);
+            }
+            RebuiltRow::Substituted(entries) => {
+                for (c, v) in entries {
+                    col_indices.push(c);
+                    values.push(interner.intern(v));
+                }
+            }
         }
     }
 
-    matrix.replace_row(row, &sorted_entries);
-    Ok(())
+    SparseMatrix::from_raw_parts(num_rows, num_cols, new_row_indices, col_indices, values)
 }
 
 #[cfg(test)]
