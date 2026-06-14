@@ -18,6 +18,7 @@ use {
     },
 };
 
+#[derive(Debug)]
 pub struct DataFromSumcheckVerifier {
     r:             Vec<FieldElement>,
     alpha:         Vec<FieldElement>,
@@ -79,7 +80,6 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         } else {
             (None, None)
         };
-
         let (transposed, sumcheck_result) = rayon::join(
             || transpose_r1cs_matrices(r1cs),
             || run_sumcheck_verifier(&mut arthur, self.m_0),

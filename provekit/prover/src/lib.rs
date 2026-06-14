@@ -138,6 +138,7 @@ impl Prove for NoirProver {
             .whir_for_witness
             .create_domain_separator()
             .instance(&instance);
+
         let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
 
         // Allocate space for real + virtual witnesses. Virtual witnesses are

@@ -1,0 +1,1000 @@
+package circuit
+
+import (
+	"fmt"
+	"math"
+	"math/big"
+	"math/bits"
+	"sort"
+
+	"github.com/consensys/gnark/frontend"
+
+	"reilabs/whir-verifier-circuit/app/typeConverters"
+	"reilabs/whir-verifier-circuit/app/whir"
+)
+
+// ---------------------------------------------------------------------------
+// Native types mirroring Rust whir types for verification
+// ---------------------------------------------------------------------------
+
+// NativeEvaluations mirrors Rust Evaluations<F>: OOD evaluation points and
+// the matrix of evaluations (row-major, one row per OOD point).
+type NativeEvaluations struct {
+	Points []*big.Int // OOD evaluation points
+	Matrix []*big.Int // flattened row-major: [point0_col0, point0_col1, ..., point1_col0, ...]
+}
+
+func (e *NativeEvaluations) NumPoints() int {
+	return len(e.Points)
+}
+
+func (e *NativeEvaluations) NumColumns() int {
+	np := e.NumPoints()
+	if np == 0 {
+		return 0
+	}
+	return len(e.Matrix) / np
+}
+
+func (e *NativeEvaluations) Rows() [][]*big.Int {
+	cols := e.NumColumns()
+	rows := make([][]*big.Int, e.NumPoints())
+	for i := range rows {
+		rows[i] = e.Matrix[i*cols : (i+1)*cols]
+	}
+	return rows
+}
+
+// NativeCommitment mirrors Rust irs_commit::Commitment<F>.
+type NativeCommitment struct {
+	OutOfDomain NativeEvaluations
+}
+
+func (c *NativeCommitment) NumVectors() int {
+	return c.OutOfDomain.NumColumns()
+}
+
+// NativeFinalClaim mirrors Rust FinalClaim<F>.
+type NativeFinalClaim struct {
+	EvaluationPoint []*big.Int
+	RLCCoefficients []*big.Int
+	LinearFormRLC   *big.Int
+}
+
+// NativeRoundConstraint holds the RLC coefficients and the OOD/in-domain
+// evaluator points for one round's constraints.
+type NativeRoundConstraint struct {
+	RLCCoeffs      []*big.Int      // random linear combination coefficients
+	EvaluatorInfos []evaluatorInfo // one per constraint (OOD point + size)
+}
+
+// evaluatorInfo stores the data needed to compute mle_evaluate for a
+// UnivariateEvaluation linear form (OOD or in-domain evaluator).
+type evaluatorInfo struct {
+	point *big.Int // evaluation point (OOD point or domain point)
+	size  int      // polynomial size (= 2^num_variables for that round)
+}
+
+// ---------------------------------------------------------------------------
+// Fp256 conversion helpers
+// ---------------------------------------------------------------------------
+
+// fp256ToBigInt converts an Fp256 (4 x uint64 limbs, little-endian) to *big.Int.
+func fp256ToBigInt(f Fp256) *big.Int {
+	r := new(big.Int)
+	for i := 3; i >= 0; i-- {
+		r.Lsh(r, 64)
+		r.Or(r, new(big.Int).SetUint64(f.Limbs[i]))
+	}
+	r.Mod(r, bn254Modulus)
+	return r
+}
+
+// fp256SliceToBigInt converts a slice of Fp256 to []*big.Int.
+func fp256SliceToBigInt(fs []Fp256) []*big.Int {
+	result := make([]*big.Int, len(fs))
+	for i, f := range fs {
+		result[i] = fp256ToBigInt(f)
+	}
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// Field arithmetic helpers (all mod BN254)
+// ---------------------------------------------------------------------------
+
+func frAdd(a, b *big.Int) *big.Int {
+	r := new(big.Int).Add(a, b)
+	r.Mod(r, bn254Modulus)
+	return r
+}
+
+func frSub(a, b *big.Int) *big.Int {
+	r := new(big.Int).Sub(a, b)
+	r.Mod(r, bn254Modulus)
+	if r.Sign() < 0 {
+		r.Add(r, bn254Modulus)
+	}
+	return r
+}
+
+func frMul(a, b *big.Int) *big.Int {
+	r := new(big.Int).Mul(a, b)
+	r.Mod(r, bn254Modulus)
+	return r
+}
+
+func frInv(a *big.Int) *big.Int {
+	r := new(big.Int).ModInverse(a, bn254Modulus)
+	return r
+}
+
+func frDiv(a, b *big.Int) *big.Int {
+	return frMul(a, frInv(b))
+}
+
+// ---------------------------------------------------------------------------
+// Algebraic helpers mirroring Rust whir algebra
+// ---------------------------------------------------------------------------
+
+// nativeGeometricSequence returns [1, x, x^2, ..., x^(count-1)] mod p.
+func nativeGeometricSequence(x *big.Int, count int) []*big.Int {
+	result := make([]*big.Int, count)
+	result[0] = big.NewInt(1)
+	for i := 1; i < count; i++ {
+		result[i] = frMul(result[i-1], x)
+	}
+	return result
+}
+
+// nativeGeometricChallenge mirrors Rust geometric_challenge: squeeze a single
+// challenge and expand to a geometric sequence of the given length.
+func nativeGeometricChallenge(nimue *NativeNimue, count int) ([]*big.Int, error) {
+	switch count {
+	case 0:
+		return []*big.Int{}, nil
+	case 1:
+		return []*big.Int{big.NewInt(1)}, nil
+	default:
+		x, err := nimue.FillChallengeScalars(1)
+		if err != nil {
+			return nil, err
+		}
+		return nativeGeometricSequence(x[0], count), nil
+	}
+}
+
+// nativeDotBigInt computes the dot product of two big.Int slices mod p.
+func nativeDotBigInt(a, b []*big.Int) *big.Int {
+	result := big.NewInt(0)
+	for i := range a {
+		result = frAdd(result, frMul(a[i], b[i]))
+	}
+	return result
+}
+
+// nativeTensorProduct computes the tensor (Kronecker) product of two vectors.
+func nativeTensorProduct(a, b []*big.Int) []*big.Int {
+	result := make([]*big.Int, len(a)*len(b))
+	for i, x := range a {
+		for j, y := range b {
+			result[i*len(b)+j] = frMul(x, y)
+		}
+	}
+	return result
+}
+
+// nativeEqWeights computes eq polynomial weights for a multilinear point.
+// Returns a vector of size 2^n where result[i] = eq(point, binary(i)).
+// Matches the circuit's calculateEQOverBooleanHypercube: iterates in reverse
+// so that point[0] controls bit 0 (LSB) of the index.
+func nativeEqWeights(point []*big.Int) []*big.Int {
+	result := []*big.Int{big.NewInt(1)}
+	for i := len(point) - 1; i >= 0; i-- {
+		x := point[i]
+		oneMinusX := frSub(big.NewInt(1), x)
+		length := len(result)
+		left := make([]*big.Int, length)
+		right := make([]*big.Int, length)
+		for j := 0; j < length; j++ {
+			left[j] = frMul(result[j], oneMinusX)
+			right[j] = frMul(result[j], x)
+		}
+		result = append(left, right...)
+	}
+	return result
+}
+
+// nativeMultilinearEval evaluates the multilinear extension of `values` at `point`.
+// This is: Σ_i values[i] * eq(i, point)
+func nativeMultilinearEval(point []*big.Int, values []*big.Int) *big.Int {
+	eqW := nativeEqWeights(point)
+	return nativeDotBigInt(eqW, values)
+}
+
+// nativeUnivariateEvalMLE computes UnivariateEvaluation{point, size}.mle_evaluate(mlPoint).
+//
+// This is the MLE of the linear form that evaluates a polynomial at `point`,
+// given its values on a domain of the given `size`. Specifically:
+//
+//	mle(x_1,...,x_n) = Π_{i=0}^{n-1} ((1 - x_i) + x_i * point^(2^i))
+//
+// where n = log2(size) and the x_i are taken from mlPoint.
+func nativeUnivariateEvalMLE(point *big.Int, size int, mlPoint []*big.Int) *big.Int {
+	n := len(mlPoint)
+	_ = size // size is implicit: 2^n
+	result := big.NewInt(1)
+	// power tracks point^(2^i)
+	power := new(big.Int).Set(point)
+	// Iterate in reverse to match Rust point.iter().rev() and
+	// circuit UnivarMleEvaluate which iterates i = n-1..0.
+	for i := n - 1; i >= 0; i-- {
+		r := mlPoint[i]
+		oneMinusR := frSub(big.NewInt(1), r)
+		factor := frAdd(oneMinusR, frMul(r, power))
+		result = frMul(result, factor)
+		power = frMul(power, power)
+	}
+	return result
+}
+
+// ---------------------------------------------------------------------------
+// Native WHIR sumcheck verification (quadratic polynomial, 2 coefficients)
+// ---------------------------------------------------------------------------
+
+// nativeWhirSumcheckVerify runs the WHIR-style sumcheck verification.
+// Each round reads 2 monomial coefficients (c0, c2) of the quadratic polynomial
+// p(x) = c0 + c1*x + c2*x^2. The linear coefficient c1 is derived from the
+// sumcheck constraint p(0) + p(1) = sum, giving c1 = sum - 2*c0 - c2.
+// After squeezing a folding randomness challenge r, the sum is updated to p(r).
+// Returns the folding randomness points and the final sum.
+func nativeWhirSumcheckVerify(
+	nimue *NativeNimue,
+	sum *big.Int,
+	numRounds int,
+	powThreshold uint64,
+) ([]*big.Int, *big.Int, error) {
+	foldingRandomness := make([]*big.Int, numRounds)
+	currentSum := new(big.Int).Set(sum)
+
+	for i := 0; i < numRounds; i++ {
+		// Read c0 and c2 (monomial coefficients: constant and quadratic)
+		evals, err := nimue.FillNextScalars(2)
+		if err != nil {
+			return nil, nil, fmt.Errorf("sumcheck round %d coeffs: %w", i, err)
+		}
+		c0 := evals[0]
+		c2 := evals[1]
+		// Derive c1 from p(0) + p(1) = sum:
+		// p(0) = c0, p(1) = c0 + c1 + c2, so 2*c0 + c1 + c2 = sum
+		c1 := frSub(frSub(currentSum, frAdd(c0, c0)), c2)
+
+		// PoW check (matching Rust sumcheck round_pow.verify)
+		if err := nativePoWVerify(nimue, powThreshold); err != nil {
+			return nil, nil, fmt.Errorf("sumcheck round %d pow: %w", i, err)
+		}
+
+		// Squeeze folding randomness
+		rSlice, err := nimue.FillChallengeScalars(1)
+		if err != nil {
+			return nil, nil, fmt.Errorf("sumcheck round %d challenge: %w", i, err)
+		}
+		r := rSlice[0]
+		foldingRandomness[i] = r
+
+		// Update sum: p(r) = (c2*r + c1)*r + c0
+		currentSum = frAdd(frMul(frAdd(frMul(c2, r), c1), r), c0)
+	}
+
+	return foldingRandomness, currentSum, nil
+}
+
+// ---------------------------------------------------------------------------
+// Native IRS commit verify (returns in-domain evaluation points)
+// ---------------------------------------------------------------------------
+
+// nativeIRSCommitVerifyWithPoints replays the IRS commit verification and
+// returns the in-domain query indices plus the parsed Merkle round data.
+func nativeIRSCommitVerifyWithPoints(
+	nimue *NativeNimue,
+	numQueries int,
+	domainSize int,
+	foldingFactorPower int,
+) ([]int, *whir.RoundMerkleEntry, error) {
+	_ = int(nimue.hints.Size()) - nimue.hints.Len()
+	// Squeeze challenge indices
+	indices, err := nativeGetStirChallenges(nimue, domainSize/foldingFactorPower, numQueries, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("stir challenges: %w", err)
+	}
+
+	// Read submatrix hint
+	var submatrix []Fp256
+	if err = nimue.ProverHintArk(&submatrix); err != nil {
+		return nil, nil, fmt.Errorf("submatrix: %w", err)
+	}
+
+	// Read Merkle proof hints
+	foldedDomainSize := domainSize / foldingFactorPower
+	treeHeight := bits.Len(uint(foldedDomainSize)) - 1
+	dedupedIndices := make([]int, len(indices))
+	copy(dedupedIndices, indices)
+	sort.Ints(dedupedIndices)
+	dedupedIndices = dedup(dedupedIndices)
+
+	// The leaf fold size (num_cols) may differ from foldingFactorPower when
+	// batch_size > 1 (initial commitment). Derive it from the submatrix length.
+	leafFoldSize := foldingFactorPower
+	if len(indices) > 0 {
+		leafFoldSize = len(submatrix) / len(indices)
+	}
+	entry, err := consumeHintsAndBuildMerkleEntry(nimue, indices, dedupedIndices, submatrix, leafFoldSize, treeHeight)
+	if err != nil {
+		return nil, nil, fmt.Errorf("merkle: %w", err)
+	}
+	return indices, entry, nil
+}
+
+// IndexPair identifies a node in the Merkle tree by its depth and index.
+type IndexPair struct {
+	Depth uint64
+	Index uint64
+}
+
+// extractFullAuthPath extracts a complete authentication path for a given leaf
+// index from the reconstructed tree map.
+func ExtractFullAuthPath(
+	tree map[IndexPair]Digest,
+	leafIdx uint64,
+	depth int,
+) (siblingHash Digest, authPath []Digest) {
+	siblingHash = tree[IndexPair{Depth: uint64(depth), Index: leafIdx ^ 1}]
+	authPath = make([]Digest, depth-1)
+	currentIdx := leafIdx / 2
+	for level := depth - 1; level >= 1; level-- {
+		authPath[depth-1-level] = tree[IndexPair{Depth: uint64(level), Index: currentIdx ^ 1}]
+		currentIdx /= 2
+	}
+	return siblingHash, authPath
+}
+
+// consumeHintsAndBuildMerkleEntry reads Merkle proof hints from nimue and
+// builds the RoundMerkleEntry in a single bottom-up pass. This combines what
+// was previously two separate functions (consumeMerkleHints + buildRoundMerkleEntry)
+// that each independently replayed the same level-by-level tree traversal.
+//
+// indices: original query indices (may contain duplicates)
+// dedupSorted: sorted, deduplicated indices (pre-computed by caller)
+// submatrix: leaf data laid out in order of indices, foldSize elements per index
+func consumeHintsAndBuildMerkleEntry(
+	name *NativeNimue,
+	indices []int,
+	dedupSorted []int,
+	submatrix []Fp256,
+	foldSize int,
+	treeHeight int,
+) (*whir.RoundMerkleEntry, error) {
+	if len(indices) == 0 {
+		return &whir.RoundMerkleEntry{}, nil
+	}
+
+	// Build index → submatrix row lookup. The submatrix is laid out in the
+	// order of the ORIGINAL indices (unsorted, with duplicates). Each index
+	// contributes foldSize elements.
+	leafFp256ByIdx := make(map[int][]Fp256)
+	leafVarByIdx := make(map[int][]frontend.Variable)
+	for i, idx := range indices {
+		if _, exists := leafFp256ByIdx[idx]; exists {
+			continue // already mapped (duplicate index)
+		}
+		fp256Row := make([]Fp256, foldSize)
+		varRow := make([]frontend.Variable, foldSize)
+		for j := range foldSize {
+			elemIdx := i*foldSize + j
+			if elemIdx < len(submatrix) {
+				fp256Row[j] = submatrix[elemIdx]
+				varRow[j] = typeConverters.LimbsToBigIntMod(submatrix[elemIdx].Limbs)
+			}
+		}
+		leafFp256ByIdx[idx] = fp256Row
+		leafVarByIdx[idx] = varRow
+	}
+
+	// Build the Merkle tree bottom-up while consuming hints from nimue.
+	// For each level, sibling pairs (both in the query set) don't need a hint;
+	// single indices get a sibling hash from the hint stream.
+	tree := make(map[IndexPair]Digest)
+
+	// Compute and store all leaf hashes.
+	for _, idx := range dedupSorted {
+		leafHash := HashLeafData(leafFp256ByIdx[idx])
+		tree[IndexPair{Depth: uint64(treeHeight), Index: uint64(idx)}] = leafHash
+	}
+
+	// Bottom-up level-by-level: consume hints and compute parent hashes.
+	currentIndices := make([]int, len(dedupSorted))
+	copy(currentIndices, dedupSorted)
+
+	for level := 0; level < treeHeight; level++ {
+		currentDepth := uint64(treeHeight - level)
+		parentDepth := currentDepth - 1
+		var nextIndices []int
+		i := 0
+		for i < len(currentIndices) {
+			a := currentIndices[i]
+			if i+1 < len(currentIndices) && currentIndices[i+1] == a^1 {
+				// Sibling pair: both hashes already in tree.
+				aHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a)}]
+				bHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a ^ 1)}]
+				var left, right Digest
+				if a%2 == 0 {
+					left, right = aHash, bHash
+				} else {
+					left, right = bHash, aHash
+				}
+				tree[IndexPair{Depth: parentDepth, Index: uint64(a >> 1)}] = HashTwoDigests(left, right)
+				nextIndices = append(nextIndices, a>>1)
+				i += 2
+			} else {
+				// Single index: read sibling hash from hints.
+				siblingHash, err := name.ProverHint(32)
+				if err != nil {
+					return nil, fmt.Errorf("merkle level %d, index %d: %w", level, a, err)
+				}
+				var digest Digest
+				copy(digest.Digest[:], siblingHash)
+
+				sibKey := IndexPair{Depth: currentDepth, Index: uint64(a ^ 1)}
+				if _, exists := tree[sibKey]; !exists {
+					tree[sibKey] = digest
+				}
+
+				// Compute parent hash.
+				nodeHash := tree[IndexPair{Depth: currentDepth, Index: uint64(a)}]
+				sibNodeHash := tree[sibKey]
+				var left, right Digest
+				if a%2 == 0 {
+					left, right = nodeHash, sibNodeHash
+				} else {
+					left, right = sibNodeHash, nodeHash
+				}
+				tree[IndexPair{Depth: parentDepth, Index: uint64(a >> 1)}] = HashTwoDigests(left, right)
+				nextIndices = append(nextIndices, a>>1)
+				i++
+			}
+		}
+		sort.Ints(nextIndices)
+		nextIndices = dedup(nextIndices)
+		currentIndices = nextIndices
+	}
+
+	// Build the per-query RoundMerkleEntry with complete auth paths from the tree.
+	nq := len(indices)
+	entry := &whir.RoundMerkleEntry{
+		Leaves:        make([][]frontend.Variable, nq),
+		SiblingHashes: make([]frontend.Variable, nq),
+		AuthPaths:     make([][]frontend.Variable, nq),
+		LeafIndexes:   make([]frontend.Variable, nq),
+	}
+
+	for q, idx := range indices {
+		entry.LeafIndexes[q] = big.NewInt(int64(idx))
+		entry.Leaves[q] = leafVarByIdx[idx]
+
+		siblingHash, authPath := ExtractFullAuthPath(tree, uint64(idx), treeHeight)
+		entry.SiblingHashes[q] = DigestToFieldElement(siblingHash)
+		entry.AuthPaths[q] = make([]frontend.Variable, len(authPath))
+		for lvl, digest := range authPath {
+			entry.AuthPaths[q][lvl] = DigestToFieldElement(digest)
+		}
+	}
+
+	return entry, nil
+}
+
+// ---------------------------------------------------------------------------
+// NativeCommitmentFromParsed builds a NativeCommitment from the output of
+// nativeParseBatchedCommitment.
+// ---------------------------------------------------------------------------
+
+func NativeCommitmentFromParsed(oodPoints []*big.Int, oodAnswers [][]*big.Int) *NativeCommitment {
+	// Flatten oodAnswers [][]*big.Int (each is a 1-element slice from FillNextScalars)
+	// into a row-major matrix: rows = OOD points, columns = batch vectors.
+	var matrix []*big.Int
+	for _, ans := range oodAnswers {
+		matrix = append(matrix, ans...)
+	}
+	return &NativeCommitment{
+		OutOfDomain: NativeEvaluations{
+			Points: oodPoints,
+			Matrix: matrix,
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// nativeReceiveCommitment reads a round commitment from the transcript:
+// root hash + OOD points + OOD answers.
+// ---------------------------------------------------------------------------
+
+func nativeReceiveCommitment(
+	name *NativeNimue,
+	oodSamples int,
+) (*NativeCommitment, error) {
+	// Root hash (prover_message) — absorbed as raw bytes, NOT as a field element,
+	// because the Merkle root hash can be >= BN254 modulus.
+	_, err := name.FillNextBytes(32)
+	if err != nil {
+		return nil, fmt.Errorf("root hash: %w", err)
+	}
+	// OOD points (verifier challenges)
+	oodPoints := make([]*big.Int, 0)
+	oodAnswers := make([]*big.Int, 0)
+	if oodSamples > 0 {
+		pts, err := name.FillChallengeScalars(oodSamples)
+		if err != nil {
+			return nil, fmt.Errorf("ood points: %w", err)
+		}
+		oodPoints = pts
+
+		ans, err := name.FillNextScalars(oodSamples)
+		if err != nil {
+			return nil, fmt.Errorf("ood answers: %w", err)
+		}
+		oodAnswers = ans
+	}
+
+	return &NativeCommitment{
+		OutOfDomain: NativeEvaluations{
+			Points: oodPoints,
+			Matrix: oodAnswers, // single-vector: matrix is 1 column
+		},
+	}, nil
+}
+
+// ---------------------------------------------------------------------------
+// Native PoW verification (transcript replay only — actual check is in circuit)
+// ---------------------------------------------------------------------------
+
+func nativePoWVerify(nimue *NativeNimue, threshold uint64) error {
+	if threshold < math.MaxUint64 {
+		challengeBytes, err := nimue.FillChallengeBytes(32)
+		if err != nil {
+			return fmt.Errorf("pow challenge: %w", err)
+		}
+		nonceBytes, err := nimue.FillNextBytes(8)
+		if err != nil {
+			return fmt.Errorf("pow nonce: %w", err)
+		}
+
+		// Convert challenge bytes (LE) to [4]uint64 limbs
+		var challengeLimbs [4]uint64
+		for i := 0; i < 4; i++ {
+			for j := 0; j < 8; j++ {
+				challengeLimbs[i] |= uint64(challengeBytes[i*8+j]) << (8 * j)
+			}
+		}
+
+		// Convert nonce bytes (LE) to [4]uint64 — nonce is u64 in low limb, rest zero
+		var nonceLimbs [4]uint64
+		for j := 0; j < 8; j++ {
+			nonceLimbs[0] |= uint64(nonceBytes[j]) << (8 * j)
+		}
+
+		// Skyscraper compress
+		hash := SkyscraperCompress(challengeLimbs, nonceLimbs)
+
+		// Rust PoW check: first 8 bytes of hash as u64 LE <= threshold
+		value := hash[0]
+		if value > threshold {
+			return fmt.Errorf("PoW check failed: hash not below threshold (value=%d, threshold=%d)", value, threshold)
+		}
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// NativeWhirVerify: full WHIR batched verification
+// Mirrors Rust whir::Config::verify() exactly.
+// ---------------------------------------------------------------------------
+
+// NativeWhirVerifyResult bundles the verify output with the ZKHint data
+// needed for circuit construction.
+type NativeWhirVerifyResult struct {
+	FinalClaim NativeFinalClaim
+	Hint       ZKHint
+	MerkleData *whir.WhirMerkleData
+}
+
+// NativeWhirVerify replays and verifies the full WHIR protocol transcript.
+// This mirrors the Rust `Config::verify()` method for batched commitments.
+//
+// Parameters:
+//   - nimue: transcript reader
+//   - whirParams: WHIR protocol parameters
+//   - whirConfig: WHIR configuration (for ZKHint construction)
+//   - commitments: N parsed commitments (from parseBatchedCommitment)
+//   - evaluations: constraint evaluation values (flattened)
+//   - numLinearForms: number of external linear form constraints
+func NativeWhirVerify(
+	nimue *NativeNimue,
+	whirParams WHIRParams,
+	whirConfig WHIRConfig,
+	commitments []*NativeCommitment,
+	evaluations []*big.Int,
+) (*NativeWhirVerifyResult, error) {
+	var allMerklePaths []FullMultiPath[Digest]
+	var allStirAnswers [][][]Fp256
+
+	numVectors := 0
+	for _, c := range commitments {
+		numVectors += c.NumVectors()
+	}
+	if len(evaluations) > 0 && numVectors > 0 && len(evaluations)%numVectors != 0 {
+		return nil, fmt.Errorf("evaluations length %d not multiple of num_vectors %d", len(evaluations), numVectors)
+	}
+	if numVectors == 0 {
+		return &NativeWhirVerifyResult{
+			FinalClaim: NativeFinalClaim{
+				LinearFormRLC: big.NewInt(0),
+			},
+		}, nil
+	}
+	numLinearForms := len(evaluations) / numVectors
+	// Complete OOD evaluation matrix with cross-terms
+	var oodsEvalInfos []evaluatorInfo // evaluator info per OOD constraint
+	var oodsMatrix []*big.Int         // flattened: [ood0_vec0, ood0_vec1, ..., ood1_vec0, ...]
+
+	vectorOffset := 0
+	for _, commitment := range commitments {
+		ood := &commitment.OutOfDomain
+		for rowIdx, row := range ood.Rows() {
+			for j := 0; j < numVectors; j++ {
+				if j >= vectorOffset && j < len(row)+vectorOffset {
+					oodsMatrix = append(oodsMatrix, row[j-vectorOffset])
+				} else {
+					// Cross-term: read from transcript
+					vals, err := nimue.FillNextScalars(1)
+					if err != nil {
+						return nil, fmt.Errorf("ood cross-term: %w", err)
+					}
+					oodsMatrix = append(oodsMatrix, vals[0])
+				}
+			}
+			_ = rowIdx
+			// Each OOD row creates one evaluator
+		}
+		// Add evaluator infos for this commitment's OOD points
+		initialSize := whirParams.DomainSize / (1 << whirConfig.Rate)
+		for _, pt := range ood.Points {
+			oodsEvalInfos = append(oodsEvalInfos, evaluatorInfo{point: pt, size: initialSize})
+		}
+		vectorOffset += commitment.NumVectors()
+	}
+
+	vectorRLCCoeffs, err := nativeGeometricChallenge(nimue, numVectors)
+	if err != nil {
+		return nil, fmt.Errorf("vector_rlc: %w", err)
+	}
+
+	totalConstraints := len(oodsEvalInfos) + numLinearForms
+	constraintRLCCoeffs, err := nativeGeometricChallenge(nimue, totalConstraints)
+	if err != nil {
+		return nil, fmt.Errorf("constraint_rlc: %w", err)
+	}
+
+	initialFormRLCCoeffs := constraintRLCCoeffs[:numLinearForms]
+	oodsRLCCoeffs := constraintRLCCoeffs[numLinearForms:]
+
+	theSum := big.NewInt(0)
+
+	// Contribution from external linear forms
+	for i, coeff := range initialFormRLCCoeffs {
+		row := evaluations[i*numVectors : (i+1)*numVectors]
+		theSum = frAdd(theSum, frMul(coeff, nativeDotBigInt(vectorRLCCoeffs, row)))
+	}
+
+	// Contribution from OOD constraints
+	for i, coeff := range oodsRLCCoeffs {
+		row := oodsMatrix[i*numVectors : (i+1)*numVectors]
+		theSum = frAdd(theSum, frMul(coeff, nativeDotBigInt(vectorRLCCoeffs, row)))
+	}
+
+	// Track round constraints for final MLE subtraction
+	roundConstraints := []NativeRoundConstraint{
+		{RLCCoeffs: oodsRLCCoeffs, EvaluatorInfos: oodsEvalInfos},
+	}
+
+	var allFoldingRandomness [][]*big.Int
+
+	// Initial sumcheck
+	if len(constraintRLCCoeffs) == 0 {
+		// No constraints: skip sumcheck, just squeeze folding randomness
+		if theSum.Cmp(big.NewInt(0)) != 0 {
+			return nil, fmt.Errorf("the_sum should be zero but got %s", theSum.String())
+		}
+		ff0 := whirParams.FoldingFactorArray[0]
+		foldRandomness, err := nimue.FillChallengeScalars(ff0)
+		if err != nil {
+			return nil, fmt.Errorf("initial skip folding: %w", err)
+		}
+		// initial_skip_pow
+		if err := nativePoWVerify(nimue, whirConfig.InitialSkipPowThreshold); err != nil {
+			return nil, fmt.Errorf("initial skip pow: %w", err)
+		}
+		allFoldingRandomness = append(allFoldingRandomness, foldRandomness)
+	} else {
+		ff0 := whirParams.FoldingFactorArray[0]
+		foldRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, ff0, whirConfig.InitialSumcheckPowThreshold)
+		if err != nil {
+			return nil, fmt.Errorf("initial sumcheck: %w", err)
+		}
+		theSum = newSum
+		allFoldingRandomness = append(allFoldingRandomness, foldRandomness)
+	}
+
+	// Main WHIR rounds
+	domainSize := whirParams.DomainSize
+	nRounds := whirParams.ParamNRounds
+	var merkleRounds []whir.RoundMerkleEntry
+
+	// Track which commitment type was previous (for opening)
+	type prevType int
+	const (
+		prevInitial prevType = iota
+		prevRound
+	)
+	prev := prevInitial
+	// polyRLC for initial is vectorRLCCoeffs; for round is [1]
+	currentPolyRLC := vectorRLCCoeffs
+
+	// expDomainGen is the generator of the folded domain (codeword rows).
+	// It starts as startingDomainGen^(1 << foldingFactor[0]) = generator of
+	// codeword_length = domainSize / interleavingDepth.
+	startingDomainGen, _ := new(big.Int).SetString(whirConfig.DomainGenerator, 10)
+	expDomainGen := new(big.Int).Exp(startingDomainGen, big.NewInt(int64(1<<whirParams.FoldingFactorArray[0])), bn254Modulus)
+
+	for r := 0; r < nRounds; r++ {
+		// receive_commitment for folded polynomial
+		oodSamples := whirParams.RoundParametersOODSamples[r]
+		roundCommitment, err := nativeReceiveCommitment(nimue, oodSamples)
+		if err != nil {
+			return nil, fmt.Errorf("round %d commitment: %w", r, err)
+		}
+
+		// Proof of work
+		if err := nativePoWVerify(nimue, whirConfig.PowThresholds[r]); err != nil {
+			return nil, fmt.Errorf("round %d pow: %w", r, err)
+		}
+
+		// Open previous commitment (IRS verify)
+		foldingFactorPower := 1 << whirParams.FoldingFactorArray[r]
+		var inDomainIndices []int
+		var roundMerkle *whir.RoundMerkleEntry
+		if prev == prevInitial {
+			inDomainIndices, roundMerkle, err = nativeIRSCommitVerifyWithPoints(
+				nimue,
+				whirParams.InitialInDomainSamples,
+				domainSize,
+				foldingFactorPower,
+			)
+		} else {
+			prevFF := 1 << whirParams.FoldingFactorArray[r-1]
+			inDomainIndices, roundMerkle, err = nativeIRSCommitVerifyWithPoints(
+				nimue,
+				whirParams.RoundParametersNumOfQueries[r-1],
+				domainSize,
+				prevFF,
+			)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("round %d irs verify: %w", r, err)
+		}
+		merkleRounds = append(merkleRounds, *roundMerkle)
+		allStirAnswers = append(allStirAnswers, [][]Fp256{{}})
+		allMerklePaths = append(allMerklePaths, FullMultiPath[Digest]{})
+
+		// Compute round size for evaluators
+		numVarsForRound := whirParams.MVParamsNumberOfVariables
+		for k := 0; k < r; k++ {
+			numVarsForRound -= whirParams.FoldingFactorArray[k]
+		}
+		roundSize := 1 << numVarsForRound
+
+		// Build constraint weights/values from OOD + in-domain
+		var constraintEvalInfos []evaluatorInfo
+		var constraintValues []*big.Int
+
+		// OOD constraints from this round's commitment
+		for _, pt := range roundCommitment.OutOfDomain.Points {
+			constraintEvalInfos = append(constraintEvalInfos, evaluatorInfo{point: pt, size: roundSize})
+		}
+		// OOD values: dot(weights=[1], row) for single vector
+		for _, row := range roundCommitment.OutOfDomain.Rows() {
+			constraintValues = append(constraintValues, nativeDotBigInt([]*big.Int{big.NewInt(1)}, row))
+		}
+
+		// In-domain constraints from IRS verify
+		// Compute the folded domain generator for evaluation points.
+		// expDomainGen is the generator of the folded domain (codeword_length rows).
+		lastFoldRand := allFoldingRandomness[len(allFoldingRandomness)-1]
+		tensorWeights := nativeTensorProduct(currentPolyRLC, nativeEqWeights(lastFoldRand))
+
+		// Compute in-domain evaluation points and values from Merkle-verified leaves.
+		// The provekit NTT uses bit-reversed evaluation order, so we must
+		// bit-reverse the index before exponentiation.
+		foldedDomainSizeR := domainSize / foldingFactorPower
+		numBitsR := 0
+		for v := foldedDomainSizeR; v > 1; v >>= 1 {
+			numBitsR++
+		}
+		for qi, idx := range inDomainIndices {
+			reversedIdx := whir.BitReverseInt(idx, numBitsR)
+			domainPoint := new(big.Int).Exp(expDomainGen, big.NewInt(int64(reversedIdx)), bn254Modulus)
+			constraintEvalInfos = append(constraintEvalInfos, evaluatorInfo{
+				point: domainPoint,
+				size:  roundSize,
+			})
+
+			// Compute in-domain value from leaf data: dot(tensorWeights, leaf)
+			if qi < len(roundMerkle.Leaves) {
+				leafBigInts := make([]*big.Int, len(roundMerkle.Leaves[qi]))
+				for j, v := range roundMerkle.Leaves[qi] {
+					leafBigInts[j] = v.(*big.Int)
+				}
+				constraintValues = append(constraintValues, nativeDotBigInt(tensorWeights, leafBigInts))
+			} else {
+				constraintValues = append(constraintValues, big.NewInt(0))
+			}
+		}
+
+		constraintRLC, err := nativeGeometricChallenge(nimue, len(constraintValues))
+		if err != nil {
+			return nil, fmt.Errorf("round %d combination randomness: %w", r, err)
+		}
+		inDomainContrib := nativeDotBigInt(constraintRLC, constraintValues)
+		theSum = frAdd(theSum, inDomainContrib)
+
+		roundConstraints = append(roundConstraints, NativeRoundConstraint{
+			RLCCoeffs:      constraintRLC,
+			EvaluatorInfos: constraintEvalInfos,
+		})
+
+		// Sumcheck for this round
+		ff := whirParams.FoldingFactorArray[r]
+		if r+1 < len(whirParams.FoldingFactorArray) {
+			ff = whirParams.FoldingFactorArray[r+1]
+		}
+		foldRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, ff, whirConfig.SumcheckPowThresholds[r])
+		if err != nil {
+			return nil, fmt.Errorf("round %d sumcheck: %w", r, err)
+		}
+		theSum = newSum
+		allFoldingRandomness = append(allFoldingRandomness, foldRandomness)
+
+		prev = prevRound
+		currentPolyRLC = []*big.Int{big.NewInt(1)}
+		domainSize /= 2
+
+		// Update the folded domain generator for the next round.
+		// Mirrors the circuit code: numSquarings = 1 + ff[r+1] - ff[r]
+		nextFF := whirParams.FoldingFactorArray[r]
+		if r+1 < len(whirParams.FoldingFactorArray) {
+			nextFF = whirParams.FoldingFactorArray[r+1]
+		}
+		numSquarings := 1 + nextFF - whirParams.FoldingFactorArray[r]
+		for k := 0; k < numSquarings; k++ {
+			expDomainGen = frMul(expDomainGen, expDomainGen)
+		}
+	}
+
+	// Final round: receive full vector
+	finalSize := 1 << whirParams.FinalSumcheckRounds
+	finalVector, err := nimue.FillNextScalars(finalSize)
+
+	if err != nil {
+		return nil, fmt.Errorf("final vector: %w", err)
+	}
+
+	// Final PoW
+	if err := nativePoWVerify(nimue, whirConfig.FinalPowThreshold); err != nil {
+		return nil, fmt.Errorf("final pow: %w", err)
+	}
+
+	// Open previous commitment (final IRS verify)
+	finalFoldingFactorPower := 1 << whirParams.FoldingFactorArray[nRounds]
+	finalIndices, err := nativeGetStirChallenges(
+		nimue,
+		domainSize/finalFoldingFactorPower,
+		whirParams.FinalQueries,
+		false,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("final stir challenges: %w", err)
+	}
+
+	var finalSubmatrix []Fp256
+	if err = nimue.ProverHintArk(&finalSubmatrix); err != nil {
+		return nil, fmt.Errorf("final submatrix: %w", err)
+	}
+
+	allStirAnswers = append(allStirAnswers, [][]Fp256{})
+
+	foldedDomainSize := domainSize / finalFoldingFactorPower
+	treeHeight := bits.Len(uint(foldedDomainSize)) - 1
+	dedupedFinal := make([]int, len(finalIndices))
+	copy(dedupedFinal, finalIndices)
+	sort.Ints(dedupedFinal)
+	dedupedFinal = dedup(dedupedFinal)
+
+	finalMerkleEntry, err := consumeHintsAndBuildMerkleEntry(nimue, finalIndices, dedupedFinal, finalSubmatrix, finalFoldingFactorPower, treeHeight)
+	if err != nil {
+		return nil, fmt.Errorf("final merkle: %w", err)
+	}
+	allMerklePaths = append(allMerklePaths, FullMultiPath[Digest]{})
+	merkleRounds = append(merkleRounds, *finalMerkleEntry)
+
+	// Final sumcheck
+	finalSumcheckRandomness, newSum, err := nativeWhirSumcheckVerify(nimue, theSum, whirParams.FinalSumcheckRounds, whirConfig.FinalFoldingPowThreshold)
+	if err != nil {
+		return nil, fmt.Errorf("final sumcheck: %w", err)
+	}
+	theSum = newSum
+	allFoldingRandomness = append(allFoldingRandomness, finalSumcheckRandomness)
+
+	// Final folding PoW
+	if err := nativePoWVerify(nimue, whirConfig.FinalFoldingPowThreshold); err != nil {
+		return nil, fmt.Errorf("final folding pow: %w", err)
+	}
+
+	// Compute evaluation point (all folding randomness concatenated)
+	var evaluationPoint []*big.Int
+	for _, fr := range allFoldingRandomness {
+		evaluationPoint = append(evaluationPoint, fr...)
+	}
+
+	// Compute linear_form_rlc from the sumcheck invariant
+	// poly_eval = MLE(final_sumcheck_randomness).evaluate(Identity, final_vector)
+	polyEval := nativeMultilinearEval(finalSumcheckRandomness, finalVector)
+
+	// linear_form_rlc = the_sum / poly_eval
+	linearFormRLC := frDiv(theSum, polyEval)
+
+	// Subtract all internal linear forms.
+	// roundConstraints[0] = initial OODs (uses initial_num_variables = MVParams)
+	// roundConstraints[r+1] = main round r (uses round_configs[r].initial_num_variables)
+	// Mirrors Rust: round.checked_sub(1).map_or(initial_num_vars, |p| round_configs[p].initial_num_vars)
+	for round, rc := range roundConstraints {
+		numVariables := whirParams.MVParamsNumberOfVariables
+		for k := 0; k < round; k++ {
+			numVariables -= whirParams.FoldingFactorArray[k]
+		}
+		start := len(evaluationPoint) - numVariables
+		if start < 0 {
+			start = 0
+		}
+		subPoint := evaluationPoint[start:]
+		for i, coeff := range rc.RLCCoeffs {
+			if i < len(rc.EvaluatorInfos) {
+				info := rc.EvaluatorInfos[i]
+				mleVal := nativeUnivariateEvalMLE(info.point, info.size, subPoint)
+				linearFormRLC = frSub(linearFormRLC, frMul(coeff, mleVal))
+			}
+		}
+	}
+
+	// Build ZKHint from parsed Merkle data
+	zkHint := consumeWhirData(whirConfig, &allMerklePaths, &allStirAnswers)
+
+	return &NativeWhirVerifyResult{
+		FinalClaim: NativeFinalClaim{
+			EvaluationPoint: evaluationPoint,
+			RLCCoefficients: initialFormRLCCoeffs,
+			LinearFormRLC:   linearFormRLC,
+		},
+		Hint: zkHint,
+		MerkleData: &whir.WhirMerkleData{
+			Rounds: merkleRounds,
+		},
+	}, nil
+}

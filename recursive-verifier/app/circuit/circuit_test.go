@@ -1,16 +1,14 @@
 package circuit
 
 import (
-	"bytes"
-	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"math/big"
 	"os"
-	"strings"
 	"testing"
 
-	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"reilabs/whir-verifier-circuit/app/utilities"
+	"reilabs/whir-verifier-circuit/app/whir"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
@@ -19,15 +17,12 @@ import (
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/math/uints"
 	"github.com/consensys/gnark/test"
-	gnarkNimue "github.com/reilabs/gnark-nimue"
-	arkSerialize "github.com/reilabs/go-ark-serialize"
 )
 
 // TestCircuitConstraints checks that the circuit constraints are satisfied
 // without generating/verifying a full Groth16 proof.
 // This is much faster for testing purposes.
 func TestCircuitConstraints(t *testing.T) {
-	// Skip if test fixtures don't exist
 	configPath := os.Getenv("TEST_CONFIG_PATH")
 	r1csPath := os.Getenv("TEST_R1CS_PATH")
 
@@ -35,35 +30,13 @@ func TestCircuitConstraints(t *testing.T) {
 		t.Skip("Skipping test: TEST_CONFIG_PATH and TEST_R1CS_PATH env vars not set")
 	}
 
-	// Load config
-	configFile, err := os.ReadFile(configPath)
-	if err != nil {
-		t.Fatalf("Failed to read config file: %v", err)
-	}
+	config, r1csData := loadTestData(t, configPath, r1csPath)
 
-	var config Config
-	if err := json.Unmarshal(configFile, &config); err != nil {
-		t.Fatalf("Failed to unmarshal config JSON: %v", err)
-	}
-
-	// Load R1CS
-	r1csFile, err := os.ReadFile(r1csPath)
-	if err != nil {
-		t.Fatalf("Failed to read r1cs file: %v", err)
-	}
-
-	var r1csData R1CS
-	if err := json.Unmarshal(r1csFile, &r1csData); err != nil {
-		t.Fatalf("Failed to unmarshal r1cs JSON: %v", err)
-	}
-
-	// Build circuit and assignment
 	circuit, assignment, err := buildCircuitAndAssignment(config, r1csData)
 	if err != nil {
 		t.Fatalf("Failed to build circuit and assignment: %v", err)
 	}
 
-	// Use gnark's test framework to check constraint satisfaction
 	assert := test.NewAssert(t)
 	assert.CheckCircuit(
 		circuit,
@@ -84,11 +57,40 @@ func TestCircuitConstraintsSolverOnly(t *testing.T) {
 		t.Skip("Skipping test: TEST_CONFIG_PATH and TEST_R1CS_PATH env vars not set")
 	}
 
+	config, r1csData := loadTestData(t, configPath, r1csPath)
+
+	circuit, assignment, err := buildCircuitAndAssignment(config, r1csData)
+	if err != nil {
+		t.Fatalf("Failed to build circuit and assignment: %v", err)
+	}
+
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, circuit)
+	if err != nil {
+		t.Fatalf("Failed to compile circuit: %v", err)
+	}
+
+	t.Logf("Circuit compiled: %d constraints", ccs.GetNbConstraints())
+
+	witness, err := frontend.NewWitness(assignment, ecc.BN254.ScalarField())
+	if err != nil {
+		t.Fatalf("Failed to create witness: %v", err)
+	}
+
+	_, err = ccs.Solve(witness, solver.WithHints(utilities.IndexOf))
+	if err != nil {
+		t.Fatalf("Constraint system not satisfied: %v", err)
+	}
+
+	t.Log("All constraints satisfied!")
+}
+
+func loadTestData(t *testing.T, configPath, r1csPath string) (Config, R1CS) {
+	t.Helper()
+
 	configFile, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("Failed to read config file: %v", err)
 	}
-
 	var config Config
 	if err := json.Unmarshal(configFile, &config); err != nil {
 		t.Fatalf("Failed to unmarshal config JSON: %v", err)
@@ -98,364 +100,212 @@ func TestCircuitConstraintsSolverOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to read r1cs file: %v", err)
 	}
-
 	var r1csData R1CS
 	if err := json.Unmarshal(r1csFile, &r1csData); err != nil {
 		t.Fatalf("Failed to unmarshal r1cs JSON: %v", err)
 	}
 
-	circuit, assignment, err := buildCircuitAndAssignment(config, r1csData)
-	if err != nil {
-		t.Fatalf("Failed to build circuit and assignment: %v", err)
-	}
-
-	// Compile circuit
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, circuit)
-	if err != nil {
-		t.Fatalf("Failed to compile circuit: %v", err)
-	}
-
-	t.Logf("Circuit compiled: %d constraints", ccs.GetNbConstraints())
-
-	// Create witness
-	witness, err := frontend.NewWitness(assignment, ecc.BN254.ScalarField())
-	if err != nil {
-		t.Fatalf("Failed to create witness: %v", err)
-	}
-
-	// Solve the constraint system
-	_, err = ccs.Solve(witness, solver.WithHints(utilities.IndexOf))
-	if err != nil {
-		t.Fatalf("Constraint system not satisfied: %v", err)
-	}
-
-	t.Log("All constraints satisfied!")
+	return config, r1csData
 }
 
-// buildCircuitAndAssignment constructs both the circuit definition and the witness assignment
-// from the config and r1cs data. This mirrors what verifyCircuit does but separates
-// circuit (placeholder) from assignment (actual values).
+// buildCircuitAndAssignment replays the Fiat-Shamir transcript natively
+// (like PrepareAndVerifyCircuit) and then builds the gnark Circuit template
+// and assignment (like verifyCircuit), returning both for test use.
 func buildCircuitAndAssignment(config Config, r1csData R1CS) (*Circuit, *Circuit, error) {
-	// Parse transcript and extract hints
-	io := gnarkNimue.IOPattern{}
-	if err := io.Parse([]byte(config.IOPattern)); err != nil {
-		return nil, nil, err
+	if len(config.ProtocolID) < 64 {
+		return nil, nil, fmt.Errorf("protocol_id must be 64 bytes, got %d", len(config.ProtocolID))
 	}
+	var pid [64]byte
+	copy(pid[:], config.ProtocolID[:64])
 
-	var pointer uint64
-	var truncated []byte
-
-	var merklePaths []FullMultiPath[KeccakDigest]
-	var stirAnswers [][][]Fp256
-	var deferred []Fp256
-	var claimedEvaluations ClaimedEvaluations
-	var claimedEvaluations2 ClaimedEvaluations
-	var publicWeightsEvaluations [2]Fp256
-
-	for _, op := range io.Ops {
-		switch op.Kind {
-		case gnarkNimue.Hint:
-			if pointer+4 > uint64(len(config.Transcript)) {
-				return nil, nil, nil
-			}
-			hintLen := binary.LittleEndian.Uint32(config.Transcript[pointer : pointer+4])
-			start := pointer + 4
-			end := start + uint64(hintLen)
-
-			switch string(op.Label) {
-			default:
-				// Handle batch-mode hints: stir_answers_witness_X and merkle_proof_witness_X
-				label := string(op.Label)
-				if strings.HasPrefix(label, "merkle_proof_witness_") {
-					var path FullMultiPath[KeccakDigest]
-					_, err := arkSerialize.CanonicalDeserializeWithMode(
-						bytes.NewReader(config.Transcript[start:end]),
-						&path,
-						false, false,
-					)
-					if err != nil {
-						return nil, nil, err
-					}
-					merklePaths = append(merklePaths, path)
-				} else if strings.HasPrefix(label, "stir_answers_witness_") {
-					var stirAnswersTemporary [][]Fp256
-					_, err := arkSerialize.CanonicalDeserializeWithMode(
-						bytes.NewReader(config.Transcript[start:end]),
-						&stirAnswersTemporary,
-						false, false,
-					)
-					if err != nil {
-						return nil, nil, err
-					}
-					stirAnswers = append(stirAnswers, stirAnswersTemporary)
-				}
-
-			case "merkle_proof":
-				var path FullMultiPath[KeccakDigest]
-				_, err := arkSerialize.CanonicalDeserializeWithMode(
-					bytes.NewReader(config.Transcript[start:end]),
-					&path, false, false,
-				)
-				if err != nil {
-					return nil, nil, err
-				}
-				merklePaths = append(merklePaths, path)
-
-			case "stir_answers":
-				var stirAnswersTemporary [][]Fp256
-				_, err := arkSerialize.CanonicalDeserializeWithMode(
-					bytes.NewReader(config.Transcript[start:end]),
-					&stirAnswersTemporary, false, false,
-				)
-				if err != nil {
-					return nil, nil, err
-				}
-				stirAnswers = append(stirAnswers, stirAnswersTemporary)
-
-			case "deferred_weight_evaluations":
-				var deferredTemporary []Fp256
-				_, err := arkSerialize.CanonicalDeserializeWithMode(
-					bytes.NewReader(config.Transcript[start:end]),
-					&deferredTemporary, false, false,
-				)
-				if err != nil {
-					return nil, nil, err
-				}
-				deferred = append(deferred, deferredTemporary...)
-
-			case "claimed_evaluations":
-				_, err := arkSerialize.CanonicalDeserializeWithMode(
-					bytes.NewReader(config.Transcript[start:end]),
-					&claimedEvaluations, false, false,
-				)
-				if err != nil {
-					return nil, nil, err
-				}
-			case "claimed_evaluations_1":
-				_, err := arkSerialize.CanonicalDeserializeWithMode(
-					bytes.NewReader(config.Transcript[start:end]),
-					&claimedEvaluations, false, false,
-				)
-				if err != nil {
-					return nil, nil, err
-				}
-
-			case "claimed_evaluations_2":
-				_, err := arkSerialize.CanonicalDeserializeWithMode(
-					bytes.NewReader(config.Transcript[start:end]),
-					&claimedEvaluations2, false, false,
-				)
-				if err != nil {
-					return nil, nil, err
-				}
-
-			case "public_weights_evaluations":
-				_, err := arkSerialize.CanonicalDeserializeWithMode(
-					bytes.NewReader(config.Transcript[start:end]),
-					&publicWeightsEvaluations, false, false,
-				)
-				if err != nil {
-					return nil, nil, err
-				}
-			}
-			pointer = end
-
-		case gnarkNimue.Absorb:
-			start := pointer
-			if string(op.Label) == "pow-nonce" {
-				pointer += op.Size
-			} else {
-				pointer += op.Size * 32
-			}
-			truncated = append(truncated, config.Transcript[start:pointer]...)
-		}
+	// Compute instance = public_inputs.hash_bytes() to bind public inputs to the transcript.
+	piValues := make([]*big.Int, len(config.PublicInputs.Values))
+	for i, v := range config.PublicInputs.Values {
+		piValues[i] = v.(*big.Int)
 	}
+	instance := nativePublicInputsHashBytes(piValues)
 
-	config.Transcript = truncated
+	nimue := NewNativeNimue(pid, config.SessionID, instance, config.NargString, config.Hints)
+	blindedCommitmentWhirConfig := NewWhirParams(config.BlindedCommitmentWhirConfig)
+	blindingCommitmentWhirConfig := NewWhirParams(config.BlindingCommitmentWhirConfig)
 
-	// Parse interner
-	internerBytes, err := hex.DecodeString(r1csData.Interner.Values)
+	// 1. Parse commitment 1
+	_, blindedOODPoints, blindedOODMatrix, err := nativeParseBatchedCommitment(nimue, blindedCommitmentWhirConfig)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("parse blinded commitment: %w", err)
 	}
+	blindedCommitment := NativeCommitmentFromParsed(blindedOODPoints, blindedOODMatrix)
 
-	var interner Interner
-	_, err = arkSerialize.CanonicalDeserializeWithMode(
-		bytes.NewReader(internerBytes), &interner, false, false,
-	)
+	_, blindingOODPoints, blindingOODMatrix, err := nativeParseBatchedCommitment(nimue, blindingCommitmentWhirConfig)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("parse blinding commitment: %w", err)
 	}
+	blindingCommitment := NativeCommitmentFromParsed(blindingOODPoints, blindingOODMatrix)
 
-	// Build hints
-	hidingSpartanData := consumeWhirData(config.WHIRConfigHidingSpartan, &merklePaths, &stirAnswers)
-
-	var witnessFirstRoundHints []FirstRoundHint
-	var witnessRoundHints ZKHint
-
+	// 2. If dual mode: squeeze logup challenges, parse commitment 2
 	if config.NumChallenges > 0 {
-		numCommitments := 2
-		witnessFirstRoundHints = make([]FirstRoundHint, numCommitments)
-		for i := 0; i < numCommitments; i++ {
-			witnessFirstRoundHints[i] = consumeFirstRoundOnly(&merklePaths, &stirAnswers)
+		if _, err = nimue.FillChallengeScalars(config.NumChallenges); err != nil {
+			return nil, nil, fmt.Errorf("logup challenges: %w", err)
 		}
-		witnessRoundHints = consumeWhirDataRoundsOnly(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
-	} else {
-		witnessData := consumeWhirData(config.WHIRConfigWitness, &merklePaths, &stirAnswers)
-		witnessFirstRoundHints = []FirstRoundHint{witnessData.firstRoundMerklePaths}
-		witnessRoundHints = witnessData
-	}
-
-	hints := Hints{
-		spartanHidingHint:      hidingSpartanData,
-		WitnessFirstRoundHints: witnessFirstRoundHints,
-		WitnessRoundHints:      witnessRoundHints,
-	}
-
-	// Build matrices
-	matrixA := buildMatrix(r1csData.A, interner)
-	matrixB := buildMatrix(r1csData.B, interner)
-	matrixC := buildMatrix(r1csData.C, interner)
-
-	// Parse evaluations - need separate values for circuit (placeholder) and assignment (actual)
-	hidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
-	hidingSpartanLinearStatementEvaluationsAssign := make([]frontend.Variable, 1)
-	hidingSpartanLinearStatementEvaluationsAssign[0] = typeConverters.LimbsToBigIntMod(deferred[0].Limbs)
-
-	var witnessLinearStatementEvalsSize int
-	if config.NumChallenges > 0 {
-		if !config.PublicInputs.IsEmpty() {
-			witnessLinearStatementEvalsSize = 7
-		} else {
-			witnessLinearStatementEvalsSize = 6
+		if _, _, _, err = nativeParseBatchedCommitment(nimue, blindedCommitmentWhirConfig); err != nil {
+			return nil, nil, fmt.Errorf("parse commitment 2 blinded: %w", err)
 		}
-	} else {
-		if !config.PublicInputs.IsEmpty() {
-			witnessLinearStatementEvalsSize = 4
-		} else {
-			witnessLinearStatementEvalsSize = 3
+		if _, _, _, err = nativeParseBatchedCommitment(nimue, blindingCommitmentWhirConfig); err != nil {
+			return nil, nil, fmt.Errorf("parse commitment 2 blinding: %w", err)
 		}
 	}
 
-	// For circuit definition: placeholder values (nil)
-	witnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
-
-	// For assignment: actual values
-	witnessLinearStatementEvaluationsAssign := make([]frontend.Variable, witnessLinearStatementEvalsSize)
-	for i := 0; i < witnessLinearStatementEvalsSize; i++ {
-		witnessLinearStatementEvaluationsAssign[i] = typeConverters.LimbsToBigIntMod(deferred[1+i].Limbs)
+	// 3. Sumcheck
+	if _, err = nativeRunSumcheckVerifier(nimue, config.LogNumConstraints); err != nil {
+		return nil, nil, fmt.Errorf("sumcheck verifier: %w", err)
 	}
 
-	// Build transcript
-	transcriptT := make([]uints.U8, config.TranscriptLen)
-	contTranscript := make([]uints.U8, config.TranscriptLen)
-	for i := range config.Transcript {
-		transcriptT[i] = uints.NewU8(config.Transcript[i])
+	// 4. Public inputs hash + x challenge
+	if _, err = nimue.FillNextScalars(1); err != nil {
+		return nil, nil, fmt.Errorf("public inputs hash: %w", err)
+	}
+	if _, err = nimue.FillChallengeScalars(1); err != nil {
+		return nil, nil, fmt.Errorf("x challenge: %w", err)
 	}
 
-	// Parse claimed evaluations
-	fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
-	var fSums2, gSums2 []frontend.Variable
+	// 5. Read evaluation hints
+	var evals1 []Fp256
+	if err = nimue.ProverHintArk(&evals1); err != nil {
+		return nil, nil, fmt.Errorf("evals_1: %w", err)
+	}
+	evals1BigInt := fp256SliceToBigInt(evals1)
+
+	var evals2BigInt []*big.Int
 	if config.NumChallenges > 0 {
-		fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, true)
+		var evals2 []Fp256
+		if err = nimue.ProverHintArk(&evals2); err != nil {
+			return nil, nil, fmt.Errorf("evals_2: %w", err)
+		}
+		evals2BigInt = fp256SliceToBigInt(evals2)
 	}
 
-	// Build the slices conditionally
-	var witnessClaimedEvals, witnessBlindingEvals [][]frontend.Variable
+	hasPublicInputs := !config.PublicInputs.IsEmpty()
+	if hasPublicInputs {
+		if _, err = nimue.FillNextScalars(1); err != nil {
+			return nil, nil, fmt.Errorf("public_eval: %w", err)
+		}
+	}
+
+	// 6. zkWHIR verify (commitment 1)
+	zkWhirParams := newZKWhirVerifyParams(1, hasPublicInputs)
+	zkWhirData1, err := nativeZKWhirVerify(nimue, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams, blindedCommitment, blindingCommitment, evals1BigInt)
+	if err != nil {
+		return nil, nil, fmt.Errorf("zkWHIR verify commitment 1: %w", err)
+	}
+
+	// 7. If dual mode: zkWHIR verify (commitment 2)
+	var dualData *DualCommitmentData
 	if config.NumChallenges > 0 {
-		witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
-		witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
-	} else {
-		witnessClaimedEvals = [][]frontend.Variable{fSums}
-		witnessBlindingEvals = [][]frontend.Variable{gSums}
+		zkWhirParams2 := ZKWhirVerifyParams{NumPolynomials: 1, WeightsLen: 3}
+		zkWhirData2, err := nativeZKWhirVerify(nimue, config, blindedCommitmentWhirConfig, blindingCommitmentWhirConfig, zkWhirParams2, blindedCommitment, blindingCommitment, evals2BigInt)
+		if err != nil {
+			return nil, nil, fmt.Errorf("zkWHIR verify commitment 2: %w", err)
+		}
+		dualData = &DualCommitmentData{
+			Evals2BigInt:       evals2BigInt,
+			BlindedMerkleData:  *zkWhirData2.BlindedMerkleData,
+			BlindingMerkleData: *zkWhirData2.BlindingMerkleData,
+		}
 	}
 
-	// Build circuit definition (with placeholder values)
+	// 8. Parse interner and build matrices
+	interner, err := ParseInterner(r1csData)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse interner: %w", err)
+	}
+
+	matrixA, matrixB, matrixC, err := buildR1CSMatrixCells(r1csData, interner)
+	if err != nil {
+		return nil, nil, fmt.Errorf("build matrices: %w", err)
+	}
+
+	// 9. Build circuit template and assignment (mirrors verifyCircuit)
+	var protocolID [64]byte
+	copy(protocolID[:], config.ProtocolID)
+	var sessionIDBytes [32]byte
+	copy(sessionIDBytes[:], config.SessionID)
+
+	transcriptT := make([]uints.U8, len(config.NargString))
+	contTranscript := make([]uints.U8, len(config.NargString))
+	for i := range config.NargString {
+		transcriptT[i] = uints.NewU8(config.NargString[i])
+	}
+
+	publicInputsContainer := PublicInputs{
+		Values: make([]frontend.Variable, len(config.PublicInputs.Values)),
+	}
+
+	blindedMerkleTemplate := allocateZeroWhirMerkleData(*zkWhirData1.BlindedMerkleData)
+	blindingMerkleTemplate := allocateZeroWhirMerkleData(*zkWhirData1.BlindingMerkleData)
+
+	var blindedMerkleTemplate2, blindingMerkleTemplate2 whir.WhirMerkleData
+	if dualData != nil {
+		blindedMerkleTemplate2 = allocateZeroWhirMerkleData(dualData.BlindedMerkleData)
+		blindingMerkleTemplate2 = allocateZeroWhirMerkleData(dualData.BlindingMerkleData)
+	}
+
 	circuit := &Circuit{
-		IO:                                      []byte(config.IOPattern),
-		Transcript:                              contTranscript,
-		LogNumConstraints:                       config.LogNumConstraints,
-		LogNumVariables:                         config.LogNumVariables,
-		LogANumTerms:                            config.LogANumTerms,
-		WitnessClaimedEvaluations:               witnessClaimedEvals,
-		WitnessBlindingEvaluations:              witnessBlindingEvals,
-		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
-		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
-		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
-		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
-		WitnessFirstRounds:                      witnessFirstRounds(hints, true),
-		WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, true),
-		NumChallenges:                           config.NumChallenges,
-		W1Size:                                  config.W1Size,
-		WHIRParamsWitness:                       NewWhirParams(config.WHIRConfigWitness),
-		WHIRParamsHidingSpartan:                 NewWhirParams(config.WHIRConfigHidingSpartan),
-		MatrixA:                                 matrixA,
-		MatrixB:                                 matrixB,
-		MatrixC:                                 matrixC,
-		PublicInputs:                            PublicInputs{Values: make([]frontend.Variable, len(config.PublicInputs.Values))},
-		PubWitnessEvaluations:                   make([]frontend.Variable, 2),
+		ProtocolID:                   protocolID,
+		SessionIDBytes:               sessionIDBytes,
+		Transcript:                   contTranscript,
+		LogNumConstraints:            config.LogNumConstraints,
+		NumChallenges:                config.NumChallenges,
+		ChallengeOffsets:             config.ChallengeOffsets,
+		W1Size:                       config.W1Size,
+		BlindingCommitmentWhirConfig: NewWhirParams(config.BlindingCommitmentWhirConfig),
+		BlindedCommitmentWhirConfig:  NewWhirParams(config.BlindedCommitmentWhirConfig),
+		PublicInputs:                 publicInputsContainer,
+		BlindedMerkleData:            blindedMerkleTemplate,
+		BlindingMerkleData:           blindingMerkleTemplate,
+		BlindedMerkleData2:           blindedMerkleTemplate2,
+		BlindingMerkleData2:          blindingMerkleTemplate2,
+		MatrixA:                      matrixA,
+		MatrixB:                      matrixB,
+		MatrixC:                      matrixC,
 	}
 
-	// Build assignment (with actual values)
-	fSumsAssign, gSumsAssign := parseClaimedEvaluations(claimedEvaluations, false)
-	var fSums2Assign, gSums2Assign []frontend.Variable
-	var witnessClaimedEvalsAssign, witnessBlindingEvalsAssign [][]frontend.Variable
-	if config.NumChallenges > 0 {
-		fSums2Assign, gSums2Assign = parseClaimedEvaluations(claimedEvaluations2, false)
-		witnessClaimedEvalsAssign = [][]frontend.Variable{fSumsAssign, fSums2Assign}
-		witnessBlindingEvalsAssign = [][]frontend.Variable{gSumsAssign, gSums2Assign}
-	} else {
-		witnessClaimedEvalsAssign = [][]frontend.Variable{fSumsAssign}
-		witnessBlindingEvalsAssign = [][]frontend.Variable{gSumsAssign}
+	var blindedMerkleAssign2, blindingMerkleAssign2 whir.WhirMerkleData
+	if dualData != nil {
+		blindedMerkleAssign2 = dualData.BlindedMerkleData
+		blindingMerkleAssign2 = dualData.BlindingMerkleData
 	}
+
+	piValuesNative := make([]*big.Int, len(config.PublicInputs.Values))
+	for i, v := range config.PublicInputs.Values {
+		bi, ok := v.(*big.Int)
+		if !ok {
+			return nil, nil, fmt.Errorf("public input %d is not *big.Int (got %T)", i, v)
+		}
+		piValuesNative[i] = bi
+	}
+	publicInputsHashLE := nativePublicInputsHashBytes(piValuesNative)
+	publicInputsHashBI := leBytesToNativeBigInt(publicInputsHashLE[:])
 
 	assignment := &Circuit{
-		IO:                                      []byte(config.IOPattern),
-		Transcript:                              transcriptT,
-		LogNumConstraints:                       config.LogNumConstraints,
-		WitnessClaimedEvaluations:               witnessClaimedEvalsAssign,
-		WitnessBlindingEvaluations:              witnessBlindingEvalsAssign,
-		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluationsAssign,
-		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluationsAssign,
-		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
-		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
-		WitnessFirstRounds:                      witnessFirstRounds(hints, false),
-		WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, false),
-		NumChallenges:                           config.NumChallenges,
-		W1Size:                                  config.W1Size,
-		WHIRParamsWitness:                       NewWhirParams(config.WHIRConfigWitness),
-		WHIRParamsHidingSpartan:                 NewWhirParams(config.WHIRConfigHidingSpartan),
-		MatrixA:                                 matrixA,
-		MatrixB:                                 matrixB,
-		MatrixC:                                 matrixC,
-		PublicInputs:                            config.PublicInputs,
-		PubWitnessEvaluations: []frontend.Variable{
-			typeConverters.LimbsToBigIntMod(publicWeightsEvaluations[0].Limbs),
-			typeConverters.LimbsToBigIntMod(publicWeightsEvaluations[1].Limbs),
-		},
+		ProtocolID:                   protocolID,
+		SessionIDBytes:               sessionIDBytes,
+		PublicInputsHash:             publicInputsHashBI,
+		Transcript:                   transcriptT,
+		LogNumConstraints:            config.LogNumConstraints,
+		NumChallenges:                config.NumChallenges,
+		ChallengeOffsets:             config.ChallengeOffsets,
+		W1Size:                       config.W1Size,
+		BlindingCommitmentWhirConfig: NewWhirParams(config.BlindingCommitmentWhirConfig),
+		BlindedCommitmentWhirConfig:  NewWhirParams(config.BlindedCommitmentWhirConfig),
+		PublicInputs:                 config.PublicInputs,
+		BlindedMerkleData:            *zkWhirData1.BlindedMerkleData,
+		BlindingMerkleData:           *zkWhirData1.BlindingMerkleData,
+		BlindedMerkleData2:           blindedMerkleAssign2,
+		BlindingMerkleData2:          blindingMerkleAssign2,
+		MatrixA:                      matrixA,
+		MatrixB:                      matrixB,
+		MatrixC:                      matrixC,
 	}
 
 	return circuit, assignment, nil
-}
-
-func buildMatrix(sparse SparseMatrix, interner Interner) []MatrixCell {
-	colIndices := sparse.DecodeColIndices()
-	if colIndices == nil {
-		panic("failed to decode column indices: inconsistent matrix data")
-	}
-	matrix := make([]MatrixCell, len(sparse.Values))
-	for i := range len(sparse.RowIndices) {
-		end := len(sparse.Values) - 1
-		if i < len(sparse.RowIndices)-1 {
-			end = int(sparse.RowIndices[i+1] - 1)
-		}
-		for j := int(sparse.RowIndices[i]); j <= end; j++ {
-			matrix[j] = MatrixCell{
-				row:    i,
-				column: int(colIndices[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[sparse.Values[j]].Limbs),
-			}
-		}
-	}
-	return matrix
 }
