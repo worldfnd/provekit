@@ -45,23 +45,7 @@ pub use {
 /// Must be called once before any prove/verify operations.
 /// Idempotent — safe to call multiple times.
 pub fn register_ntt() {
-    use std::sync::{Arc, Once};
+    use std::sync::Once;
     static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        // Register NTT for polynomial operations
-        #[cfg(not(feature = "provekit_ntt"))]
-        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield());
-
-        #[cfg(feature = "provekit_ntt")]
-        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(crate::ntt::RSFr);
-
-        whir::algebra::ntt::NTT.insert(ntt);
-
-        // Register ProveKit-specific engines; WHIR's built-in engines
-        // (SHA2, Keccak, Blake3, etc.) are pre-registered via whir::hash::ENGINES.
-        whir::hash::ENGINES.register(Arc::new(skyscraper::SkyscraperHashEngine));
-        whir::hash::ENGINES.register(Arc::new(poseidon2::Poseidon2HashEngine));
-    });
+    INIT.call_once(<FieldElement as ProofField>::register_engines);
 }

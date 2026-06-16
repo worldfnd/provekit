@@ -4,9 +4,15 @@
 //! we use a single enum that delegates to the concrete sponge at runtime.
 //! The branch cost is negligible — the sponge is called O(log n) times
 //! per proof for Fiat-Shamir challenges, not in a tight inner loop.
+//!
+//! The field-native configurations ([`HashConfig::Skyscraper`],
+//! [`HashConfig::Poseidon2`]) are held behind the object-safe
+//! [`DynFieldSponge`] shim and constructed via [`ProofField::field_sponge`],
+//! so this module names no field-specific sponge type. The byte-sponge
+//! configurations use `spongefish`'s field-agnostic instantiations directly.
 
 use {
-    crate::{poseidon2::Poseidon2Sponge, skyscraper::SkyscraperSponge, HashConfig},
+    crate::{field::DynFieldSponge, FieldElement, HashConfig, ProofField},
     spongefish::{instantiations, DuplexSpongeInterface},
     std::fmt,
 };
@@ -14,13 +20,24 @@ use {
 /// Fiat-Shamir transcript sponge, selected at runtime by [`HashConfig`].
 ///
 /// Delegates all [`DuplexSpongeInterface`] calls to the active variant.
-#[derive(Clone)]
 pub enum TranscriptSponge {
     Sha256(instantiations::SHA256),
     Blake3(instantiations::Blake3),
     Keccak(instantiations::Keccak),
-    Skyscraper(SkyscraperSponge),
-    Poseidon2(Poseidon2Sponge),
+    /// Field-native sponge (Skyscraper or Poseidon2), held behind the
+    /// object-safe shim so this module stays field-agnostic.
+    Field(Box<dyn DynFieldSponge>),
+}
+
+impl Clone for TranscriptSponge {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Sha256(s) => Self::Sha256(s.clone()),
+            Self::Blake3(s) => Self::Blake3(s.clone()),
+            Self::Keccak(s) => Self::Keccak(s.clone()),
+            Self::Field(s) => Self::Field(s.clone_box()),
+        }
+    }
 }
 
 impl fmt::Debug for TranscriptSponge {
@@ -29,8 +46,7 @@ impl fmt::Debug for TranscriptSponge {
             Self::Sha256(_) => f.debug_tuple("Sha256").finish(),
             Self::Blake3(_) => f.debug_tuple("Blake3").finish(),
             Self::Keccak(_) => f.debug_tuple("Keccak").finish(),
-            Self::Skyscraper(_) => f.debug_tuple("Skyscraper").finish(),
-            Self::Poseidon2(_) => f.debug_tuple("Poseidon2").finish(),
+            Self::Field(_) => f.debug_tuple("Field").finish(),
         }
     }
 }
@@ -42,8 +58,9 @@ impl TranscriptSponge {
             HashConfig::Sha256 => Self::Sha256(Default::default()),
             HashConfig::Blake3 => Self::Blake3(Default::default()),
             HashConfig::Keccak => Self::Keccak(Default::default()),
-            HashConfig::Skyscraper => Self::Skyscraper(Default::default()),
-            HashConfig::Poseidon2 => Self::Poseidon2(Default::default()),
+            HashConfig::Skyscraper | HashConfig::Poseidon2 => {
+                Self::Field(FieldElement::field_sponge(config))
+            }
         }
     }
 }
@@ -58,20 +75,20 @@ impl DuplexSpongeInterface for TranscriptSponge {
     type U = u8;
 
     fn absorb(&mut self, input: &[u8]) -> &mut Self {
+        // Byte sponges implement both `DuplexSpongeInterface` and (via the
+        // blanket impl) `DynFieldSponge`, so qualify them explicitly; the
+        // `Field` arm is a `Box<dyn DynFieldSponge>` and is unambiguous.
         match self {
             Self::Sha256(s) => {
-                s.absorb(input);
+                DuplexSpongeInterface::absorb(s, input);
             }
             Self::Blake3(s) => {
-                s.absorb(input);
+                DuplexSpongeInterface::absorb(s, input);
             }
             Self::Keccak(s) => {
-                s.absorb(input);
+                DuplexSpongeInterface::absorb(s, input);
             }
-            Self::Skyscraper(s) => {
-                s.absorb(input);
-            }
-            Self::Poseidon2(s) => {
+            Self::Field(s) => {
                 s.absorb(input);
             }
         }
@@ -81,18 +98,15 @@ impl DuplexSpongeInterface for TranscriptSponge {
     fn squeeze(&mut self, output: &mut [u8]) -> &mut Self {
         match self {
             Self::Sha256(s) => {
-                s.squeeze(output);
+                DuplexSpongeInterface::squeeze(s, output);
             }
             Self::Blake3(s) => {
-                s.squeeze(output);
+                DuplexSpongeInterface::squeeze(s, output);
             }
             Self::Keccak(s) => {
-                s.squeeze(output);
+                DuplexSpongeInterface::squeeze(s, output);
             }
-            Self::Skyscraper(s) => {
-                s.squeeze(output);
-            }
-            Self::Poseidon2(s) => {
+            Self::Field(s) => {
                 s.squeeze(output);
             }
         }
@@ -102,18 +116,15 @@ impl DuplexSpongeInterface for TranscriptSponge {
     fn ratchet(&mut self) -> &mut Self {
         match self {
             Self::Sha256(s) => {
-                s.ratchet();
+                DuplexSpongeInterface::ratchet(s);
             }
             Self::Blake3(s) => {
-                s.ratchet();
+                DuplexSpongeInterface::ratchet(s);
             }
             Self::Keccak(s) => {
-                s.ratchet();
+                DuplexSpongeInterface::ratchet(s);
             }
-            Self::Skyscraper(s) => {
-                s.ratchet();
-            }
-            Self::Poseidon2(s) => {
+            Self::Field(s) => {
                 s.ratchet();
             }
         }

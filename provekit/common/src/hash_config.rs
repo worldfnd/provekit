@@ -6,8 +6,8 @@
 //! - public-input instance binding ([`HashConfig::hash_field_elements`])
 
 use {
-    crate::{utils::field_to_bytes_le, FieldElement},
-    ark_ff::{BigInt, PrimeField},
+    crate::{utils::field_to_bytes_le, FieldElement, ProofField},
+    ark_ff::PrimeField,
     serde::{Deserialize, Serialize},
     std::{fmt, sync::LazyLock},
 };
@@ -76,11 +76,11 @@ impl HashConfig {
     #[must_use]
     pub fn engine_id(&self) -> whir::engines::EngineId {
         match self {
-            Self::Skyscraper => crate::skyscraper::SKYSCRAPER,
+            Self::Skyscraper => FieldElement::skyscraper_engine_id(),
             Self::Sha256 => whir::hash::SHA2,
             Self::Keccak => whir::hash::KECCAK,
             Self::Blake3 => whir::hash::BLAKE3,
-            Self::Poseidon2 => crate::poseidon2::POSEIDON2,
+            Self::Poseidon2 => FieldElement::poseidon2_engine_id(),
         }
     }
 
@@ -142,11 +142,11 @@ impl HashConfig {
     #[must_use]
     pub fn hash_field_elements(self, elements: &[FieldElement]) -> FieldElement {
         match self {
-            Self::Skyscraper => hash_skyscraper(elements),
+            Self::Skyscraper => FieldElement::hash_skyscraper(elements),
             Self::Sha256 => hash_digest::<sha2::Sha256>(PUBLIC_INPUTS_DST, elements),
             Self::Keccak => hash_digest::<sha3::Keccak256>(PUBLIC_INPUTS_DST, elements),
             Self::Blake3 => hash_blake3(PUBLIC_INPUTS_DST, elements),
-            Self::Poseidon2 => hash_poseidon2(elements),
+            Self::Poseidon2 => FieldElement::hash_poseidon2(elements),
         }
     }
 }
@@ -171,24 +171,6 @@ impl std::str::FromStr for HashConfig {
     }
 }
 
-/// Pairwise Skyscraper compression; empty input hashes to 0. Not
-/// domain-separated (see [`PUBLIC_INPUTS_DST`]).
-#[inline]
-fn hash_skyscraper(elements: &[FieldElement]) -> FieldElement {
-    #[inline]
-    fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
-        let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);
-        FieldElement::new(BigInt(out))
-    }
-
-    let zero = FieldElement::from(0u64);
-    match elements {
-        [] => zero,
-        [x] => compress(*x, zero),
-        [first, rest @ ..] => rest.iter().copied().fold(*first, compress),
-    }
-}
-
 /// DST-tagged [`sha2::digest::Digest`] hash (SHA-256, Keccak-256) over
 /// `elements`.
 ///
@@ -206,22 +188,6 @@ where
         hasher.update(field_to_bytes_le(*fe));
     }
     FieldElement::from_le_bytes_mod_order(&hasher.finalize())
-}
-
-/// Poseidon2 one-shot hash over `elements` (including empty input).
-///
-/// Prepends [`PUBLIC_INPUTS_DST_FE`] as the first absorbed field element
-/// to provide **role** domain-separation (distinct from Merkle/FS usages of
-/// the same Poseidon2 permutation). The capacity-lane IV inside
-/// [`poseidon2::poseidon2_hash`] separately provides **length** domain-
-/// separation, so the two combined mirror what SHA/Keccak/BLAKE3 get via
-/// the raw [`PUBLIC_INPUTS_DST`] byte prefix.
-#[inline]
-fn hash_poseidon2(elements: &[FieldElement]) -> FieldElement {
-    let mut tagged = Vec::with_capacity(elements.len() + 1);
-    tagged.push(*PUBLIC_INPUTS_DST_FE);
-    tagged.extend_from_slice(elements);
-    poseidon2::poseidon2_hash(&tagged)
 }
 
 /// BLAKE3 analogue of [`hash_digest`]. BLAKE3 does not implement
