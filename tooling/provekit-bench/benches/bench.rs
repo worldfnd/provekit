@@ -62,6 +62,7 @@ fn verify_poseidon_1000(bencher: Bencher) {
     let proof_verifier_path = crate_dir.join("noir-provekit-verifier.pkv");
     let proof_path = crate_dir.join("noir-proof.np");
     let proof: NoirProof = read(&proof_path).unwrap();
+    provekit_field_bn254::register();
 
     bencher.bench_local(|| {
         // Read a fresh verifier for each iteration (verify consumes internal state)

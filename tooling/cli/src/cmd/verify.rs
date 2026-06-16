@@ -24,6 +24,7 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
+        provekit_field_bn254::register();
         let verifier_path = resolve_key_path(self.verifier_path.as_deref(), "pkv")?;
 
         let (verifier, proof) = rayon::join(

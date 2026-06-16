@@ -51,6 +51,7 @@ impl Verifier {
 
 impl Verifier {
     fn verify_proof(&self, proof: &NoirProof) -> Result<(), JsError> {
+        provekit_field_bn254::register();
         // Clone so the core verifier's .take() consumption doesn't prevent reuse.
         let mut verifier = self.inner.clone();
         verifier

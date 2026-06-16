@@ -14,8 +14,9 @@ pub trait Verify {
 impl Verify for Verifier {
     #[instrument(skip_all)]
     fn verify(&mut self, proof: &NoirProof) -> Result<()> {
-        provekit_field_bn254::register();
-
+        // The field backend must already be registered by the caller (e.g.
+        // `provekit_field_bn254::register()` at startup); verification is
+        // field-agnostic and registers nothing itself.
         self.whir_for_witness
             .take()
             .context("Verifier has already been consumed; cannot verify twice")?
