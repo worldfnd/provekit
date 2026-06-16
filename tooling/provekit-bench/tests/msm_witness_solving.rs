@@ -79,6 +79,9 @@ fn check_r1cs_satisfaction(
 
 /// Create a dummy transcript for witness solving (no challenges needed).
 fn dummy_transcript() -> ProverState<TranscriptSponge> {
+    // The default sponge is field-native (Skyscraper), so the bn254 backend
+    // must be registered before constructing it.
+    provekit_field_bn254::register();
     let ds = DomainSeparator::protocol(&()).instance(&Empty);
     ProverState::new(&ds, TranscriptSponge::default())
 }

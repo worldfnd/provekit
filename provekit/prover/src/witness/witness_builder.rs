@@ -1,16 +1,4 @@
 use {
-    crate::{
-        bigint_mod::{
-            add_4limb, bigint_to_fe, cmp_4limb, compute_mul_mod_carries, decompose_to_u128_limbs,
-            divmod, divmod_wide, fe_to_bigint, half_gcd, mod_pow, mul_mod, reconstruct_from_halves,
-            signed_quotient_wide, sub_u64, to_i128_limbs, widening_mul,
-        },
-        ec_arith::{
-            compute_ec_verification_carries, ec_point_add_with_lambda, ec_point_double_with_lambda,
-            ec_scalar_mul,
-        },
-        witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
-    },
     acir::native_types::WitnessMap,
     anyhow::{ensure, Result},
     ark_ff::{BigInteger, Field, PrimeField},
@@ -35,9 +23,24 @@ pub trait WitnessBuilderSolver {
     ) -> Result<()>;
 }
 
-use super::limb_io::{
-    read_witness_limbs, setup_3eq_ec_hint, solve_and_write_equation, split_quotient, write_limbs,
-    ColumnEqParams, ColumnEqTerms,
+use provekit_field_bn254::{
+    bigint_mod::{
+        add_4limb, bigint_to_fe, cmp_4limb, compute_mul_mod_carries, decompose_to_u128_limbs,
+        divmod, divmod_wide, fe_to_bigint, half_gcd, mod_pow, mul_mod, reconstruct_from_halves,
+        signed_quotient_wide, sub_u64, to_i128_limbs, widening_mul,
+    },
+    ec_arith::{
+        compute_ec_verification_carries, ec_point_add_with_lambda, ec_point_double_with_lambda,
+        ec_scalar_mul,
+    },
+    witness::{
+        digits::DigitalDecompositionWitnessesSolver,
+        limb_io::{
+            read_witness_limbs, setup_3eq_ec_hint, solve_and_write_equation, split_quotient,
+            write_limbs, ColumnEqParams, ColumnEqTerms,
+        },
+        ram::SpiceWitnessesSolver,
+    },
 };
 
 /// Read a solved witness value, panicking with the index if not yet solved.

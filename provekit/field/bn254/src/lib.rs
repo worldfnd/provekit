@@ -9,15 +9,18 @@
 //! Call [`register`] once at startup before any prove/verify or public-input
 //! hashing under the Skyscraper/Poseidon2 configurations.
 
+pub mod bigint_mod;
+pub mod ec_arith;
 pub mod ntt;
 pub mod poseidon2;
 pub mod skyscraper;
+pub mod witness;
 
 // Extern field primitive crates (the local `skyscraper`/`poseidon2` modules
 // above shadow the crate names at this crate root, so reach the raw permutation
 // helpers via the leading-`::` extern paths).
-use ::poseidon2::poseidon2_hash;
 use {
+    ::poseidon2::poseidon2_hash,
     ::skyscraper::simple::compress as skyscraper_compress,
     ark_ff::{BigInt, PrimeField},
     provekit_common::{

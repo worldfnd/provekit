@@ -4595,6 +4595,7 @@ dependencies = [
  "nargo_toml",
  "noirc_driver",
  "provekit-common",
+ "provekit-field-bn254",
  "provekit-prover",
  "provekit-r1cs-compiler",
  "provekit-verifier",
@@ -4694,9 +4695,11 @@ dependencies = [
 name = "provekit-field-bn254"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "ark-bn254",
  "ark-ff 0.5.0",
  "ntt",
+ "num-bigint",
  "poseidon2",
  "proptest",
  "provekit-common",

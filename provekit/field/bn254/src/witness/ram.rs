@@ -7,7 +7,7 @@ use {
     },
 };
 
-pub(crate) trait SpiceWitnessesSolver {
+pub trait SpiceWitnessesSolver {
     fn solve(&self, witness: &mut [Option<FieldElement>]) -> Result<()>;
 }
 

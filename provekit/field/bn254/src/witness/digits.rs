@@ -3,7 +3,7 @@ use provekit_common::{
     FieldElement,
 };
 
-pub(crate) trait DigitalDecompositionWitnessesSolver {
+pub trait DigitalDecompositionWitnessesSolver {
     fn solve(&self, witness: &mut [Option<FieldElement>]);
 }
 

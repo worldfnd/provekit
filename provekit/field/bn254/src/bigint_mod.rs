@@ -1,7 +1,7 @@
 // Re-export shared 256-bit arithmetic from provekit_common.
 // Names are aliased where the prover's historical API differs.
 use provekit_common::u256_arith::ceil_log2;
-pub(crate) use provekit_common::u256_arith::{mod_mul as mul_mod, mod_pow, widening_mul};
+pub use provekit_common::u256_arith::{mod_mul as mul_mod, mod_pow, widening_mul};
 /// BigInteger modular arithmetic on [u64; 4] limbs (256-bit).
 ///
 /// These helpers compute modular inverse via Fermat's little theorem:

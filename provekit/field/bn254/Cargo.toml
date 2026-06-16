@@ -26,6 +26,8 @@ whir.workspace = true
 zerocopy.workspace = true
 
 # 3rd party
+anyhow.workspace = true
+num-bigint.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
