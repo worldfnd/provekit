@@ -4,7 +4,7 @@ use {
     nargo_cli::cli::compile_cmd::compile_workspace_full,
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
     noirc_driver::CompileOptions,
-    provekit_common::{HashConfig, Prover, Verifier},
+    provekit_common::{HashConfig, Prover, R1csHash, Verifier},
     provekit_noir::Prove,
     provekit_r1cs_compiler::NoirCompiler,
     provekit_verifier::Verify,
@@ -334,5 +334,45 @@ fn test_verifier_rejects_mismatched_hash_config() {
     assert!(
         result.is_err(),
         "Verification should fail when prover and verifier use different hash configs",
+    );
+}
+
+// ---------------------------------------------------------------------------
+// bn254 deterministic-artifact regression gate
+//
+// Pins the byte-exact deterministic artifacts of a fixed circuit so the
+// field-agnostic refactor cannot silently change bn254 behaviour: the R1CS
+// Fiat-Shamir binding hash (SHA3-256 over the serialized R1CS) and the
+// proof-structure parameters that feed the domain separator. The public-input
+// binding hashes are pinned separately by the KATs in `provekit-field-bn254`,
+// and prove->verify ACCEPT / tamper->REJECT are covered by the cases above and
+// `test_public_input_binding_exploit`. Any drift here is a deliberate,
+// reviewed format change — regenerate the goldens and explain why.
+
+/// SHA3-256 of the serialized R1CS for `basic-4` (HashConfig::Sha256).
+const GOLDEN_BASIC4_R1CS_HASH: [u8; 32] = [
+    0xb2, 0xdc, 0x55, 0x97, 0x97, 0xf4, 0xf4, 0xe4, 0x62, 0xdc, 0xb9, 0xfd, 0x02, 0x42, 0xb3, 0x8e,
+    0x00, 0xd0, 0xe2, 0xac, 0xd4, 0x6c, 0x26, 0xb0, 0x9a, 0xfc, 0x26, 0x23, 0xfa, 0xe9, 0x9a, 0x85,
+];
+/// (m, w1_size, m_0, num_challenges) for `basic-4` (HashConfig::Sha256).
+const GOLDEN_BASIC4_PARAMS: (usize, usize, usize, usize) = (13, 4, 1, 0);
+
+#[test]
+fn bn254_deterministic_artifacts_regression() {
+    let (circuit_path, _) = load_noir_artifact_paths("../../noir-examples/basic-4", "Prover.toml");
+    let scheme =
+        NoirCompiler::from_file(&circuit_path, HashConfig::Sha256).expect("compiling basic-4");
+
+    assert_eq!(
+        scheme.r1cs().hash(),
+        R1csHash::new(GOLDEN_BASIC4_R1CS_HASH),
+        "basic-4 R1CS Fiat-Shamir binding hash drifted (bn254 not byte-identical to v2)"
+    );
+
+    let w = scheme.whir_for_witness();
+    assert_eq!(
+        (w.m, w.w1_size, w.m_0, w.num_challenges),
+        GOLDEN_BASIC4_PARAMS,
+        "basic-4 proof-structure parameters drifted"
     );
 }
