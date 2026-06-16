@@ -54,7 +54,7 @@ pub enum HashConfig {
 /// Regression trip-wires: the KATs in `witness::tests` freeze the
 /// byte-exact output of each variant under this constant.
 const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V1";
-static PUBLIC_INPUTS_DST_FE: LazyLock<FieldElement> = LazyLock::new(|| {
+pub(crate) static PUBLIC_INPUTS_DST_FE: LazyLock<FieldElement> = LazyLock::new(|| {
     use sha2::{Digest, Sha256};
     FieldElement::from_le_bytes_mod_order(&Sha256::digest(PUBLIC_INPUTS_DST))
 });

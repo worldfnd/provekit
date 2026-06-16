@@ -1,3 +1,4 @@
+pub mod field;
 pub mod file;
 pub use file::binary_format;
 pub mod hash_config;
@@ -26,6 +27,7 @@ use crate::{
 pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
+    field::{DynFieldSponge, ProofField},
     hash_config::HashConfig,
     mavros::{MavrosProver, MavrosSchemeData},
     noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
