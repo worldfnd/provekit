@@ -1,13 +1,8 @@
-//! bn254 field instantiation for the ProveKit spine.
+//! bn254 field backend for the ProveKit spine.
 //!
-//! Holds the bn254-specific field primitives — the Skyscraper and Poseidon2
-//! Merkle-hash engines / sponges and the custom NTT — and registers them, plus
-//! a [`provekit_common::FieldHashProvider`], into the spine's global registries
-//! via [`register`]. The spine (`provekit-common`) never names these directly;
-//! it reaches them only through the registered provider.
-//!
-//! Call [`register`] once at startup before any prove/verify or public-input
-//! hashing under the Skyscraper/Poseidon2 configurations.
+//! [`register`] installs the Skyscraper and Poseidon2 Merkle-hash engines, the
+//! custom NTT, and a [`provekit_common::FieldHashProvider`]. Call it once at
+//! startup before any prove/verify or public-input hashing.
 
 pub mod bigint_mod;
 pub mod ec_arith;
@@ -16,9 +11,8 @@ pub mod poseidon2;
 pub mod skyscraper;
 pub mod witness;
 
-// Extern field primitive crates (the local `skyscraper`/`poseidon2` modules
-// above shadow the crate names at this crate root, so reach the raw permutation
-// helpers via the leading-`::` extern paths).
+// The local `skyscraper`/`poseidon2` modules shadow the crate names here, so
+// reach the extern crates via leading-`::` paths.
 use {
     ::poseidon2::poseidon2_hash,
     ::skyscraper::simple::compress as skyscraper_compress,
@@ -79,11 +73,8 @@ impl FieldHashProvider for Bn254HashProvider {
 
 static PROVIDER: Bn254HashProvider = Bn254HashProvider;
 
-/// Register the bn254 field backend with the spine's global registries.
-///
-/// Registers the custom NTT engine ([`ntt::RSFr`]), the Skyscraper and
-/// Poseidon2 Merkle-hash engines, and the field-native hash provider. Must be
-/// called once before any prove/verify or public-input hashing. Idempotent.
+/// Register the bn254 field backend (NTT engine, Skyscraper/Poseidon2 Merkle
+/// engines, and the hash provider). Idempotent.
 pub fn register() {
     static INIT: Once = Once::new();
     INIT.call_once(|| {

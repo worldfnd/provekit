@@ -1,15 +1,9 @@
 //! Runtime-selectable Fiat-Shamir transcript sponge.
 //!
-//! Instead of making every function generic over a sponge type parameter,
-//! we use a single enum that delegates to the concrete sponge at runtime.
-//! The branch cost is negligible — the sponge is called O(log n) times
-//! per proof for Fiat-Shamir challenges, not in a tight inner loop.
-//!
-//! The field-native configurations ([`HashConfig::Skyscraper`],
-//! [`HashConfig::Poseidon2`]) are held behind the object-safe
-//! [`DynFieldSponge`] shim and constructed via [`ProofField::field_sponge`],
-//! so this module names no field-specific sponge type. The byte-sponge
-//! configurations use `spongefish`'s field-agnostic instantiations directly.
+//! A single enum dispatches to the concrete sponge chosen by `HashConfig`,
+//! instead of threading a sponge type parameter through every function.
+//! Field-native sponges (Skyscraper, Poseidon2) sit behind the `DynFieldSponge`
+//! shim; byte sponges use `spongefish`'s instantiations directly.
 
 use {
     crate::{
@@ -27,8 +21,7 @@ pub enum TranscriptSponge {
     Sha256(instantiations::SHA256),
     Blake3(instantiations::Blake3),
     Keccak(instantiations::Keccak),
-    /// Field-native sponge (Skyscraper or Poseidon2), held behind the
-    /// object-safe shim so this module stays field-agnostic.
+    /// Field-native sponge (Skyscraper or Poseidon2).
     Field(Box<dyn DynFieldSponge>),
 }
 
@@ -78,9 +71,8 @@ impl DuplexSpongeInterface for TranscriptSponge {
     type U = u8;
 
     fn absorb(&mut self, input: &[u8]) -> &mut Self {
-        // Byte sponges implement both `DuplexSpongeInterface` and (via the
-        // blanket impl) `DynFieldSponge`, so qualify them explicitly; the
-        // `Field` arm is a `Box<dyn DynFieldSponge>` and is unambiguous.
+        // Qualify byte-sponge calls: the blanket `DynFieldSponge` impl is also
+        // in scope, so a bare `s.absorb(..)` would be ambiguous.
         match self {
             Self::Sha256(s) => {
                 DuplexSpongeInterface::absorb(s, input);

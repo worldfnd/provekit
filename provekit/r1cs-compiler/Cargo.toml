@@ -11,8 +11,7 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
-# Frontend registers the bn254 field backend before building/using a scheme
-# (scheme construction reads the field-native Merkle engine id).
+# Registers the bn254 backend before building a scheme (which reads its engine id).
 provekit-field-bn254.workspace = true
 poseidon2.workspace = true
 

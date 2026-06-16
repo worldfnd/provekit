@@ -337,17 +337,12 @@ fn test_verifier_rejects_mismatched_hash_config() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// bn254 deterministic-artifact regression gate
+// bn254 deterministic-artifact regression test.
 //
-// Pins the byte-exact deterministic artifacts of a fixed circuit so the
-// field-agnostic refactor cannot silently change bn254 behaviour: the R1CS
-// Fiat-Shamir binding hash (SHA3-256 over the serialized R1CS) and the
-// proof-structure parameters that feed the domain separator. The public-input
-// binding hashes are pinned separately by the KATs in `provekit-field-bn254`,
-// and prove->verify ACCEPT / tamper->REJECT are covered by the cases above and
-// `test_public_input_binding_exploit`. Any drift here is a deliberate,
-// reviewed format change — regenerate the goldens and explain why.
+// Pins basic-4's R1CS hash and proof-structure params so field-agnostic
+// refactors can't silently change bn254 output. Drift = regenerate the goldens
+// deliberately. (Public-input hashes are pinned by the KATs in
+// provekit-field-bn254.)
 
 /// SHA3-256 of the serialized R1CS for `basic-4` (HashConfig::Sha256).
 const GOLDEN_BASIC4_R1CS_HASH: [u8; 32] = [

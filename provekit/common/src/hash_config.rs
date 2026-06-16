@@ -51,8 +51,9 @@ pub enum HashConfig {
 /// format, and introducing a tag would break every deployed Skyscraper
 /// proof.
 ///
-/// Regression trip-wires: the KATs in `witness::tests` freeze the
-/// byte-exact output of each variant under this constant.
+/// Regression trip-wires: the KATs in `provekit-field-bn254`'s
+/// `tests/public_input_hash.rs` freeze the byte-exact output of each variant
+/// under this constant.
 pub const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V1";
 pub static PUBLIC_INPUTS_DST_FE: LazyLock<FieldElement> = LazyLock::new(|| {
     use sha2::{Digest, Sha256};
@@ -174,7 +175,7 @@ impl std::str::FromStr for HashConfig {
 /// DST-tagged [`sha2::digest::Digest`] hash (SHA-256, Keccak-256) over
 /// `elements`.
 ///
-/// The final [`FieldElement::from_le_bytes_mod_order`] reduction introduces
+/// The final [`FieldElement`]`::from_le_bytes_mod_order` reduction introduces
 /// ~2⁻²⁵⁴ bias — negligible for FS instance binding, but this is not a
 /// uniform field sampler.
 #[inline]

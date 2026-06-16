@@ -1,10 +1,9 @@
 //! Generic WHIR proving engine for ProveKit.
 //!
-//! Field- and frontend-agnostic: it operates on an `R1CS` instance, a solved
-//! witness vector, and a `WhirR1CSScheme` (all from `provekit-common`), and
-//! produces a `WhirR1CSProof`. It names no concrete field and no Noir/ACIR
-//! types — the Noir/mavros orchestration and the witness solving live in
-//! `provekit-noir`, and the field backend is registered by the caller.
+//! Operates on an `R1CS`, a solved witness, and a `WhirR1CSScheme` (all from
+//! `provekit-common`) and produces a `WhirR1CSProof`. Names no field or
+//! Noir/ACIR types; the orchestration and witness solving live in
+//! `provekit-noir`.
 
 pub mod whir_r1cs;
 

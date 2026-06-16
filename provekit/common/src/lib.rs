@@ -25,20 +25,13 @@ use {
     whir::algebra::embedding::{Embedding, Identity},
 };
 
-/// The proof-system field embedding.
+/// The proof-system field embedding (currently `Identity<bn254::Fr>`).
 ///
-/// `field = which embedding you instantiate`. PR A instantiates the spine only
-/// at `Identity<bn254::Fr>`; a follow-up adds a second embedding. This type
-/// alias is the **single place** the concrete field is chosen — everything
-/// downstream resolves [`FieldElement`] through it, so adding a field is a
-/// localized change here plus a new [`ProofField`] impl.
+/// This is the single place the field is chosen: change it and add a matching
+/// [`FieldHashProvider`] impl to switch fields.
 pub type ProvekitEmbedding = Identity<ark_bn254::Fr>;
 
-/// The base field the spine stores and operates over.
-///
-/// Equals `<ProvekitEmbedding as Embedding>::Source` — `bn254::Fr` at
-/// `Identity`. At `Identity` the base and extension fields coincide, so the
-/// spine needs no base/ext distinction.
+/// The base field the spine operates over (`bn254::Fr` at `Identity`).
 pub type FieldElement = <ProvekitEmbedding as Embedding>::Source;
 
 pub use {

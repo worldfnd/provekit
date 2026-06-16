@@ -55,8 +55,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         has_public_inputs: bool,
         hash_config: HashConfig,
     ) -> Self {
-        // Scheme construction reads the field-native Merkle engine id, so the
-        // bn254 field backend must be registered first.
+        // Register the bn254 backend before reading its engine id.
         provekit_field_bn254::register();
         assert_eq!(
             num_challenges,
@@ -156,8 +155,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         has_public_inputs: bool,
         hash_config: HashConfig,
     ) -> Self {
-        // Scheme construction reads the field-native Merkle engine id, so the
-        // bn254 field backend must be registered first.
+        // Register the bn254 backend before reading its engine id.
         provekit_field_bn254::register();
         debug_assert_eq!(
             num_challenges,

@@ -82,9 +82,9 @@ Misusing `prover_hint_ark` for a value that should be transcript-bound is a soun
 
 ### NTT/Hash Engine Registration
 ```rust
-provekit_common::register_ntt();  // Must be called once at startup
+provekit_field_bn254::register();  // Must be called once at startup
 ```
-Registers the WHIR ArkNtt and Skyscraper hash engine globally. Forgetting this causes runtime panics.
+Registers the field's NTT engine, Merkle-hash engines, and `FieldHashProvider` into the spine's global registries. The spine (`common`/`prover`/`verifier`) is field-agnostic and registers nothing itself, so the caller must call this before any prove/verify or public-input hashing. Forgetting it causes runtime panics.
 
 ## Key Types
 

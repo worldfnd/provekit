@@ -56,9 +56,8 @@ ignored = ["keccak"] # Intentionally anchored to keep Noir beta.19-compatible RC
 
 [dev-dependencies]
 divan.workspace = true
-# Dev-only cycle: the bn254 field crate depends on common, but common's tests
-# and benches need a registered field provider / the bn254 NTT. Cargo permits
-# dev-dependency cycles (they are excluded from the normal build graph).
+# dev-dependency cycle (allowed; excluded from the normal build graph). Needed
+# because common's tests/benches use the bn254 provider and NTT.
 provekit-field-bn254.workspace = true
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]

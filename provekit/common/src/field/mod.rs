@@ -1,14 +1,9 @@
 //! Field-specific proof operations behind a registered provider.
 //!
-//! The spine is field-agnostic: it never names `skyscraper`, `poseidon2`, or
-//! `ntt`. Instead a field crate (e.g. `provekit-field-bn254`) registers a
-//! [`FieldHashProvider`] at startup via [`register_field_hash_provider`], and
-//! the spine looks it up at runtime — the same pattern whir uses for its
-//! `ENGINES` / `NTT` registries.
-//!
-//! This keeps `common` free of any concrete-field dependency: a binary links
-//! exactly the one field crate it registers, and adding a field is a new crate
-//! plus a `register()` call, with no change here.
+//! `common` names no concrete field. A field crate (e.g.
+//! `provekit-field-bn254`) registers a [`FieldHashProvider`] via
+//! [`register_field_hash_provider`], and the spine looks it up at runtime, like
+//! whir's `ENGINES`/`NTT` registries.
 
 use {
     crate::{FieldElement, HashConfig},
@@ -17,14 +12,10 @@ use {
     whir::engines::EngineId,
 };
 
-/// Object-safe Fiat-Shamir sponge for the field-native hash configurations
-/// ([`HashConfig::Skyscraper`], [`HashConfig::Poseidon2`]).
+/// Object-safe Fiat-Shamir sponge for the field-native hash configs.
 ///
-/// `spongefish::DuplexSpongeInterface` is not object-safe — its methods return
-/// `&mut Self` — so the runtime [`crate::TranscriptSponge`] cannot hold a
-/// `Box<dyn DuplexSpongeInterface>`. This object-safe shim (methods return
-/// `()`, plus an explicit `clone_box`) lets the spine keep `TranscriptSponge`
-/// in `common` while the concrete field-native sponges live in the field crate.
+/// Lets `TranscriptSponge` box a field-native sponge: `spongefish`'s
+/// `DuplexSpongeInterface` returns `&mut Self`, so it is not object-safe.
 pub trait DynFieldSponge: Send {
     /// Absorb bytes into the sponge.
     fn absorb(&mut self, input: &[u8]);
@@ -36,10 +27,8 @@ pub trait DynFieldSponge: Send {
     fn clone_box(&self) -> Box<dyn DynFieldSponge>;
 }
 
-/// Any `spongefish` byte-sponge that is `Clone` is automatically a
-/// [`DynFieldSponge`]. This blanket impl is field-agnostic and stays in
-/// `common`; only the *construction* of the concrete sponges (in
-/// [`FieldHashProvider::field_sponge`]) is field-specific.
+/// Any `Clone` byte-sponge from `spongefish` is automatically a
+/// `DynFieldSponge`.
 impl<S> DynFieldSponge for S
 where
     S: DuplexSpongeInterface<U = u8> + Clone + Send + 'static,
@@ -61,12 +50,8 @@ where
     }
 }
 
-/// The per-field glue the spine needs but whir's `Embedding` trait does not
-/// provide: the field-native Merkle-hash engine ids, the public-input binding
-/// hashes, and the field-native Fiat-Shamir sponge constructor.
-///
-/// Implemented and registered by a field crate (e.g. `provekit-field-bn254`).
-/// Object-safe so the spine can hold it as `&'static dyn FieldHashProvider`.
+/// Field-native Merkle engine ids, public-input binding hashes, and the
+/// Fiat-Shamir sponge constructor. Implemented and registered by a field crate.
 pub trait FieldHashProvider: Send + Sync {
     /// WHIR engine id for the field-native Skyscraper Merkle hash.
     fn skyscraper_engine_id(&self) -> EngineId;
@@ -88,8 +73,10 @@ pub trait FieldHashProvider: Send + Sync {
 
 static FIELD_HASH_PROVIDER: OnceLock<&'static dyn FieldHashProvider> = OnceLock::new();
 
-/// Register the field-native hash provider. Called once at startup by the
-/// active field crate's `register()`. Idempotent: later calls are ignored.
+/// Register the field-native hash provider, called once at startup by the field
+/// crate's `register()`. The first registrant wins; a later call (even with a
+/// different provider) is ignored, so a binary must register exactly one field
+/// crate.
 pub fn register_field_hash_provider(provider: &'static dyn FieldHashProvider) {
     let _ = FIELD_HASH_PROVIDER.set(provider);
 }
@@ -97,10 +84,8 @@ pub fn register_field_hash_provider(provider: &'static dyn FieldHashProvider) {
 /// Access the registered field-native hash provider.
 ///
 /// # Panics
-/// Panics if no provider has been registered — call the active field crate's
-/// `register()` (e.g. `provekit_field_bn254::register()`) before any
-/// proving/verifying or public-input hashing under the Skyscraper/Poseidon2
-/// configurations.
+/// Panics if no provider has been registered. Call the field crate's
+/// `register()` (e.g. `provekit_field_bn254::register()`) first.
 pub(crate) fn provider() -> &'static dyn FieldHashProvider {
     *FIELD_HASH_PROVIDER.get().expect(
         "field hash provider not registered; call the field crate's register() at startup (e.g. \

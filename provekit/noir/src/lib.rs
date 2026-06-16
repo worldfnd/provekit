@@ -30,14 +30,11 @@ mod logging;
 pub(crate) mod r1cs;
 mod witness;
 
-// Public re-exports for items used by integration tests and benchmarks.
-// `ec_scalar_mul` now lives in the bn254 field crate; re-exported here for the
-// MSM witness-solving tests (moves to the frontend with the orchestration).
+// Re-exported for the MSM witness-solving tests and benchmarks.
 pub use {provekit_field_bn254::ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
 
-/// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
-/// `prove_with_witness` is available on all targets. `MavrosProver` does not
-/// support `prove_with_witness` (errors at runtime).
+/// `prove`/`prove_with_toml` are native-only; `prove_with_witness` is
+/// cross-target (the Mavros prover rejects it at runtime).
 pub trait Prove {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     fn prove(self, input_map: InputMap) -> Result<NoirProof>;

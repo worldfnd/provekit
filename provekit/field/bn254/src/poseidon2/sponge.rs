@@ -1,16 +1,16 @@
 //! Poseidon2 duplex sponge for Fiat-Shamir.
 //!
 //! spongefish's [`DuplexSponge`] works over a byte alphabet (`type U = u8`)
-//! to match [`crate::TranscriptSponge`]; Poseidon2 natively operates over
-//! `[Fr; 4]`. [`Poseidon2Wrapper`] bridges the two: each 32-byte chunk is
+//! to match [`provekit_common::TranscriptSponge`]; Poseidon2 natively operates
+//! over `[Fr; 4]`. [`Poseidon2Wrapper`] bridges the two: each 32-byte chunk is
 //! decoded as a little-endian integer mod the BN254 prime, permuted, and
 //! re-encoded via canonical LE bytes. Between permutations the state is
 //! always canonical, so the reduction is a no-op.
 //!
 //! # Canonical-lane invariant
 //!
-//! [`crate::utils::bytes_to_field`] is `from_le_bytes_mod_order`, which
-//! reduces each 32-byte lane mod p. This adapter is therefore only
+//! [`provekit_common::utils::bytes_to_field`] is `from_le_bytes_mod_order`,
+//! which reduces each 32-byte lane mod p. This adapter is therefore only
 //! **byte-injective** when every absorbed lane is already < p. spongefish
 //! writes raw bytes straight into `permutation_state` (see
 //! `duplex_sponge.rs:197-213`), and the domain separator absorbs arbitrary

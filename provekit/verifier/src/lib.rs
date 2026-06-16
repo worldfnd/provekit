@@ -7,6 +7,11 @@ use {
     tracing::instrument,
 };
 
+/// Verify a proof.
+///
+/// The caller must register a field backend (e.g.
+/// `provekit_field_bn254::register()`) before calling this; otherwise the
+/// field-native hash paths panic.
 pub trait Verify {
     fn verify(&mut self, proof: &NoirProof) -> Result<()>;
 }
@@ -14,9 +19,7 @@ pub trait Verify {
 impl Verify for Verifier {
     #[instrument(skip_all)]
     fn verify(&mut self, proof: &NoirProof) -> Result<()> {
-        // The field backend must already be registered by the caller (e.g.
-        // `provekit_field_bn254::register()` at startup); verification is
-        // field-agnostic and registers nothing itself.
+        // Caller registers the field backend; verification does not.
         self.whir_for_witness
             .take()
             .context("Verifier has already been consumed; cannot verify twice")?

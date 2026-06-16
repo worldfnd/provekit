@@ -101,7 +101,9 @@ provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" }
 provekit-field-bn254 = { path = "provekit/field/bn254" }
-provekit-noir = { path = "provekit/noir" }
+# default-features = false here so members (the wasm build) can opt out of the
+# Noir/witness-generation defaults. Mirrors provekit-prover.
+provekit-noir = { path = "provekit/noir", default-features = false }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
 provekit-prover = { path = "provekit/prover", default-features = false }

@@ -1,11 +1,8 @@
-//! Public-input binding hash tests for the bn254 field.
+//! Public-input binding hash KATs for the bn254 field.
 //!
-//! Relocated from `provekit-common` because the Skyscraper/Poseidon2 hash paths
-//! require the registered [`provekit_common::FieldHashProvider`], which only
-//! the bn254 field crate supplies. These KATs freeze the byte-exact output of
-//! each [`HashConfig`] and are the regression trip-wires for the field-native
-//! hashing: any change to the encoding (DST, per-element serialization,
-//! mod-reduction, Skyscraper compression order) must fail them.
+//! These live here (not in `provekit-common`) because the Skyscraper/Poseidon2
+//! paths need a registered field provider. They pin the byte-exact output of
+//! each hash config; any encoding change must fail them.
 
 use {
     proptest::prelude::*,
