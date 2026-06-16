@@ -24,9 +24,26 @@ use crate::{
     interner::{InternedFieldElement, Interner},
     sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
 };
+use whir::algebra::embedding::{Embedding, Identity};
+
+/// The proof-system field embedding.
+///
+/// `field = which embedding you instantiate`. PR A instantiates the spine only
+/// at `Identity<bn254::Fr>`; a follow-up adds a second embedding. This type
+/// alias is the **single place** the concrete field is chosen — everything
+/// downstream resolves [`FieldElement`] through it, so adding a field is a
+/// localized change here plus a new [`ProofField`] impl.
+pub type ProvekitEmbedding = Identity<ark_bn254::Fr>;
+
+/// The base field the spine stores and operates over.
+///
+/// Equals `<ProvekitEmbedding as Embedding>::Source` — `bn254::Fr` at
+/// `Identity`. At `Identity` the base and extension fields coincide, so the
+/// spine needs no base/ext distinction.
+pub type FieldElement = <ProvekitEmbedding as Embedding>::Source;
+
 pub use {
     acir::FieldElement as NoirElement,
-    ark_bn254::Fr as FieldElement,
     field::{DynFieldSponge, ProofField},
     hash_config::HashConfig,
     mavros::{MavrosProver, MavrosSchemeData},
