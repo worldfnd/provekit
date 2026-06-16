@@ -31,14 +31,14 @@ use {
 pub(crate) mod bigint_mod;
 #[cfg(feature = "bn254")]
 pub(crate) mod ec_arith;
+#[cfg(test)]
+mod goldilocks_fixtures;
 #[cfg(all(feature = "bn254", not(target_arch = "wasm32")))]
 pub mod input_utils;
 #[cfg(feature = "bn254")]
 mod logging;
 #[cfg(feature = "bn254")]
 pub(crate) mod r1cs;
-#[cfg(test)]
-mod roundtrip_tests;
 // Private under bn254 (the `Prove` trait is the public entry point); public
 // under goldilocks, where `WhirR1CSProver` is the only proving API for
 // hand-built R1CS instances.

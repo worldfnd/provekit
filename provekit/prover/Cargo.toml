@@ -13,7 +13,7 @@ default = ["witness-generation", "parallel", "bn254"]
 # At least one field feature must be enabled; `bn254` takes precedence when
 # both are on. Pair `goldilocks` with `--no-default-features`.
 # `provekit-verifier/<field>` forwards the field selection to the dev-dep used
-# by `roundtrip_tests`, so `cargo test -p provekit-prover` builds the verifier
+# by `goldilocks_fixtures`, so `cargo test -p provekit-prover` builds the verifier
 # over the same field as common (it has no field feature of its own otherwise).
 bn254 = [
     "provekit-common/bn254",
