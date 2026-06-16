@@ -15,7 +15,7 @@ crate-type = ["staticlib", "rlib"]
 # Workspace crates
 provekit-common.workspace = true
 provekit-field-bn254.workspace = true
-provekit-prover = { workspace = true, features = ["witness-generation", "parallel"] }
+provekit-noir = { workspace = true, features = ["witness-generation", "parallel"] }
 provekit-r1cs-compiler = { workspace = true }
 provekit-verifier = { workspace = true }
 

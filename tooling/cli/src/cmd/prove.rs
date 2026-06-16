@@ -6,7 +6,7 @@ use {
         file::{read, write},
         Prover,
     },
-    provekit_prover::Prove,
+    provekit_noir::Prove,
     std::path::PathBuf,
     tracing::{info, instrument},
 };

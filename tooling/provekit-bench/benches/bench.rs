@@ -4,7 +4,7 @@ use {
     core::hint::black_box,
     divan::Bencher,
     provekit_common::{file::read, NoirProof, Prover, Verifier},
-    provekit_prover::Prove,
+    provekit_noir::Prove,
     provekit_verifier::Verify,
     std::path::Path,
 };

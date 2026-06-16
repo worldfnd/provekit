@@ -4294,7 +4294,7 @@ dependencies = [
  "noirc_abi",
  "poseidon2",
  "provekit-common",
- "provekit-prover",
+ "provekit-noir",
  "rasn",
  "rasn-cms",
  "rasn-pkix",
@@ -4596,7 +4596,7 @@ dependencies = [
  "noirc_driver",
  "provekit-common",
  "provekit-field-bn254",
- "provekit-prover",
+ "provekit-noir",
  "provekit-r1cs-compiler",
  "provekit-verifier",
  "serde",
@@ -4624,7 +4624,7 @@ dependencies = [
  "provekit-common",
  "provekit-field-bn254",
  "provekit-gnark",
- "provekit-prover",
+ "provekit-noir",
  "provekit-r1cs-compiler",
  "provekit-verifier",
  "rayon",
@@ -4686,7 +4686,7 @@ dependencies = [
  "parking_lot",
  "provekit-common",
  "provekit-field-bn254",
- "provekit-prover",
+ "provekit-noir",
  "provekit-r1cs-compiler",
  "provekit-verifier",
  "tempfile",
@@ -4725,7 +4725,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "provekit-prover"
+name = "provekit-noir"
 version = "1.0.0"
 dependencies = [
  "acir",
@@ -4742,6 +4742,21 @@ dependencies = [
  "postcard",
  "provekit-common",
  "provekit-field-bn254",
+ "provekit-prover",
+ "tracing",
+ "whir",
+]
+
+[[package]]
+name = "provekit-prover"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "ark-ff 0.5.0",
+ "ark-std 0.5.0",
+ "mavros-artifacts",
+ "mavros-vm",
+ "provekit-common",
  "tracing",
  "whir",
 ]
@@ -4797,7 +4812,7 @@ dependencies = [
  "postcard",
  "provekit-common",
  "provekit-field-bn254",
- "provekit-prover",
+ "provekit-noir",
  "provekit-verifier",
  "ruzstd",
  "serde-wasm-bindgen",

@@ -1,0 +1,46 @@
+[package]
+name = "provekit-noir"
+version = "1.0.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[features]
+default = ["witness-generation", "parallel"]
+witness-generation = ["nargo", "bn254_blackbox_solver", "noir_artifact_cli"]
+parallel = ["provekit-common/parallel", "provekit-prover/parallel"]
+
+[dependencies]
+# Workspace crates
+provekit-common.workspace = true
+provekit-prover = { workspace = true, default-features = false }
+provekit-field-bn254.workspace = true
+
+# Noir language
+acir.workspace = true
+noirc_abi.workspace = true
+
+# Cryptography and proof systems
+ark-ff.workspace = true
+ark-std.workspace = true
+whir.workspace = true
+
+# 3rd party
+anyhow.workspace = true
+num-bigint.workspace = true
+postcard.workspace = true
+tracing.workspace = true
+
+# Target-specific dependencies: only on non-WASM targets
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bn254_blackbox_solver = { workspace = true, optional = true }
+nargo = { workspace = true, optional = true }
+noir_artifact_cli = { workspace = true, optional = true }
+mavros-vm.workspace = true
+mavros-artifacts.workspace = true
+
+[lints]
+workspace = true

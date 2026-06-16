@@ -10,6 +10,7 @@ members = [
   "provekit/field/bn254",
   "provekit/r1cs-compiler",
   "provekit/prover",
+  "provekit/noir",
   "provekit/verifier",
   "tooling/cli",
   "tooling/provekit-bench",
@@ -100,6 +101,7 @@ provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" }
 provekit-field-bn254 = { path = "provekit/field/bn254" }
+provekit-noir = { path = "provekit/noir" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
 provekit-prover = { path = "provekit/prover", default-features = false }

@@ -5,7 +5,7 @@ use {
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
     noirc_driver::CompileOptions,
     provekit_common::{HashConfig, Prover, Verifier},
-    provekit_prover::Prove,
+    provekit_noir::Prove,
     provekit_r1cs_compiler::NoirCompiler,
     provekit_verifier::Verify,
     serde::Deserialize,

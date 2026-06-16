@@ -11,7 +11,7 @@ use {
         binary_format::{HEADER_SIZE, MAGIC_BYTES},
         NoirElement, NoirProof, Prover as ProverCore,
     },
-    provekit_prover::Prove,
+    provekit_noir::Prove,
     std::{cell::RefCell, collections::BTreeMap},
     wasm_bindgen::prelude::*,
 };

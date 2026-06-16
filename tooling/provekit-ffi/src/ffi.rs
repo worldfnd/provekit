@@ -11,7 +11,7 @@ use {
     },
     noirc_abi::input_parser::Format,
     provekit_common::{file, HashConfig, NoirProof, Prover, Verifier},
-    provekit_prover::Prove,
+    provekit_noir::Prove,
     provekit_r1cs_compiler::NoirCompiler,
     provekit_verifier::Verify,
     std::{
