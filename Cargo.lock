@@ -4584,7 +4584,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-bench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4606,7 +4606,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4635,7 +4635,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-common"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4653,17 +4653,15 @@ dependencies = [
  "mavros-artifacts",
  "mavros-vm",
  "noirc_abi",
- "ntt",
- "poseidon2",
  "postcard",
  "proptest",
+ "provekit-field-bn254",
  "rayon",
  "ruint",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "sha3",
- "skyscraper",
  "spongefish",
  "spongefish-pow",
  "tracing",
@@ -4675,7 +4673,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-ffi"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -4685,10 +4683,29 @@ dependencies = [
  "noirc_driver",
  "parking_lot",
  "provekit-common",
+ "provekit-field-bn254",
  "provekit-prover",
  "provekit-r1cs-compiler",
  "provekit-verifier",
  "tempfile",
+]
+
+[[package]]
+name = "provekit-field-bn254"
+version = "1.0.0"
+dependencies = [
+ "ark-bn254",
+ "ark-ff 0.5.0",
+ "ntt",
+ "poseidon2",
+ "proptest",
+ "provekit-common",
+ "skyscraper",
+ "spongefish",
+ "spongefish-pow",
+ "tracing",
+ "whir",
+ "zerocopy",
 ]
 
 [[package]]
@@ -4705,7 +4722,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-prover"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4720,13 +4737,14 @@ dependencies = [
  "num-bigint",
  "postcard",
  "provekit-common",
+ "provekit-field-bn254",
  "tracing",
  "whir",
 ]
 
 [[package]]
 name = "provekit-r1cs-compiler"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4739,6 +4757,7 @@ dependencies = [
  "poseidon2",
  "postcard",
  "provekit-common",
+ "provekit-field-bn254",
  "serde",
  "serde_json",
  "tracing",
@@ -4747,11 +4766,12 @@ dependencies = [
 
 [[package]]
 name = "provekit-verifier"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "ark-std 0.5.0",
  "provekit-common",
+ "provekit-field-bn254",
  "rayon",
  "tracing",
  "whir",
@@ -7034,7 +7054,7 @@ dependencies = [
 
 [[package]]
 name = "verifier-server"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum",

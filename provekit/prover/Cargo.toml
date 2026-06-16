@@ -16,6 +16,9 @@ parallel = ["provekit-common/parallel"]
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+# Transient: the field backend is registered here until A6 moves registration
+# to the frontend; the engine itself stays field-agnostic.
+provekit-field-bn254.workspace = true
 
 # Noir language
 acir.workspace = true

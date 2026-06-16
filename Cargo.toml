@@ -7,6 +7,7 @@ members = [
   "skyscraper/bn254-multiplier-codegen",
   "skyscraper/core",
   "provekit/common",
+  "provekit/field/bn254",
   "provekit/r1cs-compiler",
   "provekit/prover",
   "provekit/verifier",
@@ -97,7 +98,8 @@ poseidon2 = { path = "poseidon2" }
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
-provekit-common = { path = "provekit/common" , features = ["provekit_ntt"]}
+provekit-common = { path = "provekit/common" }
+provekit-field-bn254 = { path = "provekit/field/bn254" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
 provekit-prover = { path = "provekit/prover", default-features = false }

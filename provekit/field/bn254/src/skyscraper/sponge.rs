@@ -1,5 +1,5 @@
 use {
-    crate::utils::{bytes_to_field, field_to_bytes_le},
+    provekit_common::utils::{bytes_to_field, field_to_bytes_le},
     spongefish::{DuplexSponge, Permutation},
 };
 

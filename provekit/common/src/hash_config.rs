@@ -6,7 +6,7 @@
 //! - public-input instance binding ([`HashConfig::hash_field_elements`])
 
 use {
-    crate::{utils::field_to_bytes_le, FieldElement, ProofField},
+    crate::{field::provider, utils::field_to_bytes_le, FieldElement},
     ark_ff::PrimeField,
     serde::{Deserialize, Serialize},
     std::{fmt, sync::LazyLock},
@@ -53,8 +53,8 @@ pub enum HashConfig {
 ///
 /// Regression trip-wires: the KATs in `witness::tests` freeze the
 /// byte-exact output of each variant under this constant.
-const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V1";
-pub(crate) static PUBLIC_INPUTS_DST_FE: LazyLock<FieldElement> = LazyLock::new(|| {
+pub const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V1";
+pub static PUBLIC_INPUTS_DST_FE: LazyLock<FieldElement> = LazyLock::new(|| {
     use sha2::{Digest, Sha256};
     FieldElement::from_le_bytes_mod_order(&Sha256::digest(PUBLIC_INPUTS_DST))
 });
@@ -76,11 +76,11 @@ impl HashConfig {
     #[must_use]
     pub fn engine_id(&self) -> whir::engines::EngineId {
         match self {
-            Self::Skyscraper => FieldElement::skyscraper_engine_id(),
+            Self::Skyscraper => provider().skyscraper_engine_id(),
             Self::Sha256 => whir::hash::SHA2,
             Self::Keccak => whir::hash::KECCAK,
             Self::Blake3 => whir::hash::BLAKE3,
-            Self::Poseidon2 => FieldElement::poseidon2_engine_id(),
+            Self::Poseidon2 => provider().poseidon2_engine_id(),
         }
     }
 
@@ -142,11 +142,11 @@ impl HashConfig {
     #[must_use]
     pub fn hash_field_elements(self, elements: &[FieldElement]) -> FieldElement {
         match self {
-            Self::Skyscraper => FieldElement::hash_skyscraper(elements),
+            Self::Skyscraper => provider().hash_skyscraper(elements),
             Self::Sha256 => hash_digest::<sha2::Sha256>(PUBLIC_INPUTS_DST, elements),
             Self::Keccak => hash_digest::<sha3::Keccak256>(PUBLIC_INPUTS_DST, elements),
             Self::Blake3 => hash_blake3(PUBLIC_INPUTS_DST, elements),
-            Self::Poseidon2 => FieldElement::hash_poseidon2(elements),
+            Self::Poseidon2 => provider().hash_poseidon2(elements),
         }
     }
 }

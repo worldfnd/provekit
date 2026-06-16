@@ -1,5 +1,5 @@
 [package]
-name = "provekit-verifier"
+name = "provekit-field-bn254"
 version = "1.0.0"
 edition.workspace = true
 rust-version.workspace = true
@@ -9,20 +9,27 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
-# Workspace crates
+# Spine
 provekit-common.workspace = true
-# Transient: the field backend is registered here until A6 moves registration
-# to the caller; verification logic itself stays field-agnostic.
-provekit-field-bn254.workspace = true
+
+# Field primitive crates
+ntt.workspace = true
+poseidon2.workspace = true
+skyscraper.workspace = true
 
 # Cryptography and proof systems
-ark-std.workspace = true
+ark-bn254.workspace = true
+ark-ff.workspace = true
+spongefish.workspace = true
+spongefish-pow.workspace = true
 whir.workspace = true
+zerocopy.workspace = true
 
 # 3rd party
-anyhow.workspace = true
-rayon.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
 
 [lints]
 workspace = true

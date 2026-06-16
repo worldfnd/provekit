@@ -12,7 +12,10 @@
 //! configurations use `spongefish`'s field-agnostic instantiations directly.
 
 use {
-    crate::{field::DynFieldSponge, FieldElement, HashConfig, ProofField},
+    crate::{
+        field::{provider, DynFieldSponge},
+        HashConfig,
+    },
     spongefish::{instantiations, DuplexSpongeInterface},
     std::fmt,
 };
@@ -59,7 +62,7 @@ impl TranscriptSponge {
             HashConfig::Blake3 => Self::Blake3(Default::default()),
             HashConfig::Keccak => Self::Keccak(Default::default()),
             HashConfig::Skyscraper | HashConfig::Poseidon2 => {
-                Self::Field(FieldElement::field_sponge(config))
+                Self::Field(provider().field_sponge(config))
             }
         }
     }

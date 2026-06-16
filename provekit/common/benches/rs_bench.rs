@@ -2,7 +2,7 @@ use {
     ark_bn254::Fr,
     ark_ff::UniformRand,
     divan::{black_box, Bencher},
-    provekit_common::ntt::RSFr,
+    provekit_field_bn254::ntt::RSFr,
     whir::algebra::ntt::{NttEngine, ReedSolomon},
 };
 

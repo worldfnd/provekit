@@ -5,13 +5,10 @@ pub mod hash_config;
 mod interner;
 mod mavros;
 mod noir_proof_scheme;
-pub mod ntt;
 pub mod optimize;
-pub mod poseidon2;
 pub mod prefix_covector;
 mod prover;
 mod r1cs;
-pub mod skyscraper;
 pub mod sparse_matrix;
 mod transcript_sponge;
 pub mod u256_arith;
@@ -20,11 +17,13 @@ mod verifier;
 mod whir_r1cs;
 pub mod witness;
 
-use crate::{
-    interner::{InternedFieldElement, Interner},
-    sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
+use {
+    crate::{
+        interner::{InternedFieldElement, Interner},
+        sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
+    },
+    whir::algebra::embedding::{Embedding, Identity},
 };
-use whir::algebra::embedding::{Embedding, Identity};
 
 /// The proof-system field embedding.
 ///
@@ -44,7 +43,7 @@ pub type FieldElement = <ProvekitEmbedding as Embedding>::Source;
 
 pub use {
     acir::FieldElement as NoirElement,
-    field::{DynFieldSponge, ProofField},
+    field::{register_field_hash_provider, DynFieldSponge, FieldHashProvider},
     hash_config::HashConfig,
     mavros::{MavrosProver, MavrosSchemeData},
     noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
@@ -56,13 +55,3 @@ pub use {
     whir_r1cs::{R1csHash, WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},
     witness::PublicInputs,
 };
-
-/// Register provekit's custom implementations in whir's global registries.
-///
-/// Must be called once before any prove/verify operations.
-/// Idempotent — safe to call multiple times.
-pub fn register_ntt() {
-    use std::sync::Once;
-    static INIT: Once = Once::new();
-    INIT.call_once(<FieldElement as ProofField>::register_engines);
-}

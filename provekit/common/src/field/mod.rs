@@ -1,19 +1,19 @@
-//! Field-specific proof operations abstracted behind a trait.
+//! Field-specific proof operations behind a registered provider.
 //!
-//! [`ProofField`] carries the per-field glue that the WHIR spine needs but the
-//! upstream `whir::algebra::Embedding` trait does not provide: engine/NTT
-//! registration, the field-native Merkle-hash engine ids, the public-input
-//! binding hashes, and the field-native Fiat-Shamir sponge constructor.
+//! The spine is field-agnostic: it never names `skyscraper`, `poseidon2`, or
+//! `ntt`. Instead a field crate (e.g. `provekit-field-bn254`) registers a
+//! [`FieldHashProvider`] at startup via [`register_field_hash_provider`], and
+//! the spine looks it up at runtime — the same pattern whir uses for its
+//! `ENGINES` / `NTT` registries.
 //!
-//! For PR A it is implemented only for the bn254 scalar field
-//! ([`crate::FieldElement`]). The spine reaches every field-specific symbol
-//! through this surface, so the concrete implementation can later move into a
-//! standalone `field/bn254` crate without the spine naming `skyscraper`,
-//! `poseidon2`, or `ntt` directly.
+//! This keeps `common` free of any concrete-field dependency: a binary links
+//! exactly the one field crate it registers, and adding a field is a new crate
+//! plus a `register()` call, with no change here.
 
 use {
-    crate::{hash_config::PUBLIC_INPUTS_DST_FE, FieldElement, HashConfig},
+    crate::{FieldElement, HashConfig},
     spongefish::DuplexSpongeInterface,
+    std::sync::OnceLock,
     whir::engines::EngineId,
 };
 
@@ -39,7 +39,7 @@ pub trait DynFieldSponge: Send {
 /// Any `spongefish` byte-sponge that is `Clone` is automatically a
 /// [`DynFieldSponge`]. This blanket impl is field-agnostic and stays in
 /// `common`; only the *construction* of the concrete sponges (in
-/// [`ProofField::field_sponge`]) is field-specific.
+/// [`FieldHashProvider::field_sponge`]) is field-specific.
 impl<S> DynFieldSponge for S
 where
     S: DuplexSpongeInterface<U = u8> + Clone + Send + 'static,
@@ -61,96 +61,49 @@ where
     }
 }
 
-/// Per-field glue required by the WHIR spine.
+/// The per-field glue the spine needs but whir's `Embedding` trait does not
+/// provide: the field-native Merkle-hash engine ids, the public-input binding
+/// hashes, and the field-native Fiat-Shamir sponge constructor.
 ///
-/// Implemented for [`crate::FieldElement`] (bn254 scalar field) in PR A. Every
-/// method abstracts a reference that would otherwise tie the spine to the
-/// `skyscraper`, `poseidon2`, or `ntt` crates.
-pub trait ProofField: Sized {
-    /// Register this field's custom WHIR engines (NTT + Merkle hash engines).
-    ///
-    /// Idempotency is the caller's concern (see [`crate::register_ntt`]).
-    fn register_engines();
-
+/// Implemented and registered by a field crate (e.g. `provekit-field-bn254`).
+/// Object-safe so the spine can hold it as `&'static dyn FieldHashProvider`.
+pub trait FieldHashProvider: Send + Sync {
     /// WHIR engine id for the field-native Skyscraper Merkle hash.
-    fn skyscraper_engine_id() -> EngineId;
+    fn skyscraper_engine_id(&self) -> EngineId;
 
     /// WHIR engine id for the field-native Poseidon2 Merkle hash.
-    fn poseidon2_engine_id() -> EngineId;
+    fn poseidon2_engine_id(&self) -> EngineId;
 
     /// Skyscraper public-input binding hash (pairwise compression; empty input
     /// hashes to 0; not domain-separated — see [`crate::hash_config`]).
-    fn hash_skyscraper(elements: &[Self]) -> Self;
+    fn hash_skyscraper(&self, elements: &[FieldElement]) -> FieldElement;
 
     /// Poseidon2 public-input binding hash (DST-tagged one-shot).
-    fn hash_poseidon2(elements: &[Self]) -> Self;
+    fn hash_poseidon2(&self, elements: &[FieldElement]) -> FieldElement;
 
-    /// Construct the field-native Fiat-Shamir sponge for `config`.
-    ///
-    /// Only called for [`HashConfig::Skyscraper`] and [`HashConfig::Poseidon2`];
-    /// the byte-sponge configurations are handled directly by
-    /// [`crate::TranscriptSponge`].
-    fn field_sponge(config: HashConfig) -> Box<dyn DynFieldSponge>;
+    /// Construct the field-native Fiat-Shamir sponge for `config` (only called
+    /// for [`HashConfig::Skyscraper`] and [`HashConfig::Poseidon2`]).
+    fn field_sponge(&self, config: HashConfig) -> Box<dyn DynFieldSponge>;
 }
 
-impl ProofField for FieldElement {
-    fn register_engines() {
-        use std::sync::Arc;
+static FIELD_HASH_PROVIDER: OnceLock<&'static dyn FieldHashProvider> = OnceLock::new();
 
-        // Register NTT for polynomial operations.
-        #[cfg(not(feature = "provekit_ntt"))]
-        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield());
+/// Register the field-native hash provider. Called once at startup by the
+/// active field crate's `register()`. Idempotent: later calls are ignored.
+pub fn register_field_hash_provider(provider: &'static dyn FieldHashProvider) {
+    let _ = FIELD_HASH_PROVIDER.set(provider);
+}
 
-        #[cfg(feature = "provekit_ntt")]
-        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(crate::ntt::RSFr);
-
-        whir::algebra::ntt::NTT.insert(ntt);
-
-        // Register ProveKit-specific engines; WHIR's built-in engines
-        // (SHA2, Keccak, Blake3, etc.) are pre-registered via whir::hash::ENGINES.
-        whir::hash::ENGINES.register(Arc::new(crate::skyscraper::SkyscraperHashEngine));
-        whir::hash::ENGINES.register(Arc::new(crate::poseidon2::Poseidon2HashEngine));
-    }
-
-    fn skyscraper_engine_id() -> EngineId {
-        crate::skyscraper::SKYSCRAPER
-    }
-
-    fn poseidon2_engine_id() -> EngineId {
-        crate::poseidon2::POSEIDON2
-    }
-
-    fn hash_skyscraper(elements: &[Self]) -> Self {
-        use ark_ff::{BigInt, PrimeField};
-
-        #[inline]
-        fn compress(l: FieldElement, r: FieldElement) -> FieldElement {
-            let out = skyscraper::simple::compress(l.into_bigint().0, r.into_bigint().0);
-            FieldElement::new(BigInt(out))
-        }
-
-        let zero = FieldElement::from(0u64);
-        match elements {
-            [] => zero,
-            [x] => compress(*x, zero),
-            [first, rest @ ..] => rest.iter().copied().fold(*first, compress),
-        }
-    }
-
-    fn hash_poseidon2(elements: &[Self]) -> Self {
-        let mut tagged = Vec::with_capacity(elements.len() + 1);
-        tagged.push(*PUBLIC_INPUTS_DST_FE);
-        tagged.extend_from_slice(elements);
-        poseidon2::poseidon2_hash(&tagged)
-    }
-
-    fn field_sponge(config: HashConfig) -> Box<dyn DynFieldSponge> {
-        match config {
-            HashConfig::Skyscraper => Box::new(crate::skyscraper::SkyscraperSponge::default()),
-            HashConfig::Poseidon2 => Box::new(crate::poseidon2::Poseidon2Sponge::default()),
-            other => unreachable!("field_sponge is only valid for field-native configs, got {other:?}"),
-        }
-    }
+/// Access the registered field-native hash provider.
+///
+/// # Panics
+/// Panics if no provider has been registered — call the active field crate's
+/// `register()` (e.g. `provekit_field_bn254::register()`) before any
+/// proving/verifying or public-input hashing under the Skyscraper/Poseidon2
+/// configurations.
+pub(crate) fn provider() -> &'static dyn FieldHashProvider {
+    *FIELD_HASH_PROVIDER.get().expect(
+        "field hash provider not registered; call the field crate's register() at startup (e.g. \
+         provekit_field_bn254::register())",
+    )
 }
