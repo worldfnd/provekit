@@ -13,6 +13,8 @@ repository.workspace = true
 provekit-common.workspace = true
 # Registers the bn254 backend before building a scheme (which reads its engine id).
 provekit-field-bn254.workspace = true
+# Owns the Noir frontend types (NoirProofScheme/NoirSchemeData/...) this crate produces.
+provekit-noir = { workspace = true, default-features = false }
 poseidon2.workspace = true
 
 # Noir language

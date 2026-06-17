@@ -3,7 +3,7 @@ mod whir_r1cs;
 use {
     crate::whir_r1cs::WhirR1CSVerifier,
     anyhow::{Context, Result},
-    provekit_common::{NoirProof, Verifier},
+    provekit_noir::{NoirProof, Verifier},
     tracing::instrument,
 };
 

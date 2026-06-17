@@ -247,7 +247,7 @@ fn prove_circuit<T: serde::Serialize>(
         "\n  [{circuit_name}] Loading prover from: {}",
         pkp_path.display()
     );
-    let prover: provekit_common::Prover = provekit_common::file::read(pkp_path)
+    let prover: provekit_noir::Prover = provekit_common::file::read(pkp_path)
         .with_context(|| format!("Reading prover key for {circuit_name}"))?;
 
     let (num_constraints, num_witnesses) = prover.size();
@@ -259,8 +259,8 @@ fn prove_circuit<T: serde::Serialize>(
     let json = serde_json::to_string(inputs)
         .with_context(|| format!("Serializing {circuit_name} inputs to JSON"))?;
     let abi = match &prover {
-        provekit_common::Prover::Noir(p) => p.witness_generator.abi(),
-        provekit_common::Prover::Mavros(p) => &p.abi,
+        provekit_noir::Prover::Noir(p) => p.witness_generator.abi(),
+        provekit_noir::Prover::Mavros(p) => &p.abi,
     };
     let input_map = Format::Json
         .parse(&json, abi)

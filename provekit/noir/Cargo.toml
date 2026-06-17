@@ -32,6 +32,7 @@ whir.workspace = true
 anyhow.workspace = true
 num-bigint.workspace = true
 postcard.workspace = true
+serde.workspace = true
 tracing.workspace = true
 
 # Target-specific dependencies: only on non-WASM targets

@@ -9,9 +9,9 @@ use {
     base64::{engine::general_purpose::STANDARD as BASE64, Engine as _},
     provekit_common::{
         binary_format::{HEADER_SIZE, MAGIC_BYTES},
-        NoirElement, NoirProof, Prover as ProverCore,
+        NoirElement,
     },
-    provekit_noir::Prove,
+    provekit_noir::{NoirProof, Prove, Prover as ProverCore},
     std::{cell::RefCell, collections::BTreeMap},
     wasm_bindgen::prelude::*,
 };
@@ -78,7 +78,7 @@ impl Prover {
         let program_bytes = Program::<NoirElement>::serialize_program(&noir_prover.program);
         let bytecode_b64 = BASE64.encode(&program_bytes);
 
-        let abi_json = serde_json::to_value(&noir_prover.witness_generator.abi)
+        let abi_json = serde_json::to_value(noir_prover.witness_generator.abi())
             .map_err(|e| JsError::new(&format!("Failed to serialize ABI: {e}")))?;
 
         let circuit = serde_json::json!({

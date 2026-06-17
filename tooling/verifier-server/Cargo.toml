@@ -11,6 +11,8 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+# Owns the on-disk Verifier / NoirProof types this server consumes.
+provekit-noir = { workspace = true, default-features = false }
 provekit-gnark.workspace = true
 
 # 3rd party

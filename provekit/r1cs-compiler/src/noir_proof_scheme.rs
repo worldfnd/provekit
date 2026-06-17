@@ -1,7 +1,7 @@
 use {
     crate::{
         noir_to_r1cs, whir_r1cs::WhirR1CSSchemeBuilder,
-        witness_generator::NoirWitnessGeneratorBuilder,
+        witness_generator::build_noir_witness_generator,
     },
     anyhow::{ensure, Context as _, Result},
     mavros_artifacts::R1CS as MavrosR1CS,
@@ -9,9 +9,10 @@ use {
     noirc_artifacts::program::ProgramArtifact,
     provekit_common::{
         utils::{convert_mavros_r1cs_to_provekit, PrintAbi},
-        witness::{NoirWitnessGenerator, WitnessBuilder},
-        MavrosSchemeData, NoirProofScheme, NoirSchemeData, WhirR1CSScheme,
+        witness::WitnessBuilder,
+        WhirR1CSScheme,
     },
+    provekit_noir::{MavrosSchemeData, NoirProofScheme, NoirSchemeData},
     serde::Deserialize,
     std::{collections::HashSet, fs::File, path::Path},
     tracing::{info, instrument},
@@ -99,7 +100,7 @@ impl NoirCompiler {
         );
 
         let witness_generator =
-            NoirWitnessGenerator::new(&program, remapped_witness_map, num_real + num_virtual);
+            build_noir_witness_generator(&program, remapped_witness_map, num_real + num_virtual);
 
         let whir_for_witness = WhirR1CSScheme::new_for_r1cs(
             &remapped_r1cs,
@@ -205,8 +206,9 @@ mod tests {
         ark_std::One,
         provekit_common::{
             witness::{ConstantTerm, DigitalDecompositionWitnesses, SumTerm, WitnessBuilder},
-            FieldElement, NoirProofScheme,
+            FieldElement,
         },
+        provekit_noir::NoirProofScheme,
         serde::{Deserialize, Serialize},
         std::path::PathBuf,
     };

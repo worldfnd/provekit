@@ -1,9 +1,7 @@
 use {
-    crate::{
-        noir_proof_scheme::NoirProofScheme, utils::serde_jsonify, whir_r1cs::WhirR1CSScheme,
-        HashConfig, R1CS,
-    },
+    crate::NoirProofScheme,
     noirc_abi::Abi,
+    provekit_common::{utils::serde_jsonify, HashConfig, WhirR1CSScheme, R1CS},
     serde::{Deserialize, Serialize},
 };
 
@@ -28,7 +26,7 @@ impl Verifier {
             NoirProofScheme::Noir(d) => Self {
                 r1cs:             d.r1cs,
                 whir_for_witness: Some(d.whir_for_witness),
-                abi:              d.witness_generator.abi.clone(),
+                abi:              d.witness_generator.abi().clone(),
                 hash_config:      d.hash_config,
             },
             NoirProofScheme::Mavros(d) => Self {

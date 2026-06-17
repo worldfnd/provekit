@@ -1,6 +1,6 @@
 use {
-    crate::utils::serde_jsonify,
     noirc_abi::Abi,
+    provekit_common::utils::serde_jsonify,
     serde::{Deserialize, Serialize},
     std::num::NonZeroU32,
 };
@@ -14,14 +14,24 @@ pub struct NoirWitnessGenerator {
     // [internally-tagged]: https://serde.rs/enum-representations.html
     // TODO: serializes the ABI as a json string. Something like CBOR might be better.
     #[serde(with = "serde_jsonify")]
-    pub abi: Abi,
+    pub(crate) abi: Abi,
 
     /// ACIR witness index to R1CS witness index
     /// Index zero is reserved for constant one, so we can use `NonZeroU32`
-    pub witness_map: Vec<Option<NonZeroU32>>,
+    pub(crate) witness_map: Vec<Option<NonZeroU32>>,
 }
 
 impl NoirWitnessGenerator {
+    /// Construct from a precomputed ABI and ACIR→R1CS witness index map.
+    ///
+    /// The program-derived construction logic (deriving the ABI and witness
+    /// map from a compiled circuit) lives in the `provekit-r1cs-compiler`
+    /// frontend; this is the plain field-setting constructor it calls.
+    #[must_use]
+    pub fn new(abi: Abi, witness_map: Vec<Option<NonZeroU32>>) -> Self {
+        Self { abi, witness_map }
+    }
+
     pub fn abi(&self) -> &Abi {
         &self.abi
     }

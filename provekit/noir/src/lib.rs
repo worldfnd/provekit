@@ -6,8 +6,7 @@ use {
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
-        utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, Prover,
-        PublicInputs, TranscriptSponge,
+        utils::noir_to_native, FieldElement, NoirElement, PublicInputs, TranscriptSponge,
     },
     provekit_prover::WhirR1CSProver,
     std::mem::{size_of, take},
@@ -20,16 +19,33 @@ use {
 };
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    mavros_vm::interpreter as mavros_interpreter, provekit_common::MavrosProver, std::path::Path,
+    mavros_vm::interpreter as mavros_interpreter, std::path::Path,
     whir::transcript::VerifierMessage,
 };
 
 #[cfg(not(target_arch = "wasm32"))]
+mod file_format;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
 mod logging;
+mod mavros;
+mod noir_proof_scheme;
+mod prover;
 pub(crate) mod r1cs;
+mod verifier;
 mod witness;
+mod witness_generator;
 
+// Frontend types relocated here from provekit-common so that the spine stays
+// field- and Noir-frontend-agnostic. The `FileFormat` / `MaybeHashAware` impls
+// live in `file_format` (native targets only).
+pub use {
+    mavros::{MavrosProver, MavrosSchemeData},
+    noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
+    prover::{NoirProver, Prover},
+    verifier::Verifier,
+    witness_generator::NoirWitnessGenerator,
+};
 // Re-exported for the MSM witness-solving tests and benchmarks.
 pub use {provekit_field_bn254::ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
 

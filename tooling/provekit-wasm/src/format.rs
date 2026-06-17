@@ -1,11 +1,9 @@
 use {
-    provekit_common::{
-        binary_format::{
-            HEADER_SIZE, MAGIC_BYTES, PROVER_FORMAT, PROVER_VERSION, VERIFIER_FORMAT,
-            VERIFIER_VERSION, XZ_MAGIC, ZSTD_MAGIC,
-        },
-        Prover, Verifier,
+    provekit_common::binary_format::{
+        HEADER_SIZE, MAGIC_BYTES, PROVER_FORMAT, PROVER_VERSION, VERIFIER_FORMAT, VERIFIER_VERSION,
+        XZ_MAGIC, ZSTD_MAGIC,
     },
+    provekit_noir::{Prover, Verifier},
     wasm_bindgen::prelude::*,
 };
 

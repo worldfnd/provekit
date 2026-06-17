@@ -1,9 +1,7 @@
 use {
     crate::format::parse_binary_verifier,
-    provekit_common::{
-        binary_format::{HEADER_SIZE, MAGIC_BYTES},
-        NoirProof, Verifier as VerifierCore,
-    },
+    provekit_common::binary_format::{HEADER_SIZE, MAGIC_BYTES},
+    provekit_noir::{NoirProof, Verifier as VerifierCore},
     provekit_verifier::Verify,
     wasm_bindgen::prelude::*,
 };

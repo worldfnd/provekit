@@ -11,6 +11,8 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+# Owns the on-disk Verifier / NoirProof types this crate consumes.
+provekit-noir = { workspace = true, default-features = false }
 
 # Cryptography and proof systems
 ark-std.workspace = true

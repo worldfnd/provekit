@@ -2,8 +2,9 @@ use {
     crate::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, NoirProof, Verifier},
+    provekit_common::file::read,
     provekit_gnark::write_gnark_parameters_to_file,
+    provekit_noir::{NoirProof, Verifier},
     std::{fs::File, io::Write, path::PathBuf},
     tracing::{info, instrument},
 };
