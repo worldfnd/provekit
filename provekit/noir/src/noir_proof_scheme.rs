@@ -2,9 +2,10 @@ use {
     crate::{MavrosSchemeData, NoirWitnessGenerator},
     acir::circuit::Program,
     provekit_common::{
-        witness::SplitWitnessBuilders, HashConfig, NoirElement, PublicInputs, WhirR1CSProof,
-        WhirR1CSScheme, R1CS,
+        witness::SplitWitnessBuilders, HashConfig, PublicInputs, WhirR1CSProof, WhirR1CSScheme,
+        R1CS,
     },
+    provekit_field_bn254::NoirElement,
     serde::{Deserialize, Serialize},
 };
 

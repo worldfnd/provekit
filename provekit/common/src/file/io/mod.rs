@@ -3,8 +3,8 @@ mod buf_ext;
 mod counting_writer;
 mod json;
 
-// Re-exported so frontend crates (e.g. provekit-noir) can implement `FileFormat`
-// for their own types.
+// Re-exported so frontend crates (e.g. provekit-noir) can implement
+// `FileFormat` for their own types.
 pub use self::bin::Compression;
 use {
     self::{

@@ -13,10 +13,6 @@ default = ["parallel"]
 parallel = []
 
 [dependencies]
-# Noir language
-acir.workspace = true
-noirc_abi.workspace = true
-
 # Cryptography and proof systems
 keccak.workspace = true
 ark-bn254.workspace = true
@@ -47,8 +43,6 @@ zerocopy.workspace = true
 # Target-specific dependencies: only on non-WASM targets
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zstd.workspace = true
-mavros-vm.workspace = true
-mavros-artifacts.workspace = true
 xz2.workspace = true
 
 [package.metadata.cargo-machete]

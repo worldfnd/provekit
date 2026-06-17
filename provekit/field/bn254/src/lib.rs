@@ -6,11 +6,13 @@
 
 pub mod bigint_mod;
 pub mod ec_arith;
+pub mod noir_element;
 pub mod ntt;
 pub mod poseidon2;
 pub mod skyscraper;
 pub mod witness;
 
+pub use noir_element::{noir_to_native, NoirElement};
 // The local `skyscraper`/`poseidon2` modules shadow the crate names here, so
 // reach the extern crates via leading-`::` paths.
 use {

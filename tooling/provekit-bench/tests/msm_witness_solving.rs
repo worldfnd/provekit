@@ -15,8 +15,9 @@ use {
     ark_ff::{PrimeField, Zero},
     provekit_common::{
         witness::{ConstantOrR1CSWitness, LayerScheduler, WitnessBuilder},
-        FieldElement, NoirElement, TranscriptSponge,
+        FieldElement, TranscriptSponge,
     },
+    provekit_field_bn254::NoirElement,
     provekit_noir::{ec_scalar_mul, solve_witness_vec},
     provekit_r1cs_compiler::{
         msm::{

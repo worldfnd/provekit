@@ -5,9 +5,8 @@ use {
     ::tracing::{debug, info, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
-    provekit_common::{
-        utils::noir_to_native, FieldElement, NoirElement, PublicInputs, TranscriptSponge,
-    },
+    provekit_common::{FieldElement, PublicInputs, TranscriptSponge},
+    provekit_field_bn254::{noir_to_native, NoirElement},
     provekit_prover::WhirR1CSProver,
     std::mem::{size_of, take},
     whir::transcript::ProverState,

@@ -4,12 +4,11 @@ use {
     ark_ff::{BigInteger, Field, PrimeField},
     ark_std::Zero,
     provekit_common::{
-        utils::noir_to_native,
         witness::{
             compute_spread, ConstantOrR1CSWitness, ConstantTerm, NonNativeEcOp, ProductLinearTerm,
             SumTerm, WitnessBuilder, WitnessCoefficient,
         },
-        FieldElement, NoirElement, TranscriptSponge,
+        FieldElement, TranscriptSponge,
     },
     whir::transcript::{ProverState, VerifierMessage},
 };
@@ -33,6 +32,7 @@ use provekit_field_bn254::{
         compute_ec_verification_carries, ec_point_add_with_lambda, ec_point_double_with_lambda,
         ec_scalar_mul,
     },
+    noir_to_native,
     witness::{
         digits::DigitalDecompositionWitnessesSolver,
         limb_io::{
@@ -41,6 +41,7 @@ use provekit_field_bn254::{
         },
         ram::SpiceWitnessesSolver,
     },
+    NoirElement,
 };
 
 /// Read a solved witness value, panicking with the index if not yet solved.

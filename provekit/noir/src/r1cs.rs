@@ -6,8 +6,9 @@ use {
     provekit_common::{
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
-        FieldElement, NoirElement, TranscriptSponge, R1CS,
+        FieldElement, TranscriptSponge, R1CS,
     },
+    provekit_field_bn254::NoirElement,
     whir::transcript::ProverState,
 };
 

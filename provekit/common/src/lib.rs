@@ -31,7 +31,6 @@ pub type ProvekitEmbedding = Identity<ark_bn254::Fr>;
 pub type FieldElement = <ProvekitEmbedding as Embedding>::Source;
 
 pub use {
-    acir::FieldElement as NoirElement,
     field::{register_field_hash_provider, DynFieldSponge, FieldHashProvider},
     hash_config::HashConfig,
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
