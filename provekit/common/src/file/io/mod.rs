@@ -7,7 +7,7 @@ use {
     self::{
         bin::{
             deserialize_from_bytes, read_bin, read_hash_config as read_hash_config_bin,
-            serialize_to_bytes, write_bin, Compression,
+            serialize_to_bytes, write_bin,
         },
         buf_ext::BufExt,
         counting_writer::CountingWriter,
@@ -20,6 +20,10 @@ use {
     tracing::instrument,
 };
 
+// Re-exported so frontend crates (e.g. provekit-noir) can implement `FileFormat`
+// for their own types.
+pub use self::bin::Compression;
+
 /// Trait for structures that can be serialized to and deserialized from files.
 pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
     const FORMAT: [u8; 8];
@@ -29,7 +33,10 @@ pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
 }
 
 /// Helper trait to optionally extract hash config.
-pub(crate) trait MaybeHashAware {
+///
+/// Public so frontend crates can implement it for their relocated file types
+/// (e.g. `provekit-noir`'s `Prover`/`Verifier`/`NoirProofScheme`/`NoirProof`).
+pub trait MaybeHashAware {
     fn maybe_hash_config(&self) -> Option<HashConfig>;
 }
 
@@ -96,7 +103,6 @@ impl FileFormat for NoirProof {
 }
 
 /// Write a file with format determined from extension.
-#[allow(private_bounds)]
 #[instrument(skip(value))]
 pub fn write<T: FileFormat + MaybeHashAware>(value: &T, path: &Path) -> Result<()> {
     match path.extension().and_then(OsStr::to_str) {
@@ -141,7 +147,6 @@ pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
 ///
 /// The output is byte-for-byte identical to what `write` produces on disk
 /// (header + compressed postcard). Use `deserialize` to recover the value.
-#[allow(private_bounds)]
 pub fn serialize<T: FileFormat + MaybeHashAware>(value: &T) -> Result<Vec<u8>> {
     let hash_config = value.maybe_hash_config();
     serialize_to_bytes(value, T::FORMAT, T::VERSION, T::COMPRESSION, hash_config)
