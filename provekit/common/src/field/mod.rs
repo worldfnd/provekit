@@ -78,7 +78,16 @@ static FIELD_HASH_PROVIDER: OnceLock<&'static dyn FieldHashProvider> = OnceLock:
 /// different provider) is ignored, so a binary must register exactly one field
 /// crate.
 pub fn register_field_hash_provider(provider: &'static dyn FieldHashProvider) {
-    let _ = FIELD_HASH_PROVIDER.set(provider);
+    // Each field crate's `register()` is `Once`-guarded, so a failed `set` here
+    // means a *different* field crate already registered — a wrong-field bug once
+    // more than one field backend exists. Catch it in debug builds. (The `set`
+    // runs unconditionally; only the check is debug-gated.)
+    let first = FIELD_HASH_PROVIDER.set(provider).is_ok();
+    debug_assert!(
+        first,
+        "a field hash provider is already registered; a binary must register exactly one field \
+         crate",
+    );
 }
 
 /// Access the registered field-native hash provider.

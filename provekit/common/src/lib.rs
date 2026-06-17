@@ -23,8 +23,14 @@ use {
 
 /// The proof-system field embedding (currently `Identity<bn254::Fr>`).
 ///
-/// This is the single place the field is chosen: change it and add a matching
-/// [`FieldHashProvider`] impl to switch fields.
+/// This is the bn254 instantiation point. Because `Identity` has
+/// `Source == Target`, the spine names a single [`FieldElement`] for both
+/// committed data and challenges. Switching to an embedding with a distinct
+/// extension (e.g. Goldilocks `Basefield<Field64_3>`) is **not** just changing
+/// this alias: committed data must stay in `Embedding::Source` while challenges
+/// move to `Embedding::Target`, which requires threading `<M: Embedding>`
+/// through the algebra (interner / r1cs / sparse-matrix / sumcheck). Tracked
+/// for the field-selection PR.
 pub type ProvekitEmbedding = Identity<ark_bn254::Fr>;
 
 /// The base field the spine operates over (`bn254::Fr` at `Identity`).
