@@ -2,13 +2,13 @@ use {
     crate::{
         interner::InternedFieldElement, FieldElement, HydratedSparseMatrix, Interner, SparseMatrix,
     },
-    ark_ff::Zero,
+    ark_ff::Field,
     serde::{Deserialize, Serialize},
     sha3::{Digest, Sha3_256},
     std::collections::HashMap,
 };
 
-fn has_duplicate_witnesses(terms: &[(FieldElement, usize)]) -> bool {
+fn has_duplicate_witnesses<F>(terms: &[(F, usize)]) -> bool {
     for i in 0..terms.len() {
         for j in (i + 1)..terms.len() {
             if terms[i].1 == terms[j].1 {
@@ -20,7 +20,7 @@ fn has_duplicate_witnesses(terms: &[(FieldElement, usize)]) -> bool {
 }
 
 /// Merge duplicate witness indices and drop zero-coefficient entries.
-fn canonicalize_terms(terms: &[(FieldElement, usize)]) -> Vec<(FieldElement, usize)> {
+fn canonicalize_terms<F: Field>(terms: &[(F, usize)]) -> Vec<(F, usize)> {
     if !has_duplicate_witnesses(terms) {
         return terms
             .iter()
@@ -29,10 +29,10 @@ fn canonicalize_terms(terms: &[(FieldElement, usize)]) -> Vec<(FieldElement, usi
             .collect();
     }
 
-    let mut sorted: Vec<(FieldElement, usize)> = terms.to_vec();
+    let mut sorted: Vec<(F, usize)> = terms.to_vec();
     sorted.sort_unstable_by_key(|&(_c, w)| w);
 
-    let mut result: Vec<(FieldElement, usize)> = Vec::with_capacity(sorted.len());
+    let mut result: Vec<(F, usize)> = Vec::with_capacity(sorted.len());
     let mut acc_coeff = sorted[0].0;
     let mut acc_witness = sorted[0].1;
 
@@ -57,9 +57,10 @@ fn canonicalize_terms(terms: &[(FieldElement, usize)]) -> Vec<(FieldElement, usi
 
 /// Represents a R1CS constraint system.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct R1CS {
+#[serde(bound = "")]
+pub struct R1CS<F: Field = FieldElement> {
     pub num_public_inputs: usize,
-    pub interner:          Interner,
+    pub interner:          Interner<F>,
     pub a:                 SparseMatrix,
     pub b:                 SparseMatrix,
     pub c:                 SparseMatrix,
@@ -70,13 +71,13 @@ pub struct R1CS {
     pub num_virtual:       usize,
 }
 
-impl Default for R1CS {
+impl<F: Field> Default for R1CS<F> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl R1CS {
+impl<F: Field> R1CS<F> {
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -90,17 +91,17 @@ impl R1CS {
     }
 
     #[must_use]
-    pub const fn a(&self) -> HydratedSparseMatrix<'_> {
+    pub const fn a(&self) -> HydratedSparseMatrix<'_, F> {
         self.a.hydrate(&self.interner)
     }
 
     #[must_use]
-    pub const fn b(&self) -> HydratedSparseMatrix<'_> {
+    pub const fn b(&self) -> HydratedSparseMatrix<'_, F> {
         self.b.hydrate(&self.interner)
     }
 
     #[must_use]
-    pub const fn c(&self) -> HydratedSparseMatrix<'_> {
+    pub const fn c(&self) -> HydratedSparseMatrix<'_, F> {
         self.c.hydrate(&self.interner)
     }
 
@@ -156,12 +157,7 @@ impl R1CS {
 
     /// Add an R1CS constraint. Duplicate witness indices within each linear
     /// combination are merged (coefficients summed) and zeros are dropped.
-    pub fn add_constraint(
-        &mut self,
-        a: &[(FieldElement, usize)],
-        b: &[(FieldElement, usize)],
-        c: &[(FieldElement, usize)],
-    ) {
+    pub fn add_constraint(&mut self, a: &[(F, usize)], b: &[(F, usize)], c: &[(F, usize)]) {
         let a = canonicalize_terms(a);
         let b = canonicalize_terms(b);
         let c = canonicalize_terms(c);
@@ -212,7 +208,7 @@ impl R1CS {
     }
 
     #[inline]
-    pub fn intern(&mut self, value: FieldElement) -> InternedFieldElement {
+    pub fn intern(&mut self, value: F) -> InternedFieldElement {
         self.interner.intern(value)
     }
 
@@ -240,10 +236,10 @@ impl R1CS {
 
     /// Get the constant value of a "constant" matrix row.
     /// Returns 0 if the row is empty, or the coefficient of w0 if present.
-    fn row_constant_value(&self, matrix: &SparseMatrix, row: usize) -> FieldElement {
+    fn row_constant_value(&self, matrix: &SparseMatrix, row: usize) -> F {
         match matrix.get(row, 0) {
             Some(interned) => self.interner.get(interned).expect("interned value missing"),
-            None => FieldElement::zero(),
+            None => F::zero(),
         }
     }
 
@@ -251,25 +247,25 @@ impl R1CS {
     ///
     /// Returns a list of (coefficient, witness_index) pairs such that
     /// sum(coeff_i * w_i) = 0.
-    pub fn extract_linear_expression(&self, row: usize) -> Vec<(FieldElement, usize)> {
+    pub fn extract_linear_expression(&self, row: usize) -> Vec<(F, usize)> {
         let a_is_const = self.row_is_constant(&self.a, row);
         let b_is_const = self.row_is_constant(&self.b, row);
 
-        let mut terms: HashMap<usize, FieldElement> = HashMap::new();
+        let mut terms: HashMap<usize, F> = HashMap::new();
 
         if a_is_const && b_is_const {
             let const_a = self.row_constant_value(&self.a, row);
             let const_b = self.row_constant_value(&self.b, row);
             let product = const_a * const_b;
             if !product.is_zero() {
-                *terms.entry(0).or_insert_with(FieldElement::zero) += product;
+                *terms.entry(0).or_insert_with(F::zero) += product;
             }
             for (col, interned_val) in self.c.iter_row(row) {
                 let val = self
                     .interner
                     .get(interned_val)
                     .expect("interned value missing");
-                *terms.entry(col).or_insert_with(FieldElement::zero) -= val;
+                *terms.entry(col).or_insert_with(F::zero) -= val;
             }
         } else if a_is_const {
             let const_a = self.row_constant_value(&self.a, row);
@@ -278,14 +274,14 @@ impl R1CS {
                     .interner
                     .get(interned_val)
                     .expect("interned value missing");
-                *terms.entry(col).or_insert_with(FieldElement::zero) += const_a * val;
+                *terms.entry(col).or_insert_with(F::zero) += const_a * val;
             }
             for (col, interned_val) in self.c.iter_row(row) {
                 let val = self
                     .interner
                     .get(interned_val)
                     .expect("interned value missing");
-                *terms.entry(col).or_insert_with(FieldElement::zero) -= val;
+                *terms.entry(col).or_insert_with(F::zero) -= val;
             }
         } else {
             let const_b = self.row_constant_value(&self.b, row);
@@ -294,14 +290,14 @@ impl R1CS {
                     .interner
                     .get(interned_val)
                     .expect("interned value missing");
-                *terms.entry(col).or_insert_with(FieldElement::zero) += const_b * val;
+                *terms.entry(col).or_insert_with(F::zero) += const_b * val;
             }
             for (col, interned_val) in self.c.iter_row(row) {
                 let val = self
                     .interner
                     .get(interned_val)
                     .expect("interned value missing");
-                *terms.entry(col).or_insert_with(FieldElement::zero) -= val;
+                *terms.entry(col).or_insert_with(F::zero) -= val;
             }
         }
 
@@ -324,7 +320,7 @@ impl R1CS {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, ark_std::One};
+    use {super::*, ark_ff::Zero, ark_std::One};
 
     /// Duplicate witness coefficients are summed, not overwritten.
     #[test]
@@ -410,7 +406,7 @@ mod tests {
 
     #[test]
     fn canonicalize_terms_basics() {
-        assert!(canonicalize_terms(&[]).is_empty());
+        assert!(canonicalize_terms::<FieldElement>(&[]).is_empty());
         assert!(canonicalize_terms(&[(FieldElement::zero(), 0)]).is_empty());
 
         let result = canonicalize_terms(&[(FieldElement::from(42u64), 5)]);
