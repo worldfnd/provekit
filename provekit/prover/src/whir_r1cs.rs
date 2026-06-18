@@ -173,7 +173,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let alphas = multiply_transposed_by_eq_alpha(&at, &bt, &ct, &alpha, &r1cs);
 
         let blinding_offset = blinding.offset;
-        let blinding_weights = expand_powers::<4>(&alpha);
+        let blinding_weights = expand_powers::<4, _>(&alpha);
         prove_from_alphas(
             self,
             merlin,
@@ -228,7 +228,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let alphas = [ad_a, ad_b, ad_c];
 
         let blinding_offset = blinding.offset;
-        let blinding_weights = expand_powers::<4>(&alpha);
+        let blinding_weights = expand_powers::<4, _>(&alpha);
 
         prove_from_alphas(
             self,
@@ -614,7 +614,7 @@ pub fn run_zk_sumcheck_prover(
     }
     drop((a, b, c, eq));
 
-    let weight_vec = expand_powers::<4>(alpha.as_slice());
+    let weight_vec = expand_powers::<4, _>(alpha.as_slice());
     let blinding_eval = dot(
         &weight_vec,
         &w1_polynomial[blinding_offset..blinding_offset + weight_vec.len()],

@@ -1,6 +1,6 @@
 use {
     crate::FieldElement,
-    ark_std::{One, Zero},
+    ark_ff::Field,
     whir::algebra::{dot, linear_form::LinearForm, multilinear_extend},
 };
 
@@ -13,14 +13,14 @@ use {
 /// `prove()` / `verify()` in place of a full-length `Covector`.
 ///
 /// [`LinearForm`]: https://github.com/WizardOfMenlo/whir/blob/main/src/algebra/linear_form/mod.rs
-pub struct PrefixCovector {
+pub struct PrefixCovector<F: Field = FieldElement> {
     /// The non-zero prefix. Length must be a power of two.
-    vector:      Vec<FieldElement>,
+    vector:      Vec<F>,
     /// The full logical domain size (also a power of two, >= vector.len()).
     domain_size: usize,
 }
 
-impl PrefixCovector {
+impl<F: Field> PrefixCovector<F> {
     /// Create a new `PrefixCovector` from a prefix vector and domain size.
     ///
     /// # Panics
@@ -28,7 +28,7 @@ impl PrefixCovector {
     /// Debug-asserts that both `vector.len()` and `domain_size` are powers of
     /// two, and that `domain_size >= vector.len()`.
     #[must_use]
-    pub fn new(vector: Vec<FieldElement>, domain_size: usize) -> Self {
+    pub fn new(vector: Vec<F>, domain_size: usize) -> Self {
         debug_assert!(vector.len().is_power_of_two());
         debug_assert!(domain_size.is_power_of_two());
         assert!(
@@ -44,7 +44,7 @@ impl PrefixCovector {
 
     /// Access the underlying prefix vector.
     #[must_use]
-    pub fn vector(&self) -> &[FieldElement] {
+    pub fn vector(&self) -> &[F] {
         &self.vector
     }
 
@@ -61,21 +61,20 @@ impl PrefixCovector {
     }
 }
 
-impl LinearForm<FieldElement> for PrefixCovector {
+impl<F: Field> LinearForm<F> for PrefixCovector<F> {
     fn size(&self) -> usize {
         self.domain_size
     }
 
-    fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
+    fn mle_evaluate(&self, point: &[F]) -> F {
         let k = self.vector.len().trailing_zeros() as usize;
         let r = point.len() - k;
-        let head_factor: FieldElement =
-            point[..r].iter().map(|p| FieldElement::one() - p).product();
+        let head_factor: F = point[..r].iter().map(|p| F::one() - p).product();
         let prefix_mle = multilinear_extend(&self.vector, &point[r..]);
         head_factor * prefix_mle
     }
 
-    fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
+    fn accumulate(&self, accumulator: &mut [F], scalar: F) {
         for (acc, val) in accumulator[..self.vector.len()]
             .iter_mut()
             .zip(&self.vector)
@@ -87,15 +86,15 @@ impl LinearForm<FieldElement> for PrefixCovector {
 
 /// A covector that is zero everywhere except at positions
 /// `[offset .. offset + weights.len())` within a `domain_size`-length domain.
-pub struct OffsetCovector {
-    weights:     Vec<FieldElement>,
+pub struct OffsetCovector<F: Field = FieldElement> {
+    weights:     Vec<F>,
     offset:      usize,
     domain_size: usize,
 }
 
-impl OffsetCovector {
+impl<F: Field> OffsetCovector<F> {
     #[must_use]
-    pub fn new(weights: Vec<FieldElement>, offset: usize, domain_size: usize) -> Self {
+    pub fn new(weights: Vec<F>, offset: usize, domain_size: usize) -> Self {
         debug_assert!(domain_size.is_power_of_two());
         assert!(
             offset + weights.len() <= domain_size,
@@ -111,26 +110,26 @@ impl OffsetCovector {
     }
 }
 
-impl LinearForm<FieldElement> for OffsetCovector {
+impl<F: Field> LinearForm<F> for OffsetCovector<F> {
     fn size(&self) -> usize {
         self.domain_size
     }
 
-    fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
+    fn mle_evaluate(&self, point: &[F]) -> F {
         let n = point.len();
-        let mut result = FieldElement::zero();
+        let mut result = F::zero();
         for (i, &w) in self.weights.iter().enumerate() {
             if w.is_zero() {
                 continue;
             }
             let idx = self.offset + i;
             // point[0] = MSB, matching whir's multilinear_extend convention
-            let mut basis = FieldElement::one();
+            let mut basis = F::one();
             for (k, pk) in point.iter().enumerate() {
                 if (idx >> (n - 1 - k)) & 1 == 1 {
                     basis *= pk;
                 } else {
-                    basis *= FieldElement::one() - pk;
+                    basis *= F::one() - pk;
                 }
             }
             result += w * basis;
@@ -138,7 +137,7 @@ impl LinearForm<FieldElement> for OffsetCovector {
         result
     }
 
-    fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
+    fn accumulate(&self, accumulator: &mut [F], scalar: F) {
         for (acc, &w) in accumulator[self.offset..self.offset + self.weights.len()]
             .iter_mut()
             .zip(&self.weights)
@@ -153,10 +152,10 @@ impl LinearForm<FieldElement> for OffsetCovector {
 /// Used to build weight vectors for the spartan blinding polynomial
 /// evaluation in both prover and verifier.
 #[must_use]
-pub fn expand_powers<const D: usize>(values: &[FieldElement]) -> Vec<FieldElement> {
+pub fn expand_powers<const D: usize, F: Field>(values: &[F]) -> Vec<F> {
     let mut result = Vec::with_capacity(values.len() * D);
     for &value in values {
-        let mut power = FieldElement::one();
+        let mut power = F::one();
         for _ in 0..D {
             result.push(power);
             power *= value;
@@ -170,13 +169,13 @@ pub fn expand_powers<const D: usize>(values: &[FieldElement]) -> Vec<FieldElemen
 /// Builds the vector `[1, x, x², …, x^{n-1}]` where `n = num_public_inputs +
 /// 1`.
 #[must_use]
-pub fn make_public_weight(x: FieldElement, num_public_inputs: usize, m: usize) -> PrefixCovector {
+pub fn make_public_weight<F: Field>(x: F, num_public_inputs: usize, m: usize) -> PrefixCovector<F> {
     let n = num_public_inputs + 1;
     let domain_size = 1 << m;
     let prefix_len = n.next_power_of_two().max(2);
-    let mut public_weights = vec![FieldElement::zero(); prefix_len];
+    let mut public_weights = vec![F::zero(); prefix_len];
 
-    let mut current_pow = FieldElement::one();
+    let mut current_pow = F::one();
     for slot in public_weights.iter_mut().take(n) {
         *slot = current_pow;
         current_pow *= x;
@@ -190,16 +189,16 @@ pub fn make_public_weight(x: FieldElement, num_public_inputs: usize, m: usize) -
 /// Each alpha vector is padded to a power-of-two length (min 2) and wrapped
 /// in a `PrefixCovector` with the given domain size `2^m`.
 #[must_use]
-pub fn build_prefix_covectors<const N: usize>(
+pub fn build_prefix_covectors<const N: usize, F: Field>(
     m: usize,
-    alphas: [Vec<FieldElement>; N],
-) -> Vec<PrefixCovector> {
+    alphas: [Vec<F>; N],
+) -> Vec<PrefixCovector<F>> {
     let domain_size = 1usize << m;
     alphas
         .into_iter()
         .map(|mut w| {
             let base_len = w.len().next_power_of_two().max(2);
-            w.resize(base_len, FieldElement::zero());
+            w.resize(base_len, F::zero());
             PrefixCovector::new(w, domain_size)
         })
         .collect()
@@ -209,10 +208,10 @@ pub fn build_prefix_covectors<const N: usize>(
 /// allocating [`PrefixCovector`] weights. Used to write transcript hints
 /// before deferring weight construction (saves memory in dual-commit).
 #[must_use]
-pub fn compute_alpha_evals<const N: usize>(
-    polynomial: &[FieldElement],
-    alphas: &[Vec<FieldElement>; N],
-) -> Vec<FieldElement> {
+pub fn compute_alpha_evals<const N: usize, F: Field>(
+    polynomial: &[F],
+    alphas: &[Vec<F>; N],
+) -> Vec<F> {
     alphas
         .iter()
         .map(|w| dot(w, &polynomial[..w.len()]))
@@ -223,14 +222,10 @@ pub fn compute_alpha_evals<const N: usize>(
 /// without allocating a [`PrefixCovector`]. Covers the R1CS constant at
 /// position 0 and `num_public_inputs` public input positions.
 #[must_use]
-pub fn compute_public_eval(
-    x: FieldElement,
-    num_public_inputs: usize,
-    polynomial: &[FieldElement],
-) -> FieldElement {
+pub fn compute_public_eval<F: Field>(x: F, num_public_inputs: usize, polynomial: &[F]) -> F {
     let n = num_public_inputs + 1;
-    let mut eval = FieldElement::zero();
-    let mut x_pow = FieldElement::one();
+    let mut eval = F::zero();
+    let mut x_pow = F::one();
     for &p in polynomial.iter().take(n) {
         eval += x_pow * p;
         x_pow *= x;
@@ -241,13 +236,13 @@ pub fn compute_public_eval(
 /// A covector with non-zero weights at arbitrary scattered positions within a
 /// `domain_size`-length domain. Used for challenge binding where challenge
 /// positions in w2 may not be contiguous.
-pub struct SparseCovector {
+pub struct SparseCovector<F: Field = FieldElement> {
     /// (position, weight) pairs.
-    entries:     Vec<(usize, FieldElement)>,
+    entries:     Vec<(usize, F)>,
     domain_size: usize,
 }
 
-impl SparseCovector {
+impl<F: Field> SparseCovector<F> {
     /// Create a new `SparseCovector` from position-weight pairs.
     ///
     /// # Panics
@@ -255,7 +250,7 @@ impl SparseCovector {
     /// Asserts that `domain_size` is a power of two and all positions are
     /// within bounds.
     #[must_use]
-    pub fn new(entries: Vec<(usize, FieldElement)>, domain_size: usize) -> Self {
+    pub fn new(entries: Vec<(usize, F)>, domain_size: usize) -> Self {
         debug_assert!(domain_size.is_power_of_two());
         for &(pos, _) in &entries {
             assert!(
@@ -270,24 +265,24 @@ impl SparseCovector {
     }
 }
 
-impl LinearForm<FieldElement> for SparseCovector {
+impl<F: Field> LinearForm<F> for SparseCovector<F> {
     fn size(&self) -> usize {
         self.domain_size
     }
 
-    fn mle_evaluate(&self, point: &[FieldElement]) -> FieldElement {
+    fn mle_evaluate(&self, point: &[F]) -> F {
         let n = point.len();
-        let mut result = FieldElement::zero();
+        let mut result = F::zero();
         for &(idx, w) in &self.entries {
             if w.is_zero() {
                 continue;
             }
-            let mut basis = FieldElement::one();
+            let mut basis = F::one();
             for (k, pk) in point.iter().enumerate() {
                 if (idx >> (n - 1 - k)) & 1 == 1 {
                     basis *= pk;
                 } else {
-                    basis *= FieldElement::one() - pk;
+                    basis *= F::one() - pk;
                 }
             }
             result += w * basis;
@@ -295,7 +290,7 @@ impl LinearForm<FieldElement> for SparseCovector {
         result
     }
 
-    fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
+    fn accumulate(&self, accumulator: &mut [F], scalar: F) {
         for &(pos, w) in &self.entries {
             accumulator[pos] += scalar * w;
         }
@@ -308,14 +303,14 @@ impl LinearForm<FieldElement> for SparseCovector {
 /// Places `[1, x, x², …]` at the given `challenge_offsets` positions within a
 /// `2^m`-length domain.
 #[must_use]
-pub fn make_challenge_weight(
-    x: FieldElement,
+pub fn make_challenge_weight<F: Field>(
+    x: F,
     challenge_offsets: &[usize],
     m: usize,
-) -> SparseCovector {
+) -> SparseCovector<F> {
     let domain_size = 1 << m;
     let mut entries = Vec::with_capacity(challenge_offsets.len());
-    let mut x_pow = FieldElement::one();
+    let mut x_pow = F::one();
     for &offset in challenge_offsets {
         entries.push((offset, x_pow));
         x_pow *= x;
@@ -327,13 +322,9 @@ pub fn make_challenge_weight(
 /// `⟨[1, x, x², …], poly[offsets[0]], poly[offsets[1]], …⟩` without
 /// allocating a [`SparseCovector`].
 #[must_use]
-pub fn compute_challenge_eval(
-    x: FieldElement,
-    challenge_offsets: &[usize],
-    polynomial: &[FieldElement],
-) -> FieldElement {
-    let mut eval = FieldElement::zero();
-    let mut x_pow = FieldElement::one();
+pub fn compute_challenge_eval<F: Field>(x: F, challenge_offsets: &[usize], polynomial: &[F]) -> F {
+    let mut eval = F::zero();
+    let mut x_pow = F::one();
     for &offset in challenge_offsets {
         eval += x_pow * polynomial[offset];
         x_pow *= x;
@@ -343,7 +334,11 @@ pub fn compute_challenge_eval(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, whir::algebra::multilinear_extend};
+    use {
+        super::*,
+        ark_std::{One, Zero},
+        whir::algebra::multilinear_extend,
+    };
 
     /// Build a full domain-size vector that is zero everywhere except at
     /// `[offset .. offset + weights.len())`.
