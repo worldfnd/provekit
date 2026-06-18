@@ -5,6 +5,8 @@
 ///
 /// Reference: DIZK paper <https://eprint.iacr.org/2018/691.pdf> (Figure 4)
 /// BSB22 extension: <https://eprint.iacr.org/2022/1072>
+pub mod fingerprint;
+pub mod gnark_import;
 pub mod pedersen;
 pub mod prover;
 pub mod setup;

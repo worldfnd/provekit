@@ -1,7 +1,7 @@
 /// Groth16 trusted setup: generates ProvingKey and VerifyingKey from R1CS.
 ///
 /// Notation follows DIZK paper Figure 4.
-use anyhow::Result;
+use anyhow::{ensure, Context, Result};
 use {
     crate::{pedersen, CommitmentInfo},
     ark_bn254::{Fr, G1Affine, G1Projective, G2Affine, G2Projective},
@@ -349,6 +349,256 @@ pub fn setup(
     // `ToxicWaste` is `ZeroizeOnDrop`, so the secret field elements are wiped
     // from memory when this drop runs.
     drop(toxic);
+
+    Ok((pk, vk))
+}
+
+/// Use pre-computed Groth16 keys from a trusted-setup ceremony in place of
+/// the in-process [`setup`]. Validates that the imported keys are *shape-
+/// compatible* with the given R1CS, then overrides the metadata fields
+/// (`num_challenges_per_commitment`, `public_and_commitment_committed`) so
+/// the verifier uses Provekit's wire-index convention rather than whatever
+/// the ceremony file recorded.
+///
+/// Returns a detailed error if any shape field disagrees — this is where
+/// you'll learn that a `.pk` was ceremonied for a different circuit, before
+/// any proof attempt fails downstream with a cryptic pairing error.
+///
+/// What this does *not* check: that the curve points themselves correspond
+/// to the right polynomials. Two R1CSes with identical wire/constraint
+/// counts and commitment shapes will pass the validation here even though
+/// their `[Aᵢ(τ)]₁` differ. Soundness still hinges on the ceremony having
+/// been run for the *same* R1CS this circuit compiles to.
+///
+/// In particular, the ceremony's **public/private wire partition** must
+/// match this R1CS exactly — both *which* wire indices are public vs.
+/// private and the canonical ordering within each role. The shape checks
+/// below only verify counts (`pk.g1_k.len() == nb_private`, `vk.g1_k.len()
+/// == nb_public`); a ceremony that classifies *different* wire indices as
+/// private but happens to land on the same total count will pass shape
+/// validation and produce a `pk` whose `g1_k[i]` is `[L_j(τ)/δ]₁` for the
+/// ceremony's j, not for Provekit's i. The resulting proofs are at best
+/// noise (pairing check rejects) and at worst bind to wrong public inputs.
+///
+/// `expected_fingerprint` closes that gap when supplied: it is the
+/// [`crate::fingerprint::fingerprint`] of the `(R1CS, CommitmentInfo)`
+/// that the ceremony was *actually* run against (the exporter writes it as
+/// a sidecar next to the gnark-r1cs JSON). When `Some`, we recompute the
+/// fingerprint from the in-memory `r1cs` + `commitment_info` and bail on
+/// mismatch — so a ceremony run against the wrong circuit fails loud here
+/// rather than silently producing wrong proofs downstream. When `None`,
+/// we log a warning and fall back to shape-only validation (legacy /
+/// pre-fingerprint ceremonies).
+pub fn setup_from_ceremony(
+    r1cs: &R1CS,
+    commitment_info: &[CommitmentInfo],
+    num_challenges_per_commitment: &[usize],
+    pk: crate::ProvingKey,
+    mut vk: crate::VerifyingKey,
+    expected_fingerprint: Option<&[u8; 32]>,
+) -> Result<(crate::ProvingKey, crate::VerifyingKey)> {
+    // Bind the ceremony output to this exact `(R1CS, CommitmentInfo)`.
+    // Without this, two structurally-different circuits with matching
+    // wire/constraint counts both pass shape validation — see the
+    // function-level doc and `crate::fingerprint` module docs.
+    match expected_fingerprint {
+        Some(expected) => {
+            let actual = crate::fingerprint::fingerprint(r1cs, commitment_info)
+                .context("computing local R1CS fingerprint")?;
+            ensure!(
+                actual == *expected,
+                "R1CS fingerprint mismatch: the ceremony was run against a different circuit (or \
+                 commitment layout). Expected {}, computed {}. Either the supplied ceremony keys \
+                 are for a different circuit, the fingerprint sidecar was swapped, or the R1CS \
+                 produced by this build differs from the one exported at ceremony time (e.g., \
+                 optimizer changes between exporter and prepare).",
+                crate::fingerprint::to_hex(expected),
+                crate::fingerprint::to_hex(&actual)
+            );
+        }
+        None => {
+            tracing::warn!(
+                "no R1CS fingerprint supplied (--groth16-fingerprint-in absent); falling back to \
+                 shape-only validation. The ceremony output is not cryptographically bound to \
+                 this circuit — a ceremony run for a different R1CS with matching wire/constraint \
+                 counts will pass and produce non-verifying or wrong-public-input-binding proofs."
+            );
+        }
+    }
+
+    let nb_wires = r1cs.num_witnesses();
+    let nb_public_variables = 1 + r1cs.num_public_inputs;
+    let nb_private_committed: usize = commitment_info
+        .iter()
+        .map(|c| c.private_committed.len())
+        .sum();
+    let total_challenge_wires: usize = commitment_info
+        .iter()
+        .map(|c| c.challenge_indices.len())
+        .sum();
+    let nb_public = nb_public_variables + total_challenge_wires;
+    let nb_private = nb_wires
+        .checked_sub(nb_public_variables + nb_private_committed + total_challenge_wires)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "wire-count underflow validating ceremony keys: nb_wires={}, \
+                 nb_public_variables={}, nb_private_committed={}, total_challenge_wires={}",
+                nb_wires,
+                nb_public_variables,
+                nb_private_committed,
+                total_challenge_wires
+            )
+        })?;
+
+    let domain = Radix2EvaluationDomain::<Fr>::new(r1cs.num_constraints())
+        .ok_or_else(|| anyhow::anyhow!("failed to create FFT domain"))?;
+    let min_domain_size = domain.size() as u64;
+
+    // Phase 1 ceremonies are sized for a maximum N; the same Phase 1 can be
+    // reused for any circuit whose required domain is ≤ N. The R1CS matrix
+    // rows past `r1cs.num_constraints()` are implicitly zero, so
+    // `Aᵢ(ω^j) = Bᵢ(ω^j) = Cᵢ(ω^j) = 0` for j ≥ num_constraints. The
+    // divisibility `(A_w · B_w − C_w) / (X^N − 1)` holds at every domain
+    // point, so the prover's H polynomial is well-defined and the pairing
+    // equation verifies — see the discussion in `gnark_import.rs` for the
+    // proving-time side. We therefore accept any power-of-two
+    // `pk.domain_size ≥ min_domain_size`. The downstream sanity checks on
+    // `pk.g1_z` and the prover's FFT layer use `pk.domain_size` directly,
+    // not the R1CS-derived minimum.
+    ensure!(
+        pk.domain_size.is_power_of_two(),
+        "ceremony pk.domain_size ({}) is not a power of two — corrupt or non-gnark ceremony output",
+        pk.domain_size
+    );
+    ensure!(
+        pk.domain_size >= min_domain_size,
+        "ceremony pk.domain_size ({}) < R1CS minimum domain ({}) — Phase 1 file is too small for \
+         this circuit; rerun the ceremony with a larger Phase 1 (powers-of-tau with at least \
+         log2({}) precomputed τ powers)",
+        pk.domain_size,
+        min_domain_size,
+        min_domain_size
+    );
+    ensure!(
+        pk.infinity_a.len() == nb_wires,
+        "ceremony pk wire count ({}) != R1CS wire count ({}) — different circuit",
+        pk.infinity_a.len(),
+        nb_wires
+    );
+    ensure!(
+        pk.infinity_b.len() == nb_wires,
+        "ceremony pk.infinity_b length ({}) != R1CS wire count ({})",
+        pk.infinity_b.len(),
+        nb_wires
+    );
+    ensure!(
+        pk.g1_z.len() == (pk.domain_size as usize - 1),
+        "ceremony pk.g1_z length ({}) != domain_size-1 ({})",
+        pk.g1_z.len(),
+        pk.domain_size - 1
+    );
+    ensure!(
+        pk.g1_k.len() == nb_private,
+        "ceremony pk.g1_k length ({}) != expected private-wire count ({}). Either the R1CS \
+         differs or the commitment layout assumed by the ceremony differs.",
+        pk.g1_k.len(),
+        nb_private
+    );
+    ensure!(
+        vk.g1_k.len() == nb_public,
+        "ceremony vk.g1_k length ({}) != expected public+challenge wire count ({})",
+        vk.g1_k.len(),
+        nb_public
+    );
+
+    let nb_commitments = commitment_info.len();
+    ensure!(
+        pk.commitment_keys.len() == nb_commitments,
+        "ceremony pk has {} commitment keys, R1CS expects {}",
+        pk.commitment_keys.len(),
+        nb_commitments
+    );
+    ensure!(
+        vk.commitment_keys.len() == nb_commitments,
+        "ceremony vk has {} commitment keys, R1CS expects {}",
+        vk.commitment_keys.len(),
+        nb_commitments
+    );
+    for (i, ci) in commitment_info.iter().enumerate() {
+        ensure!(
+            pk.commitment_keys[i].basis.len() == ci.private_committed.len(),
+            "ceremony commitment[{}] basis length ({}) != private_committed length ({})",
+            i,
+            pk.commitment_keys[i].basis.len(),
+            ci.private_committed.len()
+        );
+    }
+    ensure!(
+        num_challenges_per_commitment.len() == nb_commitments,
+        "num_challenges_per_commitment length ({}) != commitment count ({})",
+        num_challenges_per_commitment.len(),
+        nb_commitments
+    );
+    // Per-commitment cross-check: `num_challenges_per_commitment[i]` is
+    // copied verbatim into `vk.num_challenges_per_commitment` below, and the
+    // verifier uses those values to slice `vk.g1_k` into a challenge region
+    // and a public-input region (`nb_public_vars = vk.g1_k.len() -
+    // total_challenges`, see `verifier.rs:25-37`). If a caller passes a
+    // smaller-than-true value here, the verifier reads K-base slots intended
+    // for challenge wires as public-input slots, computing the public-input
+    // MSM against the wrong basis. The verifier's only guard is `g1_k.len()
+    // >= total_challenges + 1`, which catches over-declaration but not
+    // under-declaration. Catching reorderings too (`[3, 7]` vs `[5, 5]`)
+    // requires a per-index comparison, not just a sum check.
+    for (i, (declared, ci)) in num_challenges_per_commitment
+        .iter()
+        .zip(commitment_info.iter())
+        .enumerate()
+    {
+        ensure!(
+            *declared == ci.challenge_indices.len(),
+            "num_challenges_per_commitment[{i}] = {declared} but commitment_info[{i}] has {} \
+             challenge_indices — the R1CS expects {} challenge wires for commitment {i}",
+            ci.challenge_indices.len(),
+            ci.challenge_indices.len()
+        );
+    }
+
+    // Restore Provekit's authoritative metadata after the N-dummy workaround.
+    //
+    // The exporter (`tooling/cli/src/cmd/export_gnark_r1cs.rs`) registers N
+    // gnark commitments per real Provekit commitment — one per challenge
+    // wire — to force gnark Phase 2 to allocate N K-base slots in
+    // `vk.G1.K`. `gnark_import::read_verifying_key` then collapses the N
+    // entries back down to one before returning, which leaves
+    // `vk.num_challenges_per_commitment = [1]` and
+    // `vk.public_and_commitment_committed` holding only the first entry.
+    //
+    // Override here to install the real values:
+    //
+    //   * `num_challenges_per_commitment[i] = ci.challenge_indices.len()`,
+    //     inverting the dummy-collapse so the verifier's per-commitment challenge
+    //     derivation (`verifier.rs:73-117`) iterates the correct number of times.
+    //     The per-commitment cross-check above ensures the caller-supplied value
+    //     already agrees with `commitment_info`.
+    //
+    //   * `public_and_commitment_committed` from `CommitmentInfo` directly. The Go
+    //     importer (`cmd/import_r1cs/main.go`) preserves the wire IDs the exporter
+    //     emitted, so gnark round-trips this byte-for-byte — the override is
+    //     **defensive** (guards against future regressions in the import path), not
+    //     corrective.
+    vk.num_challenges_per_commitment = num_challenges_per_commitment.to_vec();
+    vk.public_and_commitment_committed = commitment_info
+        .iter()
+        .map(|c| c.public_and_commitment_committed.clone())
+        .collect();
+
+    // Run `precompute` here, after the metadata overrides above, so any
+    // precomputation that depends on `num_challenges_per_commitment` or
+    // `public_and_commitment_committed` sees the authoritative values rather
+    // than the length-1 placeholders that `gnark_import::read_verifying_key`
+    // installs at parse time. The gnark importer intentionally defers this.
+    vk.precompute()?;
 
     Ok((pk, vk))
 }

@@ -1,5 +1,6 @@
 mod analyze_pkp;
 mod circuit_stats;
+mod export_gnark_r1cs;
 mod generate_gnark_inputs;
 mod prepare;
 mod prove;
@@ -46,6 +47,7 @@ enum Commands {
     Verify(verify::Args),
     GenerateGnarkInputs(generate_gnark_inputs::Args),
     ShowInputs(show_inputs::Args),
+    ExportGnarkR1cs(export_gnark_r1cs::Args),
 }
 
 impl Command for Args {
@@ -64,6 +66,7 @@ impl Command for Commands {
             Self::Verify(args) => args.run(),
             Self::GenerateGnarkInputs(args) => args.run(),
             Self::ShowInputs(args) => args.run(),
+            Self::ExportGnarkR1cs(args) => args.run(),
         }
     }
 }

@@ -667,8 +667,19 @@ impl Prove for Groth16Prover {
         let s_delta = (ark_bn254::G1Projective::from(g1_delta) * s_scalar).into_affine();
         let kr_delta = (ark_bn254::G1Projective::from(g1_delta) * kr_scalar).into_affine();
 
+        // The FFT domain must match `pk.domain_size`, not `num_constraints`,
+        // because `pk.g1_a/g1_b/g1_z` are precomputed for the PK's domain at
+        // setup time. With an in-process setup these are always equal (setup
+        // sizes the domain from `num_constraints` too), but when the PK comes
+        // from a trusted-setup ceremony the Phase 1 file's max N may be
+        // strictly larger than the circuit needs. In that case `pk.g1_z` has
+        // `pk.domain_size - 1` entries; if we computed `h` over a smaller
+        // domain, the Σ hᵢ·Zᵢ MSM that builds `krs` would consume the wrong
+        // bases and the pairing equation would fail. `compute_h` pads its
+        // input vectors to the domain size internally, so padding the
+        // R1CS-row vectors past `num_constraints` is automatic.
         let domain: ark_poly::Radix2EvaluationDomain<FieldElement> =
-            ark_poly::EvaluationDomain::new(num_constraints)
+            ark_poly::EvaluationDomain::new(domain_size as usize)
                 .ok_or_else(|| anyhow::anyhow!("failed to create FFT domain"))?;
 
         // Stage 1: overlap the FFT-bound `compute_h` with the H-independent

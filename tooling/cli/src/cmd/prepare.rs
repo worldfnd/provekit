@@ -86,6 +86,28 @@ pub struct Args {
     /// Larger artifact, near-instant load (rapidsnark-style).
     #[argh(switch, long = "mmap")]
     mmap: bool,
+
+    /// path to a Groth16 proving key from a trusted-setup ceremony (gnark
+    /// binary format). When set together with --groth16-vk-in, prepare
+    /// imports these keys instead of running a single-party in-process
+    /// setup. Both flags must be set together.
+    #[argh(option, long = "groth16-pk-in")]
+    groth16_pk_in: Option<PathBuf>,
+
+    /// path to a Groth16 verifying key from a trusted-setup ceremony
+    /// (gnark binary format). Pair with --groth16-pk-in.
+    #[argh(option, long = "groth16-vk-in")]
+    groth16_vk_in: Option<PathBuf>,
+
+    /// path to the R1CS fingerprint sidecar produced by `export-gnark-r1cs`
+    /// next to the gnark-r1cs JSON. When supplied, `setup_from_ceremony`
+    /// recomputes the fingerprint from this build's R1CS and bails if it
+    /// disagrees — closing the "ceremony was run against the wrong
+    /// circuit" gap that pure shape validation cannot catch. Strongly
+    /// recommended whenever --groth16-pk-in is set; absence falls back to
+    /// shape-only validation with a warning.
+    #[argh(option, long = "groth16-fingerprint-in")]
+    groth16_fingerprint_in: Option<PathBuf>,
 }
 
 impl Command for Args {
@@ -203,19 +225,63 @@ impl Command for Args {
                         (vec![], vec![], vec![])
                     };
 
-                info!(
-                    num_challenges,
-                    num_private_committed = private_w1_wires.len(),
-                    num_public_inputs = r1cs.num_public_inputs,
-                    w1_size,
-                    "Running Groth16 trusted setup..."
-                );
-                let (pk, vk) = provekit_groth16::setup::setup(
-                    &r1cs,
-                    &groth16_ci,
-                    &num_challenges_per_commitment,
-                )
-                .context("while running Groth16 trusted setup")?;
+                let (pk, vk) = match (&self.groth16_pk_in, &self.groth16_vk_in) {
+                    (Some(pk_path), Some(vk_path)) => {
+                        let fingerprint = self
+                            .groth16_fingerprint_in
+                            .as_ref()
+                            .map(|p| -> Result<[u8; 32]> {
+                                let s = std::fs::read_to_string(p).with_context(|| {
+                                    format!("reading fingerprint sidecar {}", p.display())
+                                })?;
+                                provekit_groth16::fingerprint::parse_hex(&s).with_context(|| {
+                                    format!("parsing fingerprint sidecar {}", p.display())
+                                })
+                            })
+                            .transpose()?;
+                        info!(
+                            pk_path = %pk_path.display(),
+                            vk_path = %vk_path.display(),
+                            fingerprint_path = ?self.groth16_fingerprint_in.as_ref().map(|p| p.display().to_string()),
+                            num_challenges,
+                            num_private_committed = private_w1_wires.len(),
+                            num_public_inputs = r1cs.num_public_inputs,
+                            w1_size,
+                            "Loading Groth16 keys from trusted-setup ceremony output"
+                        );
+                        let pk = provekit_groth16::gnark_import::read_proving_key(pk_path)
+                            .context("while importing ceremony pk")?;
+                        let vk = provekit_groth16::gnark_import::read_verifying_key(vk_path)
+                            .context("while importing ceremony vk")?;
+                        provekit_groth16::setup::setup_from_ceremony(
+                            &r1cs,
+                            &groth16_ci,
+                            &num_challenges_per_commitment,
+                            pk,
+                            vk,
+                            fingerprint.as_ref(),
+                        )
+                        .context("validating ceremony keys against this circuit's R1CS")?
+                    }
+                    (None, None) => {
+                        info!(
+                            num_challenges,
+                            num_private_committed = private_w1_wires.len(),
+                            num_public_inputs = r1cs.num_public_inputs,
+                            w1_size,
+                            "Running Groth16 trusted setup..."
+                        );
+                        provekit_groth16::setup::setup(
+                            &r1cs,
+                            &groth16_ci,
+                            &num_challenges_per_commitment,
+                        )
+                        .context("while running Groth16 trusted setup")?
+                    }
+                    _ => anyhow::bail!(
+                        "--groth16-pk-in and --groth16-vk-in must be provided together"
+                    ),
+                };
 
                 // The PK is held in typed form (`provekit_groth16::ProvingKey`)
                 // and round-trips through arkworks bytes via the custom Serde

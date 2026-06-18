@@ -59,13 +59,50 @@ cargo run --release --bin provekit-cli export-evm-proof \
 
 `export-solidity` substitutes all `CODEGEN` markers in the in-repo template with constants from the verifying key (VK scalars, G1/G2 coordinates, gnark-style negations, public-input bases). `export-evm-proof` produces `out/proof.hex` (uncompressed `Ar‖Bs‖Krs‖Commit‖PoK` in EVM big-endian) and `out/inputs.txt` (one decimal field element per line, sized to `N_PUB`). Deploy the rendered `.sol` and call `verifyProof(bytes, uint256[N])` with those two inputs. Single-commitment circuits only for now — see [`provekit/groth16/contracts/README.md`](./provekit/groth16/contracts/README.md) for scope, constraints, and the multi-commitment roadmap.
 
+### Trusted-setup ceremony (Groth16 backend)
+
+`prepare --backend groth16` defaults to an **in-process single-party setup**: convenient for development, but not secure for production because one machine knows the toxic waste τ. For production-grade keys, run a multi-party Phase 2 ceremony with the [reilabs/trusted-setup](https://github.com/reilabs/trusted-setup) tool against a public Phase 1 (powers-of-tau) artifact, then import the result via `prepare --groth16-pk-in / --groth16-vk-in / --groth16-fingerprint-in`.
+
+```sh
+# 1. Export the R1CS plus a fingerprint sidecar (the .fingerprint file).
+cargo run --release --bin provekit-cli export-gnark-r1cs \
+  noir-examples/<circuit>/target/<circuit>.json \
+  --out circuit.r1cs.json
+
+# 2. Convert JSON → gnark binary .r1cs
+#    (Go `import_r1cs` tool from https://github.com/reilabs/trusted-setup).
+./import_r1cs --in circuit.r1cs.json --out circuit.r1cs
+
+# 3. Run Phase 2 against a Phase 1 file
+#    (powers-of-tau ≥ ceil(log2(num_constraints))).
+./trusted-setup init --phase1 prod.ph1 --r1cs circuit.r1cs \
+    --phase2 c.ph2 --srscommons c.srs
+./trusted-setup contribute --phase2 c.ph2     # repeat per contributor
+./trusted-setup extract-keys --r1cs circuit.r1cs --srscommons c.srs \
+    --beacon <hex> --phase2 <ph2-files,...> --pk circuit.pk --vk circuit.vk
+
+# 4. Import the ceremony output back into Provekit, binding to the R1CS
+#    via the fingerprint sidecar from step 1.
+cargo run --release --bin provekit-cli prepare \
+  noir-examples/<circuit>/target/<circuit>.json --backend groth16 \
+  --groth16-pk-in circuit.pk \
+  --groth16-vk-in circuit.vk \
+  --groth16-fingerprint-in circuit.r1cs.json.fingerprint \
+  --pkp <circuit>.pkp --pkv <circuit>.pkv
+```
+
+**`--groth16-fingerprint-in <sidecar>` (recommended for production).** The sidecar `<out>.fingerprint` written by `export-gnark-r1cs` is the SHA3-256 of `(R1CS, CommitmentInfo)`. At `prepare` time, Provekit re-compiles the Noir source, recomputes the fingerprint from the local R1CS, and **fails loud on mismatch**. This catches the case where a ceremony was run against a different R1CS that happens to share wire/constraint counts — without the flag, shape-only validation would silently let it pass and produce non-verifying or wrong-public-input-binding proofs. Omitting the flag is supported (a warning fires) and fine for local testing, but production deployments should always pass it.
+
+**Phase 1 files** come from public ceremonies — most commonly the Hermez/Snarkjs `powersOfTau28_hez_final_NN.ptau` series. Pick `NN ≥ ceil(log2(num_constraints))` for your circuit (e.g., `NN = 20` for a 636,683-constraint circuit). Convert the `.ptau` to a `.ph1` once via `./trusted-setup ptau --ptau <file>.ptau --phase1 prod.ph1`, then reuse it for any circuit ≤ `2^NN` constraints. The [reilabs/trusted-setup](https://github.com/reilabs/trusted-setup) tool only consumes a Phase 1 — it does not run one.
+
 ### Command reference
 
 | Command | Purpose | Key options |
 | :--- | :--- | :--- |
-| `prepare` | Compile a Noir package and write prover/verifier keys | `--pkp`/`-p`, `--pkv`/`-v`, `--hash`, `--backend`, `--mmap` (Groth16 only); default hash: `skyscraper`, default backend: `whir` |
+| `prepare` | Compile a Noir package and write prover/verifier keys | `--pkp`/`-p`, `--pkv`/`-v`, `--hash`, `--backend`, `--mmap` (Groth16 only); ceremony import: `--groth16-pk-in`, `--groth16-vk-in`, `--groth16-fingerprint-in` (Groth16 backend only); default hash: `skyscraper`, default backend: `whir` |
 | `prove` | Produce `proof.np` from a prover key and inputs | `--prover`/`-p`, `--input`/`-i`, `--out`/`-o` |
 | `verify` | Verify a proof against a verifier key | `--verifier`/`-v`, `--proof` |
+| `export-gnark-r1cs` | Dump an R1CS to the JSON format consumed by the gnark trusted-setup importer ([reilabs/trusted-setup](https://github.com/reilabs/trusted-setup)), plus a `.fingerprint` sidecar that binds the ceremony output to this R1CS | `<program_path>` or `--pkv`, `--out`/`-o`, `--hash` |
 | `export-solidity` | Render a circuit-specific Solidity verifier from a Groth16 PKV (substitutes `CODEGEN` markers in the template) | `--pkv`/`-v`, `--template`/`-t`, `--out`/`-o` |
 | `export-evm-proof` | Re-emit a Groth16 `proof.np` as EVM big-endian calldata + a public-inputs file for `verifyProof(bytes, uint256[N])` | `--proof`/`-p`, `--out-dir`/`-o` |
 
