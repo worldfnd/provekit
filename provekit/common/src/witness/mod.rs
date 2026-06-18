@@ -11,7 +11,7 @@ use {
         utils::{field_to_bytes_le, serde_ark, serde_ark_vec},
         FieldElement, HashConfig,
     },
-    ark_ff::One,
+    ark_ff::{Field, One},
     serde::{Deserialize, Serialize},
 };
 pub use {
@@ -60,16 +60,17 @@ impl ConstantOrR1CSWitness {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PublicInputs(#[serde(with = "serde_ark_vec")] pub Vec<FieldElement>);
+#[serde(bound = "")]
+pub struct PublicInputs<F: Field = FieldElement>(#[serde(with = "serde_ark_vec")] pub Vec<F>);
 
-impl PublicInputs {
+impl<F: Field> PublicInputs<F> {
     #[must_use]
     pub fn new() -> Self {
         Self(Vec::new())
     }
 
     #[must_use]
-    pub fn from_vec(vec: Vec<FieldElement>) -> Self {
+    pub fn from_vec(vec: Vec<F>) -> Self {
         Self(vec)
     }
 
@@ -82,7 +83,9 @@ impl PublicInputs {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+}
 
+impl PublicInputs<FieldElement> {
     /// Instance-binding hash of these public inputs under `config`.
     ///
     /// Absorbed into the Fiat-Shamir transcript by the prover and recomputed
@@ -105,7 +108,7 @@ impl PublicInputs {
     }
 }
 
-impl Default for PublicInputs {
+impl<F: Field> Default for PublicInputs<F> {
     fn default() -> Self {
         Self::new()
     }
