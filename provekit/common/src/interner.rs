@@ -1,38 +1,40 @@
 use {
     crate::{utils::serde_ark, FieldElement},
+    ark_ff::Field,
     serde::{Deserialize, Serialize},
     std::collections::HashMap,
 };
 
 #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
-pub struct Interner {
+#[serde(bound = "")]
+pub struct Interner<F: Field = FieldElement> {
     #[serde(with = "serde_ark")]
-    values: Vec<FieldElement>,
-    /// Reverse index: `FieldElement` → its position in `values`. Kept in sync
+    values: Vec<F>,
+    /// Reverse index: `F` → its position in `values`. Kept in sync
     /// by `intern`. Not serialized (the on-disk format remains a single
     /// `values` field for backward compatibility); rebuilt lazily on first
     /// `intern` after deserialize.
     #[serde(skip)]
-    index:  HashMap<FieldElement, usize>,
+    index:  HashMap<F, usize>,
 }
 
 /// `index` is `#[serde(skip)]` and rebuilt lazily, so a roundtripped
 /// `Interner` has an empty map until the next `intern` call. Compare only
 /// the canonical `values` field — handles based on `values` indices are
 /// stable across map state, and the map is just an O(1) lookup cache.
-impl PartialEq for Interner {
+impl<F: Field> PartialEq for Interner<F> {
     fn eq(&self, other: &Self) -> bool {
         self.values == other.values
     }
 }
 
-impl Default for Interner {
+impl<F: Field> Default for Interner<F> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Interner {
+impl<F: Field> Interner<F> {
     pub fn new() -> Self {
         Self {
             values: Vec::new(),
@@ -40,11 +42,11 @@ impl Interner {
         }
     }
 
-    /// Intern a `FieldElement`, returning a stable handle.
+    /// Intern a field element, returning a stable handle.
     ///
     /// O(1) amortized — uses a `HashMap` to deduplicate. The map is populated
     /// lazily on first call after deserialize / `from_values`.
-    pub fn intern(&mut self, value: FieldElement) -> InternedFieldElement {
+    pub fn intern(&mut self, value: F) -> InternedFieldElement {
         // After deserialize (or `from_values` without index population), the
         // map may be empty while `values` is not. Rebuild once.
         if self.index.len() < self.values.len() {
@@ -61,13 +63,13 @@ impl Interner {
         InternedFieldElement(idx)
     }
 
-    pub fn get(&self, el: InternedFieldElement) -> Option<FieldElement> {
+    pub fn get(&self, el: InternedFieldElement) -> Option<F> {
         self.values.get(el.0).copied()
     }
 
     /// Borrow the deduplicated values array. Used by mmap-format writers
     /// that need the raw bytes.
-    pub fn values_raw(&self) -> &[FieldElement] {
+    pub fn values_raw(&self) -> &[F] {
         &self.values
     }
 
@@ -80,13 +82,13 @@ impl Interner {
     ///
     /// # Precondition
     ///
-    /// `values` must contain no duplicate `FieldElement`s. Violating this
+    /// `values` must contain no duplicate field elements. Violating this
     /// leaves the interner in a non-canonical state where two distinct
     /// `InternedFieldElement` handles can refer to the same field element,
     /// breaking the "equal values produce equal handles" invariant relied on
     /// by handle-equality consumers (cache keys, dedup checks, etc.).
     /// Debug builds assert this; release builds trust the caller.
-    pub fn from_values(values: Vec<FieldElement>) -> Self {
+    pub fn from_values(values: Vec<F>) -> Self {
         let mut index = HashMap::with_capacity(values.len());
         for (i, v) in values.iter().enumerate() {
             index.insert(*v, i);
