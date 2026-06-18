@@ -8,7 +8,9 @@ use {std::fmt::Debug, whir::algebra::embedding::Embedding};
 /// bn254 uses `Identity<Fr>` (base == ext); goldilocks uses
 /// `Identity<Field64_3>` pre-v3, `Basefield<Field64_3>` once zkWHIR v3 lands.
 pub trait ProofField: Copy + Debug + Eq + Send + Sync {
-    type Embedding: Embedding;
+    /// `Default` lets the spine construct the embedding instance for mixed
+    /// base×ext products (`Identity`/`Basefield` both derive it).
+    type Embedding: Embedding + Default;
 }
 
 /// Base (committed) field of a [`ProofField`].

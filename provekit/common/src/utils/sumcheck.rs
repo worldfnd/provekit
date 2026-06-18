@@ -189,7 +189,9 @@ pub fn calculate_eq<F: Field>(r: &[F], alpha: &[F]) -> F {
 /// This depends only on the R1CS structure (from the verifier key), not on any
 /// proof-specific data, so it can run concurrently with sumcheck verification.
 #[instrument(skip_all)]
-pub fn transpose_r1cs_matrices(r1cs: &R1CS) -> (SparseMatrix, SparseMatrix, SparseMatrix) {
+pub fn transpose_r1cs_matrices<F: Field>(
+    r1cs: &R1CS<F>,
+) -> (SparseMatrix, SparseMatrix, SparseMatrix) {
     let ((at, bt), ct) = rayon::join(
         || rayon::join(|| r1cs.a.transpose(), || r1cs.b.transpose()),
         || r1cs.c.transpose(),

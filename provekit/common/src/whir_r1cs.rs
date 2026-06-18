@@ -91,7 +91,7 @@ pub struct WhirR1CSScheme<P: ProofField = Bn254Field> {
     pub hash_config:       HashConfig,
 }
 
-impl WhirR1CSScheme {
+impl<P: ProofField> WhirR1CSScheme<P> {
     /// Return the witness commitment domain size.
     pub const fn domain_size(&self) -> usize {
         1usize << self.m
