@@ -15,6 +15,7 @@ use {
         fmt::{self, Debug},
         ops::{Mul, Range},
     },
+    whir::algebra::embedding::Embedding,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -695,6 +696,33 @@ impl<F: Field> HydratedSparseMatrix<'_, F> {
             )
         })
     }
+
+    /// Right-multiply this base-field matrix by an extension-field vector,
+    /// lifting each base coefficient through `embedding`:
+    /// `out[i] = Σ_col mixed_mul(rhs[col], matrix[i, col])`.
+    ///
+    /// The extension-field analogue of the homogeneous `Mul<&[F]>` vector
+    /// product. Argument order matches WHIR's `mixed_dot` (extension value
+    /// first, base coefficient second).
+    pub fn mixed_multiply<M, G>(&self, embedding: &M, rhs: &[G]) -> Vec<G>
+    where
+        M: Embedding<Source = F, Target = G>,
+        G: Field,
+    {
+        assert_eq!(
+            self.matrix.num_cols,
+            rhs.len(),
+            "Vector length does not match number of columns."
+        );
+        (0..self.matrix.num_rows)
+            .into_par_iter()
+            .map(|row| {
+                self.iter_row(row)
+                    .map(|(col, value)| embedding.mixed_mul(rhs[col], value))
+                    .fold(G::zero(), |acc, x| acc + x)
+            })
+            .collect()
+    }
 }
 
 /// Right multiplication by vector (parallel over rows).
@@ -908,6 +936,43 @@ mod tests {
             postcard::from_bytes(&serialized).expect("deserialization failed");
 
         assert_eq!(matrix, deserialized);
+    }
+
+    #[test]
+    fn test_mixed_multiply_matches_homogeneous_under_identity() {
+        use whir::algebra::embedding::Identity;
+
+        let mut interner = Interner::new();
+        let v1 = interner.intern(FieldElement::from(2u64));
+        let v2 = interner.intern(FieldElement::from(3u64));
+        let v3 = interner.intern(FieldElement::from(5u64));
+
+        // 2×3 matrix: row 0 = [2, 0, 3], row 1 = [0, 5, 0].
+        let mut matrix = SparseMatrix::new(2, 3);
+        matrix.grow(2, 3);
+        matrix.set(0, 0, v1);
+        matrix.set(0, 2, v2);
+        matrix.set(1, 1, v3);
+
+        let rhs = [
+            FieldElement::from(7u64),
+            FieldElement::from(11u64),
+            FieldElement::from(13u64),
+        ];
+
+        // Under the Identity embedding (Source == Target == FieldElement), the
+        // mixed product must equal the homogeneous matrix-vector product.
+        let homogeneous = matrix.hydrate(&interner) * rhs.as_slice();
+        let mixed = matrix
+            .hydrate(&interner)
+            .mixed_multiply(&Identity::new(), &rhs);
+
+        assert_eq!(mixed, homogeneous);
+        // Sanity: row 0 = 2·7 + 3·13 = 53, row 1 = 5·11 = 55.
+        assert_eq!(mixed, vec![
+            FieldElement::from(53u64),
+            FieldElement::from(55u64)
+        ]);
     }
 
     #[test]
