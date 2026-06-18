@@ -3,7 +3,11 @@ use std::fmt::Debug;
 #[cfg(debug_assertions)]
 use whir::transcript::Interaction;
 use {
-    crate::{utils::serde_hex, FieldElement, HashConfig},
+    crate::{
+        field::{Ext, ProofField},
+        utils::serde_hex,
+        FieldElement, HashConfig,
+    },
     serde::{Deserialize, Serialize},
     whir::{
         algebra::embedding::Identity,
@@ -14,6 +18,15 @@ use {
 
 pub type WhirConfig = GenericWhirConfig<Identity<FieldElement>>;
 pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
+
+/// bn254 proof field: the `Identity<Fr>` embedding (base == ext).
+// TODO(P0.4): relocate to provekit-backend-bn254.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Bn254Field;
+
+impl ProofField for Bn254Field {
+    type Embedding = Identity<FieldElement>;
+}
 
 /// Type alias for the whir domain separator used in provekit's outer protocol.
 type WhirDomainSeparator = transcript::DomainSeparator<'static, ()>;
@@ -37,7 +50,8 @@ impl R1csHash {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WhirR1CSScheme {
+#[serde(bound = "")]
+pub struct WhirR1CSScheme<P: ProofField = Bn254Field> {
     pub m:                 usize,
     pub w1_size:           usize,
     pub m_0:               usize,
@@ -45,7 +59,7 @@ pub struct WhirR1CSScheme {
     pub num_challenges:    usize,
     pub challenge_offsets: Vec<usize>,
     pub has_public_inputs: bool,
-    pub whir_witness:      WhirZkConfig,
+    pub whir_witness:      GenericWhirZkConfig<Ext<P>>,
     pub r1cs_hash:         R1csHash,
     /// Hash configuration for Merkle commitments, Fiat-Shamir sponge, and
     /// public-input instance binding. Source of truth; the WHIR engine ID

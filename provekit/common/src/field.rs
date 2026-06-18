@@ -1,13 +1,13 @@
 //! Field abstraction for the generic proof-system spine.
 
-use whir::algebra::embedding::Embedding;
+use {std::fmt::Debug, whir::algebra::embedding::Embedding};
 
 /// Algebra carrier for a proof field: `Embedding::Source` is the base
 /// (committed) field, `Embedding::Target` the extension (challenge) field.
 ///
 /// bn254 uses `Identity<Fr>` (base == ext); goldilocks uses
 /// `Identity<Field64_3>` pre-v3, `Basefield<Field64_3>` once zkWHIR v3 lands.
-pub trait ProofField {
+pub trait ProofField: Copy + Debug + Eq + Send + Sync {
     type Embedding: Embedding;
 }
 
