@@ -4,7 +4,7 @@ use std::fmt::Debug;
 use whir::transcript::Interaction;
 use {
     crate::{
-        field::{Ext, FieldHash, ProofField},
+        field::{Base, Ext, FieldHash, ProofField},
         utils::{bytes_to_field, field_to_bytes_le, serde_hex},
         FieldElement, HashConfig,
     },
@@ -16,11 +16,13 @@ use {
     },
 };
 
+// TODO(P0.4): bn254-concrete aliases — relocate to provekit-backend-bn254.
 pub type WhirConfig = GenericWhirConfig<Identity<FieldElement>>;
 pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
 
 /// bn254 proof field: the `Identity<Fr>` embedding (base == ext).
-// TODO(P0.4): relocate to provekit-backend-bn254.
+// TODO(P0.4): relocate Bn254Field + its ProofField/FieldHash impls to
+// provekit-backend-bn254 (the hash bodies move with it).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bn254Field;
 
@@ -31,6 +33,10 @@ impl ProofField for Bn254Field {
 impl FieldHash for Bn254Field {
     fn default_hash() -> HashConfig {
         HashConfig::Skyscraper
+    }
+
+    fn hash_public_inputs(config: HashConfig, inputs: &[Base<Self>]) -> Ext<Self> {
+        config.hash_field_elements(inputs)
     }
 
     fn ext_to_bytes_le(x: &Ext<Self>) -> Vec<u8> {
@@ -132,5 +138,28 @@ mod tests {
         assert_eq!(Bn254Field::ext_from_bytes(&bytes), x);
         assert_eq!(Bn254Field::from_digest(&bytes), x);
         assert_eq!(Bn254Field::default_hash(), HashConfig::Skyscraper);
+    }
+
+    // TODO(P0.4): once the spine routes public-input hashing through
+    // `FieldHash::hash_public_inputs` and `PublicInputs::hash` is removed,
+    // convert this differential test to a hardcoded byte fixture (the P0.7
+    // bn254 bit-identical gate).
+    #[test]
+    fn bn254_hash_public_inputs_matches_public_inputs_hash() {
+        let inputs = [FieldElement::from(7u64), FieldElement::from(42u64)];
+        let pi = crate::PublicInputs::from_vec(inputs.to_vec());
+        for config in [
+            HashConfig::Skyscraper,
+            HashConfig::Sha256,
+            HashConfig::Keccak,
+            HashConfig::Blake3,
+            HashConfig::Poseidon2,
+        ] {
+            assert_eq!(
+                Bn254Field::hash_public_inputs(config, &inputs),
+                pi.hash(config),
+                "mismatch for {config:?}"
+            );
+        }
     }
 }

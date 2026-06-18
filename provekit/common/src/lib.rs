@@ -26,6 +26,11 @@ use crate::{
 };
 pub use {
     acir::FieldElement as NoirElement,
+    // TODO(P0.4): bn254-only alias and the migration lynchpin. Deleting it (once
+    // provekit-backend-bn254 owns `Fr`) is the final P0.3 step; it forces removal
+    // of every `= FieldElement` / `= Bn254Field` default type param across the
+    // spine. The compiler flags each site, so those defaults need no individual
+    // markers.
     ark_bn254::Fr as FieldElement,
     field::{Base, Ext, FieldHash, ProofField},
     hash_config::HashConfig,

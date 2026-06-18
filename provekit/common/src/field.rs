@@ -22,6 +22,10 @@ pub type Ext<P> = <<P as ProofField>::Embedding as Embedding>::Target;
 pub trait FieldHash: ProofField {
     fn default_hash() -> crate::HashConfig;
 
+    /// Instance-binding hash of base-field public inputs to an extension
+    /// transcript element.
+    fn hash_public_inputs(config: crate::HashConfig, inputs: &[Base<Self>]) -> Ext<Self>;
+
     /// Little-endian bytes of an extension element (32B for `Fr`, 24B for
     /// `Field64_3`).
     fn ext_to_bytes_le(x: &Ext<Self>) -> Vec<u8>;

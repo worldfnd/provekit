@@ -85,6 +85,9 @@ impl<F: Field> PublicInputs<F> {
     }
 }
 
+// TODO(P0.4): remove once the spine routes public-input hashing through
+// `FieldHash::hash_public_inputs` (both prover and verifier); the bn254 hash
+// bodies relocate to provekit-backend-bn254.
 impl PublicInputs<FieldElement> {
     /// Instance-binding hash of these public inputs under `config`.
     ///
