@@ -21,16 +21,21 @@ use {
     whir::algebra::embedding::{Embedding, Identity},
 };
 
+// TODO: This is the single bn254 instantiation point. Field selection replaces
+// this alias with a `<P: ProofField>` parameter — base = Embedding::Source,
+// ext = Embedding::Target — threaded through the interner, r1cs, sparse-matrix
+// (HydratedSparseMatrix) and sumcheck, and parameterizes WhirR1CSScheme<P> with
+// its WhirConfig/WhirZkConfig aliases. It retires the runtime FieldHashProvider
+// registry (field/mod.rs) for compile-time P::method dispatch, genericizes the
+// monomorphic serde helpers (utils::serde_ark_vec/serde_ark_option) under
+// #[serde(bound = "")], and relocates the 256-bit/PrimeField helpers
+// (witness/digits.rs, utils::HALF/uint_to_field, hash_config digest reduction)
+// into the field crate. bn254 stays Identity<Fr> (base == ext), byte-identical.
 /// The proof-system field embedding (currently `Identity<bn254::Fr>`).
 ///
-/// This is the bn254 instantiation point. Because `Identity` has
+/// This is the bn254 instantiation point: because `Identity` has
 /// `Source == Target`, the spine names a single [`FieldElement`] for both
-/// committed data and challenges. Switching to an embedding with a distinct
-/// extension (e.g. Goldilocks `Basefield<Field64_3>`) is **not** just changing
-/// this alias: committed data must stay in `Embedding::Source` while challenges
-/// move to `Embedding::Target`, which requires threading `<M: Embedding>`
-/// through the algebra (interner / r1cs / sparse-matrix / sumcheck). Tracked
-/// for the field-selection PR.
+/// committed data (`Embedding::Source`) and challenges (`Embedding::Target`).
 pub type ProvekitEmbedding = Identity<ark_bn254::Fr>;
 
 /// The base field the spine operates over (`bn254::Fr` at `Identity`).

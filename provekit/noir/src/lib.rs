@@ -245,7 +245,6 @@ impl Prove for NoirProver {
             vec![commitment_1]
         };
 
-        // Decompress R1CS for the sumcheck and matrix operations.
         let r1cs = compressed_r1cs
             .decompress()
             .context("While decompressing R1CS")?;
