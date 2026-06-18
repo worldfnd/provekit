@@ -4,8 +4,8 @@ use std::fmt::Debug;
 use whir::transcript::Interaction;
 use {
     crate::{
-        field::{Ext, ProofField},
-        utils::serde_hex,
+        field::{Ext, FieldHash, ProofField},
+        utils::{bytes_to_field, field_to_bytes_le, serde_hex},
         FieldElement, HashConfig,
     },
     serde::{Deserialize, Serialize},
@@ -26,6 +26,24 @@ pub struct Bn254Field;
 
 impl ProofField for Bn254Field {
     type Embedding = Identity<FieldElement>;
+}
+
+impl FieldHash for Bn254Field {
+    fn default_hash() -> HashConfig {
+        HashConfig::Skyscraper
+    }
+
+    fn ext_to_bytes_le(x: &Ext<Self>) -> Vec<u8> {
+        field_to_bytes_le(*x).to_vec()
+    }
+
+    fn ext_from_bytes(bytes: &[u8]) -> Ext<Self> {
+        bytes_to_field(bytes)
+    }
+
+    fn from_digest(digest: &[u8]) -> Ext<Self> {
+        bytes_to_field(digest)
+    }
 }
 
 /// Type alias for the whir domain separator used in provekit's outer protocol.
@@ -100,4 +118,19 @@ pub struct WhirR1CSProof {
     #[cfg(debug_assertions)]
     #[serde(skip)]
     pub pattern: Vec<Interaction>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bn254_field_hash_roundtrip() {
+        let x: Ext<Bn254Field> = FieldElement::from(123_456_789u64);
+        let bytes = Bn254Field::ext_to_bytes_le(&x);
+        assert_eq!(bytes.len(), 32);
+        assert_eq!(Bn254Field::ext_from_bytes(&bytes), x);
+        assert_eq!(Bn254Field::from_digest(&bytes), x);
+        assert_eq!(Bn254Field::default_hash(), HashConfig::Skyscraper);
+    }
 }
