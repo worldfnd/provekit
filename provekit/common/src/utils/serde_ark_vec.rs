@@ -1,16 +1,16 @@
 use {
-    crate::FieldElement,
     ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
     serde::{
         de::{Error as _, SeqAccess, Visitor},
         ser::{Error as _, SerializeSeq},
         Deserializer, Serializer,
     },
-    std::fmt,
+    std::{fmt, marker::PhantomData},
 };
 
-pub fn serialize<S>(vec: &Vec<FieldElement>, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize<T, S>(vec: &Vec<T>, serializer: S) -> Result<S::Ok, S::Error>
 where
+    T: CanonicalSerialize,
     S: Serializer,
 {
     let is_human_readable = serializer.is_human_readable();
@@ -35,16 +35,18 @@ where
     seq.end()
 }
 
-pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<FieldElement>, D::Error>
+pub fn deserialize<'de, T, D>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
+    T: CanonicalDeserialize,
     D: Deserializer<'de>,
 {
-    struct VecVisitor {
+    struct VecVisitor<T> {
         is_human_readable: bool,
+        _marker:           PhantomData<T>,
     }
 
-    impl<'de> Visitor<'de> for VecVisitor {
-        type Value = Vec<FieldElement>;
+    impl<'de, T: CanonicalDeserialize> Visitor<'de> for VecVisitor<T> {
+        type Value = Vec<T>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str("a sequence of field elements")
@@ -60,7 +62,7 @@ where
                     let bytes = hex::decode(hex)
                         .map_err(|e| A::Error::custom(format!("invalid hex: {e}")))?;
                     let mut reader = &*bytes;
-                    let element = FieldElement::deserialize_compressed(&mut reader)
+                    let element = T::deserialize_compressed(&mut reader)
                         .map_err(|e| A::Error::custom(format!("deserialize failed: {e}")))?;
                     if !reader.is_empty() {
                         return Err(A::Error::custom("while deserializing: trailing bytes"));
@@ -70,7 +72,7 @@ where
             } else {
                 while let Some(bytes) = seq.next_element::<Vec<u8>>()? {
                     let mut reader = &*bytes;
-                    let element = FieldElement::deserialize_compressed(&mut reader)
+                    let element = T::deserialize_compressed(&mut reader)
                         .map_err(|e| A::Error::custom(format!("deserialize failed: {e}")))?;
                     if !reader.is_empty() {
                         return Err(A::Error::custom("while deserializing: trailing bytes"));
@@ -83,5 +85,8 @@ where
     }
 
     let is_human_readable = deserializer.is_human_readable();
-    deserializer.deserialize_seq(VecVisitor { is_human_readable })
+    deserializer.deserialize_seq(VecVisitor {
+        is_human_readable,
+        _marker: PhantomData,
+    })
 }

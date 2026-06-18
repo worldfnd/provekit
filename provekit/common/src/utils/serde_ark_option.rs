@@ -1,11 +1,11 @@
 use {
-    crate::FieldElement,
     ark_serialize::{CanonicalDeserialize, CanonicalSerialize},
     serde::{de::Error as _, ser::Error as _, Deserialize as _, Deserializer, Serializer},
 };
 
-pub fn serialize<S>(obj: &Option<FieldElement>, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize<T, S>(obj: &Option<T>, serializer: S) -> Result<S::Ok, S::Error>
 where
+    T: CanonicalSerialize,
     S: Serializer,
 {
     match obj {
@@ -30,8 +30,9 @@ where
     }
 }
 
-pub fn deserialize<'de, D>(deserializer: D) -> Result<Option<FieldElement>, D::Error>
+pub fn deserialize<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
 where
+    T: CanonicalDeserialize,
     D: Deserializer<'de>,
 {
     if deserializer.is_human_readable() {
@@ -41,7 +42,7 @@ where
                 let bytes =
                     hex::decode(&hex).map_err(|e| D::Error::custom(format!("invalid hex: {e}")))?;
                 let mut reader = &*bytes;
-                let field = FieldElement::deserialize_compressed(&mut reader)
+                let field = T::deserialize_compressed(&mut reader)
                     .map_err(|e| D::Error::custom(format!("deserialize failed: {e}")))?;
                 Ok(Some(field))
             }
@@ -52,7 +53,7 @@ where
         match maybe_bytes {
             Some(bytes) => {
                 let mut reader = &*bytes;
-                let field = FieldElement::deserialize_compressed(&mut reader)
+                let field = T::deserialize_compressed(&mut reader)
                     .map_err(|e| D::Error::custom(format!("deserialize failed: {e}")))?;
                 Ok(Some(field))
             }
