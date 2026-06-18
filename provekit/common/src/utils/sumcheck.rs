@@ -4,18 +4,19 @@ use {
         utils::{unzip_double_array, workload_size},
         FieldElement, R1CS,
     },
-    ark_std::{One, Zero},
+    ark_ff::Field,
+    ark_std::Zero,
     std::array,
     tracing::instrument,
 };
 
 /// Compute the sum of a vector valued function over the boolean hypercube in
 /// the leading variable.
-pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize>(
-    mles: [&mut [FieldElement]; N],
-    fold: Option<FieldElement>,
-    map: impl Fn([(FieldElement, FieldElement); N]) -> [FieldElement; M] + Send + Sync + Copy,
-) -> [FieldElement; M] {
+pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize, F: Field>(
+    mles: [&mut [F]; N],
+    fold: Option<F>,
+    map: impl Fn([(F, F); N]) -> [F; M] + Send + Sync + Copy,
+) -> [F; M] {
     let size = mles[0].len();
     assert!(size.is_power_of_two());
     assert!(size >= 2);
@@ -29,19 +30,19 @@ pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize>(
             let (p2, p3) = tail.split_at_mut(size / 4);
             [p0, p1, p2, p3]
         });
-        sumcheck_fold_map_reduce_inner::<N, M>(slices, fold, map)
+        sumcheck_fold_map_reduce_inner::<N, M, F>(slices, fold, map)
     } else {
         let slices = mles.map(|mle| mle.split_at(size / 2));
-        sumcheck_map_reduce_inner::<N, M>(slices, map)
+        sumcheck_map_reduce_inner::<N, M, F>(slices, map)
     }
 }
 
-fn sumcheck_map_reduce_inner<const N: usize, const M: usize>(
-    mles: [(&[FieldElement], &[FieldElement]); N],
-    map: impl Fn([(FieldElement, FieldElement); N]) -> [FieldElement; M] + Send + Sync + Copy,
-) -> [FieldElement; M] {
+fn sumcheck_map_reduce_inner<const N: usize, const M: usize, F: Field>(
+    mles: [(&[F], &[F]); N],
+    map: impl Fn([(F, F); N]) -> [F; M] + Send + Sync + Copy,
+) -> [F; M] {
     let size = mles[0].0.len();
-    if size * N * 2 > workload_size::<FieldElement>() {
+    if size * N * 2 > workload_size::<F>() {
         // Split slices
         let pairs = mles.map(|(p0, p1)| (p0.split_at(size / 2), p1.split_at(size / 2)));
         let left = pairs.map(|((l0, _), (l1, _))| (l0, l1));
@@ -56,7 +57,7 @@ fn sumcheck_map_reduce_inner<const N: usize, const M: usize>(
         // Combine results
         array::from_fn(|i| l[i] + r[i])
     } else {
-        let mut result = [FieldElement::zero(); M];
+        let mut result = [F::zero(); M];
         for i in 0..size {
             let e = mles.map(|(p0, p1)| (p0[i], p1[i]));
             let local = map(e);
@@ -66,13 +67,13 @@ fn sumcheck_map_reduce_inner<const N: usize, const M: usize>(
     }
 }
 
-fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
-    mut mles: [[&mut [FieldElement]; 4]; N],
-    fold: FieldElement,
-    map: impl Fn([(FieldElement, FieldElement); N]) -> [FieldElement; M] + Send + Sync + Copy,
-) -> [FieldElement; M] {
+fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize, F: Field>(
+    mut mles: [[&mut [F]; 4]; N],
+    fold: F,
+    map: impl Fn([(F, F); N]) -> [F; M] + Send + Sync + Copy,
+) -> [F; M] {
     let size = mles[0][0].len();
-    if size * N * 4 > workload_size::<FieldElement>() {
+    if size * N * 4 > workload_size::<F>() {
         // Split slices
         let pairs = mles.map(|mles| mles.map(|p| p.split_at_mut(size / 2)));
         let (left, right) = unzip_double_array(pairs);
@@ -86,7 +87,7 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
         // Combine results
         array::from_fn(|i| l[i] + r[i])
     } else {
-        let mut result = [FieldElement::zero(); M];
+        let mut result = [F::zero(); M];
         for i in 0..size {
             let e = array::from_fn(|j| {
                 let mle = &mut mles[j];
@@ -105,29 +106,24 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
 /// `num_entries` elements. When `num_entries < 2^r.len()`, avoids allocating
 /// the full hypercube.
 #[instrument(skip_all)]
-pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
-    r: &[FieldElement],
+pub fn calculate_evaluations_over_boolean_hypercube_for_eq<F: Field>(
+    r: &[F],
     num_entries: usize,
-) -> Vec<FieldElement> {
+) -> Vec<F> {
     if num_entries == 0 {
         return vec![];
     }
     let full_size = 1usize << r.len();
     assert!(num_entries <= full_size);
-    let mut result = vec![FieldElement::zero(); num_entries];
-    eval_eq(r, &mut result, FieldElement::one(), full_size);
+    let mut result = vec![F::zero(); num_entries];
+    eval_eq(r, &mut result, F::one(), full_size);
     result
 }
 
 /// Evaluates the equality polynomial recursively. `subtree_size` tracks the
 /// logical size of this recursion level so that truncated output buffers are
 /// split correctly.
-fn eval_eq(
-    eval: &[FieldElement],
-    out: &mut [FieldElement],
-    scalar: FieldElement,
-    subtree_size: usize,
-) {
+fn eval_eq<F: Field>(eval: &[F], out: &mut [F], scalar: F, subtree_size: usize) {
     debug_assert!(out.len() <= subtree_size);
     if let Some((&x, tail)) = eval.split_first() {
         let half = subtree_size / 2;
@@ -138,7 +134,7 @@ fn eval_eq(
         let s0 = scalar - s1;
         if right_len == 0 {
             eval_eq(tail, o0, s0, half);
-        } else if subtree_size > workload_size::<FieldElement>() {
+        } else if subtree_size > workload_size::<F>() {
             rayon::join(
                 || eval_eq(tail, o0, s0, half),
                 || eval_eq(tail, o1, s1, half),
@@ -153,7 +149,7 @@ fn eval_eq(
 }
 
 /// Evaluates a cubic polynomial on a value
-pub fn eval_cubic_poly(poly: [FieldElement; 4], point: FieldElement) -> FieldElement {
+pub fn eval_cubic_poly<F: Field>(poly: [F; 4], point: F) -> F {
     poly[0] + point * (poly[1] + point * (poly[2] + point * poly[3]))
 }
 
@@ -179,11 +175,11 @@ pub fn calculate_witness_bounds(
 }
 
 /// Calculates eq(r, alpha)
-pub fn calculate_eq(r: &[FieldElement], alpha: &[FieldElement]) -> FieldElement {
+pub fn calculate_eq<F: Field>(r: &[F], alpha: &[F]) -> F {
     r.iter()
         .zip(alpha.iter())
-        .fold(FieldElement::from(1), |acc, (&r, &alpha)| {
-            acc * (r * alpha + (FieldElement::from(1) - r) * (FieldElement::from(1) - alpha))
+        .fold(F::one(), |acc, (&r, &alpha)| {
+            acc * (r * alpha + (F::one() - r) * (F::one() - alpha))
         })
 }
 
@@ -228,7 +224,7 @@ pub fn multiply_transposed_by_eq_alpha(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, ark_std::One};
 
     fn fe(v: i64) -> FieldElement {
         if v >= 0 {
@@ -275,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_calculate_eq_empty() {
-        assert_eq!(calculate_eq(&[], &[]), fe(1));
+        assert_eq!(calculate_eq::<FieldElement>(&[], &[]), fe(1));
     }
 
     /// calculate_evaluations_over_boolean_hypercube_for_eq
@@ -307,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_eq_hypercube_empty_r() {
-        let result = calculate_evaluations_over_boolean_hypercube_for_eq(&[], 1);
+        let result = calculate_evaluations_over_boolean_hypercube_for_eq::<FieldElement>(&[], 1);
         assert_eq!(result, vec![fe(1)]);
     }
 
@@ -316,7 +312,7 @@ mod tests {
         let result = calculate_evaluations_over_boolean_hypercube_for_eq(&[fe(2), fe(3), fe(5)], 0);
         assert!(result.is_empty(), "non-empty r, zero entries");
 
-        let result = calculate_evaluations_over_boolean_hypercube_for_eq(&[], 0);
+        let result = calculate_evaluations_over_boolean_hypercube_for_eq::<FieldElement>(&[], 0);
         assert!(result.is_empty(), "empty r, zero entries");
     }
 
