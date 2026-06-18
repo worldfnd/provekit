@@ -8,6 +8,7 @@ use {
     ark_std::Zero,
     std::array,
     tracing::instrument,
+    whir::algebra::embedding::Embedding,
 };
 
 /// Compute the sum of a vector valued function over the boolean hypercube in
@@ -199,24 +200,25 @@ pub fn transpose_r1cs_matrices(r1cs: &R1CS) -> (SparseMatrix, SparseMatrix, Spar
 /// Multiply pre-transposed R1CS matrices by eq(alpha, ·) to compute the
 /// external row.
 #[instrument(skip_all)]
-pub fn multiply_transposed_by_eq_alpha(
+pub fn multiply_transposed_by_eq_alpha<M: Embedding>(
+    embedding: &M,
     at: &SparseMatrix,
     bt: &SparseMatrix,
     ct: &SparseMatrix,
-    alpha: &[FieldElement],
-    r1cs: &R1CS,
-) -> [Vec<FieldElement>; 3] {
+    alpha: &[M::Target],
+    r1cs: &R1CS<M::Source>,
+) -> [Vec<M::Target>; 3] {
     let eq_alpha =
         calculate_evaluations_over_boolean_hypercube_for_eq(alpha, r1cs.num_constraints());
     let interner = &r1cs.interner;
     let ((a, b), c) = rayon::join(
         || {
             rayon::join(
-                || at.hydrate(interner) * eq_alpha.as_slice(),
-                || bt.hydrate(interner) * eq_alpha.as_slice(),
+                || at.hydrate(interner).mixed_multiply(embedding, &eq_alpha),
+                || bt.hydrate(interner).mixed_multiply(embedding, &eq_alpha),
             )
         },
-        || ct.hydrate(interner) * eq_alpha.as_slice(),
+        || ct.hydrate(interner).mixed_multiply(embedding, &eq_alpha),
     );
 
     [a, b, c]
@@ -421,8 +423,14 @@ mod tests {
         let expected_b = vec![fe(-6), fe(2), fe(-16), fe(-3)];
         let expected_c = vec![fe(-8), fe(-3), fe(2), fe(-9)];
 
-        let [actual_a, actual_b, actual_c] =
-            multiply_transposed_by_eq_alpha(&at, &bt, &ct, &alpha, &r1cs);
+        let [actual_a, actual_b, actual_c] = multiply_transposed_by_eq_alpha(
+            &whir::algebra::embedding::Identity::<FieldElement>::new(),
+            &at,
+            &bt,
+            &ct,
+            &alpha,
+            &r1cs,
+        );
 
         assert_eq!(actual_a.len(), r1cs.num_witnesses());
         assert_eq!(actual_a, expected_a, "A result mismatch");

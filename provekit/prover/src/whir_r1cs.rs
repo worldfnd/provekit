@@ -23,7 +23,7 @@ use {
     },
     std::borrow::Cow,
     whir::{
-        algebra::{dot, linear_form::LinearForm},
+        algebra::{dot, embedding::Identity, linear_form::LinearForm},
         protocols::whir_zk::Witness as WhirZkWitness,
         transcript::{ProverState, VerifierMessage},
     },
@@ -170,7 +170,16 @@ impl WhirR1CSProver for WhirR1CSScheme {
         );
 
         let (at, bt, ct) = transpose_r1cs_matrices(&r1cs);
-        let alphas = multiply_transposed_by_eq_alpha(&at, &bt, &ct, &alpha, &r1cs);
+        // TODO(prover <P> slice): replace the concrete bn254 embedding with
+        // `&P::Embedding::default()` once the prover is generic over <P>.
+        let alphas = multiply_transposed_by_eq_alpha(
+            &Identity::<FieldElement>::new(),
+            &at,
+            &bt,
+            &ct,
+            &alpha,
+            &r1cs,
+        );
 
         let blinding_offset = blinding.offset;
         let blinding_weights = expand_powers::<4, _>(&alpha);

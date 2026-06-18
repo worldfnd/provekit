@@ -13,7 +13,7 @@ use {
     },
     tracing::instrument,
     whir::{
-        algebra::linear_form::LinearForm,
+        algebra::{embedding::Identity, linear_form::LinearForm},
         transcript::{Proof, VerifierMessage, VerifierState},
     },
 };
@@ -100,6 +100,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let x: FieldElement = arthur.verifier_message();
 
         let alphas = multiply_transposed_by_eq_alpha(
+            &Identity::<FieldElement>::new(),
             &at,
             &bt,
             &ct,
