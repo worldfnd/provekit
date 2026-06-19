@@ -278,7 +278,7 @@ fn prove_from_alphas(
             .next()
             .expect("single-commitment path requires at least one commitment");
         let (mut weights, evals) =
-            create_weights_and_evaluations::<3>(scheme.m, &commitment.polynomial, alphas);
+            create_weights_and_evaluations::<3, _>(scheme.m, &commitment.polynomial, alphas);
 
         for eval in &evals {
             merlin.prover_message(eval);
@@ -628,11 +628,11 @@ pub fn run_zk_sumcheck_prover<F: Field + Codec>(
     (alpha, blinding_eval)
 }
 
-fn create_weights_and_evaluations<const N: usize>(
+fn create_weights_and_evaluations<const N: usize, F: Field>(
     m: usize,
-    polynomial: &[FieldElement],
-    alphas: [Vec<FieldElement>; N],
-) -> (Vec<PrefixCovector>, Vec<FieldElement>) {
+    polynomial: &[F],
+    alphas: [Vec<F>; N],
+) -> (Vec<PrefixCovector<F>>, Vec<F>) {
     let domain_size = 1usize << m;
 
     let mut weights = Vec::with_capacity(N);
@@ -640,7 +640,7 @@ fn create_weights_and_evaluations<const N: usize>(
 
     for mut w in alphas {
         let base_len = w.len().next_power_of_two().max(2);
-        w.resize(base_len, FieldElement::zero());
+        w.resize(base_len, F::zero());
 
         evals.push(dot(&w, &polynomial[..base_len]));
         weights.push(PrefixCovector::new(w, domain_size));
@@ -649,36 +649,33 @@ fn create_weights_and_evaluations<const N: usize>(
     (weights, evals)
 }
 
-fn compute_evaluations(
-    weights: &[PrefixCovector],
-    polynomial: &[FieldElement],
-) -> Vec<FieldElement> {
+fn compute_evaluations<F: Field>(weights: &[PrefixCovector<F>], polynomial: &[F]) -> Vec<F> {
     weights
         .iter()
         .map(|w| dot(w.vector(), &polynomial[..w.vector().len()]))
         .collect()
 }
 
-fn compute_public_weight_evaluation(
-    weights: &mut Vec<PrefixCovector>,
-    polynomial: &[FieldElement],
-    public_weights: PrefixCovector,
-) -> FieldElement {
+fn compute_public_weight_evaluation<F: Field>(
+    weights: &mut Vec<PrefixCovector<F>>,
+    polynomial: &[F],
+    public_weights: PrefixCovector<F>,
+) -> F {
     let n = public_weights.vector().len();
     let eval = dot(public_weights.vector(), &polynomial[..n]);
     weights.insert(0, public_weights);
     eval
 }
 
-fn get_public_weights(
-    public_inputs_hash: FieldElement,
+fn get_public_weights<F: Field + Codec>(
+    public_inputs_hash: F,
     public_inputs_len: usize,
     merlin: &mut ProverState<TranscriptSponge>,
     m: usize,
-) -> (FieldElement, PrefixCovector) {
+) -> (F, PrefixCovector<F>) {
     merlin.prover_message(&public_inputs_hash);
 
-    let x: FieldElement = merlin.verifier_message();
+    let x: F = merlin.verifier_message();
 
     (x, make_public_weight(x, public_inputs_len, m))
 }
