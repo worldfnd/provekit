@@ -1,6 +1,10 @@
 //! Field abstraction for the generic proof-system spine.
 
-use {std::fmt::Debug, whir::algebra::embedding::Embedding};
+use {
+    ark_ff::FftField,
+    std::fmt::Debug,
+    whir::{algebra::embedding::Embedding, transcript::Codec},
+};
 
 /// Algebra carrier for a proof field: `Embedding::Source` is the base
 /// (committed) field, `Embedding::Target` the extension (challenge) field.
@@ -9,8 +13,10 @@ use {std::fmt::Debug, whir::algebra::embedding::Embedding};
 /// `Identity<Field64_3>` pre-v3, `Basefield<Field64_3>` once zkWHIR v3 lands.
 pub trait ProofField: Copy + Debug + Eq + Send + Sync {
     /// `Default` lets the spine construct the embedding instance for mixed
-    /// base×ext products (`Identity`/`Basefield` both derive it).
-    type Embedding: Embedding + Default;
+    /// base×ext products (`Identity`/`Basefield` both derive it). The extension
+    /// (`Target`) must be FFT-friendly and transcript-codec-able — WHIR's
+    /// requirement for any challenge/commitment field.
+    type Embedding: Embedding<Target: FftField + Codec> + Default;
 }
 
 /// Base (committed) field of a [`ProofField`].

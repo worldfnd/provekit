@@ -4584,7 +4584,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-bench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4606,7 +4606,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4635,7 +4635,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-common"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4675,7 +4675,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-ffi"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -4705,7 +4705,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-prover"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4726,7 +4726,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-r1cs-compiler"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4747,9 +4747,10 @@ dependencies = [
 
 [[package]]
 name = "provekit-verifier"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
+ "ark-ff 0.5.0",
  "ark-std 0.5.0",
  "provekit-common",
  "rayon",
@@ -7034,7 +7035,7 @@ dependencies = [
 
 [[package]]
 name = "verifier-server"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum",

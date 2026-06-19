@@ -1,6 +1,7 @@
 use {
     anyhow::{ensure, Context, Result},
-    ark_std::{One, Zero},
+    ark_ff::Field,
+    ark_std::One,
     provekit_common::{
         prefix_covector::{
             build_prefix_covectors, expand_powers, make_challenge_weight, make_public_weight,
@@ -9,39 +10,40 @@ use {
         utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
         },
-        FieldElement, PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        Base, Ext, FieldHash, ProofField, PublicInputs, TranscriptSponge, WhirR1CSProof,
+        WhirR1CSScheme, R1CS,
     },
     tracing::instrument,
     whir::{
-        algebra::{embedding::Identity, linear_form::LinearForm},
-        transcript::{Proof, VerifierMessage, VerifierState},
+        algebra::{embedding::Embedding, linear_form::LinearForm},
+        transcript::{Codec, Proof, VerifierMessage, VerifierState},
     },
 };
 
 #[derive(Debug)]
-pub struct DataFromSumcheckVerifier {
-    r:             Vec<FieldElement>,
-    alpha:         Vec<FieldElement>,
-    blinding_eval: FieldElement,
-    f_at_alpha:    FieldElement,
+pub struct DataFromSumcheckVerifier<F: Field> {
+    r:             Vec<F>,
+    alpha:         Vec<F>,
+    blinding_eval: F,
+    f_at_alpha:    F,
 }
 
-pub trait WhirR1CSVerifier {
+pub trait WhirR1CSVerifier<P: ProofField> {
     fn verify(
         &self,
         proof: &WhirR1CSProof,
-        public_inputs: &PublicInputs,
-        r1cs: &R1CS,
+        public_inputs: &PublicInputs<Base<P>>,
+        r1cs: &R1CS<Base<P>>,
     ) -> Result<()>;
 }
 
-impl WhirR1CSVerifier for WhirR1CSScheme {
+impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
     #[instrument(skip_all)]
     fn verify(
         &self,
         proof: &WhirR1CSProof,
-        public_inputs: &PublicInputs,
-        r1cs: &R1CS,
+        public_inputs: &PublicInputs<Base<P>>,
+        r1cs: &R1CS<Base<P>>,
     ) -> Result<()> {
         let actual_r1cs_hash = r1cs.hash();
         anyhow::ensure!(
@@ -51,7 +53,8 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             actual_r1cs_hash
         );
 
-        let instance = public_inputs.hash_bytes(self.hash_config);
+        let public_inputs_hash = P::hash_public_inputs(self.hash_config, &public_inputs.0);
+        let instance = P::ext_to_bytes_le(&public_inputs_hash);
         let ds = self.create_domain_separator().instance(&instance);
         let whir_proof = Proof {
             narg_string: proof.narg_string.clone(),
@@ -71,7 +74,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
 
         let (commitment_2, logup_challenges) = if self.num_challenges > 0 {
-            let challenges: Vec<FieldElement> = arthur.verifier_message_vec(self.num_challenges);
+            let challenges: Vec<Ext<P>> = arthur.verifier_message_vec(self.num_challenges);
             let commitment = self
                 .whir_witness
                 .receive_commitments(&mut arthur, 1)
@@ -82,25 +85,25 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         };
         let (transposed, sumcheck_result) = rayon::join(
             || transpose_r1cs_matrices(r1cs),
-            || run_sumcheck_verifier(&mut arthur, self.m_0),
+            || run_sumcheck_verifier::<Ext<P>>(&mut arthur, self.m_0),
         );
         let data_from_sumcheck_verifier = sumcheck_result.context("while verifying sumcheck")?;
         let (at, bt, ct) = transposed;
 
-        let public_inputs_hash_buf: FieldElement = arthur
+        let public_inputs_hash_buf: Ext<P> = arthur
             .prover_message()
             .map_err(|_| anyhow::anyhow!("Failed to read public inputs hash"))?;
-        let expected_public_inputs_hash = public_inputs.hash(self.hash_config);
         ensure!(
-            public_inputs_hash_buf == expected_public_inputs_hash,
+            public_inputs_hash_buf == public_inputs_hash,
             "Public inputs hash mismatch: expected {:?}, got {:?}",
-            expected_public_inputs_hash,
+            public_inputs_hash,
             public_inputs_hash_buf
         );
-        let x: FieldElement = arthur.verifier_message();
+        let x: Ext<P> = arthur.verifier_message();
 
+        let embedding = <P::Embedding>::default();
         let alphas = multiply_transposed_by_eq_alpha(
-            &Identity::<FieldElement>::new(),
+            &embedding,
             &at,
             &bt,
             &ct,
@@ -121,14 +124,14 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     (v, v2)
                 })
                 .unzip();
-            let alphas_1: [Vec<FieldElement>; 3] = alphas_1
+            let alphas_1: [Vec<Ext<P>>; 3] = alphas_1
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Expected 3 alpha vectors for commitment 1"))?;
-            let alphas_2: [Vec<FieldElement>; 3] = alphas_2
+            let alphas_2: [Vec<Ext<P>>; 3] = alphas_2
                 .try_into()
                 .map_err(|_| anyhow::anyhow!("Expected 3 alpha vectors for commitment 2"))?;
 
-            let evals_1: [FieldElement; 3] = [
+            let evals_1: [Ext<P>; 3] = [
                 arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read evals_1[0]"))?,
@@ -139,7 +142,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read evals_1[2]"))?,
             ];
-            let evals_2: [FieldElement; 3] = [
+            let evals_2: [Ext<P>; 3] = [
                 arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read evals_2[0]"))?,
@@ -155,10 +158,10 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             let weights_2 = build_prefix_covectors(self.m, alphas_2);
 
             let mut evaluations_1 = if !public_inputs.is_empty() {
-                let public_1: FieldElement = arthur
+                let public_1: Ext<P> = arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read public_1"))?;
-                verify_public_input_binding(public_1, x, public_inputs)?;
+                verify_public_input_binding(&embedding, public_1, x, public_inputs)?;
                 weights_1.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 vec![public_1, evals_1[0], evals_1[1], evals_1[2]]
             } else {
@@ -170,7 +173,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             // Challenge binding: verify that w2 contains the correct
             // Fiat-Shamir challenge values at the expected positions.
             let challenge_covector = if let Some(ref challenges) = logup_challenges {
-                let challenge_eval: FieldElement = arthur
+                let challenge_eval: Ext<P> = arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read challenge_eval"))?;
                 verify_challenge_binding(challenge_eval, x, challenges)?;
@@ -181,22 +184,22 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 None
             };
 
-            let mut weight_refs_1: Vec<&dyn LinearForm<FieldElement>> = weights_1
+            let mut weight_refs_1: Vec<&dyn LinearForm<Ext<P>>> = weights_1
                 .iter()
-                .map(|w| w as &dyn LinearForm<FieldElement>)
+                .map(|w| w as &dyn LinearForm<Ext<P>>)
                 .collect();
-            weight_refs_1.push(&blinding_covector as &dyn LinearForm<FieldElement>);
+            weight_refs_1.push(&blinding_covector as &dyn LinearForm<Ext<P>>);
 
             self.whir_witness
                 .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
 
-            let mut weight_refs_2: Vec<&dyn LinearForm<FieldElement>> = weights_2
+            let mut weight_refs_2: Vec<&dyn LinearForm<Ext<P>>> = weights_2
                 .iter()
-                .map(|w| w as &dyn LinearForm<FieldElement>)
+                .map(|w| w as &dyn LinearForm<Ext<P>>)
                 .collect();
             if let Some(ref cw) = challenge_covector {
-                weight_refs_2.push(cw as &dyn LinearForm<FieldElement>);
+                weight_refs_2.push(cw as &dyn LinearForm<Ext<P>>);
             }
             self.whir_witness
                 .verify(&mut arthur, &weight_refs_2, &evaluations_2, &commitment_2)
@@ -208,7 +211,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
                 evals_1[2] + evals_2[2],
             )
         } else {
-            let evals: [FieldElement; 3] = [
+            let evals: [Ext<P>; 3] = [
                 arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read evals[0]"))?,
@@ -223,10 +226,10 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             let mut weights = build_prefix_covectors(self.m, alphas);
 
             let mut evaluations = if !public_inputs.is_empty() {
-                let public_eval: FieldElement = arthur
+                let public_eval: Ext<P> = arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read public eval"))?;
-                verify_public_input_binding(public_eval, x, public_inputs)?;
+                verify_public_input_binding(&embedding, public_eval, x, public_inputs)?;
                 weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
                 vec![public_eval, evals[0], evals[1], evals[2]]
             } else {
@@ -234,11 +237,11 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             };
             evaluations.push(blinding_eval);
 
-            let mut weight_refs: Vec<&dyn LinearForm<FieldElement>> = weights
+            let mut weight_refs: Vec<&dyn LinearForm<Ext<P>>> = weights
                 .iter()
-                .map(|w| w as &dyn LinearForm<FieldElement>)
+                .map(|w| w as &dyn LinearForm<Ext<P>>)
                 .collect();
-            weight_refs.push(&blinding_covector as &dyn LinearForm<FieldElement>);
+            weight_refs.push(&blinding_covector as &dyn LinearForm<Ext<P>>);
 
             self.whir_witness
                 .verify(&mut arthur, &weight_refs, &evaluations, &commitment_1)
@@ -264,24 +267,24 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
 }
 
 #[instrument(skip_all)]
-pub fn run_sumcheck_verifier(
+pub fn run_sumcheck_verifier<F: Field + Codec>(
     arthur: &mut VerifierState<'_, TranscriptSponge>,
     m_0: usize,
-) -> Result<DataFromSumcheckVerifier> {
-    let r: Vec<FieldElement> = arthur.verifier_message_vec(m_0);
+) -> Result<DataFromSumcheckVerifier<F>> {
+    let r: Vec<F> = arthur.verifier_message_vec(m_0);
 
-    let sum_g: FieldElement = arthur
+    let sum_g: F = arthur
         .prover_message()
         .map_err(|_| anyhow::anyhow!("Failed to read sum_g"))?;
 
-    let rho: FieldElement = arthur.verifier_message();
+    let rho: F = arthur.verifier_message();
 
     let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g;
 
-    let mut alpha = vec![FieldElement::zero(); m_0];
+    let mut alpha = vec![F::zero(); m_0];
 
     for item in &mut alpha {
-        let hhat_i: [FieldElement; 4] = [
+        let hhat_i: [F; 4] = [
             arthur
                 .prover_message()
                 .map_err(|_| anyhow::anyhow!("Failed to read hhat coeff"))?,
@@ -295,10 +298,10 @@ pub fn run_sumcheck_verifier(
                 .prover_message()
                 .map_err(|_| anyhow::anyhow!("Failed to read hhat coeff"))?,
         ];
-        let alpha_i: FieldElement = arthur.verifier_message();
+        let alpha_i: F = arthur.verifier_message();
         *item = alpha_i;
-        let hhat_i_at_zero = eval_cubic_poly(hhat_i, FieldElement::zero());
-        let hhat_i_at_one = eval_cubic_poly(hhat_i, FieldElement::one());
+        let hhat_i_at_zero = eval_cubic_poly(hhat_i, F::zero());
+        let hhat_i_at_one = eval_cubic_poly(hhat_i, F::one());
         ensure!(
             saved_val_for_sumcheck_equality_assertion == hhat_i_at_zero + hhat_i_at_one,
             "Sumcheck equality assertion failed"
@@ -306,7 +309,7 @@ pub fn run_sumcheck_verifier(
         saved_val_for_sumcheck_equality_assertion = eval_cubic_poly(hhat_i, alpha_i);
     }
 
-    let blinding_eval: FieldElement = arthur
+    let blinding_eval: F = arthur
         .prover_message()
         .map_err(|_| anyhow::anyhow!("Failed to read blinding eval"))?;
 
@@ -323,13 +326,9 @@ pub fn run_sumcheck_verifier(
 /// Verify that the prover's claimed challenge evaluation matches the
 /// Fiat-Shamir challenges sampled by the verifier. This binds the committed
 /// w2 polynomial to the transcript-derived challenge values.
-fn verify_challenge_binding(
-    challenge_eval: FieldElement,
-    x: FieldElement,
-    challenges: &[FieldElement],
-) -> Result<()> {
-    let mut expected = FieldElement::zero();
-    let mut x_pow = FieldElement::one();
+fn verify_challenge_binding<F: Field>(challenge_eval: F, x: F, challenges: &[F]) -> Result<()> {
+    let mut expected = F::zero();
+    let mut x_pow = F::one();
     for &ch in challenges {
         expected += x_pow * ch;
         x_pow *= x;
@@ -344,15 +343,19 @@ fn verify_challenge_binding(
 /// Verify that the prover's claimed public evaluation matches the known public
 /// inputs. The weight covers positions `[0, 1, ..., N]` where position 0 is the
 /// R1CS constant `1` and positions `1..=N` are the public inputs.
-fn verify_public_input_binding(
-    public_eval: FieldElement,
-    x: FieldElement,
-    public_inputs: &PublicInputs,
+///
+/// Public inputs are base-field values; each is lifted into the extension via
+/// the embedding (`mixed_mul`) as it is folded against the extension point `x`.
+fn verify_public_input_binding<M: Embedding>(
+    embedding: &M,
+    public_eval: M::Target,
+    x: M::Target,
+    public_inputs: &PublicInputs<M::Source>,
 ) -> Result<()> {
-    let mut expected = FieldElement::one();
+    let mut expected = M::Target::one();
     let mut x_pow = x;
     for &pi in &public_inputs.0 {
-        expected += x_pow * pi;
+        expected += embedding.mixed_mul(x_pow, pi);
         x_pow *= x;
     }
     ensure!(
