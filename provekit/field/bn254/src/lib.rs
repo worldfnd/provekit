@@ -22,7 +22,7 @@ use {
     provekit_common::{
         field::{DynFieldSponge, FieldHashProvider},
         hash_config::PUBLIC_INPUTS_DST_FE,
-        register_field_hash_provider, FieldElement, HashConfig,
+        register_field_hash_provider, FieldElement, FieldNativeHashConfig,
     },
     std::sync::{Arc, Once},
     whir::engines::EngineId,
@@ -62,13 +62,10 @@ impl FieldHashProvider for Bn254HashProvider {
         poseidon2_hash(&tagged)
     }
 
-    fn field_sponge(&self, config: HashConfig) -> Box<dyn DynFieldSponge> {
+    fn field_sponge(&self, config: FieldNativeHashConfig) -> Box<dyn DynFieldSponge> {
         match config {
-            HashConfig::Skyscraper => Box::new(skyscraper::SkyscraperSponge::default()),
-            HashConfig::Poseidon2 => Box::new(poseidon2::Poseidon2Sponge::default()),
-            other => {
-                unreachable!("field_sponge is only valid for field-native configs, got {other:?}")
-            }
+            FieldNativeHashConfig::Skyscraper => Box::new(skyscraper::SkyscraperSponge::default()),
+            FieldNativeHashConfig::Poseidon2 => Box::new(poseidon2::Poseidon2Sponge::default()),
         }
     }
 }

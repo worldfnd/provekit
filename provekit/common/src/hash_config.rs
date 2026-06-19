@@ -6,11 +6,25 @@
 //! - public-input instance binding ([`HashConfig::hash_field_elements`])
 
 use {
-    crate::{field::provider, utils::field_to_bytes_le, FieldElement},
+    crate::{field::try_provider, utils::field_to_bytes_le, FieldElement},
+    anyhow::Result,
     ark_ff::PrimeField,
     serde::{Deserialize, Serialize},
     std::{fmt, sync::LazyLock},
 };
+
+/// The subset of [`HashConfig`] whose sponge and instance-binding hash are
+/// field-native (computed by the registered [`crate::FieldHashProvider`]).
+///
+/// Carrying this across the provider boundary instead of [`HashConfig`] makes
+/// the byte-hash variants unrepresentable there, so the provider's
+/// [`field_sponge`](crate::FieldHashProvider::field_sponge) needs no catch-all
+/// arm.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldNativeHashConfig {
+    Skyscraper,
+    Poseidon2,
+}
 
 /// Hash algorithm configuration that can be selected at runtime.
 ///
@@ -73,16 +87,26 @@ impl HashConfig {
         }
     }
 
-    /// Returns the WHIR 2.0 engine ID for this hash configuration.
+    /// The field-native projection of this config, or `None` for the byte-hash
+    /// variants (SHA-256, Keccak, BLAKE3).
     #[must_use]
-    pub fn engine_id(&self) -> whir::engines::EngineId {
+    pub fn field_native(self) -> Option<FieldNativeHashConfig> {
         match self {
-            Self::Skyscraper => provider().skyscraper_engine_id(),
+            Self::Skyscraper => Some(FieldNativeHashConfig::Skyscraper),
+            Self::Poseidon2 => Some(FieldNativeHashConfig::Poseidon2),
+            Self::Sha256 | Self::Keccak | Self::Blake3 => None,
+        }
+    }
+
+    /// Returns the WHIR 2.0 engine ID for this hash configuration.
+    pub fn engine_id(&self) -> Result<whir::engines::EngineId> {
+        Ok(match self {
+            Self::Skyscraper => try_provider()?.skyscraper_engine_id(),
             Self::Sha256 => whir::hash::SHA2,
             Self::Keccak => whir::hash::KECCAK,
             Self::Blake3 => whir::hash::BLAKE3,
-            Self::Poseidon2 => provider().poseidon2_engine_id(),
-        }
+            Self::Poseidon2 => try_provider()?.poseidon2_engine_id(),
+        })
     }
 
     /// Converts hash configuration to a single byte for binary file headers.
@@ -140,15 +164,14 @@ impl HashConfig {
     /// # let _ = h;
     /// ```
     #[inline]
-    #[must_use]
-    pub fn hash_field_elements(self, elements: &[FieldElement]) -> FieldElement {
-        match self {
-            Self::Skyscraper => provider().hash_skyscraper(elements),
+    pub fn hash_field_elements(self, elements: &[FieldElement]) -> Result<FieldElement> {
+        Ok(match self {
+            Self::Skyscraper => try_provider()?.hash_skyscraper(elements),
             Self::Sha256 => hash_digest::<sha2::Sha256>(PUBLIC_INPUTS_DST, elements),
             Self::Keccak => hash_digest::<sha3::Keccak256>(PUBLIC_INPUTS_DST, elements),
             Self::Blake3 => hash_blake3(PUBLIC_INPUTS_DST, elements),
-            Self::Poseidon2 => provider().hash_poseidon2(elements),
-        }
+            Self::Poseidon2 => try_provider()?.hash_poseidon2(elements),
+        })
     }
 }
 

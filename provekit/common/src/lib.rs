@@ -42,8 +42,11 @@ pub type ProvekitEmbedding = Identity<ark_bn254::Fr>;
 pub type FieldElement = <ProvekitEmbedding as Embedding>::Source;
 
 pub use {
-    field::{register_field_hash_provider, DynFieldSponge, FieldHashProvider},
-    hash_config::HashConfig,
+    field::{
+        ensure_field_backend_registered, register_field_hash_provider, DynFieldSponge,
+        FieldHashProvider,
+    },
+    hash_config::{FieldNativeHashConfig, HashConfig},
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,

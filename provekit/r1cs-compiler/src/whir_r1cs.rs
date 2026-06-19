@@ -1,4 +1,5 @@
 use {
+    anyhow::Result,
     mavros_artifacts::R1CS as MavrosR1CS,
     provekit_common::{
         utils::next_power_of_two, HashConfig, R1csHash, WhirR1CSScheme, WhirZkConfig, R1CS,
@@ -17,7 +18,9 @@ pub trait WhirR1CSSchemeBuilder {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self;
+    ) -> Result<Self>
+    where
+        Self: Sized;
 
     fn new_from_mavros_r1cs(
         r1cs: &MavrosR1CS,
@@ -26,7 +29,9 @@ pub trait WhirR1CSSchemeBuilder {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self;
+    ) -> Result<Self>
+    where
+        Self: Sized;
 
     fn new_from_dimensions(
         num_witnesses: usize,
@@ -37,7 +42,9 @@ pub trait WhirR1CSSchemeBuilder {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self;
+    ) -> Result<Self>
+    where
+        Self: Sized;
 
     fn new_whir_zk_config_for_size(
         num_variables: usize,
@@ -54,7 +61,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self {
+    ) -> Result<Self> {
         // Register the bn254 backend before reading its engine id.
         provekit_field_bn254::register();
         assert_eq!(
@@ -82,18 +89,19 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m_raw += 1;
         }
 
-        Self {
+        let engine_id = hash_config.engine_id()?;
+        Ok(Self {
             m: m_raw,
             w1_size,
             m_0,
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
             challenge_offsets,
-            whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, hash_config.engine_id()),
+            whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, engine_id),
             has_public_inputs,
             r1cs_hash: r1cs.hash(),
             hash_config,
-        }
+        })
     }
 
     fn new_whir_zk_config_for_size(
@@ -128,7 +136,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self {
+    ) -> Result<Self> {
         let num_witnesses = r1cs.witness_layout.size();
         let num_constraints = r1cs.constraints.len();
         let a_num_entries: usize = r1cs.constraints.iter().map(|c| c.a.len()).sum();
@@ -154,7 +162,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self {
+    ) -> Result<Self> {
         // Register the bn254 backend before reading its engine id.
         provekit_field_bn254::register();
         debug_assert_eq!(
@@ -178,18 +186,19 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             m += 1;
         }
 
-        Self {
+        let engine_id = hash_config.engine_id()?;
+        Ok(Self {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
-            whir_witness: Self::new_whir_zk_config_for_size(m, 1, hash_config.engine_id()),
+            whir_witness: Self::new_whir_zk_config_for_size(m, 1, engine_id),
             w1_size,
             num_challenges,
             challenge_offsets,
             has_public_inputs,
             r1cs_hash: R1csHash::UNSET,
             hash_config,
-        }
+        })
     }
 }
 
@@ -219,14 +228,16 @@ mod tests {
             vec![],
             false,
             HashConfig::Sha256,
-        );
+        )
+        .unwrap();
         assert_eq!(from_dimensions.m, expected_m);
         assert_eq!(from_dimensions.m_0, expected_m_0);
         assert_eq!(from_dimensions.w1_size, w1_size);
 
         let r1cs = r1cs_with_dimensions(num_witnesses, num_constraints);
         let from_r1cs =
-            WhirR1CSScheme::new_for_r1cs(&r1cs, w1_size, 0, vec![], false, HashConfig::Sha256);
+            WhirR1CSScheme::new_for_r1cs(&r1cs, w1_size, 0, vec![], false, HashConfig::Sha256)
+                .unwrap();
         assert_eq!(from_r1cs.m, expected_m);
         assert_eq!(from_r1cs.m_0, expected_m_0);
         assert_eq!(from_r1cs.w1_size, w1_size);
@@ -287,7 +298,8 @@ mod tests {
             vec![0, 1],
             false,
             HashConfig::Sha256,
-        );
+        )
+        .unwrap();
 
         assert_eq!(scheme.m, 19);
     }

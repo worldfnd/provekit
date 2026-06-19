@@ -143,13 +143,13 @@ impl Prove for NoirProver {
         let num_constraints = compressed_r1cs.num_constraints();
 
         // Set up transcript with public inputs bound to the instance.
-        let instance = public_inputs.hash_bytes(self.hash_config);
+        let instance = public_inputs.hash_bytes(self.hash_config)?;
         let ds = self
             .whir_for_witness
             .create_domain_separator()
             .instance(&instance);
 
-        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config)?);
 
         // Allocate space for real + virtual witnesses. Virtual witnesses are
         // computation-only (zero entries in A/B/C) but needed by builders.
@@ -302,12 +302,12 @@ impl Prove for MavrosProver {
         };
 
         // Set up transcript with public inputs bound to the instance.
-        let instance = public_inputs.hash_bytes(self.hash_config);
+        let instance = public_inputs.hash_bytes(self.hash_config)?;
         let ds = self
             .whir_for_witness
             .create_domain_separator()
             .instance(&instance);
-        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config));
+        let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(self.hash_config)?);
 
         info!(
             ?self.witness_layout,

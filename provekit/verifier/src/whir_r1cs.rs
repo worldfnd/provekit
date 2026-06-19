@@ -51,7 +51,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
             actual_r1cs_hash
         );
 
-        let instance = public_inputs.hash_bytes(self.hash_config);
+        let instance = public_inputs.hash_bytes(self.hash_config)?;
         let ds = self.create_domain_separator().instance(&instance);
         let whir_proof = Proof {
             narg_string: proof.narg_string.clone(),
@@ -62,7 +62,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let mut arthur = VerifierState::new(
             &ds,
             &whir_proof,
-            TranscriptSponge::from_config(self.hash_config),
+            TranscriptSponge::from_config(self.hash_config)?,
         );
 
         let commitment_1 = self
@@ -90,7 +90,7 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         let public_inputs_hash_buf: FieldElement = arthur
             .prover_message()
             .map_err(|_| anyhow::anyhow!("Failed to read public inputs hash"))?;
-        let expected_public_inputs_hash = public_inputs.hash(self.hash_config);
+        let expected_public_inputs_hash = public_inputs.hash(self.hash_config)?;
         ensure!(
             public_inputs_hash_buf == expected_public_inputs_hash,
             "Public inputs hash mismatch: expected {:?}, got {:?}",

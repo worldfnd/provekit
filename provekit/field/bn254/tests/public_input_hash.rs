@@ -44,8 +44,8 @@ fn hash_is_deterministic_for_all_configs() {
     let inputs = pi(&[1, 2, 3]);
     for config in ALL_CONFIGS {
         assert_eq!(
-            inputs.hash(config),
-            inputs.hash(config),
+            inputs.hash(config).unwrap(),
+            inputs.hash(config).unwrap(),
             "{config:?}: hash must be deterministic"
         );
     }
@@ -56,8 +56,8 @@ fn hash_bytes_is_deterministic_for_all_configs() {
     let inputs = pi(&[42]);
     for config in ALL_CONFIGS {
         assert_eq!(
-            inputs.hash_bytes(config),
-            inputs.hash_bytes(config),
+            inputs.hash_bytes(config).unwrap(),
+            inputs.hash_bytes(config).unwrap(),
             "{config:?}: hash_bytes must be deterministic"
         );
     }
@@ -68,8 +68,8 @@ fn hash_bytes_is_le_serialization_of_hash() {
     let inputs = pi(&[7, 13]);
     for config in ALL_CONFIGS {
         assert_eq!(
-            inputs.hash_bytes(config),
-            field_to_bytes_le(inputs.hash(config)),
+            inputs.hash_bytes(config).unwrap(),
+            field_to_bytes_le(inputs.hash(config).unwrap()),
             "{config:?}: hash_bytes must equal LE(hash())"
         );
     }
@@ -81,7 +81,7 @@ fn hash_bytes_is_le_serialization_of_hash() {
 fn skyscraper_empty_returns_zero() {
     // Transcript-visible back-compat: Skyscraper hashes [] to 0.
     assert_eq!(
-        empty_pi().hash(HashConfig::Skyscraper),
+        empty_pi().hash(HashConfig::Skyscraper).unwrap(),
         FieldElement::from(0u64),
     );
 }
@@ -91,8 +91,8 @@ fn empty_input_is_deterministic_for_all_configs() {
     let empty = empty_pi();
     for config in ALL_CONFIGS {
         assert_eq!(
-            empty.hash(config),
-            empty.hash(config),
+            empty.hash(config).unwrap(),
+            empty.hash(config).unwrap(),
             "{config:?}: empty hash must be deterministic"
         );
     }
@@ -105,7 +105,10 @@ fn different_configs_produce_different_hashes() {
     // Non-trivial input so Skyscraper's empty-→-0 behaviour doesn't collide
     // with any other variant's H(DST) mod p by coincidence.
     let inputs = pi(&[1, 2]);
-    let hashes: Vec<_> = ALL_CONFIGS.iter().map(|&c| inputs.hash(c)).collect();
+    let hashes: Vec<_> = ALL_CONFIGS
+        .iter()
+        .map(|&c| inputs.hash(c).unwrap())
+        .collect();
     for i in 0..hashes.len() {
         for j in (i + 1)..hashes.len() {
             assert_ne!(
@@ -125,8 +128,8 @@ fn hash_depends_on_order_for_all_configs() {
     let reversed = pi(&[2, 1]);
     for config in ALL_CONFIGS {
         assert_ne!(
-            input.hash(config),
-            reversed.hash(config),
+            input.hash(config).unwrap(),
+            reversed.hash(config).unwrap(),
             "{config:?}: hash must be order-sensitive"
         );
     }
@@ -138,8 +141,8 @@ fn hash_depends_on_values_for_all_configs() {
     let b = pi(&[1, 2, 4]);
     for config in ALL_CONFIGS {
         assert_ne!(
-            a.hash(config),
-            b.hash(config),
+            a.hash(config).unwrap(),
+            b.hash(config).unwrap(),
             "{config:?}: hash must differ when values differ"
         );
     }
@@ -152,9 +155,9 @@ fn hashing_is_independent_of_prior_calls() {
     // Pins the no-global-state contract: an intervening call with a
     // different config must not influence a later call.
     let inputs = pi(&[55, 89]);
-    let first = inputs.hash(HashConfig::Sha256);
-    let _ = inputs.hash(HashConfig::Keccak);
-    let third = inputs.hash(HashConfig::Sha256);
+    let first = inputs.hash(HashConfig::Sha256).unwrap();
+    let _ = inputs.hash(HashConfig::Keccak).unwrap();
+    let third = inputs.hash(HashConfig::Sha256).unwrap();
     assert_eq!(
         first, third,
         "Sha256 result must not depend on an intervening Keccak call"
@@ -171,13 +174,13 @@ fn hashing_is_independent_of_prior_calls() {
 #[test]
 fn kat_empty_skyscraper() {
     // Skyscraper on empty input is 0 by construction; no DST.
-    let got = empty_pi().hash_bytes(HashConfig::Skyscraper);
+    let got = empty_pi().hash_bytes(HashConfig::Skyscraper).unwrap();
     assert_eq!(got, [0u8; 32], "Skyscraper empty-input KAT drift");
 }
 
 #[test]
 fn kat_one_two_skyscraper() {
-    let got = pi(&[1, 2]).hash_bytes(HashConfig::Skyscraper);
+    let got = pi(&[1, 2]).hash_bytes(HashConfig::Skyscraper).unwrap();
     assert_eq!(
         got,
         [
@@ -191,37 +194,37 @@ fn kat_one_two_skyscraper() {
 
 #[test]
 fn kat_empty_sha256() {
-    let got = empty_pi().hash_bytes(HashConfig::Sha256);
+    let got = empty_pi().hash_bytes(HashConfig::Sha256).unwrap();
     assert_eq!(got, KAT_EMPTY_SHA256, "SHA-256 empty-input KAT drift");
 }
 
 #[test]
 fn kat_one_two_sha256() {
-    let got = pi(&[1, 2]).hash_bytes(HashConfig::Sha256);
+    let got = pi(&[1, 2]).hash_bytes(HashConfig::Sha256).unwrap();
     assert_eq!(got, KAT_ONE_TWO_SHA256, "SHA-256 [1, 2] KAT drift");
 }
 
 #[test]
 fn kat_empty_keccak() {
-    let got = empty_pi().hash_bytes(HashConfig::Keccak);
+    let got = empty_pi().hash_bytes(HashConfig::Keccak).unwrap();
     assert_eq!(got, KAT_EMPTY_KECCAK, "Keccak-256 empty-input KAT drift");
 }
 
 #[test]
 fn kat_one_two_keccak() {
-    let got = pi(&[1, 2]).hash_bytes(HashConfig::Keccak);
+    let got = pi(&[1, 2]).hash_bytes(HashConfig::Keccak).unwrap();
     assert_eq!(got, KAT_ONE_TWO_KECCAK, "Keccak-256 [1, 2] KAT drift");
 }
 
 #[test]
 fn kat_empty_blake3() {
-    let got = empty_pi().hash_bytes(HashConfig::Blake3);
+    let got = empty_pi().hash_bytes(HashConfig::Blake3).unwrap();
     assert_eq!(got, KAT_EMPTY_BLAKE3, "BLAKE3 empty-input KAT drift");
 }
 
 #[test]
 fn kat_one_two_blake3() {
-    let got = pi(&[1, 2]).hash_bytes(HashConfig::Blake3);
+    let got = pi(&[1, 2]).hash_bytes(HashConfig::Blake3).unwrap();
     assert_eq!(got, KAT_ONE_TWO_BLAKE3, "BLAKE3 [1, 2] KAT drift");
 }
 
@@ -229,13 +232,13 @@ fn kat_one_two_blake3() {
 fn kat_empty_poseidon2() {
     // Non-zero: even with no user inputs, the DST field element is
     // prepended and the capacity-lane IV still permutes.
-    let got = empty_pi().hash_bytes(HashConfig::Poseidon2);
+    let got = empty_pi().hash_bytes(HashConfig::Poseidon2).unwrap();
     assert_eq!(got, KAT_EMPTY_POSEIDON2, "Poseidon2 empty-input KAT drift");
 }
 
 #[test]
 fn kat_one_two_poseidon2() {
-    let got = pi(&[1, 2]).hash_bytes(HashConfig::Poseidon2);
+    let got = pi(&[1, 2]).hash_bytes(HashConfig::Poseidon2).unwrap();
     assert_eq!(got, KAT_ONE_TWO_POSEIDON2, "Poseidon2 [1, 2] KAT drift");
 }
 
@@ -302,7 +305,7 @@ proptest! {
         inputs in any_public_inputs(),
     ) {
         ensure_registered();
-        prop_assert_eq!(inputs.hash(config), inputs.hash(config));
+        prop_assert_eq!(inputs.hash(config).unwrap(), inputs.hash(config).unwrap());
     }
 
     #[test]
@@ -311,7 +314,7 @@ proptest! {
         inputs in any_public_inputs(),
     ) {
         ensure_registered();
-        prop_assert_eq!(inputs.hash_bytes(config), inputs.hash_bytes(config));
+        prop_assert_eq!(inputs.hash_bytes(config).unwrap(), inputs.hash_bytes(config).unwrap());
     }
 
     #[test]
@@ -324,10 +327,10 @@ proptest! {
         prop_assume!(a != b);
         let ha = PublicInputs::from_vec(
             a.iter().copied().map(FieldElement::from).collect()
-        ).hash(config);
+        ).hash(config).unwrap();
         let hb = PublicInputs::from_vec(
             b.iter().copied().map(FieldElement::from).collect()
-        ).hash(config);
+        ).hash(config).unwrap();
         prop_assert_ne!(ha, hb);
     }
 }

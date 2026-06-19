@@ -254,7 +254,7 @@ fn prove_from_alphas(
     commitments: Vec<WhirR1CSCommitment>,
     public_inputs: &PublicInputs,
 ) -> Result<WhirR1CSProof> {
-    let public_inputs_hash = public_inputs.hash(scheme.hash_config);
+    let public_inputs_hash = public_inputs.hash(scheme.hash_config)?;
     let public_inputs_len = public_inputs.len();
 
     let is_single = commitments.len() == 1;

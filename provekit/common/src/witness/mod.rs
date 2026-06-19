@@ -90,8 +90,7 @@ impl PublicInputs {
     /// [`crate::register_field_hash_provider`]); KATs live in
     /// `provekit-field-bn254`.
     #[inline]
-    #[must_use]
-    pub fn hash(&self, config: HashConfig) -> FieldElement {
+    pub fn hash(&self, config: HashConfig) -> anyhow::Result<FieldElement> {
         config.hash_field_elements(&self.0)
     }
 
@@ -100,9 +99,8 @@ impl PublicInputs {
     /// Used as the Fiat-Shamir instance tag binding the transcript to these
     /// public inputs.
     #[inline]
-    #[must_use]
-    pub fn hash_bytes(&self, config: HashConfig) -> [u8; 32] {
-        field_to_bytes_le(self.hash(config))
+    pub fn hash_bytes(&self, config: HashConfig) -> anyhow::Result<[u8; 32]> {
+        Ok(field_to_bytes_le(self.hash(config)?))
     }
 }
 

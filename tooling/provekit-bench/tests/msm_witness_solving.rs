@@ -15,7 +15,7 @@ use {
     ark_ff::{PrimeField, Zero},
     provekit_common::{
         witness::{ConstantOrR1CSWitness, LayerScheduler, WitnessBuilder},
-        FieldElement, TranscriptSponge,
+        FieldElement, HashConfig, TranscriptSponge,
     },
     provekit_field_bn254::NoirElement,
     provekit_noir::{ec_scalar_mul, solve_witness_vec},
@@ -83,7 +83,9 @@ fn dummy_transcript() -> ProverState<TranscriptSponge> {
     // Default sponge is Skyscraper; register the backend first.
     provekit_field_bn254::register();
     let ds = DomainSeparator::protocol(&()).instance(&Empty);
-    ProverState::new(&ds, TranscriptSponge::default())
+    let sponge = TranscriptSponge::from_config(HashConfig::default())
+        .expect("bn254 backend registered above");
+    ProverState::new(&ds, sponge)
 }
 
 /// Solve all witness builders given initial witness values.

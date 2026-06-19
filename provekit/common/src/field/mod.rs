@@ -6,7 +6,8 @@
 //! whir's `ENGINES`/`NTT` registries.
 
 use {
-    crate::{FieldElement, HashConfig},
+    crate::{hash_config::FieldNativeHashConfig, FieldElement},
+    anyhow::{Context, Result},
     spongefish::DuplexSpongeInterface,
     std::sync::OnceLock,
     whir::engines::EngineId,
@@ -16,32 +17,43 @@ use {
 ///
 /// Lets `TranscriptSponge` box a field-native sponge: `spongefish`'s
 /// `DuplexSpongeInterface` returns `&mut Self`, so it is not object-safe.
+///
+/// The methods are prefixed `fs_` so they do not shadow
+/// `DuplexSpongeInterface`'s `absorb`/`squeeze`/`ratchet`. The blanket impl
+/// below makes every byte sponge also a `DynFieldSponge`, so identical names
+/// would make a bare `s.absorb(..)` ambiguous at any call site where both
+/// traits are in scope.
 pub trait DynFieldSponge: Send {
     /// Absorb bytes into the sponge.
-    fn absorb(&mut self, input: &[u8]);
+    fn fs_absorb(&mut self, input: &[u8]);
     /// Squeeze bytes out of the sponge.
-    fn squeeze(&mut self, output: &mut [u8]);
+    fn fs_squeeze(&mut self, output: &mut [u8]);
     /// Ratchet the sponge state.
-    fn ratchet(&mut self);
+    fn fs_ratchet(&mut self);
     /// Clone into a fresh box (enables `#[derive(Clone)]` on the holder).
     fn clone_box(&self) -> Box<dyn DynFieldSponge>;
 }
 
 /// Any `Clone` byte-sponge from `spongefish` is automatically a
 /// `DynFieldSponge`.
+///
+/// This blanket impl (rather than explicit impls in the field crate) is forced
+/// by coherence: the concrete sponges are `spongefish::DuplexSponge<..>`
+/// aliases — a foreign type — and `DynFieldSponge` is foreign to the field
+/// crate too, so the field crate cannot implement it for them (orphan rule).
 impl<S> DynFieldSponge for S
 where
     S: DuplexSpongeInterface<U = u8> + Clone + Send + 'static,
 {
-    fn absorb(&mut self, input: &[u8]) {
+    fn fs_absorb(&mut self, input: &[u8]) {
         DuplexSpongeInterface::absorb(self, input);
     }
 
-    fn squeeze(&mut self, output: &mut [u8]) {
+    fn fs_squeeze(&mut self, output: &mut [u8]) {
         DuplexSpongeInterface::squeeze(self, output);
     }
 
-    fn ratchet(&mut self) {
+    fn fs_ratchet(&mut self) {
         DuplexSpongeInterface::ratchet(self);
     }
 
@@ -66,9 +78,8 @@ pub trait FieldHashProvider: Send + Sync {
     /// Poseidon2 public-input binding hash (DST-tagged one-shot).
     fn hash_poseidon2(&self, elements: &[FieldElement]) -> FieldElement;
 
-    /// Construct the field-native Fiat-Shamir sponge for `config` (only called
-    /// for [`HashConfig::Skyscraper`] and [`HashConfig::Poseidon2`]).
-    fn field_sponge(&self, config: HashConfig) -> Box<dyn DynFieldSponge>;
+    /// Construct the field-native Fiat-Shamir sponge for `config`.
+    fn field_sponge(&self, config: FieldNativeHashConfig) -> Box<dyn DynFieldSponge>;
 }
 
 static FIELD_HASH_PROVIDER: OnceLock<&'static dyn FieldHashProvider> = OnceLock::new();
@@ -90,14 +101,20 @@ pub fn register_field_hash_provider(provider: &'static dyn FieldHashProvider) {
     );
 }
 
-/// Access the registered field-native hash provider.
-///
-/// # Panics
-/// Panics if no provider has been registered. Call the field crate's
-/// `register()` (e.g. `provekit_field_bn254::register()`) first.
-pub(crate) fn provider() -> &'static dyn FieldHashProvider {
-    *FIELD_HASH_PROVIDER.get().expect(
+/// Access the registered field-native hash provider, or an error if no field
+/// crate has registered one.
+pub(crate) fn try_provider() -> Result<&'static dyn FieldHashProvider> {
+    FIELD_HASH_PROVIDER.get().copied().context(
         "field hash provider not registered; call the field crate's register() at startup (e.g. \
          provekit_field_bn254::register())",
     )
+}
+
+/// Confirm a field backend has been registered, returning an error otherwise.
+///
+/// Call this at the top of an entry point that does not itself register a
+/// backend (e.g. verification) so a forgotten `register()` surfaces as a clean
+/// error instead of a panic deep in a field-native hash path.
+pub fn ensure_field_backend_registered() -> Result<()> {
+    try_provider().map(|_| ())
 }

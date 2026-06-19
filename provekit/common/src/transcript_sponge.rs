@@ -7,9 +7,11 @@
 
 use {
     crate::{
-        field::{provider, DynFieldSponge},
+        field::{try_provider, DynFieldSponge},
+        hash_config::FieldNativeHashConfig,
         HashConfig,
     },
+    anyhow::Result,
     spongefish::{instantiations, DuplexSpongeInterface},
     std::fmt,
 };
@@ -49,21 +51,18 @@ impl fmt::Debug for TranscriptSponge {
 
 impl TranscriptSponge {
     /// Create a sponge matching the given hash configuration.
-    pub fn from_config(config: HashConfig) -> Self {
-        match config {
+    pub fn from_config(config: HashConfig) -> Result<Self> {
+        Ok(match config {
             HashConfig::Sha256 => Self::Sha256(Default::default()),
             HashConfig::Blake3 => Self::Blake3(Default::default()),
             HashConfig::Keccak => Self::Keccak(Default::default()),
-            HashConfig::Skyscraper | HashConfig::Poseidon2 => {
-                Self::Field(provider().field_sponge(config))
+            HashConfig::Skyscraper => {
+                Self::Field(try_provider()?.field_sponge(FieldNativeHashConfig::Skyscraper))
             }
-        }
-    }
-}
-
-impl Default for TranscriptSponge {
-    fn default() -> Self {
-        Self::from_config(HashConfig::default())
+            HashConfig::Poseidon2 => {
+                Self::Field(try_provider()?.field_sponge(FieldNativeHashConfig::Poseidon2))
+            }
+        })
     }
 }
 
@@ -71,20 +70,18 @@ impl DuplexSpongeInterface for TranscriptSponge {
     type U = u8;
 
     fn absorb(&mut self, input: &[u8]) -> &mut Self {
-        // Qualify byte-sponge calls: the blanket `DynFieldSponge` impl is also
-        // in scope, so a bare `s.absorb(..)` would be ambiguous.
         match self {
             Self::Sha256(s) => {
-                DuplexSpongeInterface::absorb(s, input);
+                s.absorb(input);
             }
             Self::Blake3(s) => {
-                DuplexSpongeInterface::absorb(s, input);
+                s.absorb(input);
             }
             Self::Keccak(s) => {
-                DuplexSpongeInterface::absorb(s, input);
+                s.absorb(input);
             }
             Self::Field(s) => {
-                s.absorb(input);
+                s.fs_absorb(input);
             }
         }
         self
@@ -93,16 +90,16 @@ impl DuplexSpongeInterface for TranscriptSponge {
     fn squeeze(&mut self, output: &mut [u8]) -> &mut Self {
         match self {
             Self::Sha256(s) => {
-                DuplexSpongeInterface::squeeze(s, output);
+                s.squeeze(output);
             }
             Self::Blake3(s) => {
-                DuplexSpongeInterface::squeeze(s, output);
+                s.squeeze(output);
             }
             Self::Keccak(s) => {
-                DuplexSpongeInterface::squeeze(s, output);
+                s.squeeze(output);
             }
             Self::Field(s) => {
-                s.squeeze(output);
+                s.fs_squeeze(output);
             }
         }
         self
@@ -111,16 +108,16 @@ impl DuplexSpongeInterface for TranscriptSponge {
     fn ratchet(&mut self) -> &mut Self {
         match self {
             Self::Sha256(s) => {
-                DuplexSpongeInterface::ratchet(s);
+                s.ratchet();
             }
             Self::Blake3(s) => {
-                DuplexSpongeInterface::ratchet(s);
+                s.ratchet();
             }
             Self::Keccak(s) => {
-                DuplexSpongeInterface::ratchet(s);
+                s.ratchet();
             }
             Self::Field(s) => {
-                s.ratchet();
+                s.fs_ratchet();
             }
         }
         self
