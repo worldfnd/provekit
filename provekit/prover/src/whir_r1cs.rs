@@ -1,8 +1,8 @@
 use {
     ::tracing::instrument,
     anyhow::{ensure, Result},
-    ark_ff::UniformRand,
-    ark_std::{One, Zero},
+    ark_ff::Field,
+    ark_std::Zero,
     provekit_common::{
         prefix_covector::{
             build_prefix_covectors, compute_alpha_evals, compute_challenge_eval,
@@ -16,7 +16,6 @@ use {
                 eval_cubic_poly, multiply_transposed_by_eq_alpha, sumcheck_fold_map_reduce,
                 transpose_r1cs_matrices,
             },
-            HALF,
         },
         FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
         WhirR1CSScheme, R1CS,
@@ -25,7 +24,7 @@ use {
     whir::{
         algebra::{dot, embedding::Identity, linear_form::LinearForm},
         protocols::whir_zk::Witness as WhirZkWitness,
-        transcript::{ProverState, VerifierMessage},
+        transcript::{Codec, ProverState, VerifierMessage},
     },
 };
 #[cfg(not(target_arch = "wasm32"))]
@@ -437,11 +436,11 @@ fn prove_from_alphas(
     })
 }
 
-pub fn compute_blinding_coefficients_for_round(
-    g_univariates: &[[FieldElement; 4]],
+pub fn compute_blinding_coefficients_for_round<F: Field>(
+    g_univariates: &[[F; 4]],
     compute_for: usize,
-    alphas: &[FieldElement],
-) -> [FieldElement; 4] {
+    alphas: &[F],
+) -> [F; 4] {
     let mut compute_for = compute_for;
     let n = g_univariates.len();
     assert!(compute_for <= n);
@@ -453,20 +452,20 @@ pub fn compute_blinding_coefficients_for_round(
     }
 
     // p = Σ_{i<r} g_i(α_i)
-    let mut prefix_sum = FieldElement::zero();
+    let mut prefix_sum = F::zero();
     for i in 0..compute_for {
         prefix_sum += eval_cubic_poly(g_univariates[i], alphas[i]);
     }
 
     // s = Σ_{i>r}(g_i(0) + g_i(1))
-    let mut suffix_sum = FieldElement::zero();
+    let mut suffix_sum = F::zero();
     for g_coeffs in g_univariates.iter().skip(compute_for + 1) {
-        suffix_sum += eval_cubic_poly(*g_coeffs, FieldElement::zero())
-            + eval_cubic_poly(*g_coeffs, FieldElement::one());
+        suffix_sum +=
+            eval_cubic_poly(*g_coeffs, F::zero()) + eval_cubic_poly(*g_coeffs, F::one());
     }
 
-    let two = FieldElement::one() + FieldElement::one();
-    let mut prefix_multiplier = FieldElement::one();
+    let two = F::one() + F::one();
+    let mut prefix_multiplier = F::one();
     for _ in 0..(n - 1 - compute_for) {
         prefix_multiplier = prefix_multiplier + prefix_multiplier;
     }
@@ -488,12 +487,7 @@ pub fn compute_blinding_coefficients_for_round(
             ],
             alphas[compute_for],
         );
-        return [
-            value,
-            FieldElement::zero(),
-            FieldElement::zero(),
-            FieldElement::zero(),
-        ];
+        return [value, F::zero(), F::zero(), F::zero()];
     }
 
     [
@@ -504,42 +498,42 @@ pub fn compute_blinding_coefficients_for_round(
     ]
 }
 
-pub fn sum_over_hypercube(g_univariates: &[[FieldElement; 4]]) -> FieldElement {
-    let fixed_variables: &[FieldElement] = &[];
+pub fn sum_over_hypercube<F: Field>(g_univariates: &[[F; 4]]) -> F {
+    let fixed_variables: &[F] = &[];
     let polynomial_coefficient =
         compute_blinding_coefficients_for_round(g_univariates, 0, fixed_variables);
 
-    eval_cubic_poly(polynomial_coefficient, FieldElement::zero())
-        + eval_cubic_poly(polynomial_coefficient, FieldElement::one())
+    eval_cubic_poly(polynomial_coefficient, F::zero())
+        + eval_cubic_poly(polynomial_coefficient, F::one())
 }
 
-fn generate_blinding_univariates(m_0: usize) -> Vec<[FieldElement; 4]> {
+fn generate_blinding_univariates<F: Field>(m_0: usize) -> Vec<[F; 4]> {
     let mut rng = ark_std::rand::thread_rng();
     (0..m_0)
-        .map(|_| std::array::from_fn(|_| FieldElement::rand(&mut rng)))
+        .map(|_| std::array::from_fn(|_| F::rand(&mut rng)))
         .collect()
 }
 
 #[inline]
-pub fn pad_to_pow2_len_min2(v: &mut Vec<FieldElement>) {
+pub fn pad_to_pow2_len_min2<F: Field>(v: &mut Vec<F>) {
     let target = v.len().max(2).next_power_of_two();
     if v.len() < target {
-        v.resize(target, FieldElement::zero());
+        v.resize(target, F::zero());
     }
 }
 
 #[instrument(skip_all)]
-pub fn run_zk_sumcheck_prover(
-    mut a: Vec<FieldElement>,
-    mut b: Vec<FieldElement>,
-    mut c: Vec<FieldElement>,
+pub fn run_zk_sumcheck_prover<F: Field + Codec>(
+    mut a: Vec<F>,
+    mut b: Vec<F>,
+    mut c: Vec<F>,
     merlin: &mut ProverState<TranscriptSponge>,
     m_0: usize,
-    blinding_polynomial: &[[FieldElement; 4]],
-    w1_polynomial: &[FieldElement],
+    blinding_polynomial: &[[F; 4]],
+    w1_polynomial: &[F],
     blinding_offset: usize,
-) -> (Vec<FieldElement>, FieldElement) {
-    let r: Vec<FieldElement> = merlin.verifier_message_vec(m_0);
+) -> (Vec<F>, F) {
+    let r: Vec<F> = merlin.verifier_message_vec(m_0);
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r, 1 << r.len());
 
     pad_to_pow2_len_min2(&mut a);
@@ -547,13 +541,13 @@ pub fn run_zk_sumcheck_prover(
     pad_to_pow2_len_min2(&mut c);
     pad_to_pow2_len_min2(&mut eq);
 
-    let mut alpha = Vec::<FieldElement>::with_capacity(m_0);
+    let mut alpha = Vec::<F>::with_capacity(m_0);
 
     let sum_g_reduce = sum_over_hypercube(blinding_polynomial);
 
     merlin.prover_message(&sum_g_reduce);
 
-    let rho: FieldElement = merlin.verifier_message();
+    let rho: F = merlin.verifier_message();
 
     // Prove that sum of F + ρ·G over the boolean hypercube equals ρ·Σ(G).
     let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g_reduce;
@@ -580,18 +574,19 @@ pub fn run_zk_sumcheck_prover(
         let g_poly =
             compute_blinding_coefficients_for_round(blinding_polynomial, idx, alpha.as_slice());
 
-        let mut combined_hhat_i_coeffs = [FieldElement::zero(); 4];
+        let mut combined_hhat_i_coeffs = [F::zero(); 4];
 
         combined_hhat_i_coeffs[0] = hhat_i_at_0 + rho * g_poly[0];
 
         let g_at_minus_one = g_poly[0] - g_poly[1] + g_poly[2] - g_poly[3];
         let combined_at_em1 = hhat_i_at_em1 + rho * g_at_minus_one;
 
-        combined_hhat_i_coeffs[2] = HALF
-            * (saved_val_for_sumcheck_equality_assertion + combined_at_em1
-                - combined_hhat_i_coeffs[0]
-                - combined_hhat_i_coeffs[0]
-                - combined_hhat_i_coeffs[0]);
+        let two = F::one() + F::one();
+        combined_hhat_i_coeffs[2] = (saved_val_for_sumcheck_equality_assertion + combined_at_em1
+            - combined_hhat_i_coeffs[0]
+            - combined_hhat_i_coeffs[0]
+            - combined_hhat_i_coeffs[0])
+            / two;
 
         combined_hhat_i_coeffs[3] = hhat_i_at_inf_over_x_cube + rho * g_poly[3];
 
@@ -613,7 +608,7 @@ pub fn run_zk_sumcheck_prover(
         for coeff in &combined_hhat_i_coeffs {
             merlin.prover_message(coeff);
         }
-        let alpha_i: FieldElement = merlin.verifier_message();
+        let alpha_i: F = merlin.verifier_message();
         alpha.push(alpha_i);
 
         fold = Some(alpha_i);
