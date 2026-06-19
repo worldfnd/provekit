@@ -4583,6 +4583,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "provekit-backend-bn254"
+version = "1.0.0"
+dependencies = [
+ "provekit-common",
+]
+
+[[package]]
 name = "provekit-bench"
 version = "1.0.0"
 dependencies = [
