@@ -1,5 +1,7 @@
 #[cfg(test)]
 use crate::r1cs::R1CSSolver;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::whir_r1cs::MavrosR1CSProver;
 use {
     crate::{
         r1cs::{CompressedLayers, CompressedR1CS},

@@ -2,7 +2,10 @@ use {
     ::tracing::instrument,
     anyhow::{ensure, Result},
     ark_ff::Field,
-    ark_std::Zero,
+    ark_std::{
+        rand::distributions::{Distribution, Standard},
+        Zero,
+    },
     provekit_common::{
         prefix_covector::{
             build_prefix_covectors, compute_alpha_evals, compute_challenge_eval,
@@ -17,12 +20,12 @@ use {
                 transpose_r1cs_matrices,
             },
         },
-        FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
-        WhirR1CSScheme, R1CS,
+        Base, Bn254Field, Ext, FieldElement, FieldHash, PrefixCovector, ProofField, PublicInputs,
+        TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
     whir::{
-        algebra::{dot, embedding::Identity, linear_form::LinearForm},
+        algebra::{dot, embedding::Embedding, linear_form::LinearForm},
         protocols::whir_zk::Witness as WhirZkWitness,
         transcript::{Codec, ProverState, VerifierMessage},
     },
@@ -33,59 +36,67 @@ use {
     mavros_vm::interpreter::WitgenResult,
 };
 
-pub struct BlindingState {
-    pub polynomial: Vec<[FieldElement; 4]>,
+pub struct BlindingState<P: ProofField> {
+    pub polynomial: Vec<[Ext<P>; 4]>,
     pub offset:     usize,
 }
 
-pub struct WhirR1CSCommitment {
-    pub witness:    WhirZkWitness<FieldElement>,
-    pub polynomial: Vec<FieldElement>,
-    pub blinding:   Option<BlindingState>,
+pub struct WhirR1CSCommitment<P: ProofField> {
+    pub witness:    WhirZkWitness<Ext<P>>,
+    pub polynomial: Vec<Ext<P>>,
+    pub blinding:   Option<BlindingState<P>>,
 }
 
-pub trait WhirR1CSProver {
+pub trait WhirR1CSProver<P: ProofField> {
     fn commit(
         &self,
         merlin: &mut ProverState<TranscriptSponge>,
         num_witnesses: usize,
         num_constraints: usize,
-        witness: Vec<FieldElement>,
+        witness: Vec<Base<P>>,
         is_w1: bool,
-    ) -> Result<WhirR1CSCommitment>;
+    ) -> Result<WhirR1CSCommitment<P>>;
 
     fn prove_noir(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        r1cs: R1CS,
-        commitments: Vec<WhirR1CSCommitment>,
-        full_witness: Vec<FieldElement>,
-        public_inputs: &PublicInputs,
+        r1cs: R1CS<Base<P>>,
+        commitments: Vec<WhirR1CSCommitment<P>>,
+        full_witness: Vec<Base<P>>,
+        public_inputs: &PublicInputs<Base<P>>,
     ) -> Result<WhirR1CSProof>;
+}
 
-    #[cfg(not(target_arch = "wasm32"))]
+/// Mavros proving is welded to bn254 (its automatic-differentiation pass
+/// returns `ark_bn254::Fr`), so it lives outside the field-generic
+/// [`WhirR1CSProver`] until the Mavros VM becomes field-agnostic.
+#[cfg(not(target_arch = "wasm32"))]
+pub trait MavrosR1CSProver {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
         witgen: WitgenResult,
-        commitments: Vec<WhirR1CSCommitment>,
-        public_inputs: &PublicInputs,
+        commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
+        public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
     ) -> Result<WhirR1CSProof>;
 }
 
-impl WhirR1CSProver for WhirR1CSScheme {
+impl<P: FieldHash> WhirR1CSProver<P> for WhirR1CSScheme<P>
+where
+    Standard: Distribution<Ext<P>>,
+{
     #[instrument(skip_all)]
     fn commit(
         &self,
         merlin: &mut ProverState<TranscriptSponge>,
         num_witnesses: usize,
         num_constraints: usize,
-        witness: Vec<FieldElement>,
+        witness: Vec<Base<P>>,
         is_w1: bool,
-    ) -> Result<WhirR1CSCommitment> {
+    ) -> Result<WhirR1CSCommitment<P>> {
         let witness_size = if is_w1 {
             self.w1_size
         } else {
@@ -110,11 +121,19 @@ impl WhirR1CSProver for WhirR1CSScheme {
 
         let mut padded_witness = pad_to_power_of_two(witness);
         if padded_witness.len() < target_len {
-            padded_witness.resize(target_len, FieldElement::zero());
+            padded_witness.resize(target_len, <Base<P>>::zero());
         }
 
+        // Pre-v3 WHIR ZK commits over a single field (`whir_zk::Config`
+        // hardcodes `Identity<Ext>`), so lift the base witness to the
+        // extension. The lift is a zero-cost identity for bn254.
+        // TODO(base-commit): drop this lift once zkWHIR v3 (`Basefield`) lets
+        // the ZK path commit base-field elements directly (V-stage).
+        let embedding = <P::Embedding>::default();
+        let mut padded_witness: Vec<Ext<P>> = embedding.map_vec(padded_witness);
+
         let blinding = if is_w1 {
-            let g = generate_blinding_univariates(self.m_0);
+            let g = generate_blinding_univariates::<Ext<P>>(self.m_0);
             let offset = witness_size;
             for (i, coeffs) in g.iter().enumerate() {
                 for (j, &c) in coeffs.iter().enumerate() {
@@ -142,15 +161,24 @@ impl WhirR1CSProver for WhirR1CSScheme {
     fn prove_noir(
         &self,
         mut merlin: ProverState<TranscriptSponge>,
-        r1cs: R1CS,
-        commitments: Vec<WhirR1CSCommitment>,
-        full_witness: Vec<FieldElement>,
-        public_inputs: &PublicInputs,
+        r1cs: R1CS<Base<P>>,
+        commitments: Vec<WhirR1CSCommitment<P>>,
+        full_witness: Vec<Base<P>>,
+        public_inputs: &PublicInputs<Base<P>>,
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
         let (a, b, c) = calculate_witness_bounds(&r1cs, &full_witness);
         drop(full_witness);
+
+        // Witness bounds are computed in the base field; lift them to the
+        // extension for the sumcheck (zero-cost identity for bn254).
+        let embedding = <P::Embedding>::default();
+        let (a, b, c) = (
+            embedding.map_vec(a),
+            embedding.map_vec(b),
+            embedding.map_vec(c),
+        );
 
         let blinding = commitments[0]
             .blinding
@@ -169,16 +197,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         );
 
         let (at, bt, ct) = transpose_r1cs_matrices(&r1cs);
-        // TODO(prover <P> slice): replace the concrete bn254 embedding with
-        // `&P::Embedding::default()` once the prover is generic over <P>.
-        let alphas = multiply_transposed_by_eq_alpha(
-            &Identity::<FieldElement>::new(),
-            &at,
-            &bt,
-            &ct,
-            &alpha,
-            &r1cs,
-        );
+        let alphas = multiply_transposed_by_eq_alpha(&embedding, &at, &bt, &ct, &alpha, &r1cs);
 
         let blinding_offset = blinding.offset;
         let blinding_weights = expand_powers::<4, _>(&alpha);
@@ -193,15 +212,17 @@ impl WhirR1CSProver for WhirR1CSScheme {
             public_inputs,
         )
     }
+}
 
-    #[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(target_arch = "wasm32"))]
+impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
     #[instrument(skip_all)]
     fn prove_mavros(
         &self,
         mut merlin: ProverState<TranscriptSponge>,
         witgen: WitgenResult,
-        commitments: Vec<WhirR1CSCommitment>,
-        public_inputs: &PublicInputs,
+        commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
+        public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
@@ -252,17 +273,20 @@ impl WhirR1CSProver for WhirR1CSScheme {
 }
 
 #[instrument(skip_all)]
-fn prove_from_alphas(
-    scheme: &WhirR1CSScheme,
+fn prove_from_alphas<P: FieldHash>(
+    scheme: &WhirR1CSScheme<P>,
     mut merlin: ProverState<TranscriptSponge>,
-    alphas: [Vec<FieldElement>; 3],
-    blinding_eval: FieldElement,
+    alphas: [Vec<Ext<P>>; 3],
+    blinding_eval: Ext<P>,
     blinding_offset: usize,
-    blinding_weights: Vec<FieldElement>,
-    commitments: Vec<WhirR1CSCommitment>,
-    public_inputs: &PublicInputs,
-) -> Result<WhirR1CSProof> {
-    let public_inputs_hash = public_inputs.hash(scheme.hash_config);
+    blinding_weights: Vec<Ext<P>>,
+    commitments: Vec<WhirR1CSCommitment<P>>,
+    public_inputs: &PublicInputs<Base<P>>,
+) -> Result<WhirR1CSProof>
+where
+    Standard: Distribution<Ext<P>>,
+{
+    let public_inputs_hash = P::hash_public_inputs(scheme.hash_config, &public_inputs.0);
     let public_inputs_len = public_inputs.len();
 
     let is_single = commitments.len() == 1;
@@ -298,9 +322,9 @@ fn prove_from_alphas(
 
         let blinding_covector = OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
-        let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
+        let mut boxed_weights: Vec<Box<dyn LinearForm<Ext<P>>>> = weights
             .into_iter()
-            .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
+            .map(|w| Box::new(w) as Box<dyn LinearForm<Ext<P>>>)
             .collect();
         boxed_weights.push(Box::new(blinding_covector));
 
@@ -329,10 +353,10 @@ fn prove_from_alphas(
             })
             .unzip();
 
-        let alphas_1: [Vec<FieldElement>; 3] = alphas_1
+        let alphas_1: [Vec<Ext<P>>; 3] = alphas_1
             .try_into()
             .expect("alphas_1 must have exactly 3 elements");
-        let alphas_2: [Vec<FieldElement>; 3] = alphas_2
+        let alphas_2: [Vec<Ext<P>>; 3] = alphas_2
             .try_into()
             .expect("alphas_2 must have exactly 3 elements");
 
@@ -370,7 +394,7 @@ fn prove_from_alphas(
         } = c1;
         {
             let mut weights = build_prefix_covectors(scheme.m, alphas_1);
-            let mut evaluations: Vec<FieldElement> = Vec::new();
+            let mut evaluations: Vec<Ext<P>> = Vec::new();
             if let Some(pe) = public_1 {
                 weights.insert(0, make_public_weight(x, public_inputs_len, scheme.m));
                 evaluations.push(pe);
@@ -381,9 +405,9 @@ fn prove_from_alphas(
             let blinding_covector =
                 OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
 
-            let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
+            let mut boxed_weights: Vec<Box<dyn LinearForm<Ext<P>>>> = weights
                 .into_iter()
-                .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
+                .map(|w| Box::new(w) as Box<dyn LinearForm<Ext<P>>>)
                 .collect();
             boxed_weights.push(Box::new(blinding_covector));
 
@@ -404,11 +428,11 @@ fn prove_from_alphas(
         } = c2;
         {
             let weights = build_prefix_covectors(scheme.m, alphas_2);
-            let mut evaluations: Vec<FieldElement> = evals_2;
+            let mut evaluations: Vec<Ext<P>> = evals_2;
 
-            let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
+            let mut boxed_weights: Vec<Box<dyn LinearForm<Ext<P>>>> = weights
                 .into_iter()
-                .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
+                .map(|w| Box::new(w) as Box<dyn LinearForm<Ext<P>>>)
                 .collect();
 
             if let Some(ce) = challenge_eval {
