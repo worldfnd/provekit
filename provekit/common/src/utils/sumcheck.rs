@@ -2,10 +2,9 @@ use {
     crate::{
         sparse_matrix::SparseMatrix,
         utils::{unzip_double_array, workload_size},
-        FieldElement, R1CS,
+        R1CS,
     },
     ark_ff::Field,
-    ark_std::Zero,
     std::array,
     tracing::instrument,
     whir::algebra::embedding::Embedding,
@@ -157,21 +156,21 @@ pub fn eval_cubic_poly<F: Field>(poly: [F; 4], point: F) -> F {
 /// Given a path to JSON file with sparse matrices and a witness, calculates
 /// matrix-vector multiplication and returns them
 #[instrument(skip_all)]
-pub fn calculate_witness_bounds(
-    r1cs: &R1CS,
-    witness: &[FieldElement],
-) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
+pub fn calculate_witness_bounds<F: Field>(
+    r1cs: &R1CS<F>,
+    witness: &[F],
+) -> (Vec<F>, Vec<F>, Vec<F>) {
     let (a, b) = rayon::join(|| r1cs.a() * witness, || r1cs.b() * witness);
 
     let target_len = a.len().next_power_of_two();
     let mut c = Vec::with_capacity(target_len);
     c.extend(a.iter().zip(b.iter()).map(|(a, b)| *a * *b));
-    c.resize(target_len, FieldElement::zero());
+    c.resize(target_len, F::zero());
 
     let mut a = a;
     let mut b = b;
-    a.resize(target_len, FieldElement::zero());
-    b.resize(target_len, FieldElement::zero());
+    a.resize(target_len, F::zero());
+    b.resize(target_len, F::zero());
     (a, b, c)
 }
 
@@ -228,7 +227,7 @@ pub fn multiply_transposed_by_eq_alpha<M: Embedding>(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, ark_std::One};
+    use {super::*, crate::FieldElement, ark_std::{One, Zero}};
 
     fn fe(v: i64) -> FieldElement {
         if v >= 0 {
