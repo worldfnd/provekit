@@ -205,11 +205,7 @@ body {
 @media (min-width: 72rem) {
   [data-has-sidebar][data-has-toc] {
     --pk-docs-content-gutter: 2rem;
-    --pk-toc-column-width: clamp(12rem, calc((100vw - var(--sl-content-width)) / 4), 18rem);
-    --sl-content-width: calc(
-      100vw - var(--sl-sidebar-width) - var(--pk-toc-column-width) -
-        var(--pk-docs-content-gutter) - var(--pk-docs-content-gutter)
-    );
+    --pk-toc-column-width: clamp(12rem, 16vw, 18rem);
   }
 
   .right-sidebar-container {
@@ -221,6 +217,13 @@ body {
   }
 
   [data-has-sidebar][data-has-toc] .main-pane {
+    --sl-content-width: min(
+      72rem,
+      calc(
+        100vw - var(--sl-sidebar-width) - var(--pk-toc-column-width) -
+          var(--pk-docs-content-gutter) - var(--pk-docs-content-gutter)
+      )
+    );
     --sl-content-margin-inline: var(--pk-docs-content-gutter) var(--pk-docs-content-gutter) !important;
     width: calc(100% - var(--pk-toc-column-width)) !important;
   }
