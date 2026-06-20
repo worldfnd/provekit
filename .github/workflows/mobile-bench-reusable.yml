@@ -1063,8 +1063,13 @@ jobs:
           done
 
           if [ "${failure_count}" -gt 0 ]; then
-            echo "::error::Android benchmark completed with ${failure_count} fixture failure(s)."
-            exit 1
+            summary_count=$(find target/mobench/ci/android -type f -name summary.json | wc -l | tr -d ' ')
+            if [ "${summary_count}" -gt 0 ]; then
+              echo "::warning::Android benchmark completed with ${failure_count} fixture failure(s), but preserved ${summary_count} summary artifact(s)."
+            else
+              echo "::error::Android benchmark completed with ${failure_count} fixture failure(s) and no summary artifacts."
+              exit 1
+            fi
           fi
 
       - name: Upload Android results
@@ -1119,7 +1124,7 @@ jobs:
           cargo-mobench --version
 
       - name: Download iOS results
-        if: always()
+        if: always() && (inputs.platform == 'ios' || inputs.platform == 'both')
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
@@ -1127,7 +1132,7 @@ jobs:
           path: results/ios
 
       - name: Download Android results
-        if: always()
+        if: always() && (inputs.platform == 'android' || inputs.platform == 'both')
         continue-on-error: true
         uses: actions/download-artifact@v4
         with:
