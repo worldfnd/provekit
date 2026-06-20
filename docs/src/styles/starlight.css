@@ -204,10 +204,7 @@ body {
 
 @media (min-width: 72rem) {
   [data-has-sidebar][data-has-toc] {
-    --pk-toc-column-width: calc(
-      (var(--sl-sidebar-width) + (100% - var(--sl-content-width) - var(--sl-sidebar-width)) / 2) *
-        0.5
-    );
+    --pk-toc-column-width: clamp(12rem, calc((100vw - var(--sl-content-width)) / 4), 18rem);
   }
 
   .right-sidebar-container {
@@ -219,6 +216,7 @@ body {
   }
 
   [data-has-sidebar][data-has-toc] .main-pane {
+    --sl-content-margin-inline: 0 auto;
     width: calc(100% - var(--pk-toc-column-width)) !important;
   }
 
