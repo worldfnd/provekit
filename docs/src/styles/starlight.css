@@ -198,6 +198,12 @@ body {
   border-inline-start-color: var(--pk-brand-ink);
 }
 
+@media (min-width: 72rem) {
+  [data-has-sidebar] {
+    --sl-content-inline-start: calc(var(--sl-sidebar-width) + 4rem) !important;
+  }
+}
+
 /* ============================================================
    6. Right sidebar: TOC heading in mono uppercase
    ============================================================ */
