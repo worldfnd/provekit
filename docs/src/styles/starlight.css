@@ -216,7 +216,7 @@ body {
   }
 
   [data-has-sidebar][data-has-toc] .main-pane {
-    --sl-content-margin-inline: 0 auto;
+    --sl-content-margin-inline: 0 auto !important;
     width: calc(100% - var(--pk-toc-column-width)) !important;
   }
 
