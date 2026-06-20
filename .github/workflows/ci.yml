@@ -26,6 +26,14 @@ jobs:
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk before build and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          df -h
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          docker system prune -af || true
+          df -h
       - name: Setup rust toolchain, cache and bins
         uses: moonrepo/setup-rust@v1
         with:
@@ -37,11 +45,11 @@ jobs:
           toolchain: v1.0.0-beta.11
       - name: Generate mobile benchmark Noir artifacts
         run: bench-mobile/scripts/generate-fixtures.sh
-      - run: cargo build --all-targets --all-features --verbose
-      - run: cargo test --no-fail-fast --all-features --verbose --lib --tests --bins -- --nocapture
+      - run: cargo build --all-targets --all-features
+      - run: cargo test --no-fail-fast --all-features --lib --tests --bins -- --nocapture
         env:
           RUST_BACKTRACE: 1
-      - run: cargo test --doc --all-features --verbose
+      - run: cargo test --doc --all-features
 
   cargo_clippy:
     name: Clippy
