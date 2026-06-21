@@ -1,6 +1,6 @@
 use {
     crate::{
-        whir_r1cs::{WhirR1CSProof, WhirR1CSScheme},
+        whir_r1cs::{Bn254Field, WhirR1CSProof, WhirR1CSScheme},
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
         HashConfig, MavrosSchemeData, NoirElement, PublicInputs, R1CS,
     },
@@ -14,7 +14,7 @@ pub struct NoirSchemeData {
     pub r1cs:                   R1CS,
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
-    pub whir_for_witness:       WhirR1CSScheme,
+    pub whir_for_witness:       WhirR1CSScheme<Bn254Field>,
     pub hash_config:            HashConfig,
 }
 
@@ -43,7 +43,7 @@ impl NoirProofScheme {
     }
 
     #[must_use]
-    pub fn whir_for_witness(&self) -> &WhirR1CSScheme {
+    pub fn whir_for_witness(&self) -> &WhirR1CSScheme<Bn254Field> {
         match self {
             NoirProofScheme::Noir(d) => &d.whir_for_witness,
             NoirProofScheme::Mavros(d) => &d.whir_for_witness,

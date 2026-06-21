@@ -1,7 +1,8 @@
 use {
     mavros_artifacts::R1CS as MavrosR1CS,
     provekit_common::{
-        utils::next_power_of_two, HashConfig, R1csHash, WhirR1CSScheme, WhirZkConfig, R1CS,
+        utils::next_power_of_two, Bn254Field, HashConfig, R1csHash, WhirR1CSScheme, WhirZkConfig,
+        R1CS,
     },
     whir::{engines::EngineId, parameters::ProtocolParameters},
 };
@@ -46,7 +47,7 @@ pub trait WhirR1CSSchemeBuilder {
     ) -> WhirZkConfig;
 }
 
-impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
+impl WhirR1CSSchemeBuilder for WhirR1CSScheme<Bn254Field> {
     fn new_for_r1cs(
         r1cs: &R1CS,
         w1_size: usize,

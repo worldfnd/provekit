@@ -1,6 +1,8 @@
 use {
     crate::{
-        noir_proof_scheme::NoirProofScheme, utils::serde_jsonify, whir_r1cs::WhirR1CSScheme,
+        noir_proof_scheme::NoirProofScheme,
+        utils::serde_jsonify,
+        whir_r1cs::{Bn254Field, WhirR1CSScheme},
         HashConfig, R1CS,
     },
     noirc_abi::Abi,
@@ -17,7 +19,7 @@ use {
 pub struct Verifier {
     pub hash_config:      HashConfig,
     pub r1cs:             R1CS,
-    pub whir_for_witness: Option<WhirR1CSScheme>,
+    pub whir_for_witness: Option<WhirR1CSScheme<Bn254Field>>,
     #[serde(with = "serde_jsonify")]
     pub abi:              Abi,
 }

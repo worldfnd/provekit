@@ -75,7 +75,7 @@ impl R1csHash {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct WhirR1CSScheme<P: ProofField = Bn254Field> {
+pub struct WhirR1CSScheme<P: ProofField> {
     pub m:                 usize,
     pub w1_size:           usize,
     pub m_0:               usize,

@@ -1,6 +1,8 @@
 use {
     ark_poly::{EvaluationDomain, GeneralEvaluationDomain},
-    provekit_common::{FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme},
+    provekit_common::{
+        Bn254Field, FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
+    },
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
     tracing::instrument,
@@ -166,7 +168,7 @@ impl WHIRConfigGnark {
 
 #[instrument(skip_all)]
 pub fn gnark_parameters(
-    scheme: &WhirR1CSScheme,
+    scheme: &WhirR1CSScheme<Bn254Field>,
     blinded_commitment: &WhirConfig,
     blinding_commitment: &WhirConfig,
     proof: &WhirR1CSProof,
@@ -199,7 +201,7 @@ pub fn gnark_parameters(
 
 #[instrument(skip_all)]
 pub fn write_gnark_parameters_to_file(
-    scheme: &WhirR1CSScheme,
+    scheme: &WhirR1CSScheme<Bn254Field>,
     blinded_commitment: &WhirConfig,
     blinding_commitment: &WhirConfig,
     proof: &WhirR1CSProof,

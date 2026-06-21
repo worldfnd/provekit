@@ -1,7 +1,7 @@
 use {
     crate::{
         noir_proof_scheme::NoirProofScheme,
-        whir_r1cs::WhirR1CSScheme,
+        whir_r1cs::{Bn254Field, WhirR1CSScheme},
         witness::{NoirWitnessGenerator, SplitWitnessBuilders},
         HashConfig, MavrosProver, NoirElement, R1CS,
     },
@@ -17,7 +17,7 @@ pub struct NoirProver {
     pub r1cs:                   R1CS,
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
-    pub whir_for_witness:       WhirR1CSScheme,
+    pub whir_for_witness:       WhirR1CSScheme<Bn254Field>,
 }
 
 /// On-disk **ProveKit Prover** (PKP) — the prover-side scheme that gets
@@ -74,7 +74,7 @@ impl Prover {
         }
     }
 
-    pub fn whir_for_witness(&self) -> &WhirR1CSScheme {
+    pub fn whir_for_witness(&self) -> &WhirR1CSScheme<Bn254Field> {
         match self {
             Prover::Noir(p) => &p.whir_for_witness,
             Prover::Mavros(p) => &p.whir_for_witness,
