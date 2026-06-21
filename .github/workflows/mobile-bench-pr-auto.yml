@@ -72,6 +72,9 @@ jobs:
             PLATFORM="both"
           else
             case "$HEAD_COMMIT_MESSAGE" in
+              *"[mobench:android:5]"*) PLATFORM="android"; ITERATIONS="5"; WARMUP="1" ;;
+              *"[mobench:ios:5]"*) PLATFORM="ios"; ITERATIONS="5"; WARMUP="1" ;;
+              *"[mobench:both:5]"*|*"[mobench:5]"*) PLATFORM="both"; ITERATIONS="5"; WARMUP="1" ;;
               *"[mobench:android:100]"*) PLATFORM="android"; ITERATIONS="100"; WARMUP="10" ;;
               *"[mobench:ios:100]"*) PLATFORM="ios"; ITERATIONS="100"; WARMUP="10" ;;
               *"[mobench:both:100]"*|*"[mobench:100]"*) PLATFORM="both"; ITERATIONS="100"; WARMUP="10" ;;
