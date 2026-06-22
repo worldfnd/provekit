@@ -1,12 +1,9 @@
 use {
-    crate::{
-        sparse_matrix::SparseMatrix,
-        witness::{
-            limbs::Limbs, scheduling::DependencyInfo, ConstantOrR1CSWitness, ConstantTerm,
-            ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,
-        },
-        R1CS,
+    crate::witness::{
+        limbs::Limbs, scheduling::DependencyInfo, ConstantOrR1CSWitness, ConstantTerm,
+        ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,
     },
+    provekit_common::{SparseMatrix, R1CS},
     std::{collections::HashMap, num::NonZeroU32},
 };
 

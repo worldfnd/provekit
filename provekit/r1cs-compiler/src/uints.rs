@@ -4,10 +4,8 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_ff::{AdditiveGroup, Field},
-    provekit_common::{
-        witness::{ConstantTerm, SumTerm, WitnessBuilder},
-        FieldElement,
-    },
+    provekit_backend_bn254::witness::{ConstantTerm, SumTerm, WitnessBuilder},
+    provekit_common::FieldElement,
     std::collections::{BTreeMap, HashMap},
 };
 

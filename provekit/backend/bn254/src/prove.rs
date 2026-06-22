@@ -9,16 +9,13 @@ use {
 };
 use {
     crate::{
-        noir_to_native, Bn254Field, NoirElement, NoirProver, ProvekitProof, Prover,
-        TranscriptSponge,
+        noir_to_native, Bn254Field, CompressedLayers, FieldElement, NoirElement, NoirProver,
+        ProvekitProof, Prover, TranscriptSponge,
     },
     ::tracing::{debug, info, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
-    provekit_common::{
-        log_commit_input, CompressedLayers, CompressedR1CS, FieldElement, PublicInputs,
-        PublicInputsHash,
-    },
+    provekit_common::{log_commit_input, CompressedR1CS, PublicInputs, PublicInputsHash},
     provekit_prover::WhirR1CSProver,
     std::mem::{size_of, take},
     whir::transcript::ProverState,

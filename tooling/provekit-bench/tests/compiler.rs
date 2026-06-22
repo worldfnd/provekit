@@ -256,7 +256,7 @@ fn case_noir_msm_conditional(path: &str, witness_file: &str) {
 /// tampered with.
 #[test]
 fn test_public_input_binding_exploit() {
-    use provekit_common::{witness::PublicInputs, FieldElement};
+    use provekit_common::{FieldElement, PublicInputs};
 
     let test_case_path = Path::new("../../noir-examples/basic-4");
 

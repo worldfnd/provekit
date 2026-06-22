@@ -12,13 +12,11 @@
 //!   5. Remove dead witness columns and prune unreachable witness builders
 
 use {
-    crate::{
-        witness::{DependencyInfo, WitnessBuilder},
-        FieldElement, Interner, SparseMatrix, R1CS,
-    },
     anyhow::{bail, Context as _, Result},
     ark_ff::Field,
     ark_std::{One, Zero},
+    provekit_backend_bn254::witness::{DependencyInfo, WitnessBuilder},
+    provekit_common::{FieldElement, Interner, SparseMatrix, R1CS},
     rayon::iter::{IntoParallelRefIterator, ParallelIterator},
     std::collections::{HashMap, HashSet},
     tracing::{debug, info},
@@ -777,7 +775,7 @@ fn remove_dead_columns(
     // Build the remapper ONCE (not per-builder) to avoid repeated HashMap
     // construction from the 1M+ entry remap table.
     let remapper = {
-        use crate::witness::WitnessIndexRemapper;
+        use provekit_backend_bn254::witness::WitnessIndexRemapper;
         let old_to_new: HashMap<usize, usize> = remap
             .iter()
             .enumerate()
@@ -953,7 +951,7 @@ fn finalize_matrix(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::witness::SumTerm, ark_std::One};
+    use {super::*, ark_std::One, provekit_backend_bn254::witness::SumTerm};
 
     #[test]
     fn test_simple_linear_elimination() {
@@ -979,7 +977,7 @@ mod tests {
         r1cs.add_constraint(&[(one, 1)], &[(one, 2)], &[(one, 4)]);
 
         let mut witness_builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(0, one)),
             WitnessBuilder::Acir(1, 0),
             WitnessBuilder::Acir(2, 1),
             WitnessBuilder::Sum(3, vec![SumTerm(None, 1), SumTerm(None, 2)]),
@@ -1035,7 +1033,7 @@ mod tests {
         r1cs.add_constraint(&[(one, 4)], &[(one, 2)], &[(one, 5)]);
 
         let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(0, one)),
             WitnessBuilder::Acir(1, 0),
             WitnessBuilder::Acir(2, 1),
             WitnessBuilder::Sum(3, vec![SumTerm(Some(neg), 0), SumTerm(None, 1)]),
@@ -1120,7 +1118,7 @@ mod tests {
         r1cs.add_constraint(&[(one, 5)], &[(one, 1)], &[(one, 8)]);
 
         let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(0, one)),
             WitnessBuilder::Acir(1, 0),
             WitnessBuilder::Acir(2, 1),
             WitnessBuilder::Sum(3, vec![
@@ -1176,7 +1174,7 @@ mod tests {
     fn assert_r1cs_satisfied(r1cs: &R1CS, witness: &[FieldElement]) {
         let interner = &r1cs.interner;
         for row in 0..r1cs.num_constraints() {
-            let dot = |matrix: &crate::SparseMatrix| -> FieldElement {
+            let dot = |matrix: &SparseMatrix| -> FieldElement {
                 let mut acc = FieldElement::zero();
                 for (col, interned_val) in matrix.iter_row(row) {
                     assert!(
@@ -1208,7 +1206,10 @@ mod tests {
         let mut witness = vec![FieldElement::zero(); num_total];
         for builder in builders {
             match builder {
-                WitnessBuilder::Constant(crate::witness::ConstantTerm(idx, val)) => {
+                WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(
+                    idx,
+                    val,
+                )) => {
                     witness[*idx] = *val;
                 }
                 WitnessBuilder::Acir(idx, acir_idx) => {
@@ -1262,7 +1263,7 @@ mod tests {
         assert_r1cs_satisfied(&r1cs, &witness_vals);
 
         let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(0, one)),
             WitnessBuilder::Acir(1, 0),
             WitnessBuilder::Acir(2, 1),
             WitnessBuilder::Sum(3, vec![SumTerm(None, 1), SumTerm(None, 2)]),
@@ -1322,7 +1323,7 @@ mod tests {
         r1cs.add_constraint(&[(one, 6)], &[(one, 2)], &[(one, 7)]);
 
         let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(0, one)),
             WitnessBuilder::Acir(1, 0),
             WitnessBuilder::Acir(2, 1),
             WitnessBuilder::Sum(3, vec![SumTerm(Some(neg), 0), SumTerm(None, 1)]),
@@ -1370,7 +1371,7 @@ mod tests {
         r1cs.add_constraint(&[(one, 3)], &[(one, 1)], &[(one, 4)]);
 
         let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(0, one)),
             WitnessBuilder::Acir(1, 0),
             WitnessBuilder::Acir(2, 1),
             WitnessBuilder::Sum(3, vec![SumTerm(Some(neg), 0), SumTerm(None, 1)]),
@@ -1421,7 +1422,7 @@ mod tests {
         r1cs.add_constraint(&[(one, 0)], &[(one, 0)], &[(one, 1), (-six, 0)]);
 
         let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(0, one)),
             WitnessBuilder::Acir(1, 1),
         ];
         let mut witness_map = vec![None, std::num::NonZeroU32::new(1)];
@@ -1479,16 +1480,22 @@ mod tests {
         assert_r1cs_satisfied(&r1cs, &witness);
 
         let mut builders = vec![
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(0, one)),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(0, one)),
             WitnessBuilder::Acir(1, 0),
             WitnessBuilder::Acir(2, 1),
             WitnessBuilder::Sum(3, vec![SumTerm(Some(two), 2)]),
             WitnessBuilder::Acir(4, 2),
             WitnessBuilder::Sum(5, vec![SumTerm(Some(three), 4), SumTerm(Some(three), 2)]),
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(6, two)),
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(7, three)),
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(8, FieldElement::from(11u64))),
-            WitnessBuilder::Constant(crate::witness::ConstantTerm(9, FieldElement::from(10u64))),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(6, two)),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(7, three)),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(
+                8,
+                FieldElement::from(11u64),
+            )),
+            WitnessBuilder::Constant(provekit_backend_bn254::witness::ConstantTerm(
+                9,
+                FieldElement::from(10u64),
+            )),
             WitnessBuilder::Product(10, 4, 7),
         ];
 

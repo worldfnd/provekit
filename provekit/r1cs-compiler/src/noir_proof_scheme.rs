@@ -8,11 +8,10 @@ use {
     noirc_abi::AbiVisibility,
     noirc_artifacts::program::ProgramArtifact,
     provekit_backend_bn254::{
-        MavrosSchemeData, NoirProofScheme, NoirSchemeData, NoirWitnessGenerator, PrintAbi,
+        witness::WitnessBuilder, MavrosSchemeData, NoirProofScheme, NoirSchemeData,
+        NoirWitnessGenerator, PrintAbi,
     },
-    provekit_common::{
-        utils::convert_mavros_r1cs_to_provekit, witness::WitnessBuilder, WhirR1CSScheme,
-    },
+    provekit_common::{utils::convert_mavros_r1cs_to_provekit, WhirR1CSScheme},
     serde::Deserialize,
     std::{collections::HashSet, fs::File, path::Path},
     tracing::{info, instrument},
@@ -66,7 +65,7 @@ impl NoirCompiler {
         r1cs.num_public_inputs = acir_public_inputs_indices_set.len();
 
         // Gaussian elimination optimization pass
-        let opt_stats = provekit_common::optimize::optimize_r1cs(
+        let opt_stats = crate::optimize_r1cs(
             &mut r1cs,
             &mut witness_builders,
             &mut witness_map,
@@ -204,11 +203,11 @@ mod tests {
     use {
         crate::NoirCompiler,
         ark_std::One,
-        provekit_backend_bn254::NoirProofScheme,
-        provekit_common::{
+        provekit_backend_bn254::{
             witness::{ConstantTerm, DigitalDecompositionWitnesses, SumTerm, WitnessBuilder},
-            FieldElement,
+            NoirProofScheme,
         },
+        provekit_common::FieldElement,
         serde::{Deserialize, Serialize},
         std::path::PathBuf,
     };

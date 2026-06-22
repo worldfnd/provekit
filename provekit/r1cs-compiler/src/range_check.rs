@@ -4,10 +4,8 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_std::{One, Zero},
-    provekit_common::{
-        witness::{ProductLinearTerm, WitnessBuilder, WitnessCoefficient},
-        FieldElement,
-    },
+    provekit_backend_bn254::witness::{ProductLinearTerm, WitnessBuilder, WitnessCoefficient},
+    provekit_common::FieldElement,
     std::{
         collections::{BTreeMap, HashSet},
         ops::Neg,

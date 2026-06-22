@@ -1,11 +1,11 @@
-//! Memory-saving postcard compression of the R1CS and witness-builder layers.
+//! Memory-saving postcard compression of the R1CS.
 //!
-//! Both are only needed during specific proving phases; serializing them to a
+//! The R1CS is only needed during specific proving phases; serializing it to a
 //! compact blob frees that memory in between. Field-agnostic: the blob is raw
 //! bytes, only (de)serialization is typed.
 
 use {
-    crate::{witness::LayeredWitnessBuilders, R1CS},
+    crate::R1CS,
     anyhow::{Context, Result},
     ark_ff::Field,
 };
@@ -20,27 +20,6 @@ pub struct CompressedR1CS {
     num_witnesses:   usize,
     num_virtual:     usize,
     blob:            Vec<u8>,
-}
-
-/// Serialized witness builder layers held as a compact postcard blob.
-///
-/// Same strategy as [`CompressedR1CS`]: the w2 layers are not needed
-/// until challenge-dependent witness solving, so we compress them to
-/// free memory during the w1 commit.
-pub struct CompressedLayers {
-    blob: Vec<u8>,
-}
-
-impl CompressedLayers {
-    pub fn compress(layers: LayeredWitnessBuilders) -> Result<Self> {
-        let blob = postcard::to_allocvec(&layers)
-            .context("LayeredWitnessBuilders serialization failed")?;
-        Ok(Self { blob })
-    }
-
-    pub fn decompress(self) -> Result<LayeredWitnessBuilders> {
-        postcard::from_bytes(&self.blob).context("LayeredWitnessBuilders deserialization failed")
-    }
 }
 
 impl CompressedR1CS {

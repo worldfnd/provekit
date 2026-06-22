@@ -19,8 +19,7 @@ use {
     anyhow::{Context, Result},
     argh::FromArgs,
     base64::Engine,
-    provekit_common::optimize::optimize_r1cs,
-    provekit_r1cs_compiler::noir_to_r1cs_with_breakdown,
+    provekit_r1cs_compiler::{noir_to_r1cs_with_breakdown, optimize_r1cs},
     stats_collector::CircuitStats,
     std::{
         collections::HashSet,

@@ -3,8 +3,8 @@
 use {
     super::{memory::describe_block_type, stats_collector::CircuitStats},
     acir::{circuit::Circuit, FieldElement},
-    provekit_common::{optimize::OptimizationStats, R1CS},
-    provekit_r1cs_compiler::R1CSBreakdown,
+    provekit_common::R1CS,
+    provekit_r1cs_compiler::{OptimizationStats, R1CSBreakdown},
     std::collections::HashMap,
 };
 

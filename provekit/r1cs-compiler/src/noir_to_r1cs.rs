@@ -20,13 +20,14 @@ use {
     anyhow::{bail, ensure, Result},
     ark_ff::{BigInteger, PrimeField},
     ark_std::{One, Zero},
-    provekit_backend_bn254::{noir_to_native, NoirElement},
-    provekit_common::{
+    provekit_backend_bn254::{
+        noir_to_native,
         witness::{
             ConstantOrR1CSWitness, ConstantTerm, SumTerm, WitnessBuilder, BINOP_ATOMIC_BITS,
         },
-        FieldElement, R1CS,
+        NoirElement,
     },
+    provekit_common::{FieldElement, R1CS},
     std::{collections::BTreeMap, num::NonZeroU32, ops::Neg},
 };
 
@@ -889,7 +890,7 @@ mod tests {
             opcodes::{BlackBoxFuncCall, FunctionInput},
             PublicInputs as AcirPublicInputs,
         },
-        provekit_common::witness::WitnessBuilder,
+        provekit_backend_bn254::witness::WitnessBuilder,
         std::collections::{BTreeSet, HashSet},
     };
 

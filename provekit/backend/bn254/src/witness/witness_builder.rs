@@ -1,6 +1,5 @@
 use {
     crate::{
-        utils::{serde_ark, serde_ark_option},
         witness::{
             digits::DigitalDecompositionWitnesses,
             limbs::Limbs,
@@ -11,7 +10,11 @@ use {
             },
             ConstantOrR1CSWitness,
         },
-        FieldElement, R1CS,
+        FieldElement,
+    },
+    provekit_common::{
+        utils::{serde_ark, serde_ark_option},
+        R1CS,
     },
     serde::{Deserialize, Serialize},
     std::{collections::HashSet, num::NonZeroU32},

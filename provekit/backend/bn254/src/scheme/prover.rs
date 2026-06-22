@@ -1,8 +1,11 @@
 use {
-    crate::{Bn254Field, MavrosProver, NoirElement, NoirProofScheme, NoirWitnessGenerator},
+    crate::{
+        witness::SplitWitnessBuilders, Bn254Field, MavrosProver, NoirElement, NoirProofScheme,
+        NoirWitnessGenerator,
+    },
     acir::circuit::Program,
     noirc_abi::Abi,
-    provekit_common::{witness::SplitWitnessBuilders, HashConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{HashConfig, WhirR1CSScheme, R1CS},
     serde::{Deserialize, Serialize},
 };
 

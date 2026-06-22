@@ -1,8 +1,10 @@
 use {
-    crate::FieldElement,
+    crate::{
+        witness::{SpiceMemoryOperation, SpiceWitnesses},
+        FieldElement,
+    },
     anyhow::{ensure, Result},
     ark_ff::PrimeField,
-    provekit_common::witness::{SpiceMemoryOperation, SpiceWitnesses},
 };
 
 pub(crate) trait SpiceWitnessesSolver {

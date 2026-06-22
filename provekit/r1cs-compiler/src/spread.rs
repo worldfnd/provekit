@@ -1,10 +1,10 @@
 use {
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     ark_ff::{Field, Zero},
-    provekit_common::{
-        witness::{compute_spread, ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
-        FieldElement,
+    provekit_backend_bn254::witness::{
+        compute_spread, ConstantOrR1CSWitness, SumTerm, WitnessBuilder,
     },
+    provekit_common::FieldElement,
     std::{
         collections::{BTreeMap, HashMap},
         ops::Neg,
@@ -725,7 +725,8 @@ pub(crate) fn get_optimal_spread_width(n_sha: usize, n_const_hash: usize) -> u32
 #[cfg(test)]
 mod tests {
     use {
-        super::*, crate::noir_to_r1cs::NoirToR1CSCompiler, provekit_common::witness::compute_spread,
+        super::*, crate::noir_to_r1cs::NoirToR1CSCompiler,
+        provekit_backend_bn254::witness::compute_spread,
     };
 
     #[test]

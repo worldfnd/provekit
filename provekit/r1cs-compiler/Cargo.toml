@@ -27,6 +27,7 @@ whir.workspace = true
 # 3rd party
 anyhow.workspace = true
 postcard.workspace = true
+rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tracing.workspace = true

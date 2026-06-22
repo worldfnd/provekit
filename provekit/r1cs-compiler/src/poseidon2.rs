@@ -7,10 +7,8 @@ use {
     poseidon2::constants::{
         amount_partial_rounds, load_diag, load_rc_full1, load_rc_full2, load_rc_partial,
     },
-    provekit_common::{
-        witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
-        FieldElement,
-    },
+    provekit_backend_bn254::witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
+    provekit_common::FieldElement,
     std::rc::Rc,
 };
 

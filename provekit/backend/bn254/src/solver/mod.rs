@@ -8,14 +8,14 @@ mod witness_builder;
 use provekit_common::R1CS;
 use {
     self::witness_builder::WitnessBuilderSolver,
-    crate::{FieldElement, NoirElement, TranscriptSponge},
+    crate::{
+        witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
+        FieldElement, NoirElement, TranscriptSponge,
+    },
     ::tracing::instrument,
     acir::native_types::WitnessMap,
     anyhow::Result,
-    provekit_common::{
-        utils::batch_inverse_montgomery,
-        witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
-    },
+    provekit_common::utils::batch_inverse_montgomery,
     whir::transcript::ProverState,
 };
 
@@ -85,7 +85,7 @@ pub fn solve_witness_vec(
                         WitnessBuilder::LogUpInverse(
                             output_witness,
                             sz_challenge,
-                            provekit_common::witness::WitnessCoefficient(coeff, value_witness),
+                            crate::witness::WitnessCoefficient(coeff, value_witness),
                         ) => {
                             output_witnesses.push(*output_witness);
                             // Compute denominator inline: sz - coeff * value

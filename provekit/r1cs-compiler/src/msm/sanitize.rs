@@ -8,7 +8,7 @@ use {
         msm::multi_limb_arith::compute_is_zero,
         noir_to_r1cs::NoirToR1CSCompiler,
     },
-    provekit_common::witness::WitnessBuilder,
+    provekit_backend_bn254::witness::WitnessBuilder,
 };
 
 /// Detects whether a point-scalar pair is degenerate (scalar=0 or point at

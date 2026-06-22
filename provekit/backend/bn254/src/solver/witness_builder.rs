@@ -4,7 +4,14 @@ use {
         fe_convert::{bigint_to_fe, fe_to_bigint},
         ram::SpiceWitnessesSolver,
     },
-    crate::{noir_to_native, FieldElement, NoirElement, TranscriptSponge},
+    crate::{
+        noir_to_native,
+        witness::{
+            compute_spread, ConstantOrR1CSWitness, ConstantTerm, NonNativeEcOp, ProductLinearTerm,
+            SumTerm, WitnessBuilder, WitnessCoefficient,
+        },
+        FieldElement, NoirElement, TranscriptSponge,
+    },
     acir::native_types::WitnessMap,
     anyhow::{ensure, Result},
     ark_ff::{BigInteger, Field, PrimeField},
@@ -18,10 +25,6 @@ use {
         ec_arith::{
             compute_ec_verification_carries, ec_point_add_with_lambda, ec_point_double_with_lambda,
             ec_scalar_mul,
-        },
-        witness::{
-            compute_spread, ConstantOrR1CSWitness, ConstantTerm, NonNativeEcOp, ProductLinearTerm,
-            SumTerm, WitnessBuilder, WitnessCoefficient,
         },
     },
     whir::transcript::{ProverState, VerifierMessage},

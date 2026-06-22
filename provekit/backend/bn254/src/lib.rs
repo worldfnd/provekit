@@ -4,6 +4,7 @@
 //! `solver` (witness solving), and the `prove`/`verify` orchestration.
 
 mod bytes;
+mod compress;
 mod field;
 mod field_hash;
 mod frontend;
@@ -17,10 +18,12 @@ mod skyscraper;
 mod solver;
 mod transcript_sponge;
 mod verify;
+pub mod witness;
 
 pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
+    compress::CompressedLayers,
     field::{Bn254Field, WhirConfig, WhirZkConfig},
     frontend::{noir_to_native, NoirWitnessGenerator, PrintAbi},
     ntt::RSFr,
