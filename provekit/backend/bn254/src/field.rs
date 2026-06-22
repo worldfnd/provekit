@@ -32,7 +32,7 @@ impl FieldHash for Bn254Field {
     }
 
     fn hash_public_inputs(config: HashConfig, inputs: &[Base<Self>]) -> Ext<Self> {
-        config.hash_field_elements(inputs)
+        crate::field_hash::hash_field_elements(config, inputs)
     }
 
     fn ext_to_bytes_le(x: &Ext<Self>) -> Vec<u8> {
@@ -56,7 +56,7 @@ impl FieldHash for Bn254Field {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, provekit_common::PublicInputs};
+    use super::*;
 
     #[test]
     fn bn254_field_hash_roundtrip() {
@@ -68,26 +68,6 @@ mod tests {
         assert_eq!(Bn254Field::default_hash(), HashConfig::Skyscraper);
     }
 
-    // TODO(P0.4): once the spine routes public-input hashing through
-    // `FieldHash::hash_public_inputs` and `PublicInputs::hash` is removed,
-    // convert this differential test to a hardcoded byte fixture (the P0.7
-    // bn254 bit-identical gate).
-    #[test]
-    fn bn254_hash_public_inputs_matches_public_inputs_hash() {
-        let inputs = [FieldElement::from(7u64), FieldElement::from(42u64)];
-        let pi = PublicInputs::from_vec(inputs.to_vec());
-        for config in [
-            HashConfig::Skyscraper,
-            HashConfig::Sha256,
-            HashConfig::Keccak,
-            HashConfig::Blake3,
-            HashConfig::Poseidon2,
-        ] {
-            assert_eq!(
-                Bn254Field::hash_public_inputs(config, &inputs),
-                pi.hash(config),
-                "mismatch for {config:?}"
-            );
-        }
-    }
+    // Byte-exact public-input hashing is pinned by the KATs in
+    // `crate::field_hash::tests` (the bn254 bit-identical regression gate).
 }

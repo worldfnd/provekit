@@ -39,7 +39,7 @@ pub use {
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
     whir_r1cs::{ProvekitProof, R1csHash, WhirR1CSProof, WhirR1CSScheme},
-    witness::PublicInputs,
+    witness::{PublicInputs, PublicInputsHash},
 };
 
 /// Register provekit's custom implementations in whir's global registries.

@@ -14,7 +14,7 @@ use {
     anyhow::{Context, Result},
     provekit_common::{
         log_commit_input, CompressedLayers, CompressedR1CS, FieldElement, PublicInputs,
-        TranscriptSponge,
+        PublicInputsHash, TranscriptSponge,
     },
     provekit_prover::WhirR1CSProver,
     std::mem::{size_of, take},
@@ -125,7 +125,7 @@ impl Prove for NoirProver {
         let num_constraints = compressed_r1cs.num_constraints();
 
         // Set up transcript with public inputs bound to the instance.
-        let instance = public_inputs.hash_bytes(self.hash_config);
+        let instance = public_inputs.hash_bytes::<Bn254Field>(self.hash_config);
         let ds = self
             .whir_for_witness
             .create_domain_separator()
@@ -285,7 +285,7 @@ impl Prove for MavrosProver {
         };
 
         // Set up transcript with public inputs bound to the instance.
-        let instance = public_inputs.hash_bytes(self.hash_config);
+        let instance = public_inputs.hash_bytes::<Bn254Field>(self.hash_config);
         let ds = self
             .whir_for_witness
             .create_domain_separator()
