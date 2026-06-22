@@ -1,0 +1,96 @@
+---
+title: Installation and setup
+description: Install provekit-cli from crates.io, or set up a source checkout for development and bundled examples.
+---
+
+import { Aside, Steps, Tabs, TabItem } from '@astrojs/starlight/components';
+
+There are two ways to get `provekit-cli` on a machine. Use **`cargo install`** when you just need the CLI and have your own circuit. Use a **source checkout** when you want the bundled Noir examples, the WASM/FFI/server crates, or you're contributing to ProveKit.
+
+## Prerequisites
+
+| Requirement | Why it matters |
+| :--- | :--- |
+| **Rust via `rustup`** | Cargo installs and builds the CLI. Source builds use the toolchain pinned in `rust-toolchain.toml`. |
+| **Git** *(source path only)* | Clones the repository and records exact commits for artifact provenance. |
+| **Go toolchain** *(optional)* | Required only for recursive-verifier development. |
+
+## Install the CLI
+
+<Tabs>
+<TabItem label="cargo install">
+```sh
+cargo install provekit-cli
+provekit-cli --help
+```
+
+This builds and installs the latest published release into `~/.cargo/bin/`. Use this when you have your own Noir package and don't need the bundled examples or extra tooling.
+
+Pin a specific version for reproducible CI:
+
+```sh
+cargo install provekit-cli --version 1.0.0 --locked
+```
+</TabItem>
+<TabItem label="source checkout">
+```sh
+git clone https://github.com/worldfnd/provekit.git
+cd provekit
+rustup show               # confirms the pinned nightly is selected
+cargo run --release --bin provekit-cli -- --help
+```
+
+This gives you the full workspace: examples in `noir-examples/`, WASM bindings in `tooling/provekit-wasm/`, FFI in `tooling/provekit-ffi/`, the verifier server, and the recursive-verifier Go module. Use this when you're contributing to ProveKit or want to run the checked-in examples directly.
+</TabItem>
+</Tabs>
+
+<Aside type="tip" title="Toolchain handling">
+The `cargo install` path uses your default Rust toolchain. The source checkout honors `rust-toolchain.toml` automatically when you run Cargo from inside the repository.
+</Aside>
+
+## Run the example proof
+
+If you installed via `cargo install`, point the CLI at your own Noir package. To run the canonical example, you need a copy of `noir-examples/basic/` from the repository:
+
+<Tabs>
+<TabItem label="With source checkout">
+```sh
+cd noir-examples/basic
+cargo run --release --bin provekit-cli -- prepare
+cargo run --release --bin provekit-cli -- prove
+cargo run --release --bin provekit-cli -- verify
+```
+</TabItem>
+<TabItem label="With cargo install">
+```sh
+git clone --depth 1 https://github.com/worldfnd/provekit.git
+cd provekit/noir-examples/basic
+provekit-cli prepare
+provekit-cli prove
+provekit-cli verify
+```
+
+The `cargo install` binary doesn't need `cargo run --release --bin provekit-cli --` in front of every command; call `provekit-cli` directly.
+</TabItem>
+</Tabs>
+
+If `verify` returns exit code `0`, your setup is healthy.
+
+## Optional host tooling
+
+| Target | Additional tooling |
+| :--- | :--- |
+| **Browser / Node.js** | Build the WASM package in `tooling/provekit-wasm/` and load `.pkp` / `.pkv` artifacts as bytes. |
+| **iOS** | Build or consume the Swift SDK package mode used by your app, then link the required native artifacts. macOS is not supported. |
+| **Android** | Package the JNI libraries required by the Kotlin/Android host and test on target ABIs. |
+| **Verifier server** | Build the Rust HTTP server in `tooling/verifier-server/` and configure the Go verifier binary path. |
+| **Recursive verifier** | Use the Go module in `recursive-verifier/` with the `params_for_recursive_verifier` and `r1cs.json` exported by the CLI. |
+
+All of these require a source checkout.
+
+## Verify your setup
+
+A healthy setup satisfies all of these checks:
+
+- `provekit-cli --help` (or `cargo run --release --bin provekit-cli -- --help` for source builds) prints the CLI help text.
+- The [Quickstart](/getting-started/quickstart/) completes with `verify` returning exit code `0`.

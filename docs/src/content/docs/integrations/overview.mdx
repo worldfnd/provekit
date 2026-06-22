@@ -1,0 +1,116 @@
+---
+title: Integrations overview
+description: Pick the integration path that matches where ProveKit will prove or verify in your system.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+ProveKit ships one proof pipeline and several runtimes that drive it. Pick by where verification needs to live and what host language you're shipping in.
+
+<Aside type="note" title="Rust is native; the rest goes through Verity">
+ProveKit is written in Rust, so Rust integrates with the published crates directly. The user-facing **JS/TS, Swift, and Kotlin SDKs** are maintained by **[Verity](https://github.com/atheonxyz/verity)**, a unified backend dispatcher that wraps ProveKit's WASM and C FFI bindings (`provekit-wasm` and `provekit-ffi`). When the platform guides reference `@atheonxyz/verity`, `import Verity`, or `xyz.atheon.verity.*`, that's the Verity layer talking to ProveKit underneath.
+</Aside>
+
+## Proving across hosts
+
+The `.pkp` is the same in every path; what differs is how each host shapes the inputs. Here's the prove call on each:
+
+<Tabs>
+<TabItem label="CLI">
+```sh
+provekit-cli prove --prover app.pkp --input Prover.toml --out proof.np
+```
+</TabItem>
+<TabItem label="Rust">
+```rust
+use provekit_common::{file::read, Prover};
+use provekit_prover::Prove;
+
+let prover: Prover = read("app.pkp")?;
+let proof = prover.prove_with_toml("Prover.toml")?;
+```
+</TabItem>
+<TabItem label="JS / TS">
+```ts
+import { Backend, Verity } from "@atheonxyz/verity";
+
+const verity = await Verity.create(Backend.ProveKit);
+const prover = await verity.loadProver(pkpBytes);
+const proof  = await prover.prove({ /* keys match your circuit ABI */ });
+```
+</TabItem>
+<TabItem label="Swift">
+```swift
+import Verity
+
+let verity  = try Verity(backend: .provekit)
+let prover  = try verity.loadProver(from: "app.pkp")
+let witness = Witness(values: ["age": "25", "threshold": "18"])
+let proof   = try prover.prove(witness: witness)
+```
+</TabItem>
+<TabItem label="Kotlin">
+```kotlin
+import xyz.atheon.verity.*
+
+val verity = Verity(Backend.PROVEKIT)
+val prover = verity.loadProver("app.pkp")
+prover.use { p ->
+    val witness = Witness.of(mapOf("age" to "25", "threshold" to "18"))
+    val proof   = p.prove(witness)
+}
+```
+</TabItem>
+</Tabs>
+
+Verification is uniform too and usually lives in one host (a backend, a contract, an HTTP service). See the Verifier server section below or each platform guide for the verify-side call.
+
+## Verifier server
+
+[`tooling/verifier-server`](https://github.com/worldfnd/provekit/tree/main/tooling/verifier-server) exposes an Axum HTTP service:
+
+| Route | Method | Purpose |
+| :--- | :--- | :--- |
+| `/health` | `GET` | Server health, version, and timestamp. |
+| `/verify` | `POST` | Verify a JSON proof using downloaded artifacts. |
+
+A verification request looks like:
+
+```json
+{
+  "pkvUrl": "https://example.com/verifier.pkv",
+  "r1csUrl": "https://example.com/r1cs.json",
+  "pkUrl": "https://example.com/proving_key.bin",
+  "vkUrl": "https://example.com/verification_key.bin",
+  "np": { "proof": "NoirProof JSON fields" },
+  "verificationParams": { "maxVerificationTime": 300 },
+  "metadata": { "requestId": "request-123" }
+}
+```
+
+`pkUrl`, `vkUrl`, `verificationParams`, and `metadata` are optional. Artifact URLs must use HTTP or HTTPS. The server defaults to one concurrent verification (`VERIFIER_SEMAPHORE_LIMIT=1`) and a 10 MB request body limit; tune both through the `VERIFIER_*` environment variables documented in [`tooling/verifier-server/README.md`](https://github.com/worldfnd/provekit/tree/main/tooling/verifier-server).
+
+## Recursive verifier / gnark
+
+Use `generate-gnark-inputs` to bridge a ProveKit verifier key and proof into the Go/gnark recursive verifier:
+
+```sh
+provekit-cli generate-gnark-inputs \
+  artifacts/app.pkv \
+  artifacts/proof.np \
+  --params artifacts/params_for_recursive_verifier \
+  --r1cs   artifacts/r1cs.json
+```
+
+Then run the Go CLI or server from [`recursive-verifier/`](https://github.com/worldfnd/provekit/tree/main/recursive-verifier) with those files. If you omit the recursive proving and verifying keys, the Go tool can generate them for development; production deployments should manage trusted-setup keys explicitly.
+
+## Where to go next
+
+The platform pages cover the supported API paths, default artifact flow, and build constraints for each host.
+
+- **[Rust](/e2e/rust/)**: direct crate integration for services, tools, and tests.
+- **[JS / TypeScript](/e2e/js-typescript/)**: browser and Node.js usage via the Verity SDK.
+- **[Swift](/e2e/swift/)**: iOS integration via Swift Package Manager.
+- **[Kotlin](/e2e/kotlin/)**: Android integration via the Verity Kotlin AAR.
+
+Before shipping any integration, walk through the [Production checklist](/reference/production-checklist/).

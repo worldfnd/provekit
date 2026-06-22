@@ -77,7 +77,7 @@ mod wasm_stubs {
     }
 
     impl WitnessLayout {
-        /// Total number of witness slots.
+        /// Return the total number of Mavros witness values.
         pub const fn size(&self) -> usize {
             self.algebraic_size
                 + self.multiplicities_size
@@ -86,12 +86,12 @@ mod wasm_stubs {
                 + self.lookups_data_size
         }
 
-        /// Number of witness slots committed before challenges.
+        /// Return the number of witness values committed before challenges.
         pub const fn pre_commitment_size(&self) -> usize {
             self.algebraic_size + self.multiplicities_size
         }
 
-        /// Number of witness slots committed after challenges.
+        /// Return the number of witness values computed after challenges.
         pub const fn post_commitment_size(&self) -> usize {
             self.challenges_size + self.tables_data_size + self.lookups_data_size
         }
@@ -129,7 +129,7 @@ mod wasm_stubs {
     }
 
     impl ConstraintsLayout {
-        /// Total number of constraint slots.
+        /// Return the total number of Mavros constraint values.
         pub const fn size(&self) -> usize {
             self.algebraic_size + self.tables_data_size + self.lookups_data_size
         }

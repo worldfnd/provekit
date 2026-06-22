@@ -8,17 +8,17 @@
 [![Rust](https://img.shields.io/badge/rust-nightly-e32828?style=flat-square&logo=rust)](https://rustup.rs/)
 [![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](./LICENSE.md)
 
-[Quick Start](#quick-start) · [How It Works](#how-it-works) · [Examples](./noir-examples/) · [Repository Map](#repository-map) · [Contributing](./CONTRIBUTING.md)
+[Quick Start](#quick-start) · [Docs](./docs/) · [How It Works](#how-it-works) · [Examples](./noir-examples/) · [Repository Map](#repository-map) · [Contributing](./CONTRIBUTING.md)
 
 </div>
 
-ProveKit is a zero-knowledge proof system toolkit that compiles [Noir](https://noir-lang.org/) programs to R1CS constraints and generates and verifies [WHIR](https://github.com/WizardOfMenlo/whir) proofs using a Spartan-based protocol. It includes custom SIMD-accelerated field arithmetic and memory-efficient algorithms for resource-constrained environments, with a complete proving and verification stack plus recursive verification support for on-chain Groth16 applications.
+ProveKit compiles [Noir](https://noir-lang.org/) programs to R1CS constraints and generates and verifies [WHIR](https://github.com/WizardOfMenlo/whir) proofs using a Spartan-based protocol. The repository includes SIMD-accelerated field arithmetic, memory-conscious proving code, CLI tooling, host-language bindings, and recursive-verifier export for Go/gnark and Groth16 workflows.
 
 ## Why ProveKit
 
 - **Noir frontend:** write circuits in Noir and use ProveKit to prepare keys, prove, and verify with one CLI.
-- **Post-quantum secure proofs:** produce WHIR proofs designed around post-quantum security assumptions.
-- **Integration-ready surface:** use ProveKit from Swift, Kotlin, JavaScript, and Rust, or use the C-compatible FFI when you need another language.
+- **WHIR proof backend:** produce and verify WHIR proofs from prepared ProveKit artifacts.
+- **Host integrations:** use ProveKit from Rust, JavaScript, Swift, Kotlin, or any host that can call the C-compatible FFI.
 - **Recursive verifier for on-chain Groth16:** export verifier/proof data for a recursive verifier when an on-chain Groth16 wrapper is required.
 
 ## Quick Start
@@ -33,9 +33,9 @@ The smallest end-to-end path is the [`noir-examples/basic`](./noir-examples/basi
 
 ```sh
 cd noir-examples/basic
-cargo run --release --bin provekit-cli prepare
-cargo run --release --bin provekit-cli prove
-cargo run --release --bin provekit-cli verify
+cargo run --release --bin provekit-cli -- prepare
+cargo run --release --bin provekit-cli -- prove
+cargo run --release --bin provekit-cli -- verify
 ```
 
 `prepare` writes a **ProveKit Prover** key (`.pkp`) and a **ProveKit Verifier** key (`.pkv`). `prove` reads the PKP plus `Prover.toml` and writes `proof.np`. `verify` reads the PKV and the proof.
@@ -88,6 +88,10 @@ fn main(plains: [Field; 2], result: Field) {
 ```
 
 For larger circuits and integration experiments, see [`noir-examples/`](./noir-examples/).
+
+For the full end-to-end handbook, including artifact generation, Rust, JS/TypeScript,
+Swift, Kotlin, troubleshooting, and deployment checklists, see
+[`docs/`](./docs/).
 
 ## Repository Map
 

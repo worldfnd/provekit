@@ -2,14 +2,15 @@ package circuit
 
 import (
 	"reilabs/whir-verifier-circuit/app/utilities"
+	"reilabs/whir-verifier-circuit/app/whir"
 
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/std/math/uints"
 )
 
 // Common types
-type KeccakDigest struct {
-	KeccakDigest [32]uint8
+type Digest struct {
+	Digest [32]uint8
 }
 
 type Fp256 struct {
@@ -28,36 +29,29 @@ type FullMultiPath[Digest any] struct {
 
 // WHIR specific types
 type WHIRConfig struct {
-	NRounds             int    `json:"n_rounds"`
-	Rate                int    `json:"rate"`
-	NVars               int    `json:"n_vars"`
-	FoldingFactor       []int  `json:"folding_factor"`
-	OODSamples          []int  `json:"ood_samples"`
-	NumQueries          []int  `json:"num_queries"`
-	PowBits             []int  `json:"pow_bits"`
-	FinalQueries        int    `json:"final_queries"`
-	FinalPowBits        int    `json:"final_pow_bits"`
-	FinalFoldingPowBits int    `json:"final_folding_pow_bits"`
-	DomainGenerator     string `json:"domain_generator"`
-	BatchSize           int    `json:"batch_size"`
+	NRounds                     int      `json:"n_rounds"`
+	Rate                        int      `json:"rate"`
+	NVars                       int      `json:"n_vars"`
+	FoldingFactor               []int    `json:"folding_factor"`
+	OODSamples                  []int    `json:"ood_samples"`
+	NumQueries                  []int    `json:"num_queries"`
+	PowBits                     []int    `json:"pow_bits"`
+	PowThresholds               []uint64 `json:"pow_thresholds"`
+	SumcheckPowThresholds       []uint64 `json:"sumcheck_pow_thresholds"`
+	InitialSumcheckPowThreshold uint64   `json:"initial_sumcheck_pow_threshold"`
+	InitialSkipPowThreshold     uint64   `json:"initial_skip_pow_threshold"`
+	FinalQueries                int      `json:"final_queries"`
+	FinalPowBits                int      `json:"final_pow_bits"`
+	FinalPowThreshold           uint64   `json:"final_pow_threshold"`
+	FinalFoldingPowBits         int      `json:"final_folding_pow_bits"`
+	FinalFoldingPowThreshold    uint64   `json:"final_folding_pow_threshold"`
+	DomainGenerator             string   `json:"domain_generator"`
+	BatchSize                   int      `json:"batch_size"`
+	InitialInDomainSamples      int      `json:"initial_in_domain_samples"` // initial_committer.in_domain_samples (num queries for zkWHIR in-domain verification)
 }
 
-type WHIRParams struct {
-	ParamNRounds                         int
-	FoldingFactorArray                   []int
-	RoundParametersOODSamples            []int
-	RoundParametersNumOfQueries          []int
-	PowBits                              []int
-	FinalQueries                         int
-	FinalPowBits                         int
-	FinalFoldingPowBits                  int
-	StartingDomainBackingDomainGenerator frontend.Variable
-	DomainSize                           int
-	CommitmentOODSamples                 int
-	FinalSumcheckRounds                  int
-	MVParamsNumberOfVariables            int
-	BatchSize                            int
-}
+// WHIRParams is an alias for whir.WHIRParams to avoid duplicate struct definitions.
+type WHIRParams = whir.WHIRParams
 
 type MainRoundData struct {
 	OODPoints             [][]frontend.Variable
@@ -71,13 +65,6 @@ type InitialSumcheckData struct {
 }
 
 // Merkle specific types
-type MerklePaths struct {
-	Leaves            [][][]frontend.Variable
-	LeafIndexes       [][]uints.U64
-	LeafSiblingHashes [][][]uints.U8
-	AuthPaths         [][][][]uints.U8
-}
-
 type Merkle struct {
 	Leaves            [][][]frontend.Variable
 	LeafIndexes       [][]uints.U64
@@ -85,41 +72,29 @@ type Merkle struct {
 	AuthPaths         [][][]frontend.Variable
 }
 
-// Other types
-type ProofObject struct {
-	StatementValuesAtRandomPoint []Fp256 `json:"statement_values_at_random_point"`
-}
-
+// Config matches the Rust GnarkConfig struct.
+// narg_string + hints are the spongefish proof buffers.
+// protocol_id is SHA3-512(CBOR(WhirR1CSScheme)); session_id is optional (default zero) for domain separation.
 type Config struct {
-	WHIRConfigWitness            WHIRConfig   `json:"whir_config_witness"`
-	WHIRConfigHidingSpartan      WHIRConfig   `json:"whir_config_hiding_spartan"`
+	BlindedCommitmentWhirConfig  WHIRConfig   `json:"blinded_commitment_whir_config"`
+	BlindingCommitmentWhirConfig WHIRConfig   `json:"blinding_commitment_whir_config"`
 	LogNumConstraints            int          `json:"log_num_constraints"`
 	LogNumVariables              int          `json:"log_num_variables"`
 	LogANumTerms                 int          `json:"log_a_num_terms"`
-	IOPattern                    string       `json:"io_pattern"`
-	Transcript                   []byte       `json:"transcript"`
-	TranscriptLen                int          `json:"transcript_len"`
-	WitnessStatementEvaluations  []string     `json:"witness_statement_evaluations"`
-	BlindingStatementEvaluations []string     `json:"blinding_statement_evaluations"`
+	NargString                   []byte       `json:"narg_string"`
+	NargStringLen                int          `json:"narg_string_len"`
+	Hints                        []byte       `json:"hints"`
+	HintsLen                     int          `json:"hints_len"`
+	ProtocolID                   []byte       `json:"protocol_id"`
+	SessionID                    []byte       `json:"session_id"`
 	NumChallenges                int          `json:"num_challenges"`
+	ChallengeOffsets             []int        `json:"challenge_offsets"`
 	W1Size                       int          `json:"w1_size"`
 	PublicInputs                 PublicInputs `json:"public_inputs"`
 }
 
-// Update Hints to support batch mode
-type Hints struct {
-	spartanHidingHint ZKHint
-
-	// Witness hints (length 1 for single mode, N for batch mode)
-	WitnessFirstRoundHints []FirstRoundHint
-
-	// Single mode: rounds 1+ for the one commitment
-	// Batch mode: rounds 1+ for batched polynomial
-	WitnessRoundHints ZKHint
-}
-
 type Hint struct {
-	merklePaths []FullMultiPath[KeccakDigest]
+	merklePaths []FullMultiPath[Digest]
 	stirAnswers [][][]Fp256
 }
 
@@ -131,16 +106,6 @@ type FirstRoundHint struct {
 type ZKHint struct {
 	firstRoundMerklePaths FirstRoundHint
 	roundHints            Hint
-}
-
-type ClaimedEvaluations struct {
-	FSums []Fp256
-	GSums []Fp256
-}
-
-type DualClaimedEvaluations struct {
-	First  ClaimedEvaluations
-	Second ClaimedEvaluations
 }
 
 type PublicInputs struct {

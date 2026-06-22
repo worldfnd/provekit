@@ -1,0 +1,205 @@
+---
+title: Common errors
+description: Diagnose setup, proving, verification, integration, and deployment failures.
+---
+
+Use this page to diagnose setup, CLI, WASM, FFI, verifier-server, and recursive-verifier failures. The first question to ask every time: *which artifact was produced by which command, branch, and hash configuration?*
+
+## Setup
+
+### Cargo cannot find `provekit-cli`
+
+**Symptom.** `cargo run` reports that the binary target cannot be found, or CLI arguments are parsed by Cargo instead of ProveKit.
+
+**Checks.**
+
+```sh
+cargo metadata --no-deps --format-version 1 | grep 'provekit-cli\|tooling/cli'
+cargo run --release --bin provekit-cli -- --help
+```
+
+**Fix.** Run from the workspace root and pass CLI arguments after `--`:
+
+```sh
+cargo run --release --bin provekit-cli -- prepare
+```
+
+### No enclosing Noir package
+
+**Symptom.** `prepare`, `prove`, or `verify` cannot infer default key names, or a Noir command cannot find a package manifest.
+
+**Checks.**
+
+```sh
+pwd
+find .. -name Nargo.toml -maxdepth 4
+```
+
+**Fix.** Run from the Noir package directory, pass `prepare <program_path>`, or use explicit artifact paths (`--pkp`, `--pkv`, `--prover`, `--verifier`).
+
+## CLI
+
+### Multiple binary packages with explicit key outputs
+
+**Symptom.** `prepare --workspace --pkp ... --pkv ...` fails because multiple binary packages would write to a single explicit key pair.
+
+**Fix.** Either compile one package with `--package <name>`, or omit `--pkp`/`--pkv` so each binary package uses its package-derived output names.
+
+### Unsupported hash choice
+
+**Symptom.** `prepare --hash <name>` rejects the hash argument.
+
+**Fix.** Use one of the supported names:
+
+- `skyscraper`
+- `sha256`
+- `keccak`
+- `blake3`
+- `poseidon2`
+
+Regenerate the prover key, verifier key, and every proof after changing the hash.
+
+### Missing or stale artifacts
+
+**Symptom.** `prove` or `verify` cannot find expected `.pkp`, `.pkv`, or `proof.np` files.
+
+**Checks.**
+
+```sh
+ls -lh *.pkp *.pkv proof.np 2>/dev/null || true
+```
+
+**Fix.** Re-run the workflow from `prepare` in the same Noir package directory, or pass explicit paths for every artifact:
+
+```sh
+mkdir -p artifacts
+cargo run --release --bin provekit-cli -- prepare \
+  . \
+  --pkp artifacts/app.pkp \
+  --pkv artifacts/app.pkv
+cargo run --release --bin provekit-cli -- prove \
+  --prover artifacts/app.pkp \
+  --input Prover.toml \
+  --out artifacts/proof.np
+cargo run --release --bin provekit-cli -- verify \
+  --verifier artifacts/app.pkv \
+  --proof artifacts/proof.np
+```
+
+### Verification failure
+
+**Symptom.** `verify` rejects a generated or supplied proof, or `show-inputs` reports an ABI/public-input mismatch.
+
+**Likely causes.**
+
+- The proof was generated with a different `.pkp` than the `.pkv` used for verification.
+- The circuit source or Noir package changed after `prepare`.
+- The proof was generated from inputs that don't satisfy the circuit.
+- The branch changed between artifact generation and verification.
+- The hash configuration changed.
+- Public inputs were serialized or transported incorrectly.
+- The proof JSON was modified or truncated by hand.
+
+**Fix.** Regenerate `.pkp`, `.pkv`, and `proof.np` from the same checkout and hash choice. Use `show-inputs` to inspect public inputs:
+
+```sh
+cargo run --release --bin provekit-cli -- show-inputs --hex artifacts/app.pkv artifacts/proof.np
+```
+
+### `circuit-stats` cannot read the circuit JSON
+
+**Symptom.** `circuit-stats` reports a missing `bytecode` field or a base64 decode error.
+
+**Fix.** Pass the Noir ACIR artifact JSON produced under the Noir target directory, not a `.pkp`, `.pkv`, proof, or recursive-verifier `r1cs.json` file.
+
+## WASM
+
+### WASM prover has already been consumed
+
+**Symptom.** Browser code receives `Prover has been consumed by a previous prove() call`.
+
+**Fix.** Create a new `Prover` for each proof. The WASM `Verifier` is reusable, but `Prover.proveBytes()` and `Prover.proveJs()` consume the prover state.
+
+### WASM witness map parsing fails
+
+**Symptom.** Browser code reports an empty witness map, unsupported key type, non-string value, invalid hex, or a field element larger than 32 bytes.
+
+**Fix.** Pass a JavaScript `Map<number|string, string>` or plain object that maps witness indices to hex strings:
+
+```js
+const witnessMap = new Map([
+  [0, "0x01"],
+  [1, "0x02"],
+]);
+```
+
+Values are reduced as BN254 field elements and must fit within 32 bytes.
+
+## FFI
+
+### FFI returns an error code
+
+**Symptom.** A C, Swift, Kotlin, Python, or other FFI host receives a non-zero `PKError`.
+
+**Fix by code:**
+
+- `PK_INVALID_INPUT`: ensure pointers and paths are not null.
+- `PK_SCHEME_READ_ERROR`: confirm the `.pkp` path exists and is readable.
+- `PK_WITNESS_READ_ERROR`: confirm the input TOML path exists and matches the circuit ABI.
+- `PK_PROOF_ERROR`: regenerate artifacts and try the same inputs with the CLI.
+- `PK_SERIALIZATION_ERROR` or `PK_FILE_WRITE_ERROR`: check output paths and permissions.
+
+**General lifecycle:** call `pk_init()` before proving, free returned buffers with `pk_free_buf()`, and configure custom allocators or mmap memory before initialization. See [FFI error codes](/reference/error-codes/) for the full table.
+
+## Verifier server
+
+### Verifier server rejects a request
+
+**Symptom.** `/verify` returns validation errors, `isValid: false`, a timeout status, or an HTTP error.
+
+**Checks.**
+
+```sh
+curl http://localhost:3000/health
+```
+
+Confirm the request body has:
+
+- `pkvUrl`, a non-empty HTTP/HTTPS URL to a `.pkv` artifact.
+- `r1csUrl`, a non-empty HTTP/HTTPS URL to recursive-verifier R1CS JSON.
+- `np`, a non-null JSON `NoirProof` object.
+- Optional `verificationParams.maxVerificationTime`, greater than `0` and at most `300` seconds.
+
+**Fix.** Make artifacts reachable from the server, raise `VERIFIER_MAX_REQUEST_SIZE` for larger requests, tune `VERIFIER_REQUEST_TIMEOUT` and `VERIFIER_TIMEOUT_SECONDS` for long verification runs, and keep `VERIFIER_SEMAPHORE_LIMIT` aligned with available CPU and memory.
+
+## Recursive verifier
+
+### Recursive-verifier input mismatch
+
+**Symptom.** The Go recursive verifier fails with config, R1CS, or key errors.
+
+**Fix.** Re-run `generate-gnark-inputs` from the same `.pkv` and proof you plan to verify:
+
+```sh
+cargo run --release --bin provekit-cli -- generate-gnark-inputs \
+  artifacts/app.pkv \
+  artifacts/proof.np \
+  --params artifacts/params_for_recursive_verifier \
+  --r1cs artifacts/r1cs.json
+```
+
+Pass those exact files to the Go CLI or server. Do not reuse recursive params after changing the proof, verifier key, branch, circuit, or hash configuration.
+
+## Still stuck?
+
+Collect this information before opening an issue or escalating internally:
+
+- Git branch and commit.
+- Rust toolchain from `rustup show`.
+- Full command line and stderr.
+- Whether artifacts were generated on `v1` or `main`.
+- The `prepare --hash` value.
+- File sizes and modification times for `.pkp`, `.pkv`, `proof.np`, `r1cs.json`, and recursive params.
+- Whether the same proof verifies with the local CLI.
+
+Before deploying any fix, walk through the [Production checklist](/reference/production-checklist/).

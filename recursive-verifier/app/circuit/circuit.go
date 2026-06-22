@@ -3,13 +3,14 @@ package circuit
 import (
 	"fmt"
 	"log"
+	"math/big"
 	"os"
 	"path/filepath"
 	"time"
 
 	"reilabs/whir-verifier-circuit/app/common"
-	"reilabs/whir-verifier-circuit/app/typeConverters"
 	"reilabs/whir-verifier-circuit/app/utilities"
+	"reilabs/whir-verifier-circuit/app/whir"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend"
@@ -18,386 +19,363 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"github.com/consensys/gnark/std/math/uints"
+	gnark_nimue "github.com/reilabs/gnark-nimue"
 )
 
+type NimueInit = gnark_nimue.NimueInit
+
 type Circuit struct {
-	// Inputs
-	WitnessLinearStatementEvaluations       []frontend.Variable
-	HidingSpartanLinearStatementEvaluations []frontend.Variable
-	LogNumConstraints                       int
-	LogNumVariables                         int
-	LogANumTerms                            int
-	HidingSpartanFirstRound                 Merkle
-	HidingSpartanMerkle                     Merkle
-	WHIRParamsWitness                       WHIRParams
-	WHIRParamsHidingSpartan                 WHIRParams
-	NumChallenges                           int
-	W1Size                                  int
+	// ProtocolID is SHA3-512(CBOR(WhirR1CSScheme)) for this circuit shape.
+	// SessionIDBytes is the raw 32-byte session id used in domain separation.
+	// Both are fixed for a given circuit instance, so we carry them as
+	// Go-typed fields (not frontend.Variable) so gnark inlines them as
+	// constants in the constraint system rather than allocating witness
+	// variables.
+	ProtocolID        [64]byte
+	SessionIDBytes    [32]byte
+	LogNumConstraints int
 
-	// Witness commitments (length 1 for single mode, N for batch mode)
-	WitnessFirstRounds         []Merkle
-	WitnessClaimedEvaluations  [][]frontend.Variable // [commitment_idx][eval_idx]
-	WitnessBlindingEvaluations [][]frontend.Variable
+	// PublicInputsHash is the Skyscraper compression chain of PublicInputs.Values
+	// (matching PublicInputs::hash_bytes() on the Rust side). It is the only
+	// public input to the recursive Groth16 proof — the on-chain verifier binds
+	// the proof to a specific public-input commitment via this single field.
+	// The transcript stays private; soundness is preserved because the same
+	// hash is absorbed into Fiat-Shamir as InstanceID, and is also asserted
+	// against the prover-written hash inside the transcript via
+	// publicInputsHashCheck.
+	PublicInputsHash frontend.Variable `gnark:",public"`
 
-	// For public_f_sum and public_g_sum
-	PubWitnessEvaluations []frontend.Variable
+	Transcript                   []uints.U8
+	BlindingCommitmentWhirConfig WHIRParams
+	BlindedCommitmentWhirConfig  WHIRParams
+	NumChallenges                int
+	ChallengeOffsets             []int
+	W1Size                       int
+	PublicInputs                 PublicInputs
 
-	// Batch mode only: batched polynomial for rounds 1+
-	WitnessMerkle Merkle
+	// Merkle proof data for WHIR commitment verification (commitment 1 / single).
+	BlindedMerkleData  whir.WhirMerkleData
+	BlindingMerkleData whir.WhirMerkleData
+	// Merkle proof data for commitment 2 (dual mode only).
+	BlindedMerkleData2  whir.WhirMerkleData
+	BlindingMerkleData2 whir.WhirMerkleData
 
+	// R1CS matrices as sparse cell lists. Used to compute the weight MLE
+	// evaluations for the FinalClaim binding check.
 	MatrixA []MatrixCell
 	MatrixB []MatrixCell
 	MatrixC []MatrixCell
+}
 
-	IO           []byte
-	Transcript   []uints.U8 `gnark:",public"`
-	PublicInputs PublicInputs
+type Commitment struct {
+	RootHash          frontend.Variable
+	InitialOODQueries []frontend.Variable
+	InitialOODAnswers [][]frontend.Variable
 }
 
 func (circuit *Circuit) Define(api frontend.API) error {
-	sc, arthur, uapi, err := initializeComponents(api, circuit)
+	sc, nimue, uapi, err := initializeComponents(api, circuit)
 	if err != nil {
 		return err
 	}
 
-	// Parse first commitment (C1) - needed to consume transcript
-	rootHash1, batchingRandomness1, initialOODQueries1, initialOODAnswers1, err := parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
+	// Bind PublicInputsHash (the sole public input to this Groth16 proof) to
+	// the in-circuit Skyscraper hash of PublicInputs.Values. Together with
+	// InstanceID absorption inside initializeComponents, this binds the entire
+	// Fiat-Shamir transcript to the public-input commitment.
+	api.AssertIsEqual(circuit.PublicInputsHash, publicInputsHash(sc, circuit.PublicInputs))
+
+	blindedCommitments, blindingCommitment, err := zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig, 1)
+	// api.Println("blindedCommitments", blindedCommitments)
+	// api.Println("blindingCommitment", blindingCommitment)
 	if err != nil {
 		return err
 	}
+	numPolynomials := 1
+	isDualMode := circuit.NumChallenges > 0
 
-	// Variables for second commitment (only used in dual mode)
-	var rootHash2, batchingRandomness2 frontend.Variable
-	var initialOODQueries2 []frontend.Variable
-	var initialOODAnswers2 [][]frontend.Variable
-
-	if circuit.NumChallenges > 0 {
-		// Squeeze logup challenges
+	var blindedCommitments2 []Commitment
+	var blindingCommitment2 Commitment
+	if isDualMode {
 		logupChallenges := make([]frontend.Variable, circuit.NumChallenges)
-		if err = arthur.FillChallengeScalars(logupChallenges); err != nil {
+		if err = nimue.FillChallengeScalars(logupChallenges); err != nil {
 			return err
 		}
 
-		// Parse second commitment (C2)
-		rootHash2, batchingRandomness2, initialOODQueries2, initialOODAnswers2, err = parseBatchedCommitment(arthur, circuit.WHIRParamsWitness)
+		blindedCommitments2, blindingCommitment2, err = zkWHIRCommitmentParsing(api, nimue, circuit.BlindedCommitmentWhirConfig, circuit.BlindingCommitmentWhirConfig, 1)
+		// api.Println("blindedCommitments2", blindedCommitments2)
+		// api.Println("blindingCommitment2", blindingCommitment2)
 		if err != nil {
 			return err
 		}
 	}
 
-	// Squeeze tRand for Spartan
-	tRand := make([]frontend.Variable, circuit.LogNumConstraints)
-	err = arthur.FillChallengeScalars(tRand)
+	tRand, alpha, fAtAlpha, blindingEval, err := runZKSumcheck(api, sc, uapi, circuit, nimue, frontend.Variable(0), circuit.LogNumConstraints, 4)
 	if err != nil {
 		return err
 	}
 
-	// Run ZK sumcheck
-	spartanSumcheckRand, spartanSumcheckLastValue, err := runZKSumcheck(api, sc, uapi, circuit, arthur, frontend.Variable(0), circuit.LogNumConstraints, 4, circuit.WHIRParamsHidingSpartan)
+	// Public inputs hash check + x challenge
+	err = publicInputsHashCheck(api, sc, nimue, circuit.PublicInputs)
 	if err != nil {
 		return err
 	}
 
-	// Read public inputs hash from transcript
-	publicInputsHashBuf := make([]frontend.Variable, 1)
-	if err := arthur.FillNextScalars(publicInputsHashBuf); err != nil {
-		return fmt.Errorf("failed to read public inputs hash: %w", err)
-	}
-
-	expectedHash, err := hashPublicInputs(sc, circuit.PublicInputs)
-	if err != nil {
-		return fmt.Errorf("failed to compute public inputs hash: %w", err)
-	}
-
-	api.AssertIsEqual(publicInputsHashBuf[0], expectedHash)
-
-	// Squeeze rand for public weights
 	publicWeightsChallenge := make([]frontend.Variable, 1)
-	if err := arthur.FillChallengeScalars(publicWeightsChallenge); err != nil {
+	if err := nimue.FillChallengeScalars(publicWeightsChallenge); err != nil {
 		return fmt.Errorf("failed to read public weights challenge: %w", err)
 	}
 
-	// WHIR verification
-	var whirFoldingRandomness []frontend.Variable
-	var az, bz, cz frontend.Variable
+	// Read evaluations from transcript (prover_message in Rust)
+	evals1 := make([]frontend.Variable, 3)
+	if err := nimue.FillNextScalars(evals1); err != nil {
+		return fmt.Errorf("failed to read evals_1 from transcript: %w", err)
+	}
+	evals1Az := evals1[0]
+	evals1Bz := evals1[1]
+	evals1Cz := evals1[2]
 
-	if circuit.NumChallenges > 0 {
-		// Only statement_1 (first commitment) gets extended with public weights, statement_2 remains unchanged
-		extendedLinearStatementEvalsBatch := make([][][]frontend.Variable, 2)
+	// In dual mode, evals_2 follows evals_1 in the transcript (before public_eval).
+	var evals2Az, evals2Bz, evals2Cz frontend.Variable
+	if isDualMode {
+		evals2 := make([]frontend.Variable, 3)
+		if err := nimue.FillNextScalars(evals2); err != nil {
+			return fmt.Errorf("failed to read evals_2 from transcript: %w", err)
+		}
+		evals2Az = evals2[0]
+		evals2Bz = evals2[1]
+		evals2Cz = evals2[2]
+	}
 
-		if !circuit.PublicInputs.IsEmpty() {
-			extendedLinearStatementEvalsBatch[0] = extendLinearStatement(
-				circuit,
-				[][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]},
-				circuit.PubWitnessEvaluations,
-			)
+	hasPublicInputs := !circuit.PublicInputs.IsEmpty()
 
-			extendedLinearStatementEvalsBatch[1] = [][]frontend.Variable{
-				circuit.WitnessClaimedEvaluations[1],
-				circuit.WitnessBlindingEvaluations[1],
-			}
-		} else {
-			// Use original arrays as before, no public inputs
-			extendedLinearStatementEvalsBatch[0] = [][]frontend.Variable{
-				circuit.WitnessClaimedEvaluations[0],
-				circuit.WitnessBlindingEvaluations[0],
-			}
-			extendedLinearStatementEvalsBatch[1] = [][]frontend.Variable{
-				circuit.WitnessClaimedEvaluations[1],
-				circuit.WitnessBlindingEvaluations[1],
-			}
+	var publicEval frontend.Variable
+	if hasPublicInputs {
+		publicEvalSlice := make([]frontend.Variable, 1)
+		if err := nimue.FillNextScalars(publicEvalSlice); err != nil {
+			return fmt.Errorf("failed to read public_eval from transcript: %w", err)
+		}
+		publicEval = publicEvalSlice[0]
+
+		// Verify public input binding (Rust: verify_public_input_binding).
+		// expected = 1 + x*pi[0] + x²*pi[1] + ...
+		// where x = publicWeightsChallenge and position 0 is the constant 1.
+		expectedPublicEval := frontend.Variable(1)
+		xPow := publicWeightsChallenge[0]
+		for _, pi := range circuit.PublicInputs.Values {
+			expectedPublicEval = api.Add(expectedPublicEval, api.Mul(xPow, pi))
+			xPow = api.Mul(xPow, publicWeightsChallenge[0])
+		}
+		api.AssertIsEqual(publicEval, expectedPublicEval)
+	}
+
+	// Challenge binding: in dual mode, read challenge_eval from transcript.
+	var challengeEval frontend.Variable
+	if isDualMode {
+		ceSlice := make([]frontend.Variable, 1)
+		if err := nimue.FillNextScalars(ceSlice); err != nil {
+			return fmt.Errorf("failed to read challenge_eval from transcript: %w", err)
+		}
+		challengeEval = ceSlice[0]
+	}
+
+	var whirEvaluations []frontend.Variable
+	if hasPublicInputs {
+		whirEvaluations = []frontend.Variable{publicEval, evals1Az, evals1Bz, evals1Cz, blindingEval}
+	} else {
+		whirEvaluations = []frontend.Variable{evals1Az, evals1Bz, evals1Cz, blindingEval}
+	}
+
+	weightsLen := 4
+	if hasPublicInputs {
+		weightsLen = 5
+	}
+
+	blindedCommitmentNimue := ParsedCommitmentNimue{
+		Root:       blindedCommitments[0].RootHash,
+		OodPoints:  blindedCommitments[0].InitialOODQueries,
+		OodAnswers: flattenOODAnswers(blindedCommitments[0].InitialOODAnswers),
+	}
+	blindingCommitmentNimue := ParsedCommitmentNimue{
+		Root:       blindingCommitment.RootHash,
+		OodPoints:  blindingCommitment.InitialOODQueries,
+		OodAnswers: flattenOODAnswers(blindingCommitment.InitialOODAnswers),
+	}
+
+	mode := SingleCommitment
+	if isDualMode {
+		mode = DualCommitment1
+	}
+
+	err = ZKWhirVerify(
+		api, sc, nimue,
+		blindedCommitmentNimue,
+		blindingCommitmentNimue,
+		circuit.BlindedCommitmentWhirConfig,
+		circuit.BlindingCommitmentWhirConfig,
+		whirEvaluations,
+		weightsLen,
+		numPolynomials,
+		&circuit.BlindedMerkleData,
+		&circuit.BlindingMerkleData,
+		R1CSWeightParams{
+			Circuit:                circuit,
+			Alpha:                  alpha,
+			PublicWeightsChallenge: publicWeightsChallenge[0],
+			HasPublicInputs:        hasPublicInputs,
+			Mode:                   mode,
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("ZK-WHIR verification failed for commitment 1: %w", err)
+	}
+
+	var azAtAlpha, bzAtAlpha, czAtAlpha frontend.Variable
+	if isDualMode {
+		// Commitment 2 has 3 base weights (A,B,C) + 1 challenge weight if challenge_eval exists.
+		whirEvaluations2 := []frontend.Variable{evals2Az, evals2Bz, evals2Cz}
+		weightsLen2 := 3
+		if circuit.NumChallenges > 0 {
+			whirEvaluations2 = append(whirEvaluations2, challengeEval)
+			weightsLen2 = 4
 		}
 
-		whirFoldingRandomness, err = RunZKWhirBatch(
-			api, arthur, uapi, sc,
-			circuit.WitnessFirstRounds,                                      // firstRounds []Merkle
-			[]frontend.Variable{batchingRandomness1, batchingRandomness2},   // batchingRandomnesses
-			[][]frontend.Variable{initialOODQueries1, initialOODQueries2},   // initialOODQueries
-			[][][]frontend.Variable{initialOODAnswers1, initialOODAnswers2}, // initialOODAnswers
-			[]frontend.Variable{rootHash1, rootHash2},                       // rootHashes
-			circuit.WitnessMerkle,                                           // batchedMerkle
-			extendedLinearStatementEvalsBatch,                               // linearStatementEvals (extended for first commitment)
-			circuit.WHIRParamsWitness,                                       // whirParams
-			circuit.WitnessLinearStatementEvaluations,                       // linearStatementValuesAtPoints
-			circuit.PublicInputs,                                            // publicInputs
+		blindedCommitmentNimue2 := ParsedCommitmentNimue{
+			Root:       blindedCommitments2[0].RootHash,
+			OodPoints:  blindedCommitments2[0].InitialOODQueries,
+			OodAnswers: flattenOODAnswers(blindedCommitments2[0].InitialOODAnswers),
+		}
+		blindingCommitmentNimue2 := ParsedCommitmentNimue{
+			Root:       blindingCommitment2.RootHash,
+			OodPoints:  blindingCommitment2.InitialOODQueries,
+			OodAnswers: flattenOODAnswers(blindingCommitment2.InitialOODAnswers),
+		}
+
+		err = ZKWhirVerify(
+			api, sc, nimue,
+			blindedCommitmentNimue2,
+			blindingCommitmentNimue2,
+			circuit.BlindedCommitmentWhirConfig,
+			circuit.BlindingCommitmentWhirConfig,
+			whirEvaluations2,
+			weightsLen2,
+			numPolynomials,
+			&circuit.BlindedMerkleData2,
+			&circuit.BlindingMerkleData2,
+			R1CSWeightParams{
+				Circuit:                circuit,
+				Alpha:                  alpha,
+				PublicWeightsChallenge: publicWeightsChallenge[0],
+				HasPublicInputs:        false,
+				ChallengeOffsets:       circuit.ChallengeOffsets,
+				Mode:                   DualCommitment2,
+			},
 		)
 		if err != nil {
-			return err
+			return fmt.Errorf("ZK-WHIR verification failed for commitment 2: %w", err)
 		}
 
-		// Sum evaluations from both commitments
-		az = api.Add(circuit.WitnessClaimedEvaluations[0][0], circuit.WitnessClaimedEvaluations[1][0])
-		bz = api.Add(circuit.WitnessClaimedEvaluations[0][1], circuit.WitnessClaimedEvaluations[1][1])
-		cz = api.Add(circuit.WitnessClaimedEvaluations[0][2], circuit.WitnessClaimedEvaluations[1][2])
+		// az_at_alpha = evals_1 + evals_2 (Rust verifier sums the two)
+		azAtAlpha = api.Add(evals1Az, evals2Az)
+		bzAtAlpha = api.Add(evals1Bz, evals2Bz)
+		czAtAlpha = api.Add(evals1Cz, evals2Cz)
 	} else {
-		extendedLinearStatementEvals := extendLinearStatement(circuit, [][]frontend.Variable{circuit.WitnessClaimedEvaluations[0], circuit.WitnessBlindingEvaluations[0]}, circuit.PubWitnessEvaluations)
-
-		// Single commitment mode
-		whirFoldingRandomness, err = RunZKWhir(
-			api, arthur, uapi, sc,
-			circuit.WitnessMerkle, circuit.WitnessFirstRounds[0],
-			circuit.WHIRParamsWitness,
-			extendedLinearStatementEvals,
-			circuit.WitnessLinearStatementEvaluations,
-			batchingRandomness1,
-			initialOODQueries1,
-			initialOODAnswers1,
-			rootHash1,
-		)
-		if err != nil {
-			return err
-		}
-
-		az = circuit.WitnessClaimedEvaluations[0][0]
-		bz = circuit.WitnessClaimedEvaluations[0][1]
-		cz = circuit.WitnessClaimedEvaluations[0][2]
+		azAtAlpha = evals1Az
+		bzAtAlpha = evals1Bz
+		czAtAlpha = evals1Cz
 	}
 
-	// Spartan sumcheck relation check (common to both modes)
-	x := api.Mul(api.Sub(api.Mul(az, bz), cz), calculateEQ(api, spartanSumcheckRand, tRand))
-	api.AssertIsEqual(spartanSumcheckLastValue, x)
+	eqRA := calculateEqCircuit(api, tRand, alpha)
+	rhs := api.Mul(api.Sub(api.Mul(azAtAlpha, bzAtAlpha), czAtAlpha), eqRA)
+	api.AssertIsEqual(fAtAlpha, rhs)
 
-	offset := 0
-	if !circuit.PublicInputs.IsEmpty() {
-		// can be generalized later on if we have more different kinds of statements
-		offset = 1
-	}
-
-	if circuit.NumChallenges > 0 {
-		// Batch mode - check 6 deferred values
-		matrixExtensionEvals := evaluateR1CSMatrixExtensionBatch(api, circuit, spartanSumcheckRand, whirFoldingRandomness, circuit.W1Size)
-		for i := 0; i < 6; i++ {
-			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[offset+i])
-		}
-	} else {
-
-		// Single mode - existing logic
-		matrixExtensionEvals := evaluateR1CSMatrixExtension(api, circuit, spartanSumcheckRand, whirFoldingRandomness)
-		for i := 0; i < 3; i++ {
-			api.AssertIsEqual(matrixExtensionEvals[i], circuit.WitnessLinearStatementEvaluations[offset+i])
-		}
-	}
-
-	// Geometric weights for public inputs
-	if !circuit.PublicInputs.IsEmpty() {
-		publicWeightEval := computePublicWeightEvaluation(
-			api, circuit.PublicInputs, whirFoldingRandomness, publicWeightsChallenge[0],
-		)
-
-		api.AssertIsEqual(publicWeightEval, circuit.WitnessLinearStatementEvaluations[0])
+	if remaining := nimue.RemainingTranscriptLen(); remaining != 0 {
+		return fmt.Errorf("transcript not fully consumed: %d bytes remaining", remaining)
 	}
 
 	return nil
 }
 
-func computePublicWeightEvaluation(
-	api frontend.API,
-	publicInputs PublicInputs,
-	foldingRandomness []frontend.Variable,
-	x frontend.Variable,
-) frontend.Variable {
-	return geometricTill(api, x, len(publicInputs.Values), foldingRandomness)
+// flattenOODAnswers converts [][]frontend.Variable (each inner slice is a
+// single-element answer) into a flat []frontend.Variable.
+func flattenOODAnswers(answers [][]frontend.Variable) []frontend.Variable {
+	var flat []frontend.Variable
+	for _, ans := range answers {
+		flat = append(flat, ans...)
+	}
+	return flat
 }
 
+// DualCommitmentData holds the additional data needed for dual-commitment mode.
+type DualCommitmentData struct {
+	Evals2BigInt       []*big.Int
+	BlindedMerkleData  whir.WhirMerkleData
+	BlindingMerkleData whir.WhirMerkleData
+}
+
+// verifyCircuit builds the gnark circuit and runs Groth16 proving + verification.
 func verifyCircuit(
-	deferred []Fp256,
 	cfg Config,
-	hints Hints,
 	pk *groth16.ProvingKey,
 	vk *groth16.VerifyingKey,
-	claimedEvaluations ClaimedEvaluations,
-	claimedEvaluations2 ClaimedEvaluations,
-	publicWeightsClaimedEvaluation [2]Fp256,
 	internedR1CS R1CS,
 	interner Interner,
 	buildOps common.BuildOps,
 	publicInputs PublicInputs,
+	blindedMerkleData whir.WhirMerkleData,
+	blindingMerkleData whir.WhirMerkleData,
+	dualData *DualCommitmentData, // nil for single-commitment mode
 ) error {
-	transcriptT := make([]uints.U8, cfg.TranscriptLen)
-	contTranscript := make([]uints.U8, cfg.TranscriptLen)
+	transcriptT := make([]uints.U8, len(cfg.NargString))
+	contTranscript := make([]uints.U8, len(cfg.NargString))
 
-	for i := range cfg.Transcript {
-		transcriptT[i] = uints.NewU8(cfg.Transcript[i])
+	for i := range cfg.NargString {
+		transcriptT[i] = uints.NewU8(cfg.NargString[i])
 	}
 
-	// Determine witness linear statement evals size based on mode
-	var witnessLinearStatementEvalsSize int
-	if cfg.NumChallenges > 0 {
-		if !cfg.PublicInputs.IsEmpty() {
-			// 3 per commitment in batch mode + 1 public_input (geometric statement as a subset of linear statement)
-			witnessLinearStatementEvalsSize = 7
-		} else {
-			witnessLinearStatementEvalsSize = 6
-		}
-	} else {
-		if !cfg.PublicInputs.IsEmpty() {
-			witnessLinearStatementEvalsSize = 4
-		} else {
-			witnessLinearStatementEvalsSize = 3
-		}
+	var protocolID [64]byte
+	copy(protocolID[:], cfg.ProtocolID)
+	var sessionIDBytes [32]byte
+	copy(sessionIDBytes[:], cfg.SessionID)
+
+	matrixA, matrixB, matrixC, err := buildR1CSMatrixCells(internedR1CS, interner)
+	if err != nil {
+		return err
 	}
 
-	witnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
-	hidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
-	contWitnessLinearStatementEvaluations := make([]frontend.Variable, witnessLinearStatementEvalsSize)
-	contHidingSpartanLinearStatementEvaluations := make([]frontend.Variable, 1)
-
-	if len(deferred) < 1+witnessLinearStatementEvalsSize {
-		return fmt.Errorf("deferred array too short: expected at least %d elements, got %d", 1+witnessLinearStatementEvalsSize, len(deferred))
-	}
-	hidingSpartanLinearStatementEvaluations[0] = typeConverters.LimbsToBigIntMod(deferred[0].Limbs)
-	for i := 0; i < witnessLinearStatementEvalsSize; i++ {
-		witnessLinearStatementEvaluations[i] = typeConverters.LimbsToBigIntMod(deferred[1+i].Limbs)
-	}
-
-	colIndicesA := internedR1CS.A.DecodeColIndices()
-	if colIndicesA == nil {
-		return fmt.Errorf("failed to decode column indices for matrix A: inconsistent data")
-	}
-	matrixA := make([]MatrixCell, len(internedR1CS.A.Values))
-	for i := range len(internedR1CS.A.RowIndices) {
-		end := len(internedR1CS.A.Values) - 1
-		if i < len(internedR1CS.A.RowIndices)-1 {
-			end = int(internedR1CS.A.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.A.RowIndices[i]); j <= end; j++ {
-			matrixA[j] = MatrixCell{
-				row:    i,
-				column: int(colIndicesA[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.A.Values[j]].Limbs),
-			}
-		}
-	}
-
-	colIndicesB := internedR1CS.B.DecodeColIndices()
-	if colIndicesB == nil {
-		return fmt.Errorf("failed to decode column indices for matrix B: inconsistent data")
-	}
-	matrixB := make([]MatrixCell, len(internedR1CS.B.Values))
-	for i := range len(internedR1CS.B.RowIndices) {
-		end := len(internedR1CS.B.Values) - 1
-		if i < len(internedR1CS.B.RowIndices)-1 {
-			end = int(internedR1CS.B.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.B.RowIndices[i]); j <= end; j++ {
-			matrixB[j] = MatrixCell{
-				row:    i,
-				column: int(colIndicesB[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.B.Values[j]].Limbs),
-			}
-		}
-	}
-
-	colIndicesC := internedR1CS.C.DecodeColIndices()
-	if colIndicesC == nil {
-		return fmt.Errorf("failed to decode column indices for matrix C: inconsistent data")
-	}
-	matrixC := make([]MatrixCell, len(internedR1CS.C.Values))
-	for i := range len(internedR1CS.C.RowIndices) {
-		end := len(internedR1CS.C.Values) - 1
-		if i < len(internedR1CS.C.RowIndices)-1 {
-			end = int(internedR1CS.C.RowIndices[i+1] - 1)
-		}
-		for j := int(internedR1CS.C.RowIndices[i]); j <= end; j++ {
-			matrixC[j] = MatrixCell{
-				row:    i,
-				column: int(colIndicesC[j]),
-				value:  typeConverters.LimbsToBigIntMod(interner.Values[internedR1CS.C.Values[j]].Limbs),
-			}
-		}
-	}
-
-	// Parse claimed evaluations for first commitment
-	fSums, gSums := parseClaimedEvaluations(claimedEvaluations, true)
-
-	// Parse claimed evaluations for second commitment (if dual mode)
-	var fSums2, gSums2 []frontend.Variable
-	if cfg.NumChallenges > 0 {
-		fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, true)
-	}
-
-	// Parse public weights claimed evaluation
-	fSumPublicWeights, gSumPublicWeights := parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation, true)
-	pubWitnessEvaluations := []frontend.Variable{fSumPublicWeights, gSumPublicWeights}
-
-	// Build witness slices conditionally
-	var witnessClaimedEvals, witnessBlindingEvals [][]frontend.Variable
-	if cfg.NumChallenges > 0 {
-		witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
-		witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
-	} else {
-		witnessClaimedEvals = [][]frontend.Variable{fSums}
-		witnessBlindingEvals = [][]frontend.Variable{gSums}
-	}
-
-	// Empty container while circuit creation
 	publicInputsContainer := PublicInputs{
 		Values: make([]frontend.Variable, len(publicInputs.Values)),
 	}
 
+	// Circuit template: placeholder (zero-valued) fields for compilation.
+	blindedMerkleTemplate := allocateZeroWhirMerkleData(blindedMerkleData)
+	blindingMerkleTemplate := allocateZeroWhirMerkleData(blindingMerkleData)
+
+	// Dual-commitment templates
+	var blindedMerkleTemplate2, blindingMerkleTemplate2 whir.WhirMerkleData
+	if dualData != nil {
+		blindedMerkleTemplate2 = allocateZeroWhirMerkleData(dualData.BlindedMerkleData)
+		blindingMerkleTemplate2 = allocateZeroWhirMerkleData(dualData.BlindingMerkleData)
+	}
+
 	circuit := Circuit{
-		IO:                                      []byte(cfg.IOPattern),
-		Transcript:                              contTranscript,
-		LogNumConstraints:                       cfg.LogNumConstraints,
-		LogNumVariables:                         cfg.LogNumVariables,
-		LogANumTerms:                            cfg.LogANumTerms,
-		WitnessClaimedEvaluations:               witnessClaimedEvals,
-		WitnessBlindingEvaluations:              witnessBlindingEvals,
-		PubWitnessEvaluations:                   pubWitnessEvaluations,
-		WitnessLinearStatementEvaluations:       contWitnessLinearStatementEvaluations,
-		HidingSpartanLinearStatementEvaluations: contHidingSpartanLinearStatementEvaluations,
-		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, true),
-		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, true),
-		WitnessFirstRounds:                      witnessFirstRounds(hints, true),
-		WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, true),
-		NumChallenges:                           cfg.NumChallenges,
-		W1Size:                                  cfg.W1Size,
-		WHIRParamsWitness:                       NewWhirParams(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan:                 NewWhirParams(cfg.WHIRConfigHidingSpartan),
-		MatrixA:                                 matrixA,
-		MatrixB:                                 matrixB,
-		MatrixC:                                 matrixC,
-		PublicInputs:                            publicInputsContainer,
+		ProtocolID:                   protocolID,
+		SessionIDBytes:               sessionIDBytes,
+		Transcript:                   contTranscript,
+		LogNumConstraints:            cfg.LogNumConstraints,
+		NumChallenges:                cfg.NumChallenges,
+		ChallengeOffsets:             cfg.ChallengeOffsets,
+		W1Size:                       cfg.W1Size,
+		BlindingCommitmentWhirConfig: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
+		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
+		PublicInputs:                 publicInputsContainer,
+		BlindedMerkleData:            blindedMerkleTemplate,
+		BlindingMerkleData:           blindingMerkleTemplate,
+		BlindedMerkleData2:           blindedMerkleTemplate2,
+		BlindingMerkleData2:          blindingMerkleTemplate2,
+		MatrixA:                      matrixA,
+		MatrixB:                      matrixB,
+		MatrixC:                      matrixC,
 	}
 
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &circuit)
@@ -427,15 +405,12 @@ func verifyCircuit(
 		vk = &unsafeVk
 
 		if buildOps.ShouldSaveKeys() {
-			// Create the save keys directory if it doesn't exist
 			if err := os.MkdirAll(buildOps.SaveKeys, 0o755); err != nil {
 				log.Printf("Failed to create save keys directory %s: %v", buildOps.SaveKeys, err)
 			}
 
-			// Generate timestamp for filenames
 			timestamp := time.Now().Format("02Jan_15-04-05")
 
-			// Save proving key to file
 			pkFilename := filepath.Join(buildOps.SaveKeys, fmt.Sprintf("pk_%s.bin", timestamp))
 			pkFile, err := os.Create(pkFilename)
 			if err != nil {
@@ -446,15 +421,13 @@ func verifyCircuit(
 						log.Printf("Failed to close PK file: %v", err)
 					}
 				}()
-				_, err = (*pk).WriteTo(pkFile) // Dereference with (*pk)
-				if err != nil {
+				if _, err = (*pk).WriteTo(pkFile); err != nil {
 					log.Printf("Failed to write PK to file: %v", err)
 				} else {
 					log.Printf("Proving key saved to %s", pkFilename)
 				}
 			}
 
-			// Save verifying key to file
 			vkFilename := filepath.Join(buildOps.SaveKeys, fmt.Sprintf("vk_%s.bin", timestamp))
 			vkFile, err := os.Create(vkFilename)
 			if err != nil {
@@ -465,8 +438,7 @@ func verifyCircuit(
 						log.Printf("Failed to close VK file: %v", err)
 					}
 				}()
-				_, err = (*vk).WriteTo(vkFile) // Dereference with (*vk)
-				if err != nil {
+				if _, err = (*vk).WriteTo(vkFile); err != nil {
 					log.Printf("Failed to write VK to file: %v", err)
 				} else {
 					log.Printf("Verifying key saved to %s", vkFilename)
@@ -475,46 +447,53 @@ func verifyCircuit(
 		}
 	}
 
-	// Parse actual values for assignment
-	fSums, gSums = parseClaimedEvaluations(claimedEvaluations, false)
-	if cfg.NumChallenges > 0 {
-		fSums2, gSums2 = parseClaimedEvaluations(claimedEvaluations2, false)
-		witnessClaimedEvals = [][]frontend.Variable{fSums, fSums2}
-		witnessBlindingEvals = [][]frontend.Variable{gSums, gSums2}
-	} else {
-		witnessClaimedEvals = [][]frontend.Variable{fSums}
-		witnessBlindingEvals = [][]frontend.Variable{gSums}
+	// Build dual-commitment assignment data
+	var blindedMerkleAssign2, blindingMerkleAssign2 whir.WhirMerkleData
+	if dualData != nil {
+		blindedMerkleAssign2 = dualData.BlindedMerkleData
+		blindingMerkleAssign2 = dualData.BlindingMerkleData
 	}
 
-	fSumPublicWeights, gSumPublicWeights = parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation, false)
-	pubWitnessEvaluations = []frontend.Variable{fSumPublicWeights, gSumPublicWeights}
+	// Compute the public-input hash natively so we can pass it as the sole
+	// public input to the Groth16 proof. The in-circuit AssertIsEqual in
+	// Define() pins this to the in-circuit Skyscraper recomputation.
+	piValuesNative := make([]*big.Int, len(publicInputs.Values))
+	for i, v := range publicInputs.Values {
+		bi, ok := v.(*big.Int)
+		if !ok {
+			return fmt.Errorf("public input %d is not *big.Int (got %T)", i, v)
+		}
+		piValuesNative[i] = bi
+	}
+	publicInputsHashLE := nativePublicInputsHashBytes(piValuesNative)
+	publicInputsHashBI := leBytesToNativeBigInt(publicInputsHashLE[:])
 
 	assignment := Circuit{
-		IO:                                      []byte(cfg.IOPattern),
-		Transcript:                              transcriptT,
-		LogNumConstraints:                       cfg.LogNumConstraints,
-		LogNumVariables:                         cfg.LogNumVariables,
-		LogANumTerms:                            cfg.LogANumTerms,
-		WitnessClaimedEvaluations:               witnessClaimedEvals,
-		WitnessBlindingEvaluations:              witnessBlindingEvals,
-		WitnessLinearStatementEvaluations:       witnessLinearStatementEvaluations,
-		PubWitnessEvaluations:                   pubWitnessEvaluations,
-		HidingSpartanLinearStatementEvaluations: hidingSpartanLinearStatementEvaluations,
-		HidingSpartanFirstRound:                 newMerkle(hints.spartanHidingHint.firstRoundMerklePaths.path, false),
-		HidingSpartanMerkle:                     newMerkle(hints.spartanHidingHint.roundHints, false),
-		WitnessFirstRounds:                      witnessFirstRounds(hints, false),
-		WitnessMerkle:                           newMerkle(hints.WitnessRoundHints.roundHints, false),
-		NumChallenges:                           cfg.NumChallenges,
-		W1Size:                                  cfg.W1Size,
-		WHIRParamsWitness:                       NewWhirParams(cfg.WHIRConfigWitness),
-		WHIRParamsHidingSpartan:                 NewWhirParams(cfg.WHIRConfigHidingSpartan),
-		MatrixA:                                 matrixA,
-		MatrixB:                                 matrixB,
-		MatrixC:                                 matrixC,
-		PublicInputs:                            publicInputs,
+		ProtocolID:                   protocolID,
+		SessionIDBytes:               sessionIDBytes,
+		PublicInputsHash:             publicInputsHashBI,
+		Transcript:                   transcriptT,
+		LogNumConstraints:            cfg.LogNumConstraints,
+		NumChallenges:                cfg.NumChallenges,
+		ChallengeOffsets:             cfg.ChallengeOffsets,
+		W1Size:                       cfg.W1Size,
+		BlindingCommitmentWhirConfig: NewWhirParams(cfg.BlindingCommitmentWhirConfig),
+		BlindedCommitmentWhirConfig:  NewWhirParams(cfg.BlindedCommitmentWhirConfig),
+		PublicInputs:                 publicInputs,
+		BlindedMerkleData:            blindedMerkleData,
+		BlindingMerkleData:           blindingMerkleData,
+		BlindedMerkleData2:           blindedMerkleAssign2,
+		BlindingMerkleData2:          blindingMerkleAssign2,
+		MatrixA:                      matrixA,
+		MatrixB:                      matrixB,
+		MatrixC:                      matrixC,
 	}
 
-	witness, _ := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
+	witness, err := frontend.NewWitness(&assignment, ecc.BN254.ScalarField())
+	if err != nil {
+		log.Printf("Failed to create witness: %v", err)
+		return err
+	}
 	publicWitness, err := witness.Public()
 	if err != nil {
 		log.Printf("Failed witness, Public(): %v", err)
@@ -526,7 +505,11 @@ func verifyCircuit(
 		backend.WithIcicleAcceleration(),
 	}
 
-	proof, _ := groth16.Prove(ccs, *pk, witness, opts...)
+	proof, err := groth16.Prove(ccs, *pk, witness, opts...)
+	if err != nil {
+		log.Printf("Failed to prove: %v", err)
+		return err
+	}
 	err = groth16.Verify(proof, *vk, publicWitness)
 	if err != nil {
 		log.Printf("Failed to verify proof: %v", err)
@@ -535,63 +518,30 @@ func verifyCircuit(
 	return nil
 }
 
-func parseClaimedEvaluations(claimedEvaluations ClaimedEvaluations, isContainer bool) ([]frontend.Variable, []frontend.Variable) {
-	fSums := make([]frontend.Variable, len(claimedEvaluations.FSums))
-	gSums := make([]frontend.Variable, len(claimedEvaluations.GSums))
-
-	if !isContainer {
-		for i := range claimedEvaluations.FSums {
-			fSums[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations.FSums[i].Limbs)
-			gSums[i] = typeConverters.LimbsToBigIntMod(claimedEvaluations.GSums[i].Limbs)
+// allocateZeroWhirMerkleData creates a zero-valued copy of a WhirMerkleData
+// with the same shape. Used as the circuit template for gnark compilation;
+// the actual values go in the assignment only.
+func allocateZeroWhirMerkleData(src whir.WhirMerkleData) whir.WhirMerkleData {
+	dst := whir.WhirMerkleData{
+		Rounds: make([]whir.RoundMerkleEntry, len(src.Rounds)),
+	}
+	for r, rd := range src.Rounds {
+		nq := len(rd.Leaves)
+		entry := whir.RoundMerkleEntry{
+			Leaves:        make([][]frontend.Variable, nq),
+			SiblingHashes: make([]frontend.Variable, nq),
+			AuthPaths:     make([][]frontend.Variable, nq),
+			LeafIndexes:   make([]frontend.Variable, nq),
 		}
+		for q := range nq {
+			if len(rd.Leaves[q]) > 0 {
+				entry.Leaves[q] = make([]frontend.Variable, len(rd.Leaves[q]))
+			}
+			if len(rd.AuthPaths[q]) > 0 {
+				entry.AuthPaths[q] = make([]frontend.Variable, len(rd.AuthPaths[q]))
+			}
+		}
+		dst.Rounds[r] = entry
 	}
-
-	return fSums, gSums
-}
-
-func witnessFirstRounds(hints Hints, isContainer bool) []Merkle {
-	result := make([]Merkle, len(hints.WitnessFirstRoundHints))
-	for i, hint := range hints.WitnessFirstRoundHints {
-		result[i] = newMerkle(hint.path, isContainer)
-	}
-	return result
-}
-
-func parsePublicWeightsClaimedEvaluation(publicWeightsClaimedEvaluation [2]Fp256, isContainer bool) (frontend.Variable, frontend.Variable) {
-	var fSumPublicWeights, gSumPublicWeights frontend.Variable
-
-	if !isContainer {
-		fSumPublicWeights = typeConverters.LimbsToBigIntMod(publicWeightsClaimedEvaluation[0].Limbs)
-		gSumPublicWeights = typeConverters.LimbsToBigIntMod(publicWeightsClaimedEvaluation[1].Limbs)
-	}
-
-	return fSumPublicWeights, gSumPublicWeights
-}
-
-func extendLinearStatement(
-	circuit *Circuit,
-	linearStatementEvaluations [][]frontend.Variable,
-	pubWitnessEvaluations []frontend.Variable,
-) [][]frontend.Variable {
-	var extendedLinearStatementEvals [][]frontend.Variable
-
-	if !circuit.PublicInputs.IsEmpty() {
-		// Extend the statement equivalent array by prepending the public constraint (public constraint is added in starting at prover side)
-		extendedLinearStatementEvals = make([][]frontend.Variable, 2)
-
-		// f_sums: [public_f_sum, f_sums[0], f_sums[1]... ]
-		extendedLinearStatementEvals[0] = make([]frontend.Variable, len(linearStatementEvaluations[0])+1)
-		extendedLinearStatementEvals[0][0] = pubWitnessEvaluations[0]
-		copy(extendedLinearStatementEvals[0][1:], linearStatementEvaluations[0])
-
-		// g_sums: [public_g_sum, g_sums[0], g_sums[1]... ]
-		extendedLinearStatementEvals[1] = make([]frontend.Variable, len(linearStatementEvaluations[1])+1)
-		extendedLinearStatementEvals[1][0] = pubWitnessEvaluations[1]
-		copy(extendedLinearStatementEvals[1][1:], linearStatementEvaluations[1])
-	} else {
-		// No public inputs, use original arrays
-		extendedLinearStatementEvals = linearStatementEvaluations
-	}
-
-	return extendedLinearStatementEvals
+	return dst
 }

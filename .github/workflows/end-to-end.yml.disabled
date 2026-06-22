@@ -100,40 +100,73 @@ jobs:
           cargo run --release --bin provekit-cli generate-gnark-inputs \
             ./benchmark-inputs/t_attest-verifier.pkv \
             ./benchmark-inputs/t_attest-proof.np
-          
 
-      # Disabled gnark, check https://github.com/worldfnd/provekit/issues/302
-      # - name: Run Gnark verifier 
-      #   working-directory: recursive-verifier
-      #   run: |
-      #     go build -o gnark-verifier cmd/cli/main.go
 
-      #     # Set up cleanup trap
-      #     cleanup() {
-      #       if [ ! -z "$MONITOR_PID" ]; then
-      #         kill $MONITOR_PID 2>/dev/null || true
-      #       fi
-      #     }
-      #     trap cleanup EXIT
+      # Cache the Groth16 PK/VK for the recursive verifier across runs.
+      # The keys depend on the recursive-verifier source (which determines the
+      # circuit shape) and the t_attest R1CS inputs. Bumping any of those
+      # invalidates the cache and the keys are regenerated on the next run.
+      - name: Cache Groth16 PK/VK
+        id: cache-gnark-keys
+        uses: actions/cache@v4
+        with:
+          path: recursive-verifier/.gnark-keys
+          key: gnark-keys-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('recursive-verifier/**/*.go', 'recursive-verifier/go.sum', 'noir-examples/noir-passport/merkle_age_check/r1cs.json', 'noir-examples/noir-passport/merkle_age_check/params_for_recursive_verifier') }}
 
-      #     # Start monitoring in background
-      #     (
-      #       while true; do
-      #         echo "=== $(date) ==="
-      #         echo "Memory:"
-      #         free -h
-      #         echo "Disk:"
-      #         df -h
-      #         echo "Processes:"
-      #         ps aux --sort=-%mem | head -5
-      #         echo "=================="
-      #         sleep 10  # Check every 10 seconds
-      #       done
-      #     ) &
-      #     MONITOR_PID=$!
+      - name: Resolve cached PK/VK paths
+        id: gnark-keys
+        working-directory: recursive-verifier
+        run: |
+          mkdir -p .gnark-keys
+          pk_file="$(ls -1 .gnark-keys/pk_*.bin 2>/dev/null | head -n1 || true)"
+          vk_file="$(ls -1 .gnark-keys/vk_*.bin 2>/dev/null | head -n1 || true)"
+          if [ -n "$pk_file" ] && [ -n "$vk_file" ]; then
+            echo "pk_arg=--pk $pk_file" >> "$GITHUB_OUTPUT"
+            echo "vk_arg=--vk $vk_file" >> "$GITHUB_OUTPUT"
+            echo "Reusing cached PK ($pk_file) and VK ($vk_file)"
+          else
+            echo "pk_arg=" >> "$GITHUB_OUTPUT"
+            echo "vk_arg=" >> "$GITHUB_OUTPUT"
+            echo "No cached PK/VK found, will generate and save new ones"
+          fi
 
-      #     # Run the main process 
-      #     ./gnark-verifier --config "../noir-examples/noir-passport/merkle_age_check/params_for_recursive_verifier" --r1cs "../noir-examples/noir-passport/merkle_age_check/r1cs.json"
+      - name: Run Gnark verifier
+        working-directory: recursive-verifier
+        run: |
+          go build -o gnark-verifier cmd/cli/main.go
 
-      #     # Stop monitoring
-      #     kill $MONITOR_PID
+          # Set up cleanup trap
+          cleanup() {
+            if [ ! -z "$MONITOR_PID" ]; then
+              kill $MONITOR_PID 2>/dev/null || true
+            fi
+          }
+          trap cleanup EXIT
+
+          # Start monitoring in background
+          (
+            while true; do
+              echo "=== $(date) ==="
+              echo "Memory:"
+              free -h
+              echo "Disk:"
+              df -h
+              echo "Processes:"
+              ps aux --sort=-%mem | head -5
+              echo "=================="
+              sleep 10  # Check every 10 seconds
+            done
+          ) &
+          MONITOR_PID=$!
+
+          # Run the main process. On a cache miss, --saveKeys writes PK/VK to
+          # .gnark-keys so the post-job cache step persists them for next run.
+          ./gnark-verifier \
+            --config "../noir-examples/noir-passport/merkle_age_check/params_for_recursive_verifier" \
+            --r1cs "../noir-examples/noir-passport/merkle_age_check/r1cs.json" \
+            --saveKeys .gnark-keys \
+            ${{ steps.gnark-keys.outputs.pk_arg }} \
+            ${{ steps.gnark-keys.outputs.vk_arg }}
+
+          # Stop monitoring
+          kill $MONITOR_PID

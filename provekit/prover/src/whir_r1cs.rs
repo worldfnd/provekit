@@ -1,6 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 use provekit_common::ConstraintsLayout;
 use {
+    ::tracing::instrument,
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
     ark_std::{One, Zero},
@@ -23,7 +24,6 @@ use {
         WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
-    tracing::instrument,
     whir::{
         algebra::{dot, linear_form::LinearForm},
         protocols::whir_zk::Witness as WhirZkWitness,
@@ -126,7 +126,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             "Unexpected witness length for R1CS instance"
         );
         ensure!(
-            witness_size <= 1 << self.m,
+            witness_size <= self.domain_size(),
             "R1CS witness length exceeds scheme capacity"
         );
         ensure!(

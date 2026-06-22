@@ -1,0 +1,115 @@
+---
+title: Examples catalog
+description: Noir circuits shipped with ProveKit, grouped by what they demonstrate.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The [`noir-examples/`](https://github.com/worldfnd/provekit/tree/main/noir-examples) directory contains circuits that exercise ProveKit's compiler and proving pipeline. Some are minimal demos; others are stress tests, primitive libraries, or real-world workflows used to benchmark and validate the system end-to-end.
+
+<Aside type="tip" title="Start with `basic`">
+If you're new, the [Quickstart](/getting-started/quickstart/) walks through `noir-examples/basic`. Once you have that running, the examples below show how Noir scales to larger primitives.
+</Aside>
+
+## Runnable circuits
+
+These are single-binary Noir packages with a `main.nr` and `Prover.toml`. Run any of them with:
+
+```sh
+cd noir-examples/<name>
+cargo run --release --bin provekit-cli -- prepare
+cargo run --release --bin provekit-cli -- prove
+cargo run --release --bin provekit-cli -- verify
+```
+
+### Starter / arithmetic
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`basic`** | Poseidon2 BN254 `hash_2` preimage proof. The canonical "hello world" circuit. |
+| **`basic-2`**, **`basic-3`**, **`basic-4`** | Small arithmetic-only circuits used as compiler regression tests (polynomial assertions, difference-of-squares). No hashing. |
+| **`power`** | Fixed-exponent power (`x^10`), basic compiler test. |
+| **`rangechecks`** | Range-check stress test: 10,000 iterations of `assert_max_bit_size::<32>`. |
+
+### Hash primitives
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`poseidon2`** | Poseidon2 hashing primitive in isolation. |
+| **`many_poseidons`** | Stress test: 10,000 sequential `bn254::hash_1` calls in one circuit. |
+| **`poseidon-rounds`** | 1,000-round Poseidon2 permutation loop. Used by `provekit-bench`. |
+| **`sha256`** | SHA-256 via `sha256::sha256_var` (lowering through Noir's SHA-256 black box). |
+| **`noir_sha256`** | Chains 17 SHA-256 rounds over a 32-byte state. Useful for measuring iterated hashing cost. |
+
+### Elliptic-curve operations
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`embedded_curve_msm`** | Multi-scalar multiplication via Noir's `multi_scalar_mul` blackbox over Grumpkin. |
+| **`native_msm`** | The same MSM expressed without the blackbox. Heavier circuit, useful for comparing blackbox vs native lowering. |
+| **`msm_conditional`** | Runtime-selected scalars/points in an MSM. |
+| **`msm_conditional_nested`** | Nested conditional MSM, demonstrating composition. |
+
+### Signatures
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`p256_std`** | P-256 (secp256r1) signature verification via Noir stdlib's `std::ecdsa_secp256r1::verify_signature`. |
+| **`p256_bigcurve`** | P-256 via the `zkpassport/noir_bigcurve` representation. Relevant for WebAuthn-style attestation flows. |
+
+### Identity and applications
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`oprf`** | Full OPRF-backed credential workflow: discrete-log proof, commitment, query, nullifier, Merkle proof, and credential signature, in one circuit. |
+| **`zkchase`** | A small game-like circuit demonstrating state transitions and rule enforcement on an 18×14 grid. |
+
+## Libraries and workspaces
+
+These are not single runnable circuits. They're Noir libraries (`type = "lib"`) or multi-package workspaces. Read them as reference implementations or pull them in as dependencies.
+
+| Example | Shape | What it demonstrates |
+| :--- | :--- | :--- |
+| **`babyjubjub`** | Library | Baby Jubjub curve operations, the standard curve for in-circuit ECC over BN254. |
+| **`eddsa_poseidon2`** | Library | EdDSA signature verification using Poseidon2 for hashing. |
+| **`partial_sha256`** | Library | SHA-256 with a partial preimage, for incremental-hashing patterns. |
+| **`noir-native-sha256`** | Library | Reference SHA-256 implementation via `noir-lang/sha256`. |
+| **`noir-passport`** | Workspace (`merkle_age_check`, `utils`) | Passport-style credential building blocks. |
+| **`noir-passport-examples`** | Workspace | Variations of the passport flow demonstrating different selective-disclosure patterns. |
+| **`noir-passport-monolithic`** | Workspace | Single-circuit version of the passport workflow. Useful for understanding the full constraint cost. |
+
+## Internal testing
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`noir-r1cs-test-programs`** | Directory of ~20 subprograms (binop opcodes, range checks, ROM/RAM, conditional writes, brillig) used by the R1CS compiler's own test harness. |
+
+## Benchmarks
+
+| Example | What it demonstrates |
+| :--- | :--- |
+| **`csp-benchmarks`** | The Ethproofs CSP benchmark suite. See [Performance](/reference/performance/) for the per-target breakdown. |
+
+## Reading a runnable example
+
+Every runnable example follows the same layout:
+
+```
+noir-examples/basic/
+├── Nargo.toml        # Noir package metadata + dependencies
+├── Prover.toml       # Witness inputs (private + public)
+└── src/
+    └── main.nr       # Circuit definition
+```
+
+`Prover.toml` is the only file you typically edit to change what's being proven. The circuit is fixed; the inputs vary per proof. To inspect what a verified proof actually exposes:
+
+```sh
+cargo run --release --bin provekit-cli -- show-inputs --hex \
+  <example>.pkv \
+  proof.np
+```
+
+## Contributing examples
+
+Pull requests adding new example circuits are welcome. Keep them minimal, focused on one primitive, and accompanied by a `Prover.toml` that produces a verifiable proof out of the box.

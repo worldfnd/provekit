@@ -1,0 +1,52 @@
+---
+title: Kotlin end-to-end
+description: Integrate ProveKit on Android via the Verity Kotlin SDK, using the published AAR or a local build.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This guide uses the [Verity](https://github.com/atheonxyz/verity) Kotlin SDK, which wraps the JNI bridge, shared dispatcher, and ProveKit backend for Android.
+
+<Aside type="caution" title="arm64-v8a only">
+The published Verity Kotlin AAR ships `arm64-v8a` JNI libraries only. Devices and emulators on other ABIs (`x86_64`, `armeabi-v7a`) won't load the library at runtime. If you need broader ABI coverage, build the AAR locally with the desired set.
+</Aside>
+
+## Gradle declaration
+
+```kotlin
+dependencies {
+    implementation("xyz.atheon:verity:0.3.2")
+}
+```
+
+## Minimal flow
+
+```kotlin
+import xyz.atheon.verity.*
+
+val verity   = Verity(Backend.PROVEKIT)
+val prover   = verity.loadProver("scheme.pkp")
+val verifier = verity.loadVerifier("scheme.pkv")
+
+prover.use { p ->
+    verifier.use { v ->
+        val witness = Witness.of(mapOf("age" to "25", "threshold" to "18"))
+        val proof   = p.prove(witness)
+        check(v.verify(proof)) { "proof did not verify" }
+    }
+}
+```
+
+Use `loadProver(ByteArray)` and `loadVerifier(ByteArray)` when artifacts live in Android assets, are downloaded, or are managed through encrypted storage. `Witness.of(...)` accepts a flat `Map<String, String>` of field-element strings, a TOML file, or a JSON string.
+
+## Integration notes
+
+- Call `Verity.configureMemory(...)` before constructing `Verity` when large ProveKit circuits need Android RAM limits or file-backed memory.
+- The `use { ... }` blocks above are not optional; `Prover` and `Verifier` hold native JNI handles. Letting them go out of scope without `close()` leaks until GC runs (if ever).
+- The snippet assumes `scheme.pkp` and `scheme.pkv` are readable from the app's filesystem. If they're packaged as assets, copy them to a readable path or load them as a `ByteArray` instead.
+
+## Related pages
+
+- [End-to-end overview](/e2e/overview/)
+- [Generate artifacts](/e2e/generate-artifacts/)
+- [Integrations overview](/integrations/overview/)
