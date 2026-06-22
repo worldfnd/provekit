@@ -227,7 +227,11 @@ pub fn multiply_transposed_by_eq_alpha<M: Embedding>(
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::FieldElement, ark_std::{One, Zero}};
+    use {
+        super::*,
+        crate::FieldElement,
+        ark_std::{One, Zero},
+    };
 
     fn fe(v: i64) -> FieldElement {
         if v >= 0 {

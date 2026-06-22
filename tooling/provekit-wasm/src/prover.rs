@@ -7,10 +7,8 @@ use {
     },
     anyhow::Context,
     base64::{engine::general_purpose::STANDARD as BASE64, Engine as _},
-    provekit_common::{
-        binary_format::{HEADER_SIZE, MAGIC_BYTES},
-        NoirElement, NoirProof, Prover as ProverCore,
-    },
+    provekit_backend_bn254::{NoirElement, NoirProof, Prover as ProverCore},
+    provekit_common::binary_format::{HEADER_SIZE, MAGIC_BYTES},
     provekit_prover::Prove,
     std::{cell::RefCell, collections::BTreeMap},
     wasm_bindgen::prelude::*,

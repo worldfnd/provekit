@@ -4293,6 +4293,7 @@ dependencies = [
  "noir-bignum-paramgen",
  "noirc_abi",
  "poseidon2",
+ "provekit-backend-bn254",
  "provekit-common",
  "provekit-prover",
  "rasn",
@@ -4586,7 +4587,18 @@ dependencies = [
 name = "provekit-backend-bn254"
 version = "1.0.0"
 dependencies = [
+ "acir",
+ "anyhow",
+ "ark-bn254",
+ "ark-ff 0.5.0",
+ "mavros-artifacts",
+ "mavros-vm",
+ "noirc_abi",
+ "postcard",
  "provekit-common",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -4601,6 +4613,7 @@ dependencies = [
  "nargo_cli",
  "nargo_toml",
  "noirc_driver",
+ "provekit-backend-bn254",
  "provekit-common",
  "provekit-prover",
  "provekit-r1cs-compiler",
@@ -4627,6 +4640,7 @@ dependencies = [
  "noirc_abi",
  "noirc_driver",
  "postcard",
+ "provekit-backend-bn254",
  "provekit-common",
  "provekit-gnark",
  "provekit-prover",
@@ -4644,7 +4658,6 @@ dependencies = [
 name = "provekit-common"
 version = "1.0.0"
 dependencies = [
- "acir",
  "anyhow",
  "ark-bn254",
  "ark-ff 0.5.0",
@@ -4658,8 +4671,6 @@ dependencies = [
  "itertools 0.14.0",
  "keccak 0.2.0-rc.2",
  "mavros-artifacts",
- "mavros-vm",
- "noirc_abi",
  "ntt",
  "poseidon2",
  "postcard",
@@ -4691,6 +4702,7 @@ dependencies = [
  "noirc_abi",
  "noirc_driver",
  "parking_lot",
+ "provekit-backend-bn254",
  "provekit-common",
  "provekit-prover",
  "provekit-r1cs-compiler",
@@ -4726,6 +4738,7 @@ dependencies = [
  "noirc_abi",
  "num-bigint",
  "postcard",
+ "provekit-backend-bn254",
  "provekit-common",
  "tracing",
  "whir",
@@ -4745,6 +4758,7 @@ dependencies = [
  "noirc_artifacts",
  "poseidon2",
  "postcard",
+ "provekit-backend-bn254",
  "provekit-common",
  "serde",
  "serde_json",
@@ -4759,6 +4773,7 @@ dependencies = [
  "anyhow",
  "ark-ff 0.5.0",
  "ark-std 0.5.0",
+ "provekit-backend-bn254",
  "provekit-common",
  "rayon",
  "tracing",
@@ -4780,6 +4795,7 @@ dependencies = [
  "js-sys",
  "lzma-rs",
  "postcard",
+ "provekit-backend-bn254",
  "provekit-common",
  "provekit-prover",
  "provekit-verifier",
@@ -7047,6 +7063,7 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "provekit-backend-bn254",
  "provekit-common",
  "provekit-gnark",
  "reqwest",

@@ -1,5 +1,5 @@
 use {
-    provekit_common::NoirProof,
+    provekit_backend_bn254::NoirProof,
     serde::{Deserialize, Serialize},
     std::collections::HashMap,
     tracing::info,

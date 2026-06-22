@@ -10,10 +10,8 @@ use {
     ::tracing::{debug, info, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
-    provekit_common::{
-        utils::noir_to_native, FieldElement, NoirElement, NoirProof, NoirProver, Prover,
-        PublicInputs, TranscriptSponge,
-    },
+    provekit_backend_bn254::{noir_to_native, NoirElement, NoirProof, NoirProver, Prover},
+    provekit_common::{FieldElement, PublicInputs, TranscriptSponge},
     std::mem::{size_of, take},
     whir::transcript::ProverState,
 };
@@ -24,8 +22,8 @@ use {
 };
 #[cfg(not(target_arch = "wasm32"))]
 use {
-    mavros_vm::interpreter as mavros_interpreter, provekit_common::MavrosProver, std::path::Path,
-    whir::transcript::VerifierMessage,
+    mavros_vm::interpreter as mavros_interpreter, provekit_backend_bn254::MavrosProver,
+    std::path::Path, whir::transcript::VerifierMessage,
 };
 
 pub(crate) mod bigint_mod;

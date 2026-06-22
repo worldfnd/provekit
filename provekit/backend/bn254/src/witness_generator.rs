@@ -1,6 +1,6 @@
 use {
-    crate::utils::serde_jsonify,
     noirc_abi::Abi,
+    provekit_common::utils::serde_jsonify,
     serde::{Deserialize, Serialize},
     std::num::NonZeroU32,
 };

@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+provekit-backend-bn254.workspace = true
 
 # Cryptography and proof systems
 ark-ff.workspace = true

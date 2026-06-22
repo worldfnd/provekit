@@ -2,7 +2,8 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, Prover},
+    provekit_backend_bn254::Prover,
+    provekit_common::file::read,
     std::path::PathBuf,
     tracing::instrument,
 };

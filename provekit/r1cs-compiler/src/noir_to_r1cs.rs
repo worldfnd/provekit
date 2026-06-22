@@ -20,12 +20,12 @@ use {
     anyhow::{bail, ensure, Result},
     ark_ff::{BigInteger, PrimeField},
     ark_std::{One, Zero},
+    provekit_backend_bn254::{noir_to_native, NoirElement},
     provekit_common::{
-        utils::noir_to_native,
         witness::{
             ConstantOrR1CSWitness, ConstantTerm, SumTerm, WitnessBuilder, BINOP_ATOMIC_BITS,
         },
-        FieldElement, NoirElement, R1CS,
+        FieldElement, R1CS,
     },
     std::{collections::BTreeMap, num::NonZeroU32, ops::Neg},
 };

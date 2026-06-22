@@ -1,12 +1,9 @@
-mod print_abi;
 pub mod serde_ark;
 pub mod serde_ark_option;
 pub mod serde_ark_vec;
 pub mod serde_hex;
 pub mod serde_jsonify;
 pub mod sumcheck;
-
-pub use self::print_abi::PrintAbi;
 
 /// Deserializes a BN254 field element from up to 32 little-endian bytes.
 #[inline]
@@ -28,7 +25,7 @@ pub fn field_to_bytes_le(fe: FieldElement) -> [u8; 32] {
 }
 
 use {
-    crate::{FieldElement, NoirElement},
+    crate::FieldElement,
     ark_ff::{BigInt, Field, PrimeField},
     ruint::{aliases::U256, uint},
     std::{
@@ -78,13 +75,6 @@ fn unzip_double_array<T: Sized, const N: usize, const M: usize>(
 
 pub const fn uint_to_field(i: U256) -> FieldElement {
     FieldElement::new(BigInt(i.into_limbs()))
-}
-
-/// Convert a Noir field element to a native `FieldElement`
-#[inline(always)]
-pub fn noir_to_native(n: NoirElement) -> FieldElement {
-    let limbs = n.into_repr().into_bigint().0;
-    FieldElement::from(BigInt(limbs))
 }
 
 /// Calculates the degree of the next smallest power of two

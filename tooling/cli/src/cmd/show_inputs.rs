@@ -4,7 +4,8 @@ use {
     argh::FromArgs,
     ark_ff::{BigInteger, PrimeField},
     noirc_abi::{AbiType, AbiVisibility, Sign},
-    provekit_common::{file::read, FieldElement, NoirProof, Verifier},
+    provekit_backend_bn254::{NoirProof, Verifier},
+    provekit_common::{file::read, FieldElement},
     std::path::PathBuf,
     tracing::instrument,
 };

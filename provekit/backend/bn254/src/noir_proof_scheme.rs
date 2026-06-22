@@ -1,10 +1,10 @@
 use {
-    crate::{
-        whir_r1cs::{Bn254Field, WhirR1CSProof, WhirR1CSScheme},
-        witness::{NoirWitnessGenerator, SplitWitnessBuilders},
-        HashConfig, MavrosSchemeData, NoirElement, PublicInputs, R1CS,
-    },
+    crate::{MavrosSchemeData, NoirElement, NoirWitnessGenerator},
     acir::circuit::Program,
+    provekit_common::{
+        witness::SplitWitnessBuilders, Bn254Field, HashConfig, PublicInputs, WhirR1CSProof,
+        WhirR1CSScheme, R1CS,
+    },
     serde::{Deserialize, Serialize},
 };
 

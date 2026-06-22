@@ -7,10 +7,11 @@ use {
     mavros_artifacts::R1CS as MavrosR1CS,
     noirc_abi::AbiVisibility,
     noirc_artifacts::program::ProgramArtifact,
+    provekit_backend_bn254::{
+        MavrosSchemeData, NoirProofScheme, NoirSchemeData, NoirWitnessGenerator, PrintAbi,
+    },
     provekit_common::{
-        utils::{convert_mavros_r1cs_to_provekit, PrintAbi},
-        witness::{NoirWitnessGenerator, WitnessBuilder},
-        MavrosSchemeData, NoirProofScheme, NoirSchemeData, WhirR1CSScheme,
+        utils::convert_mavros_r1cs_to_provekit, witness::WitnessBuilder, WhirR1CSScheme,
     },
     serde::Deserialize,
     std::{collections::HashSet, fs::File, path::Path},
@@ -203,9 +204,10 @@ mod tests {
     use {
         crate::NoirCompiler,
         ark_std::One,
+        provekit_backend_bn254::NoirProofScheme,
         provekit_common::{
             witness::{ConstantTerm, DigitalDecompositionWitnesses, SumTerm, WitnessBuilder},
-            FieldElement, NoirProofScheme,
+            FieldElement,
         },
         serde::{Deserialize, Serialize},
         std::path::PathBuf,

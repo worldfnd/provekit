@@ -3,10 +3,11 @@ use {
     ::tracing::instrument,
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
+    provekit_backend_bn254::NoirElement,
     provekit_common::{
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
-        FieldElement, NoirElement, TranscriptSponge, R1CS,
+        FieldElement, TranscriptSponge, R1CS,
     },
     whir::transcript::ProverState,
 };

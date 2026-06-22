@@ -19,10 +19,6 @@ ntt.workspace = true
 poseidon2.workspace = true
 skyscraper.workspace = true
 
-# Noir language
-acir.workspace = true
-noirc_abi.workspace = true
-
 # Cryptography and proof systems
 keccak.workspace = true
 ark-bn254.workspace = true
@@ -53,7 +49,10 @@ zerocopy.workspace = true
 # Target-specific dependencies: only on non-WASM targets
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zstd.workspace = true
-mavros-vm.workspace = true
+# TODO(P0.4): the last Mavros coupling — `convert_mavros_r1cs_to_provekit`
+# (utils/mod.rs) still consumes `mavros_artifacts::R1CS`. Relocate it to
+# provekit-backend-bn254 (needs `InternedFieldElement` exposed) to make common
+# fully frontend-agnostic.
 mavros-artifacts.workspace = true
 xz2.workspace = true
 

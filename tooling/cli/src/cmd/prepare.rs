@@ -10,7 +10,8 @@ use {
     nargo_toml::{find_root, get_package_manifest, resolve_workspace_from_toml, PackageSelection},
     noir_artifact_cli::fs::artifact::save_program_to_file,
     noirc_driver::{CompilationResult, CompileOptions, CrateName, NOIR_ARTIFACT_VERSION_STRING},
-    provekit_common::{file::write, HashConfig, Prover, Verifier},
+    provekit_backend_bn254::{Prover, Verifier},
+    provekit_common::{file::write, HashConfig},
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     rayon::prelude::*,
     std::{

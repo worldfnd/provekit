@@ -9,7 +9,7 @@ use {
         models::VerifyRequest,
         services::artifact::ArtifactPaths,
     },
-    provekit_common::{NoirProof, Verifier},
+    provekit_backend_bn254::{NoirProof, Verifier},
     provekit_gnark::write_gnark_parameters_to_file,
     std::time::Instant,
     tokio_util::sync::CancellationToken,

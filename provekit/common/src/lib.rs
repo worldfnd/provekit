@@ -3,20 +3,16 @@ pub use file::binary_format;
 pub mod field;
 pub mod hash_config;
 mod interner;
-mod mavros;
-mod noir_proof_scheme;
 pub mod ntt;
 pub mod optimize;
 pub mod poseidon2;
 pub mod prefix_covector;
-mod prover;
 mod r1cs;
 pub mod skyscraper;
 pub mod sparse_matrix;
 mod transcript_sponge;
 pub mod u256_arith;
 pub mod utils;
-mod verifier;
 mod whir_r1cs;
 pub mod witness;
 
@@ -25,22 +21,17 @@ use crate::{
     sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
 };
 pub use {
-    acir::FieldElement as NoirElement,
     // TODO(P0.4): bn254-only alias and the migration lynchpin. Deleting it (once
-    // provekit-backend-bn254 owns `Fr`) is the final P0.3 step; it forces removal
+    // provekit-backend-bn254 owns `Fr`) is the final P0.4 step; it forces removal
     // of every `= FieldElement` / `= Bn254Field` default type param across the
     // spine. The compiler flags each site, so those defaults need no individual
     // markers.
     ark_bn254::Fr as FieldElement,
     field::{Base, Ext, FieldHash, ProofField},
     hash_config::HashConfig,
-    mavros::{MavrosProver, MavrosSchemeData},
-    noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
-    prover::{NoirProver, Prover},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
-    verifier::Verifier,
     whir_r1cs::{Bn254Field, R1csHash, WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},
     witness::PublicInputs,
 };

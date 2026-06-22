@@ -16,6 +16,7 @@ parallel = ["provekit-common/parallel"]
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+provekit-backend-bn254.workspace = true
 
 # Noir language
 acir.workspace = true

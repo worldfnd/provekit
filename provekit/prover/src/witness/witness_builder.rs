@@ -15,13 +15,13 @@ use {
     anyhow::{ensure, Result},
     ark_ff::{BigInteger, Field, PrimeField},
     ark_std::Zero,
+    provekit_backend_bn254::{noir_to_native, NoirElement},
     provekit_common::{
-        utils::noir_to_native,
         witness::{
             compute_spread, ConstantOrR1CSWitness, ConstantTerm, NonNativeEcOp, ProductLinearTerm,
             SumTerm, WitnessBuilder, WitnessCoefficient,
         },
-        FieldElement, NoirElement, TranscriptSponge,
+        FieldElement, TranscriptSponge,
     },
     whir::transcript::{ProverState, VerifierMessage},
 };

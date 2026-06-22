@@ -3,17 +3,18 @@ mod buf_ext;
 mod counting_writer;
 mod json;
 
+pub use self::bin::Compression;
 use {
     self::{
         bin::{
             deserialize_from_bytes, read_bin, read_hash_config as read_hash_config_bin,
-            serialize_to_bytes, write_bin, Compression,
+            serialize_to_bytes, write_bin,
         },
         buf_ext::BufExt,
         counting_writer::CountingWriter,
         json::{read_json, write_json},
     },
-    crate::{HashConfig, NoirProof, NoirProofScheme, Prover, Verifier},
+    crate::HashConfig,
     anyhow::Result,
     serde::{Deserialize, Serialize},
     std::{ffi::OsStr, path::Path},
@@ -28,71 +29,10 @@ pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
     const COMPRESSION: Compression;
 }
 
-/// Helper trait to optionally extract hash config.
-pub(crate) trait MaybeHashAware {
+/// Helper trait to optionally extract hash config. Implemented for the concrete
+/// scheme types in their owning crate (e.g. `provekit-backend-bn254`).
+pub trait MaybeHashAware {
     fn maybe_hash_config(&self) -> Option<HashConfig>;
-}
-
-/// Impl for Prover (has hash config).
-impl MaybeHashAware for Prover {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        match self {
-            Prover::Noir(p) => Some(p.hash_config),
-            Prover::Mavros(p) => Some(p.hash_config),
-        }
-    }
-}
-
-/// Impl for Verifier (has hash config).
-impl MaybeHashAware for Verifier {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        Some(self.hash_config)
-    }
-}
-
-/// Impl for NoirProof (no hash config).
-impl MaybeHashAware for NoirProof {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        None
-    }
-}
-
-/// Impl for NoirProofScheme (has hash config).
-impl MaybeHashAware for NoirProofScheme {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        match self {
-            NoirProofScheme::Noir(d) => Some(d.hash_config),
-            NoirProofScheme::Mavros(d) => Some(d.hash_config),
-        }
-    }
-}
-
-impl FileFormat for NoirProofScheme {
-    const FORMAT: [u8; 8] = crate::binary_format::NOIR_PROOF_SCHEME_FORMAT;
-    const EXTENSION: &'static str = "nps";
-    const VERSION: (u16, u16) = crate::binary_format::NOIR_PROOF_SCHEME_VERSION;
-    const COMPRESSION: Compression = Compression::Zstd;
-}
-
-impl FileFormat for Prover {
-    const FORMAT: [u8; 8] = crate::binary_format::PROVER_FORMAT;
-    const EXTENSION: &'static str = "pkp";
-    const VERSION: (u16, u16) = crate::binary_format::PROVER_VERSION;
-    const COMPRESSION: Compression = Compression::Xz;
-}
-
-impl FileFormat for Verifier {
-    const FORMAT: [u8; 8] = crate::binary_format::VERIFIER_FORMAT;
-    const EXTENSION: &'static str = "pkv";
-    const VERSION: (u16, u16) = crate::binary_format::VERIFIER_VERSION;
-    const COMPRESSION: Compression = Compression::Zstd;
-}
-
-impl FileFormat for NoirProof {
-    const FORMAT: [u8; 8] = crate::binary_format::NOIR_PROOF_FORMAT;
-    const EXTENSION: &'static str = "np";
-    const VERSION: (u16, u16) = crate::binary_format::NOIR_PROOF_VERSION;
-    const COMPRESSION: Compression = Compression::Zstd;
 }
 
 /// Write a file with format determined from extension.

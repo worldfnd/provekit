@@ -4,7 +4,6 @@ mod limbs;
 mod ram;
 mod scheduling;
 mod witness_builder;
-mod witness_generator;
 
 use {
     crate::{
@@ -27,7 +26,6 @@ pub use {
         CombinedTableEntryInverseData, ConstantTerm, NonNativeEcOp, ProductLinearTerm, SumTerm,
         WitnessBuilder, WitnessCoefficient,
     },
-    witness_generator::NoirWitnessGenerator,
 };
 
 /// The index of the constant 1 witness in the R1CS instance

@@ -23,6 +23,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 # Workspace crates - enable parallel features with wasm-bindgen-rayon
 provekit-common.workspace = true
+provekit-backend-bn254.workspace = true
 provekit-prover = { workspace = true, default-features = false, features = ["parallel"] }
 provekit-verifier.workspace = true
 
