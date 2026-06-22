@@ -4,8 +4,8 @@
 //! field, and the modulus check is the BN254 prime.
 
 use {
+    crate::FieldElement,
     ark_ff::{BigInt, PrimeField},
-    provekit_common::FieldElement,
 };
 
 /// Convert a `[u64; 4]` bigint to a `FieldElement`.

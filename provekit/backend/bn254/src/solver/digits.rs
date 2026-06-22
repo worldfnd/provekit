@@ -1,6 +1,6 @@
-use provekit_common::{
-    witness::{decompose_into_digits, DigitalDecompositionWitnesses},
-    FieldElement,
+use {
+    crate::FieldElement,
+    provekit_common::witness::{decompose_into_digits, DigitalDecompositionWitnesses},
 };
 
 pub(crate) trait DigitalDecompositionWitnessesSolver {

@@ -118,7 +118,7 @@ pub fn human(value: f64) -> impl Display {
 ///
 /// Reduces N field inversions to 1 inversion + 3N multiplications.
 /// See: <https://encrypt.a41.io/primitives/abstract-algebra/group/batch-inverse>
-pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
+pub fn batch_inverse_montgomery<F: Field>(values: &[F]) -> Vec<F> {
     let batch_size = values.len();
     if batch_size == 0 {
         return Vec::new();
@@ -130,7 +130,7 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
 
     // Forward pass: compute prefix products
     let mut prefix = Vec::with_capacity(batch_size);
-    let mut acc = FieldElement::from(1u32);
+    let mut acc = F::one();
     for &v in values {
         acc *= v;
         prefix.push(acc);
@@ -142,7 +142,7 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
         .expect("Batch inversion: zero product");
 
     // Backward pass: compute individual inverses
-    let mut inverses = vec![FieldElement::from(0u32); batch_size];
+    let mut inverses = vec![F::zero(); batch_size];
     for i in (1..batch_size).rev() {
         inverses[i] = inv_acc * prefix[i - 1];
         inv_acc *= values[i];

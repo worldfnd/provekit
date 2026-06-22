@@ -1,6 +1,7 @@
+#[cfg(test)]
+use crate::FieldElement;
 use {
-    crate::FieldElement,
-    ark_ff::{BigInt, BitIteratorLE, PrimeField},
+    ark_ff::{BitIteratorLE, PrimeField},
     itertools::Itertools,
     serde::{Deserialize, Serialize},
 };
@@ -30,7 +31,7 @@ pub struct DigitalDecompositionWitnesses {
 /// Panics if the value provided can not be represented in the given bases.
 // TODO: with stronger constraints on log_bases will allow us to remove the
 // remaining allocation
-pub fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) -> Vec<FieldElement> {
+pub fn decompose_into_digits<F: PrimeField>(value: F, log_bases: &[usize]) -> Vec<F> {
     let num_digits = log_bases.len();
     let mut digits = Vec::with_capacity(num_digits);
     let mut value_bits = field_to_le_bits(value);
@@ -51,7 +52,7 @@ pub fn decompose_into_digits(value: FieldElement, log_bases: &[usize]) -> Vec<Fi
 }
 
 /// Decomposes a field element into its bits, in little-endian order.
-fn field_to_le_bits(value: FieldElement) -> BitIteratorLE<BigInt<4>> {
+fn field_to_le_bits<F: PrimeField>(value: F) -> BitIteratorLE<F::BigInt> {
     BitIteratorLE::new(value.into_bigint())
 }
 
@@ -60,21 +61,24 @@ fn field_to_le_bits(value: FieldElement) -> BitIteratorLE<BigInt<4>> {
 /// bits.
 ///
 /// # Note
-/// Only the first 32 bytes (256 bits) of the input will be used. Any additional
-/// bits will be ignored.
-fn le_bits_to_field<I>(bits: I) -> FieldElement
+/// Only the bytes spanning `F`'s representation width
+/// (`size_of::<F::BigInt>()`) are used; any higher-order bits are ignored.
+fn le_bits_to_field<F: PrimeField, I>(bits: I) -> F
 where
     I: Iterator<Item = bool>,
 {
-    const LEN: usize = size_of::<<FieldElement as PrimeField>::BigInt>();
-    let mut le_bytes = [0; LEN];
-    for (i, chunk_in_bits) in bits.chunks(8).into_iter().take(LEN).enumerate() {
+    // Width is the field's representation size (`BigInt<N>` = `[u64; N]`). A heap
+    // buffer sidesteps stable Rust's ban on generic-sized stack arrays
+    // (`[0; size_of::<F::BigInt>()]` needs `generic_const_exprs`).
+    let n_bytes = size_of::<F::BigInt>();
+    let mut le_bytes = vec![0u8; n_bytes];
+    for (i, chunk_in_bits) in bits.chunks(8).into_iter().take(n_bytes).enumerate() {
         le_bytes[i] = chunk_in_bits
             .into_iter()
             .enumerate()
             .fold(0u8, |acc, (i, bit)| acc | ((bit as u8) << i))
     }
-    FieldElement::from_le_bytes_mod_order(&le_bytes)
+    F::from_le_bytes_mod_order(&le_bytes)
 }
 
 #[cfg(test)]
@@ -108,6 +112,6 @@ fn test_field_to_le_bits() {
 #[test]
 fn test_le_bits_to_field() {
     let bits = vec![true, false, true, false, false];
-    let value = le_bits_to_field(bits.into_iter().take(64));
+    let value = le_bits_to_field::<FieldElement, _>(bits.into_iter().take(64));
     assert_eq!(value.into_bigint().0[0], 5);
 }

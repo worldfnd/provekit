@@ -4,11 +4,11 @@
 //! and solve schoolbook column equations (quotient + carry computation).
 
 use {
+    crate::FieldElement,
     ark_ff::{BigInt, PrimeField},
     provekit_common::{
         bigint_mod::{decompose_to_u128_limbs, reconstruct_from_u128_limbs, signed_quotient_wide},
         ec_arith::compute_ec_verification_carries,
-        FieldElement,
     },
 };
 

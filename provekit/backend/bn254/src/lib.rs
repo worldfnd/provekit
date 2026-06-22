@@ -18,9 +18,9 @@ mod solver;
 mod transcript_sponge;
 mod verify;
 
-use provekit_common::FieldElement;
 pub use {
     acir::FieldElement as NoirElement,
+    ark_bn254::Fr as FieldElement,
     field::{Bn254Field, WhirConfig, WhirZkConfig},
     frontend::{noir_to_native, NoirWitnessGenerator, PrintAbi},
     ntt::RSFr,

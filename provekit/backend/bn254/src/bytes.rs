@@ -3,7 +3,7 @@
 //! Used by the Merkle/sponge hashers and `FieldHash` byte methods to move
 //! between `Fr` and its 32-byte little-endian encoding.
 
-use {ark_ff::PrimeField, provekit_common::FieldElement};
+use {crate::FieldElement, ark_ff::PrimeField};
 
 /// Deserializes a BN254 field element from up to 32 little-endian bytes.
 #[inline]

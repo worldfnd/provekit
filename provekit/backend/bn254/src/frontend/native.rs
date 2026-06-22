@@ -1,7 +1,7 @@
 use {
+    crate::FieldElement,
     acir::FieldElement as NoirElement,
     ark_ff::{BigInt, PrimeField},
-    provekit_common::FieldElement,
 };
 
 /// Convert a Noir field element to a native `FieldElement`.
