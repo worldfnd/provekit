@@ -1,5 +1,5 @@
 #[cfg(test)]
-use crate::r1cs::R1CSSolver;
+use crate::solver::R1CSSolver;
 #[cfg(not(target_arch = "wasm32"))]
 use provekit_prover::MavrosR1CSProver;
 #[cfg(not(target_arch = "wasm32"))]
@@ -141,7 +141,7 @@ impl Prove for NoirProver {
         // Solve w1 (or all witnesses if no challenges).
         {
             let _s = info_span!("solve_w1").entered();
-            crate::r1cs::solve_witness_vec(
+            crate::solver::solve_witness_vec(
                 &mut witness,
                 self.split_witness_builders.w1_layers,
                 &acir_witness_idx_to_value_map,
@@ -190,7 +190,7 @@ impl Prove for NoirProver {
                 .context("While decompressing w2 layers")?;
             {
                 let _s = info_span!("solve_w2").entered();
-                crate::r1cs::solve_witness_vec(
+                crate::solver::solve_witness_vec(
                     &mut witness,
                     w2_layers,
                     &acir_witness_idx_to_value_map,
@@ -268,7 +268,7 @@ impl Prove for MavrosProver {
     fn prove(mut self, input_map: InputMap) -> Result<ProvekitProof<Bn254Field>> {
         provekit_common::register_ntt();
 
-        let params = crate::input_utils::ordered_params_from_btreemap(&self.abi, &input_map)?;
+        let params = crate::frontend::input::ordered_params_from_btreemap(&self.abi, &input_map)?;
         let phase1 = mavros_interpreter::run_phase1(
             &mut self.witgen_binary,
             self.witness_layout,
@@ -385,7 +385,7 @@ impl Prove for MavrosProver {
             .context("Could not derive project path from Prover.toml path")?;
 
         let input_map =
-            crate::input_utils::read_prover_inputs(&project_path.to_path_buf(), &self.abi)?;
+            crate::frontend::input::read_prover_inputs(&project_path.to_path_buf(), &self.abi)?;
         self.prove(input_map)
     }
 

@@ -1,10 +1,10 @@
 use {
-    crate::{
+    super::{
+        digits::DigitalDecompositionWitnessesSolver,
         fe_convert::{bigint_to_fe, fe_to_bigint},
-        noir_to_native,
-        witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
-        NoirElement,
+        ram::SpiceWitnessesSolver,
     },
+    crate::{noir_to_native, NoirElement},
     acir::native_types::WitnessMap,
     anyhow::{ensure, Result},
     ark_ff::{BigInteger, Field, PrimeField},

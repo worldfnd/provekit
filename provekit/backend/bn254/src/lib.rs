@@ -1,44 +1,23 @@
 //! BN254 instantiation of the ProveKit spine (`Identity<Fr>`, base == ext),
-//! plus the bn254-welded Noir/Mavros frontend: scheme types, the prove/verify
-//! glue and witness solver, file-format glue, and the Noir↔native field bridge.
+//! plus the bn254-welded Noir/Mavros frontend. Organized into `scheme` (the
+//! serialized PKP/PKV/proof types), `frontend` (the Noir/ACIR bridge),
+//! `solver` (witness solving), and the `prove`/`verify` orchestration.
 
-mod fe_convert;
-#[cfg(not(target_arch = "wasm32"))]
-mod file_format;
-#[cfg(not(target_arch = "wasm32"))]
-mod input_utils;
-mod mavros;
-mod noir_proof_scheme;
-mod print_abi;
+mod frontend;
 mod prove;
-mod prover;
-mod r1cs;
-mod verifier;
+mod scheme;
+mod solver;
 mod verify;
-mod witness;
-mod witness_generator;
 
 pub use {
     acir::FieldElement as NoirElement,
-    mavros::{MavrosProver, MavrosSchemeData},
-    noir_proof_scheme::{NoirProofScheme, NoirSchemeData},
-    print_abi::PrintAbi,
+    frontend::{noir_to_native, NoirWitnessGenerator, PrintAbi},
     prove::Prove,
     provekit_common::{ec_arith::ec_scalar_mul, Bn254Field, ProvekitProof},
-    prover::{NoirProver, Prover},
-    r1cs::solve_witness_vec,
-    verifier::Verifier,
+    scheme::{
+        MavrosProver, MavrosSchemeData, NoirProofScheme, NoirProver, NoirSchemeData, Prover,
+        Verifier,
+    },
+    solver::solve_witness_vec,
     verify::Verify,
-    witness_generator::NoirWitnessGenerator,
 };
-use {
-    ark_ff::{BigInt, PrimeField},
-    provekit_common::FieldElement,
-};
-
-/// Convert a Noir field element to a native `FieldElement`.
-#[inline(always)]
-pub fn noir_to_native(n: NoirElement) -> FieldElement {
-    let limbs = n.into_repr().into_bigint().0;
-    FieldElement::from(BigInt(limbs))
-}

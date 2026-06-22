@@ -1,7 +1,14 @@
+mod digits;
+mod fe_convert;
+mod limb_io;
+mod ram;
+mod witness_builder;
+
 #[cfg(test)]
 use provekit_common::R1CS;
 use {
-    crate::{witness::witness_builder::WitnessBuilderSolver, NoirElement},
+    self::witness_builder::WitnessBuilderSolver,
+    crate::NoirElement,
     ::tracing::instrument,
     acir::native_types::WitnessMap,
     anyhow::Result,
