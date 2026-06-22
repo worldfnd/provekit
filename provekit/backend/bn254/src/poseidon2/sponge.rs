@@ -9,7 +9,7 @@
 //!
 //! # Canonical-lane invariant
 //!
-//! [`crate::utils::bytes_to_field`] is `from_le_bytes_mod_order`, which
+//! [`crate::bytes::bytes_to_field`] is `from_le_bytes_mod_order`, which
 //! reduces each 32-byte lane mod p. This adapter is therefore only
 //! **byte-injective** when every absorbed lane is already < p. spongefish
 //! writes raw bytes straight into `permutation_state` (see
@@ -30,7 +30,7 @@
 //! `Poseidon2::hash()`); this is the duplex transcript sponge.
 
 use {
-    crate::utils::{bytes_to_field, field_to_bytes_le},
+    crate::bytes::{bytes_to_field, field_to_bytes_le},
     ark_bn254::Fr,
     poseidon2::permutation::poseidon2_permutation,
     spongefish::{DuplexSponge, Permutation},

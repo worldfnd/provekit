@@ -12,7 +12,7 @@ pub trait Verify {
 impl Verify for Verifier {
     #[instrument(skip_all)]
     fn verify(&mut self, proof: &ProvekitProof<Bn254Field>) -> Result<()> {
-        provekit_common::register_ntt();
+        crate::register();
 
         self.whir_for_witness
             .take()

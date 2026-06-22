@@ -89,7 +89,7 @@ pub unsafe extern "C" fn pk_get_last_error(out_buf: *mut PKBuf) -> c_int {
 /// Must be called once before using any other ProveKit functions.
 #[no_mangle]
 pub extern "C" fn pk_init() -> c_int {
-    provekit_common::register_ntt();
+    provekit_backend_bn254::register();
     PKStatus::Success.into()
 }
 

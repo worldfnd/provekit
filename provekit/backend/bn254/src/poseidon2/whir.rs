@@ -10,19 +10,8 @@
 
 use {
     std::borrow::Cow,
-    whir::{
-        engines::EngineId,
-        hash::{Hash, HashEngine},
-    },
+    whir::hash::{Hash, HashEngine},
 };
-
-/// Pre-computed `EngineId` for the Poseidon2 hash engine.
-///
-/// Derived as `SHA3-256("whir::hash" || "poseidon2")`.
-pub const POSEIDON2: EngineId = EngineId::new([
-    0xab, 0x4c, 0x81, 0x0f, 0x79, 0xdd, 0xf2, 0xa5, 0x4e, 0x81, 0x73, 0x1f, 0x97, 0x08, 0x23, 0x6a,
-    0xcf, 0x5c, 0xc2, 0xcc, 0x35, 0xe9, 0xc4, 0x57, 0xa4, 0x35, 0x37, 0xdc, 0x01, 0x23, 0x6b, 0xb7,
-]);
 
 /// WHIR hash engine backed by the BN254 Poseidon2 permutation; selected when
 /// `HashConfig::Poseidon2` is used for Merkle commitments.
@@ -66,7 +55,7 @@ impl HashEngine for Poseidon2HashEngine {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, whir::engines::Engine};
+    use {super::*, provekit_common::POSEIDON2, whir::engines::Engine};
 
     #[test]
     fn engine_id_matches() {

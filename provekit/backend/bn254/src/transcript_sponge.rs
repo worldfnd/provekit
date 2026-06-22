@@ -6,7 +6,8 @@
 //! per proof for Fiat-Shamir challenges, not in a tight inner loop.
 
 use {
-    crate::{poseidon2::Poseidon2Sponge, skyscraper::SkyscraperSponge, HashConfig},
+    crate::{poseidon2::Poseidon2Sponge, skyscraper::SkyscraperSponge},
+    provekit_common::HashConfig,
     spongefish::{instantiations, DuplexSpongeInterface},
     std::fmt,
 };

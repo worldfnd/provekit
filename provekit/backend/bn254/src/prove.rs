@@ -8,13 +8,16 @@ use {
     whir::transcript::VerifierMessage,
 };
 use {
-    crate::{noir_to_native, Bn254Field, NoirElement, NoirProver, ProvekitProof, Prover},
+    crate::{
+        noir_to_native, Bn254Field, NoirElement, NoirProver, ProvekitProof, Prover,
+        TranscriptSponge,
+    },
     ::tracing::{debug, info, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
         log_commit_input, CompressedLayers, CompressedR1CS, FieldElement, PublicInputs,
-        PublicInputsHash, TranscriptSponge,
+        PublicInputsHash,
     },
     provekit_prover::WhirR1CSProver,
     std::mem::{size_of, take},
@@ -95,7 +98,7 @@ impl Prove for NoirProver {
         self,
         acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
     ) -> Result<ProvekitProof<Bn254Field>> {
-        provekit_common::register_ntt();
+        crate::register();
 
         let mut public_input_indices = self.program.functions[0].public_inputs().indices();
         public_input_indices.sort_unstable();
@@ -266,7 +269,7 @@ impl Prove for NoirProver {
 impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
     fn prove(mut self, input_map: InputMap) -> Result<ProvekitProof<Bn254Field>> {
-        provekit_common::register_ntt();
+        crate::register();
 
         let params = crate::frontend::input::ordered_params_from_btreemap(&self.abi, &input_map)?;
         let phase1 = mavros_interpreter::run_phase1(

@@ -8,14 +8,14 @@ mod witness_builder;
 use provekit_common::R1CS;
 use {
     self::witness_builder::WitnessBuilderSolver,
-    crate::NoirElement,
+    crate::{NoirElement, TranscriptSponge},
     ::tracing::instrument,
     acir::native_types::WitnessMap,
     anyhow::Result,
     provekit_common::{
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},
-        FieldElement, TranscriptSponge,
+        FieldElement,
     },
     whir::transcript::ProverState,
 };

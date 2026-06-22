@@ -5,14 +5,14 @@
 //! folds back into `WhirR1CSProver<P>` once the Mavros VM is field-agnostic.
 
 use {
-    crate::Bn254Field,
+    crate::{Bn254Field, TranscriptSponge},
     anyhow::{ensure, Result},
     mavros_artifacts::{ConstraintsLayout, WitnessLayout},
     mavros_vm::interpreter::{run_ad, WitgenResult},
     provekit_common::{
         prefix_covector::expand_powers,
         utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, FieldElement,
-        PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme,
+        PublicInputs, WhirR1CSProof, WhirR1CSScheme,
     },
     provekit_prover::{prove_from_alphas, run_zk_sumcheck_prover, WhirR1CSCommitment},
     tracing::instrument,

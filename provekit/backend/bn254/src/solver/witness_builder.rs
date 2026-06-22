@@ -4,7 +4,7 @@ use {
         fe_convert::{bigint_to_fe, fe_to_bigint},
         ram::SpiceWitnessesSolver,
     },
-    crate::{noir_to_native, NoirElement},
+    crate::{noir_to_native, NoirElement, TranscriptSponge},
     acir::native_types::WitnessMap,
     anyhow::{ensure, Result},
     ark_ff::{BigInteger, Field, PrimeField},
@@ -23,7 +23,7 @@ use {
             compute_spread, ConstantOrR1CSWitness, ConstantTerm, NonNativeEcOp, ProductLinearTerm,
             SumTerm, WitnessBuilder, WitnessCoefficient,
         },
-        FieldElement, TranscriptSponge,
+        FieldElement,
     },
     whir::transcript::{ProverState, VerifierMessage},
 };

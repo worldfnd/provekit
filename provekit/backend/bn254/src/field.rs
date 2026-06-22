@@ -3,10 +3,11 @@
 //! field-generic `ProofField`/`FieldHash` traits defined in `provekit-common`.
 
 use {
-    provekit_common::{
-        utils::{bytes_to_field, field_to_bytes_le},
-        Base, Ext, FieldElement, FieldHash, HashConfig, ProofField, TranscriptSponge,
+    crate::{
+        bytes::{bytes_to_field, field_to_bytes_le},
+        TranscriptSponge,
     },
+    provekit_common::{Base, Ext, FieldElement, FieldHash, HashConfig, ProofField},
     whir::{
         algebra::embedding::Identity,
         protocols::{whir::Config as GenericWhirConfig, whir_zk::Config as GenericWhirZkConfig},

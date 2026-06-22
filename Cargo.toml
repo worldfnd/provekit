@@ -96,10 +96,10 @@ ntt = { path = "ntt" }
 poseidon2 = { path = "poseidon2" }
 
 # Workspace members - ProveKit
-provekit-backend-bn254 = { path = "provekit/backend/bn254" }
+provekit-backend-bn254 = { path = "provekit/backend/bn254", features = ["provekit_ntt"] }
 provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
-provekit-common = { path = "provekit/common" , features = ["provekit_ntt"]}
+provekit-common = { path = "provekit/common" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
 provekit-gnark = { path = "tooling/provekit-gnark" }
 provekit-prover = { path = "provekit/prover", default-features = false }

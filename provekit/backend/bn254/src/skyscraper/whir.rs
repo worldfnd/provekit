@@ -5,22 +5,8 @@ use skyscraper::block4::compress_many;
 use skyscraper::simple::compress_many;
 use {
     std::borrow::Cow,
-    whir::{
-        engines::EngineId,
-        hash::{Hash, HashEngine},
-    },
+    whir::hash::{Hash, HashEngine},
 };
-
-/// Raw 32-byte engine ID for the Skyscraper hash engine.
-///
-/// Derived as `SHA3-256("whir::hash" || "skyscraper")`. Use as protocol_id etc.
-pub const SKYSCRAPER_ENGINE_ID: [u8; 32] = [
-    0xa5, 0x0d, 0x5e, 0xe2, 0xa3, 0xfc, 0x52, 0xe9, 0x6f, 0x11, 0x10, 0x3c, 0xbb, 0x8a, 0x65, 0xa3,
-    0x77, 0xb5, 0x82, 0xb0, 0xb2, 0xdd, 0x42, 0x1c, 0x66, 0x19, 0x13, 0xe6, 0xa5, 0x63, 0xf8, 0xa1,
-];
-
-/// Pre-computed `EngineId` for the Skyscraper hash engine.
-pub const SKYSCRAPER: EngineId = EngineId::new(SKYSCRAPER_ENGINE_ID);
 
 // ============================================================================
 // WHIR 2.0 HashEngine Implementation
@@ -109,7 +95,7 @@ impl HashEngine for SkyscraperHashEngine {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, zerocopy::IntoBytes};
+    use {super::*, provekit_common::SKYSCRAPER, zerocopy::IntoBytes};
 
     fn limbs_to_bytes(limbs: [u64; 4]) -> [u8; 32] {
         let mut out = [0u8; 32];

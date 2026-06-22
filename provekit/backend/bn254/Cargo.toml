@@ -12,6 +12,7 @@ repository.workspace = true
 default = ["parallel"]
 witness-generation = ["nargo", "bn254_blackbox_solver", "noir_artifact_cli"]
 parallel = ["provekit-prover/parallel", "provekit-common/parallel"]
+provekit_ntt = []
 
 [dependencies]
 # Workspace crates
@@ -27,8 +28,11 @@ noirc_abi.workspace = true
 ark-bn254.workspace = true
 ark-ff.workspace = true
 ark-std.workspace = true
+ntt.workspace = true
 poseidon2.workspace = true
 skyscraper.workspace = true
+spongefish.workspace = true
+spongefish-pow.workspace = true
 whir.workspace = true
 
 # 3rd party
@@ -40,6 +44,7 @@ serde_json.workspace = true
 sha2.workspace = true
 sha3.workspace = true
 tracing.workspace = true
+zerocopy.workspace = true
 
 # Target-specific dependencies: only on non-WASM targets
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
@@ -50,7 +55,12 @@ mavros-vm.workspace = true
 mavros-artifacts.workspace = true
 
 [dev-dependencies]
+divan.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "rs_bench"
+harness = false
 
 [lints]
 workspace = true
