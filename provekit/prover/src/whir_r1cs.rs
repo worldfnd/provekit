@@ -20,8 +20,8 @@ use {
                 transpose_r1cs_matrices,
             },
         },
-        Base, Bn254Field, Ext, FieldElement, FieldHash, PrefixCovector, ProofField, PublicInputs,
-        TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, R1CS,
+        Base, Ext, FieldHash, PrefixCovector, ProofField, PublicInputs, TranscriptSponge,
+        WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
     whir::{
@@ -29,11 +29,6 @@ use {
         protocols::whir_zk::Witness as WhirZkWitness,
         transcript::{Codec, ProverState, VerifierMessage},
     },
-};
-#[cfg(not(target_arch = "wasm32"))]
-use {
-    mavros_artifacts::{ConstraintsLayout, WitnessLayout},
-    mavros_vm::interpreter::WitgenResult,
 };
 
 pub struct BlindingState<P: ProofField> {
@@ -64,23 +59,6 @@ pub trait WhirR1CSProver<P: ProofField> {
         commitments: Vec<WhirR1CSCommitment<P>>,
         full_witness: Vec<Base<P>>,
         public_inputs: &PublicInputs<Base<P>>,
-    ) -> Result<WhirR1CSProof>;
-}
-
-/// Mavros proving is welded to bn254 (its automatic-differentiation pass
-/// returns `ark_bn254::Fr`), so it lives outside the field-generic
-/// [`WhirR1CSProver`] until the Mavros VM becomes field-agnostic.
-#[cfg(not(target_arch = "wasm32"))]
-pub trait MavrosR1CSProver {
-    fn prove_mavros(
-        &self,
-        merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
-        commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
-        public_inputs: &PublicInputs<FieldElement>,
-        witness_layout: WitnessLayout,
-        constraints_layout: ConstraintsLayout,
-        ad_binary: &[u64],
     ) -> Result<WhirR1CSProof>;
 }
 
@@ -214,66 +192,8 @@ where
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
-    #[instrument(skip_all)]
-    fn prove_mavros(
-        &self,
-        mut merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
-        commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
-        public_inputs: &PublicInputs<FieldElement>,
-        witness_layout: WitnessLayout,
-        constraints_layout: ConstraintsLayout,
-        ad_binary: &[u64],
-    ) -> Result<WhirR1CSProof> {
-        ensure!(!commitments.is_empty(), "Need at least one commitment");
-
-        let blinding = commitments[0]
-            .blinding
-            .as_ref()
-            .expect("c1 must carry blinding state");
-
-        let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
-        let (alpha, blinding_eval) = run_zk_sumcheck_prover(
-            a,
-            b,
-            c,
-            &mut merlin,
-            self.m_0,
-            &blinding.polynomial,
-            &commitments[0].polynomial,
-            blinding.offset,
-        );
-
-        let eq_alpha =
-            calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
-        let (ad_a, ad_b, ad_c, _) = mavros_vm::interpreter::run_ad(
-            ad_binary,
-            &eq_alpha[..constraints_layout.size()],
-            witness_layout,
-            constraints_layout,
-        );
-        let alphas = [ad_a, ad_b, ad_c];
-
-        let blinding_offset = blinding.offset;
-        let blinding_weights = expand_powers::<4, _>(&alpha);
-
-        prove_from_alphas(
-            self,
-            merlin,
-            alphas,
-            blinding_eval,
-            blinding_offset,
-            blinding_weights,
-            commitments,
-            public_inputs,
-        )
-    }
-}
-
 #[instrument(skip_all)]
-fn prove_from_alphas<P: FieldHash>(
+pub fn prove_from_alphas<P: FieldHash>(
     scheme: &WhirR1CSScheme<P>,
     mut merlin: ProverState<TranscriptSponge>,
     alphas: [Vec<Ext<P>>; 3],

@@ -1,7 +1,7 @@
+#[cfg(not(target_arch = "wasm32"))]
+use crate::mavros_prove::MavrosR1CSProver;
 #[cfg(test)]
 use crate::solver::R1CSSolver;
-#[cfg(not(target_arch = "wasm32"))]
-use provekit_prover::MavrosR1CSProver;
 #[cfg(not(target_arch = "wasm32"))]
 use {
     crate::MavrosProver, mavros_vm::interpreter as mavros_interpreter, std::path::Path,

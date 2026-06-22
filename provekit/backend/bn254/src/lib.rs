@@ -4,6 +4,8 @@
 //! `solver` (witness solving), and the `prove`/`verify` orchestration.
 
 mod frontend;
+#[cfg(not(target_arch = "wasm32"))]
+mod mavros_prove;
 mod prove;
 mod scheme;
 mod solver;

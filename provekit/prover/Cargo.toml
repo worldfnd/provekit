@@ -25,10 +25,5 @@ whir.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 
-# Target-specific dependencies: only on non-WASM targets
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-mavros-vm.workspace = true
-mavros-artifacts.workspace = true
-
 [lints]
 workspace = true

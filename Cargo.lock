@@ -4730,8 +4730,6 @@ dependencies = [
  "anyhow",
  "ark-ff 0.5.0",
  "ark-std 0.5.0",
- "mavros-artifacts",
- "mavros-vm",
  "provekit-common",
  "tracing",
  "whir",
