@@ -13,7 +13,6 @@ repository.workspace = true
 provekit-common.workspace = true
 provekit-backend-bn254 = { workspace = true, features = ["witness-generation", "parallel"] }
 provekit-r1cs-compiler.workspace = true
-provekit-verifier.workspace = true
 
 # Noir language
 acir.workspace = true

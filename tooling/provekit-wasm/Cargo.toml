@@ -24,7 +24,6 @@ crate-type = ["cdylib", "rlib"]
 # Workspace crates - enable parallel features with wasm-bindgen-rayon
 provekit-common.workspace = true
 provekit-backend-bn254.workspace = true
-provekit-verifier.workspace = true
 
 # Noir language
 acir.workspace = true

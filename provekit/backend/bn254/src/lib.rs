@@ -1,6 +1,6 @@
 //! BN254 instantiation of the ProveKit spine (`Identity<Fr>`, base == ext),
-//! plus the bn254-welded Noir/Mavros frontend: scheme types, the prove glue
-//! and witness solver, file-format glue, and the Noir↔native field bridge.
+//! plus the bn254-welded Noir/Mavros frontend: scheme types, the prove/verify
+//! glue and witness solver, file-format glue, and the Noir↔native field bridge.
 
 mod bigint_mod;
 mod ec_arith;
@@ -16,6 +16,7 @@ mod prove;
 mod prover;
 mod r1cs;
 mod verifier;
+mod verify;
 mod witness;
 mod witness_generator;
 
@@ -29,6 +30,7 @@ pub use {
     prover::{NoirProver, Prover},
     r1cs::solve_witness_vec,
     verifier::Verifier,
+    verify::Verify,
     witness_generator::NoirWitnessGenerator,
 };
 use {

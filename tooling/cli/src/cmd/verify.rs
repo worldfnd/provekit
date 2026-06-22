@@ -2,9 +2,8 @@ use {
     super::{util::resolve_key_path, Command},
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_backend_bn254::{NoirProof, Verifier},
+    provekit_backend_bn254::{NoirProof, Verifier, Verify},
     provekit_common::file::read,
-    provekit_verifier::Verify,
     std::path::PathBuf,
     tracing::instrument,
 };

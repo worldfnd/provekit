@@ -1,3 +1,5 @@
+#[cfg(test)]
+use provekit_backend_bn254::{Verifier, Verify};
 use {
     super::{util::resolve_key_path, Command},
     anyhow::{Context, Result},
@@ -7,8 +9,6 @@ use {
     std::path::PathBuf,
     tracing::{info, instrument},
 };
-#[cfg(test)]
-use {provekit_backend_bn254::Verifier, provekit_verifier::Verify};
 
 /// Prove a prepared Noir program.
 #[derive(FromArgs, PartialEq, Eq, Debug)]

@@ -3,9 +3,8 @@ use {
     anyhow::Context,
     core::hint::black_box,
     divan::Bencher,
-    provekit_backend_bn254::{NoirProof, Prove, Prover, Verifier},
+    provekit_backend_bn254::{NoirProof, Prove, Prover, Verifier, Verify},
     provekit_common::file::read,
-    provekit_verifier::Verify,
     std::path::Path,
 };
 
