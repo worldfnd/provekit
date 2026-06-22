@@ -32,6 +32,7 @@ use {
 };
 #[cfg(not(target_arch = "wasm32"))]
 use {
+    anyhow::Context as _,
     mavros_artifacts::{ConstraintsLayout, WitnessLayout},
     mavros_vm::interpreter::WitgenResult,
 };
@@ -88,7 +89,7 @@ pub trait WhirR1CSProver {
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
-        ad_binary: &[u64],
+        binary: &[u64],
     ) -> Result<WhirR1CSProof>;
 
     #[cfg(target_arch = "wasm32")]
@@ -224,7 +225,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
-        ad_binary: &[u64],
+        binary: &[u64],
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -248,11 +249,12 @@ impl WhirR1CSProver for WhirR1CSScheme {
         let eq_alpha =
             calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
         let (ad_a, ad_b, ad_c, _) = mavros_vm::interpreter::run_ad(
-            ad_binary,
+            binary,
             &eq_alpha[..constraints_layout.size()],
             witness_layout,
             constraints_layout,
-        );
+        )
+        .context("While running Mavros AD")?;
         let alphas = [ad_a, ad_b, ad_c];
 
         let blinding_offset = blinding.offset;

@@ -18,10 +18,9 @@ pub struct MavrosProver {
     pub num_public_inputs:  usize,
     /// WHIR scheme used for the committed witness proof.
     pub whir_for_witness:   WhirR1CSScheme,
-    /// Mavros witness-generation program.
-    pub witgen_binary:      Vec<u64>,
-    /// Mavros automatic-differentiation program.
-    pub ad_binary:          Vec<u64>,
+    /// Mavros program used for witness generation and automatic
+    /// differentiation.
+    pub binary:             Vec<u64>,
     /// Layout of Mavros constraint buffers.
     pub constraints_layout: ConstraintsLayout,
     /// Layout of Mavros witness buffers.
@@ -42,10 +41,9 @@ pub struct MavrosSchemeData {
     pub r1cs:               R1CS,
     /// WHIR scheme used for the committed witness proof.
     pub whir_for_witness:   WhirR1CSScheme,
-    /// Mavros witness-generation program.
-    pub witgen_binary:      Vec<u64>,
-    /// Mavros automatic-differentiation program.
-    pub ad_binary:          Vec<u64>,
+    /// Mavros program used for witness generation and automatic
+    /// differentiation.
+    pub binary:             Vec<u64>,
     /// Layout of Mavros constraint buffers.
     pub constraints_layout: ConstraintsLayout,
     /// Layout of Mavros witness buffers.

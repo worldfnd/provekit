@@ -818,17 +818,17 @@ fn run_mavros_phase2(
 #[cfg(not(target_arch = "wasm32"))]
 impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
-    fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
+    fn prove(self, input_map: InputMap) -> Result<NoirProof> {
         provekit_common::register_ntt();
 
         let params = crate::input_utils::ordered_params_from_btreemap(&self.abi, &input_map)?;
         let phase1 = mavros_interpreter::run_phase1(
-            &mut self.witgen_binary,
+            &self.binary,
             self.witness_layout,
             self.constraints_layout,
             &params,
-        );
-        drop(self.witgen_binary);
+        )
+        .context("While running Mavros witness phase 1")?;
 
         let num_public_inputs = self.num_public_inputs;
         let public_inputs = if num_public_inputs == 0 {
@@ -919,7 +919,7 @@ impl Prove for MavrosProver {
                 &public_inputs,
                 self.witness_layout,
                 self.constraints_layout,
-                &self.ad_binary,
+                &self.binary,
             )
             .context("While proving R1CS instance")?;
 
