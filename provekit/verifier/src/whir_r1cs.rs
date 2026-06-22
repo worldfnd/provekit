@@ -10,13 +10,12 @@ use {
         utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
         },
-        Base, Ext, FieldHash, ProofField, PublicInputs, TranscriptSponge, WhirR1CSProof,
-        WhirR1CSScheme, R1CS,
+        Base, Ext, FieldHash, ProofField, PublicInputs, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     tracing::instrument,
     whir::{
         algebra::{embedding::Embedding, linear_form::LinearForm},
-        transcript::{Codec, Proof, VerifierMessage, VerifierState},
+        transcript::{Codec, DuplexSpongeInterface, Proof, VerifierMessage, VerifierState},
     },
 };
 
@@ -62,11 +61,8 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
             #[cfg(debug_assertions)]
             pattern: proof.pattern.clone(),
         };
-        let mut arthur = VerifierState::new(
-            &ds,
-            &whir_proof,
-            TranscriptSponge::from_config(self.hash_config),
-        );
+        let mut arthur =
+            VerifierState::new(&ds, &whir_proof, P::transcript_sponge(self.hash_config));
 
         let commitment_1 = self
             .whir_witness
@@ -85,7 +81,7 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
         };
         let (transposed, sumcheck_result) = rayon::join(
             || transpose_r1cs_matrices(r1cs),
-            || run_sumcheck_verifier::<Ext<P>>(&mut arthur, self.m_0),
+            || run_sumcheck_verifier::<Ext<P>, _>(&mut arthur, self.m_0),
         );
         let data_from_sumcheck_verifier = sumcheck_result.context("while verifying sumcheck")?;
         let (at, bt, ct) = transposed;
@@ -267,8 +263,8 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
 }
 
 #[instrument(skip_all)]
-pub fn run_sumcheck_verifier<F: Field + Codec>(
-    arthur: &mut VerifierState<'_, TranscriptSponge>,
+pub fn run_sumcheck_verifier<F: Field + Codec, S: DuplexSpongeInterface<U = u8>>(
+    arthur: &mut VerifierState<'_, S>,
     m_0: usize,
 ) -> Result<DataFromSumcheckVerifier<F>> {
     let r: Vec<F> = arthur.verifier_message_vec(m_0);

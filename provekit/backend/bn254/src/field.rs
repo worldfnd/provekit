@@ -5,7 +5,7 @@
 use {
     provekit_common::{
         utils::{bytes_to_field, field_to_bytes_le},
-        Base, Ext, FieldElement, FieldHash, HashConfig, ProofField,
+        Base, Ext, FieldElement, FieldHash, HashConfig, ProofField, TranscriptSponge,
     },
     whir::{
         algebra::embedding::Identity,
@@ -45,6 +45,12 @@ impl FieldHash for Bn254Field {
 
     fn from_digest(digest: &[u8]) -> Ext<Self> {
         bytes_to_field(digest)
+    }
+
+    type Sponge = TranscriptSponge;
+
+    fn transcript_sponge(config: HashConfig) -> Self::Sponge {
+        TranscriptSponge::from_config(config)
     }
 }
 

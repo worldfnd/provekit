@@ -43,6 +43,14 @@ pub trait FieldHash: ProofField {
     /// Reduce a hash digest to an extension element.
     fn from_digest(digest: &[u8]) -> Ext<Self>;
 
+    /// Fiat-Shamir transcript sponge for this field, selected at runtime by
+    /// [`crate::HashConfig`]. Byte-oriented (`U = u8`) so the spine names it
+    /// generically without depending on any concrete field's hash.
+    type Sponge: spongefish::DuplexSpongeInterface<U = u8> + Send;
+
+    /// Construct the transcript sponge matching `config`.
+    fn transcript_sponge(config: crate::HashConfig) -> Self::Sponge;
+
     // TODO(base-bridge): add a base (`Source`) bridge when base commitment lands
     // (V-stage).
 }

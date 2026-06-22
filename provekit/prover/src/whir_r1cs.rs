@@ -20,14 +20,14 @@ use {
                 transpose_r1cs_matrices,
             },
         },
-        Base, Ext, FieldHash, PrefixCovector, ProofField, PublicInputs, TranscriptSponge,
-        WhirR1CSProof, WhirR1CSScheme, R1CS,
+        Base, Ext, FieldHash, PrefixCovector, ProofField, PublicInputs, WhirR1CSProof,
+        WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
     whir::{
         algebra::{dot, embedding::Embedding, linear_form::LinearForm},
         protocols::whir_zk::Witness as WhirZkWitness,
-        transcript::{Codec, ProverState, VerifierMessage},
+        transcript::{Codec, DuplexSpongeInterface, ProverState, VerifierMessage},
     },
 };
 
@@ -42,10 +42,10 @@ pub struct WhirR1CSCommitment<P: ProofField> {
     pub blinding:   Option<BlindingState<P>>,
 }
 
-pub trait WhirR1CSProver<P: ProofField> {
+pub trait WhirR1CSProver<P: FieldHash> {
     fn commit(
         &self,
-        merlin: &mut ProverState<TranscriptSponge>,
+        merlin: &mut ProverState<P::Sponge>,
         num_witnesses: usize,
         num_constraints: usize,
         witness: Vec<Base<P>>,
@@ -54,7 +54,7 @@ pub trait WhirR1CSProver<P: ProofField> {
 
     fn prove_noir(
         &self,
-        merlin: ProverState<TranscriptSponge>,
+        merlin: ProverState<P::Sponge>,
         r1cs: R1CS<Base<P>>,
         commitments: Vec<WhirR1CSCommitment<P>>,
         full_witness: Vec<Base<P>>,
@@ -69,7 +69,7 @@ where
     #[instrument(skip_all)]
     fn commit(
         &self,
-        merlin: &mut ProverState<TranscriptSponge>,
+        merlin: &mut ProverState<P::Sponge>,
         num_witnesses: usize,
         num_constraints: usize,
         witness: Vec<Base<P>>,
@@ -138,7 +138,7 @@ where
     #[instrument(skip_all)]
     fn prove_noir(
         &self,
-        mut merlin: ProverState<TranscriptSponge>,
+        mut merlin: ProverState<P::Sponge>,
         r1cs: R1CS<Base<P>>,
         commitments: Vec<WhirR1CSCommitment<P>>,
         full_witness: Vec<Base<P>>,
@@ -195,7 +195,7 @@ where
 #[instrument(skip_all)]
 pub fn prove_from_alphas<P: FieldHash>(
     scheme: &WhirR1CSScheme<P>,
-    mut merlin: ProverState<TranscriptSponge>,
+    mut merlin: ProverState<P::Sponge>,
     alphas: [Vec<Ext<P>>; 3],
     blinding_eval: Ext<P>,
     blinding_offset: usize,
@@ -466,11 +466,11 @@ pub fn pad_to_pow2_len_min2<F: Field>(v: &mut Vec<F>) {
 }
 
 #[instrument(skip_all)]
-pub fn run_zk_sumcheck_prover<F: Field + Codec>(
+pub fn run_zk_sumcheck_prover<F: Field + Codec, S: DuplexSpongeInterface<U = u8>>(
     mut a: Vec<F>,
     mut b: Vec<F>,
     mut c: Vec<F>,
-    merlin: &mut ProverState<TranscriptSponge>,
+    merlin: &mut ProverState<S>,
     m_0: usize,
     blinding_polynomial: &[[F; 4]],
     w1_polynomial: &[F],
@@ -610,10 +610,10 @@ fn compute_public_weight_evaluation<F: Field>(
     eval
 }
 
-fn get_public_weights<F: Field + Codec>(
+fn get_public_weights<F: Field + Codec, S: DuplexSpongeInterface<U = u8>>(
     public_inputs_hash: F,
     public_inputs_len: usize,
-    merlin: &mut ProverState<TranscriptSponge>,
+    merlin: &mut ProverState<S>,
     m: usize,
 ) -> (F, PrefixCovector<F>) {
     merlin.prover_message(&public_inputs_hash);
