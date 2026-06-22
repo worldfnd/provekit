@@ -5,54 +5,14 @@ use whir::transcript::Interaction;
 use {
     crate::{
         binary_format,
-        field::{Base, Ext, FieldHash, ProofField},
+        field::{Base, Ext, ProofField},
         file::{Compression, FileFormat, MaybeHashAware},
-        utils::{bytes_to_field, field_to_bytes_le, serde_hex},
-        FieldElement, HashConfig, PublicInputs,
+        utils::serde_hex,
+        HashConfig, PublicInputs,
     },
     serde::{Deserialize, Serialize},
-    whir::{
-        algebra::embedding::Identity,
-        protocols::{whir::Config as GenericWhirConfig, whir_zk::Config as GenericWhirZkConfig},
-        transcript,
-    },
+    whir::{protocols::whir_zk::Config as GenericWhirZkConfig, transcript},
 };
-
-// TODO(P0.4): bn254-concrete aliases — relocate to provekit-backend-bn254.
-pub type WhirConfig = GenericWhirConfig<Identity<FieldElement>>;
-pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
-
-/// bn254 proof field: the `Identity<Fr>` embedding (base == ext).
-// TODO(P0.4): relocate Bn254Field + its ProofField/FieldHash impls to
-// provekit-backend-bn254 (the hash bodies move with it).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Bn254Field;
-
-impl ProofField for Bn254Field {
-    type Embedding = Identity<FieldElement>;
-}
-
-impl FieldHash for Bn254Field {
-    fn default_hash() -> HashConfig {
-        HashConfig::Skyscraper
-    }
-
-    fn hash_public_inputs(config: HashConfig, inputs: &[Base<Self>]) -> Ext<Self> {
-        config.hash_field_elements(inputs)
-    }
-
-    fn ext_to_bytes_le(x: &Ext<Self>) -> Vec<u8> {
-        field_to_bytes_le(*x).to_vec()
-    }
-
-    fn ext_from_bytes(bytes: &[u8]) -> Ext<Self> {
-        bytes_to_field(bytes)
-    }
-
-    fn from_digest(digest: &[u8]) -> Ext<Self> {
-        bytes_to_field(digest)
-    }
-}
 
 /// Type alias for the whir domain separator used in provekit's outer protocol.
 type WhirDomainSeparator = transcript::DomainSeparator<'static, ()>;
@@ -149,43 +109,5 @@ impl<P: ProofField> FileFormat for ProvekitProof<P> {
 impl<P: ProofField> MaybeHashAware for ProvekitProof<P> {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         None
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn bn254_field_hash_roundtrip() {
-        let x: Ext<Bn254Field> = FieldElement::from(123_456_789u64);
-        let bytes = Bn254Field::ext_to_bytes_le(&x);
-        assert_eq!(bytes.len(), 32);
-        assert_eq!(Bn254Field::ext_from_bytes(&bytes), x);
-        assert_eq!(Bn254Field::from_digest(&bytes), x);
-        assert_eq!(Bn254Field::default_hash(), HashConfig::Skyscraper);
-    }
-
-    // TODO(P0.4): once the spine routes public-input hashing through
-    // `FieldHash::hash_public_inputs` and `PublicInputs::hash` is removed,
-    // convert this differential test to a hardcoded byte fixture (the P0.7
-    // bn254 bit-identical gate).
-    #[test]
-    fn bn254_hash_public_inputs_matches_public_inputs_hash() {
-        let inputs = [FieldElement::from(7u64), FieldElement::from(42u64)];
-        let pi = crate::PublicInputs::from_vec(inputs.to_vec());
-        for config in [
-            HashConfig::Skyscraper,
-            HashConfig::Sha256,
-            HashConfig::Keccak,
-            HashConfig::Blake3,
-            HashConfig::Poseidon2,
-        ] {
-            assert_eq!(
-                Bn254Field::hash_public_inputs(config, &inputs),
-                pi.hash(config),
-                "mismatch for {config:?}"
-            );
-        }
     }
 }

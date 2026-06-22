@@ -1,7 +1,7 @@
 use {
-    crate::NoirProofScheme,
+    crate::{Bn254Field, NoirProofScheme},
     noirc_abi::Abi,
-    provekit_common::{utils::serde_jsonify, Bn254Field, HashConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{utils::serde_jsonify, HashConfig, WhirR1CSScheme, R1CS},
     serde::{Deserialize, Serialize},
 };
 

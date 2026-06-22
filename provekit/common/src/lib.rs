@@ -38,10 +38,7 @@ pub use {
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
-    whir_r1cs::{
-        Bn254Field, ProvekitProof, R1csHash, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
-        WhirZkConfig,
-    },
+    whir_r1cs::{ProvekitProof, R1csHash, WhirR1CSProof, WhirR1CSScheme},
     witness::PublicInputs,
 };
 

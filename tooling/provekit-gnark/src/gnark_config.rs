@@ -1,8 +1,7 @@
 use {
     ark_poly::{EvaluationDomain, GeneralEvaluationDomain},
-    provekit_common::{
-        Bn254Field, FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme,
-    },
+    provekit_backend_bn254::{Bn254Field, WhirConfig},
+    provekit_common::{FieldElement, PublicInputs, WhirR1CSProof, WhirR1CSScheme},
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
     tracing::instrument,

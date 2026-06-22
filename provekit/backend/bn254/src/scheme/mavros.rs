@@ -3,8 +3,9 @@ pub use self::wasm_stubs::{ConstraintsLayout, WitnessLayout};
 #[cfg(not(target_arch = "wasm32"))]
 pub use mavros_vm::{ConstraintsLayout, WitnessLayout};
 use {
+    crate::Bn254Field,
     noirc_abi::Abi,
-    provekit_common::{Bn254Field, HashConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{HashConfig, WhirR1CSScheme, R1CS},
     serde::{Deserialize, Serialize},
 };
 

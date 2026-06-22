@@ -1,9 +1,7 @@
 use {
     mavros_artifacts::R1CS as MavrosR1CS,
-    provekit_common::{
-        utils::next_power_of_two, Bn254Field, HashConfig, R1csHash, WhirR1CSScheme, WhirZkConfig,
-        R1CS,
-    },
+    provekit_backend_bn254::{Bn254Field, WhirZkConfig},
+    provekit_common::{utils::next_power_of_two, HashConfig, R1csHash, WhirR1CSScheme, R1CS},
     whir::{engines::EngineId, parameters::ProtocolParameters},
 };
 

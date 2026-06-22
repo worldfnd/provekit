@@ -3,6 +3,7 @@
 //! serialized PKP/PKV/proof types), `frontend` (the Noir/ACIR bridge),
 //! `solver` (witness solving), and the `prove`/`verify` orchestration.
 
+mod field;
 mod frontend;
 #[cfg(not(target_arch = "wasm32"))]
 mod mavros_prove;
@@ -13,9 +14,10 @@ mod verify;
 
 pub use {
     acir::FieldElement as NoirElement,
+    field::{Bn254Field, WhirConfig, WhirZkConfig},
     frontend::{noir_to_native, NoirWitnessGenerator, PrintAbi},
     prove::Prove,
-    provekit_common::{ec_arith::ec_scalar_mul, Bn254Field, ProvekitProof},
+    provekit_common::{ec_arith::ec_scalar_mul, ProvekitProof},
     scheme::{
         MavrosProver, MavrosSchemeData, NoirProofScheme, NoirProver, NoirSchemeData, Prover,
         Verifier,
