@@ -1,9 +1,7 @@
 use {
     ark_ff::{AdditiveGroup, PrimeField},
-    provekit_common::{
-        u256_arith::{mod_add, mod_inv, mod_mul, mod_sub},
-        FieldElement,
-    },
+    provekit_backend_bn254::FieldElement,
+    provekit_common::u256_arith::{mod_add, mod_inv, mod_mul, mod_sub},
 };
 
 mod grumpkin;

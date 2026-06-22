@@ -25,9 +25,9 @@ use {
         witness::{
             ConstantOrR1CSWitness, ConstantTerm, SumTerm, WitnessBuilder, BINOP_ATOMIC_BITS,
         },
-        NoirElement,
+        FieldElement, NoirElement,
     },
-    provekit_common::{FieldElement, R1CS},
+    provekit_common::R1CS,
     std::{collections::BTreeMap, num::NonZeroU32, ops::Neg},
 };
 
@@ -98,7 +98,7 @@ pub struct R1CSBreakdown {
 /// Compiles an ACIR circuit into an [R1CS] instance, comprising of the A, B,
 /// and C R1CS matrices, along with the witness vector.
 pub struct NoirToR1CSCompiler {
-    pub r1cs: R1CS,
+    pub r1cs: R1CS<FieldElement>,
 
     /// Indicates how to solve for each R1CS witness
     pub witness_builders: Vec<WitnessBuilder>,
@@ -133,7 +133,11 @@ pub(crate) fn ensure_field_element_fits_num_bits(
 /// witness indices, and the witness builders for solving.
 pub fn noir_to_r1cs(
     circuit: &Circuit<NoirElement>,
-) -> Result<(R1CS, Vec<Option<NonZeroU32>>, Vec<WitnessBuilder>)> {
+) -> Result<(
+    R1CS<FieldElement>,
+    Vec<Option<NonZeroU32>>,
+    Vec<WitnessBuilder>,
+)> {
     let mut compiler = NoirToR1CSCompiler::new();
     compiler.add_circuit(circuit)?;
     Ok(compiler.finalize())
@@ -142,7 +146,7 @@ pub fn noir_to_r1cs(
 pub fn noir_to_r1cs_with_breakdown(
     circuit: &Circuit<NoirElement>,
 ) -> Result<(
-    R1CS,
+    R1CS<FieldElement>,
     Vec<Option<NonZeroU32>>,
     Vec<WitnessBuilder>,
     R1CSBreakdown,
@@ -176,7 +180,13 @@ impl NoirToR1CSCompiler {
     }
 
     /// Returns the R1CS and the witness map
-    pub fn finalize(self) -> (R1CS, Vec<Option<NonZeroU32>>, Vec<WitnessBuilder>) {
+    pub fn finalize(
+        self,
+    ) -> (
+        R1CS<FieldElement>,
+        Vec<Option<NonZeroU32>>,
+        Vec<WitnessBuilder>,
+    ) {
         // Convert witness map to vector
         let len = self
             .acir_to_r1cs_witness_map

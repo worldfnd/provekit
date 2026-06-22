@@ -1,5 +1,4 @@
 use {
-    crate::FieldElement,
     ark_ff::Field,
     whir::algebra::{dot, linear_form::LinearForm, multilinear_extend},
 };
@@ -13,7 +12,7 @@ use {
 /// `prove()` / `verify()` in place of a full-length `Covector`.
 ///
 /// [`LinearForm`]: https://github.com/WizardOfMenlo/whir/blob/main/src/algebra/linear_form/mod.rs
-pub struct PrefixCovector<F: Field = FieldElement> {
+pub struct PrefixCovector<F: Field> {
     /// The non-zero prefix. Length must be a power of two.
     vector:      Vec<F>,
     /// The full logical domain size (also a power of two, >= vector.len()).
@@ -86,7 +85,7 @@ impl<F: Field> LinearForm<F> for PrefixCovector<F> {
 
 /// A covector that is zero everywhere except at positions
 /// `[offset .. offset + weights.len())` within a `domain_size`-length domain.
-pub struct OffsetCovector<F: Field = FieldElement> {
+pub struct OffsetCovector<F: Field> {
     weights:     Vec<F>,
     offset:      usize,
     domain_size: usize,
@@ -236,7 +235,7 @@ pub fn compute_public_eval<F: Field>(x: F, num_public_inputs: usize, polynomial:
 /// A covector with non-zero weights at arbitrary scattered positions within a
 /// `domain_size`-length domain. Used for challenge binding where challenge
 /// positions in w2 may not be contiguous.
-pub struct SparseCovector<F: Field = FieldElement> {
+pub struct SparseCovector<F: Field> {
     /// (position, weight) pairs.
     entries:     Vec<(usize, F)>,
     domain_size: usize,
@@ -337,7 +336,7 @@ mod tests {
     use {
         super::*,
         ark_std::{One, Zero},
-        whir::algebra::multilinear_extend,
+        whir::algebra::{fields::Field64 as FieldElement, multilinear_extend},
     };
 
     /// Build a full domain-size vector that is zero everywhere except at

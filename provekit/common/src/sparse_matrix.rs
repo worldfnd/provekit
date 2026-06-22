@@ -1,5 +1,5 @@
 use {
-    crate::{FieldElement, InternedFieldElement, Interner},
+    crate::{InternedFieldElement, Interner},
     anyhow::{bail, Result},
     ark_ff::Field,
     rayon::{
@@ -297,7 +297,7 @@ impl<'de> Deserialize<'de> for SparseMatrix {
 
 /// A hydrated sparse matrix with uninterned field elements
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HydratedSparseMatrix<'a, F: Field = FieldElement> {
+pub struct HydratedSparseMatrix<'a, F: Field> {
     pub matrix: &'a SparseMatrix,
     interner:   &'a Interner<F>,
 }
@@ -769,7 +769,7 @@ impl<F: Field> Mul<HydratedSparseMatrix<'_, F>> for &[F] {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, whir::algebra::fields::Field64 as FieldElement};
 
     #[test]
     fn test_delta_encoding_roundtrip() {

@@ -6,20 +6,13 @@ pub mod serde_jsonify;
 pub mod sumcheck;
 
 use {
-    crate::FieldElement,
-    ark_ff::{BigInt, Field},
-    ruint::{aliases::U256, uint},
+    ark_ff::Field,
     std::{
         fmt::{Display, Formatter, Result as FmtResult},
         mem::MaybeUninit,
     },
     tracing::instrument,
 };
-
-/// 1/2 for the BN254
-pub const HALF: FieldElement = uint_to_field(uint!(
-    10944121435919637611123202872628637544274182200208017171849102093287904247809_U256
-));
 
 /// Target single-thread workload size for `T`.
 /// Should ideally be a multiple of a cache line (64 bytes)
@@ -52,10 +45,6 @@ fn unzip_double_array<T: Sized, const N: usize, const M: usize>(
     let left = left.map(|a| a.map(|u| unsafe { u.assume_init() }));
     let right = right.map(|a| a.map(|u| unsafe { u.assume_init() }));
     (left, right)
-}
-
-pub const fn uint_to_field(i: U256) -> FieldElement {
-    FieldElement::new(BigInt(i.into_limbs()))
 }
 
 /// Calculates the degree of the next smallest power of two
@@ -150,58 +139,4 @@ pub fn batch_inverse_montgomery<F: Field>(values: &[F]) -> Vec<F> {
     inverses[0] = inv_acc;
 
     inverses
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn convert_mavros_r1cs_to_provekit(mavros_r1cs: &mavros_artifacts::R1CS) -> crate::R1CS {
-    let num_witnesses = mavros_r1cs.witness_layout.size();
-    let num_constraints = mavros_r1cs.constraints.len();
-
-    let total_entries: usize = mavros_r1cs
-        .constraints
-        .iter()
-        .map(|c| c.a.len() + c.b.len() + c.c.len())
-        .sum();
-
-    let mut r1cs = crate::R1CS::new();
-    r1cs.add_witnesses(num_witnesses);
-    r1cs.reserve_constraints(num_constraints, total_entries);
-
-    let mut a_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
-    let mut b_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
-    let mut c_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
-
-    for constraint in &mavros_r1cs.constraints {
-        a_buf.clear();
-        a_buf.extend(
-            constraint
-                .a
-                .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
-        );
-
-        b_buf.clear();
-        b_buf.extend(
-            constraint
-                .b
-                .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
-        );
-
-        c_buf.clear();
-        c_buf.extend(
-            constraint
-                .c
-                .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
-        );
-
-        r1cs.push_constraint(
-            a_buf.iter().copied(),
-            b_buf.iter().copied(),
-            c_buf.iter().copied(),
-        );
-    }
-
-    r1cs
 }

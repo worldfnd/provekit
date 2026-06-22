@@ -6,9 +6,9 @@
 //! [`provekit_common::FieldHash::hash_public_inputs`].
 
 use {
-    crate::bytes::field_to_bytes_le,
+    crate::{bytes::field_to_bytes_le, FieldElement},
     ark_ff::{BigInt, PrimeField},
-    provekit_common::{FieldElement, HashConfig},
+    provekit_common::HashConfig,
     std::sync::LazyLock,
 };
 

@@ -5,9 +5,9 @@
 use {
     crate::{
         bytes::{bytes_to_field, field_to_bytes_le},
-        TranscriptSponge,
+        FieldElement, TranscriptSponge,
     },
-    provekit_common::{Base, Ext, FieldElement, FieldHash, HashConfig, ProofField},
+    provekit_common::{Base, Ext, FieldHash, HashConfig, ProofField},
     whir::{
         algebra::embedding::Identity,
         protocols::{whir::Config as GenericWhirConfig, whir_zk::Config as GenericWhirZkConfig},

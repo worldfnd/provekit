@@ -1,10 +1,10 @@
 use {
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     ark_ff::{Field, Zero},
-    provekit_backend_bn254::witness::{
-        compute_spread, ConstantOrR1CSWitness, SumTerm, WitnessBuilder,
+    provekit_backend_bn254::{
+        witness::{compute_spread, ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
+        FieldElement,
     },
-    provekit_common::FieldElement,
     std::{
         collections::{BTreeMap, HashMap},
         ops::Neg,

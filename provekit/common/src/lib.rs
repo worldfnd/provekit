@@ -21,12 +21,6 @@ mod whir_r1cs;
 #[doc(hidden)]
 pub use crate::interner::{InternedFieldElement, Interner};
 pub use {
-    // TODO(P0.4): bn254-only alias and the migration lynchpin. Deleting it (once
-    // provekit-backend-bn254 owns `Fr`) is the final P0.4 step; it forces removal
-    // of every `= FieldElement` / `= Bn254Field` default type param across the
-    // spine. The compiler flags each site, so those defaults need no individual
-    // markers.
-    ark_bn254::Fr as FieldElement,
     compress::CompressedR1CS,
     field::{Base, Ext, FieldHash, ProofField},
     hash_config::{HashConfig, POSEIDON2, SKYSCRAPER},

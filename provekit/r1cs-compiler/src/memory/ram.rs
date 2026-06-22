@@ -4,10 +4,12 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_ff::{One, Zero},
-    provekit_backend_bn254::witness::{
-        SpiceMemoryOperation, SpiceWitnesses, SumTerm, WitnessBuilder, WitnessCoefficient,
+    provekit_backend_bn254::{
+        witness::{
+            SpiceMemoryOperation, SpiceWitnesses, SumTerm, WitnessBuilder, WitnessCoefficient,
+        },
+        FieldElement,
     },
-    provekit_common::FieldElement,
     std::ops::Neg,
 };
 

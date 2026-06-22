@@ -1,7 +1,7 @@
 use {
     crate::{
-        witness::SplitWitnessBuilders, Bn254Field, MavrosProver, NoirElement, NoirProofScheme,
-        NoirWitnessGenerator,
+        witness::SplitWitnessBuilders, Bn254Field, FieldElement, MavrosProver, NoirElement,
+        NoirProofScheme, NoirWitnessGenerator,
     },
     acir::circuit::Program,
     noirc_abi::Abi,
@@ -13,7 +13,7 @@ use {
 pub struct NoirProver {
     pub hash_config:            HashConfig,
     pub program:                Program<NoirElement>,
-    pub r1cs:                   R1CS,
+    pub r1cs:                   R1CS<FieldElement>,
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme<Bn254Field>,

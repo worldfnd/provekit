@@ -6,8 +6,7 @@ use {
         Abi, AbiType,
     },
     noirc_artifacts::program::ProgramArtifact,
-    provekit_backend_bn254::{noir_to_native, NoirWitnessGenerator},
-    provekit_common::FieldElement,
+    provekit_backend_bn254::{noir_to_native, FieldElement, NoirWitnessGenerator},
     std::num::NonZeroU32,
     tracing::instrument,
 };

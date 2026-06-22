@@ -3,6 +3,7 @@
 use {
     super::{memory::describe_block_type, stats_collector::CircuitStats},
     acir::{circuit::Circuit, FieldElement},
+    provekit_backend_bn254::FieldElement as BnFieldElement,
     provekit_common::R1CS,
     provekit_r1cs_compiler::{OptimizationStats, R1CSBreakdown},
     std::collections::HashMap,
@@ -202,7 +203,7 @@ fn print_call_stats(stats: &CircuitStats) {
 pub(super) fn print_r1cs_breakdown(
     stats: &CircuitStats,
     circuit: &Circuit<FieldElement>,
-    r1cs: &R1CS,
+    r1cs: &R1CS<BnFieldElement>,
     breakdown: &R1CSBreakdown,
 ) {
     println!("\n╔═══════════════════════════════════════════════════════════════╗");
@@ -386,7 +387,7 @@ fn print_batched_operations(stats: &CircuitStats, breakdown: &R1CSBreakdown) {
     }
 }
 
-fn print_r1cs_totals(r1cs: &R1CS, breakdown: &R1CSBreakdown) {
+fn print_r1cs_totals(r1cs: &R1CS<BnFieldElement>, breakdown: &R1CSBreakdown) {
     let total_tracked_constraints = breakdown.assert_zero_constraints
         + breakdown.memory_rom_constraints
         + breakdown.memory_ram_constraints
@@ -443,8 +444,8 @@ fn print_r1cs_totals(r1cs: &R1CS, breakdown: &R1CSBreakdown) {
 }
 
 pub(super) fn print_ge_optimization(
-    original_r1cs: &R1CS,
-    optimized_r1cs: &R1CS,
+    original_r1cs: &R1CS<BnFieldElement>,
+    optimized_r1cs: &R1CS<BnFieldElement>,
     stats: &OptimizationStats,
 ) {
     println!("\n╔═══════════════════════════════════════════════════════════════╗");

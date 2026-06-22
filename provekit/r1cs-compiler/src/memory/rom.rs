@@ -4,8 +4,10 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_std::{ops::Neg, One},
-    provekit_backend_bn254::witness::{SumTerm, WitnessBuilder, WitnessCoefficient},
-    provekit_common::FieldElement,
+    provekit_backend_bn254::{
+        witness::{SumTerm, WitnessBuilder, WitnessCoefficient},
+        FieldElement,
+    },
 };
 
 /// Add witnesses and constraints enforcing the integrity of read operations

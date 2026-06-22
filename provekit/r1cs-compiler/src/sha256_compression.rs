@@ -10,8 +10,10 @@ use {
     },
     anyhow::Result,
     ark_ff::{Field, PrimeField},
-    provekit_backend_bn254::witness::{ConstantOrR1CSWitness, SumTerm},
-    provekit_common::FieldElement,
+    provekit_backend_bn254::{
+        witness::{ConstantOrR1CSWitness, SumTerm},
+        FieldElement,
+    },
     std::{collections::BTreeMap, ops::Neg},
 };
 

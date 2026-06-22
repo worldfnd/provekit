@@ -511,13 +511,13 @@ impl WitnessBuilder {
     /// map)
     pub fn split_and_prepare_layers(
         witness_builders: &[WitnessBuilder],
-        r1cs: R1CS,
+        r1cs: R1CS<FieldElement>,
         witness_map: Vec<Option<NonZeroU32>>,
         acir_public_inputs_indices_set: HashSet<u32>,
     ) -> Result<
         (
             SplitWitnessBuilders,
-            R1CS,
+            R1CS<FieldElement>,
             Vec<Option<NonZeroU32>>,
             Vec<usize>,
         ),

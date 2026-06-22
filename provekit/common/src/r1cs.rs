@@ -1,7 +1,5 @@
 use {
-    crate::{
-        interner::InternedFieldElement, FieldElement, HydratedSparseMatrix, Interner, SparseMatrix,
-    },
+    crate::{interner::InternedFieldElement, HydratedSparseMatrix, Interner, SparseMatrix},
     ark_ff::Field,
     serde::{Deserialize, Serialize},
     sha3::{Digest, Sha3_256},
@@ -58,7 +56,7 @@ fn canonicalize_terms<F: Field>(terms: &[(F, usize)]) -> Vec<(F, usize)> {
 /// Represents a R1CS constraint system.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct R1CS<F: Field = FieldElement> {
+pub struct R1CS<F: Field> {
     pub num_public_inputs: usize,
     pub interner:          Interner<F>,
     pub a:                 SparseMatrix,
@@ -320,7 +318,7 @@ impl<F: Field> R1CS<F> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, ark_ff::Zero, ark_std::One};
+    use {super::*, ark_ff::Zero, ark_std::One, whir::algebra::fields::Field64 as FieldElement};
 
     /// Duplicate witness coefficients are summed, not overwritten.
     #[test]

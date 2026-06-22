@@ -229,8 +229,8 @@ pub fn multiply_transposed_by_eq_alpha<M: Embedding>(
 mod tests {
     use {
         super::*,
-        crate::FieldElement,
         ark_std::{One, Zero},
+        whir::algebra::fields::Field64 as FieldElement,
     };
 
     fn fe(v: i64) -> FieldElement {
@@ -246,8 +246,8 @@ mod tests {
     /// A = [[1, 2, 0, 0],   B = [[0, 1, 0, 0],   C = [[0, 0, 1, 0],
     ///      [0, 0, 3, 0],        [2, 0, 0, 1],        [0, 1, 0, 3],
     ///      [1, 0, 0, 1]]        [0, 0, 4, 0]]        [2, 0, 0, 0]]
-    fn make_test_r1cs() -> crate::R1CS {
-        let mut r1cs = crate::R1CS::new();
+    fn make_test_r1cs() -> crate::R1CS<FieldElement> {
+        let mut r1cs = crate::R1CS::<FieldElement>::new();
         r1cs.add_witnesses(4);
         r1cs.add_constraint(&[(fe(1), 0), (fe(2), 1)], &[(fe(1), 1)], &[(fe(1), 2)]);
         r1cs.add_constraint(&[(fe(3), 2)], &[(fe(2), 0), (fe(1), 3)], &[

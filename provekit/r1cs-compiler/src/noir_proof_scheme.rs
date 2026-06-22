@@ -11,11 +11,66 @@ use {
         witness::WitnessBuilder, MavrosSchemeData, NoirProofScheme, NoirSchemeData,
         NoirWitnessGenerator, PrintAbi,
     },
-    provekit_common::{utils::convert_mavros_r1cs_to_provekit, WhirR1CSScheme},
+    provekit_common::WhirR1CSScheme,
     serde::Deserialize,
     std::{collections::HashSet, fs::File, path::Path},
     tracing::{info, instrument},
 };
+
+fn convert_mavros_r1cs_to_provekit(
+    mavros_r1cs: &MavrosR1CS,
+) -> provekit_common::R1CS<provekit_backend_bn254::FieldElement> {
+    let num_witnesses = mavros_r1cs.witness_layout.size();
+    let num_constraints = mavros_r1cs.constraints.len();
+
+    let total_entries: usize = mavros_r1cs
+        .constraints
+        .iter()
+        .map(|c| c.a.len() + c.b.len() + c.c.len())
+        .sum();
+
+    let mut r1cs = provekit_common::R1CS::<provekit_backend_bn254::FieldElement>::new();
+    r1cs.add_witnesses(num_witnesses);
+    r1cs.reserve_constraints(num_constraints, total_entries);
+
+    let mut a_buf: Vec<(u32, provekit_common::InternedFieldElement)> = Vec::with_capacity(64);
+    let mut b_buf: Vec<(u32, provekit_common::InternedFieldElement)> = Vec::with_capacity(64);
+    let mut c_buf: Vec<(u32, provekit_common::InternedFieldElement)> = Vec::with_capacity(64);
+
+    for constraint in &mavros_r1cs.constraints {
+        a_buf.clear();
+        a_buf.extend(
+            constraint
+                .a
+                .iter()
+                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
+        );
+
+        b_buf.clear();
+        b_buf.extend(
+            constraint
+                .b
+                .iter()
+                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
+        );
+
+        c_buf.clear();
+        c_buf.extend(
+            constraint
+                .c
+                .iter()
+                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
+        );
+
+        r1cs.push_constraint(
+            a_buf.iter().copied(),
+            b_buf.iter().copied(),
+            c_buf.iter().copied(),
+        );
+    }
+
+    r1cs
+}
 
 pub struct NoirCompiler;
 
@@ -205,9 +260,8 @@ mod tests {
         ark_std::One,
         provekit_backend_bn254::{
             witness::{ConstantTerm, DigitalDecompositionWitnesses, SumTerm, WitnessBuilder},
-            NoirProofScheme,
+            FieldElement, NoirProofScheme,
         },
-        provekit_common::FieldElement,
         serde::{Deserialize, Serialize},
         std::path::PathBuf,
     };

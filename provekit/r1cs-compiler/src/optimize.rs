@@ -15,8 +15,11 @@ use {
     anyhow::{bail, Context as _, Result},
     ark_ff::Field,
     ark_std::{One, Zero},
-    provekit_backend_bn254::witness::{DependencyInfo, WitnessBuilder},
-    provekit_common::{FieldElement, Interner, SparseMatrix, R1CS},
+    provekit_backend_bn254::{
+        witness::{DependencyInfo, WitnessBuilder},
+        FieldElement,
+    },
+    provekit_common::{Interner, SparseMatrix, R1CS},
     rayon::iter::{IntoParallelRefIterator, ParallelIterator},
     std::collections::{HashMap, HashSet},
     tracing::{debug, info},
@@ -71,7 +74,7 @@ impl OptimizationStats {
 /// `num_public_inputs` columns (1..=num_public_inputs) and column 0 (constant
 /// one) are never chosen as pivots.
 pub fn optimize_r1cs(
-    r1cs: &mut R1CS,
+    r1cs: &mut R1CS<FieldElement>,
     witness_builders: &mut Vec<WitnessBuilder>,
     witness_map: &mut [Option<std::num::NonZeroU32>],
     acir_public_inputs_indices_set: &HashSet<u32>,
@@ -397,7 +400,7 @@ pub fn optimize_r1cs(
 }
 
 /// Build combined occurrence counts across A, B, C matrices.
-fn build_occurrence_counts(r1cs: &R1CS) -> Vec<usize> {
+fn build_occurrence_counts(r1cs: &R1CS<FieldElement>) -> Vec<usize> {
     let num_cols = r1cs.num_witnesses();
     let mut counts = vec![0usize; num_cols];
     let a_counts = r1cs.a.column_occurrence_count();
@@ -435,7 +438,7 @@ struct ColumnRemovalStats {
 /// 6b. Remaps ACIR witness map column indices
 /// 7. Prunes dead builders and remaps surviving builder witness indices
 fn remove_dead_columns(
-    r1cs: &mut R1CS,
+    r1cs: &mut R1CS<FieldElement>,
     witness_builders: &mut Vec<WitnessBuilder>,
     witness_map: &mut [Option<std::num::NonZeroU32>],
     acir_public_inputs_indices_set: &HashSet<u32>,
@@ -831,7 +834,7 @@ enum RebuiltRow {
 fn rebuild_matrix_rows(
     matrix: &SparseMatrix,
     matrix_name: &'static str,
-    interner: &Interner,
+    interner: &Interner<FieldElement>,
     substitutions: &[Substitution],
     sub_lookup: &[u32],
     survivors: &[usize],
@@ -911,7 +914,7 @@ fn finalize_matrix(
     rows: Vec<RebuiltRow>,
     source: &SparseMatrix,
     num_cols: usize,
-    interner: &mut Interner,
+    interner: &mut Interner<FieldElement>,
 ) -> SparseMatrix {
     let num_rows = rows.len();
     let total_entries: usize = rows
@@ -1171,7 +1174,7 @@ mod tests {
     }
 
     /// Helper: verify A·w ⊙ B·w == C·w for all constraints.
-    fn assert_r1cs_satisfied(r1cs: &R1CS, witness: &[FieldElement]) {
+    fn assert_r1cs_satisfied(r1cs: &R1CS<FieldElement>, witness: &[FieldElement]) {
         let interner = &r1cs.interner;
         for row in 0..r1cs.num_constraints() {
             let dot = |matrix: &SparseMatrix| -> FieldElement {

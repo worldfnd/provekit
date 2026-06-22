@@ -13,8 +13,10 @@ use {
     ark_ff::{AdditiveGroup, Field, PrimeField},
     curve::Curve,
     ec_points::{NativeEcOps, NonNativeEcOps},
-    provekit_backend_bn254::witness::{ConstantOrR1CSWitness, ConstantTerm, WitnessBuilder},
-    provekit_common::FieldElement,
+    provekit_backend_bn254::{
+        witness::{ConstantOrR1CSWitness, ConstantTerm, WitnessBuilder},
+        FieldElement,
+    },
     std::collections::BTreeMap,
 };
 
@@ -63,7 +65,7 @@ pub fn add_msm_with_curve<C: Curve>(
         return;
     }
 
-    let native_bits = provekit_common::FieldElement::MODULUS_BIT_SIZE;
+    let native_bits = provekit_backend_bn254::FieldElement::MODULUS_BIT_SIZE;
     let curve_bits = curve.modulus_bits();
     let is_native = curve.is_native_field();
     let scalar_bits = curve.curve_order_bits() as usize;

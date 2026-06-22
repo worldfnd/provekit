@@ -1,5 +1,5 @@
 use {
-    crate::{Bn254Field, NoirProofScheme},
+    crate::{Bn254Field, FieldElement, NoirProofScheme},
     noirc_abi::Abi,
     provekit_common::{utils::serde_jsonify, HashConfig, WhirR1CSScheme, R1CS},
     serde::{Deserialize, Serialize},
@@ -14,7 +14,7 @@ use {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Verifier {
     pub hash_config:      HashConfig,
-    pub r1cs:             R1CS,
+    pub r1cs:             R1CS<FieldElement>,
     pub whir_for_witness: Option<WhirR1CSScheme<Bn254Field>>,
     #[serde(with = "serde_jsonify")]
     pub abi:              Abi,

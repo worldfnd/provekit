@@ -8,7 +8,7 @@ use {
     crate::{
         field::{Ext, FieldHash},
         utils::serde_ark_vec,
-        FieldElement, HashConfig,
+        HashConfig,
     },
     ark_ff::Field,
     serde::{Deserialize, Serialize},
@@ -17,7 +17,7 @@ use {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct PublicInputs<F: Field = FieldElement>(#[serde(with = "serde_ark_vec")] pub Vec<F>);
+pub struct PublicInputs<F: Field>(#[serde(with = "serde_ark_vec")] pub Vec<F>);
 
 impl<F: Field> PublicInputs<F> {
     #[must_use]

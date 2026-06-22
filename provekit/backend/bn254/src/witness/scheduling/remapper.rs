@@ -1,7 +1,10 @@
 use {
-    crate::witness::{
-        limbs::Limbs, scheduling::DependencyInfo, ConstantOrR1CSWitness, ConstantTerm,
-        ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,
+    crate::{
+        witness::{
+            limbs::Limbs, scheduling::DependencyInfo, ConstantOrR1CSWitness, ConstantTerm,
+            ProductLinearTerm, SumTerm, WitnessBuilder, WitnessCoefficient,
+        },
+        FieldElement,
     },
     provekit_common::{SparseMatrix, R1CS},
     std::{collections::HashMap, num::NonZeroU32},
@@ -600,13 +603,13 @@ impl WitnessIndexRemapper {
     ///
     /// Creates a new R1CS with remapped column indices (witness indices).
     /// Row indices (constraints) remain unchanged.
-    pub fn remap_r1cs(&self, r1cs: R1CS) -> R1CS {
+    pub fn remap_r1cs(&self, r1cs: R1CS<FieldElement>) -> R1CS<FieldElement> {
         assert!(
             self.num_real > 0,
             "Cannot remap R1CS with a builder-only remapper (from_map). num_real is 0 — this \
              would set all matrix dimensions to 0."
         );
-        let mut new_r1cs = R1CS::new();
+        let mut new_r1cs = R1CS::<FieldElement>::new();
         new_r1cs.num_public_inputs = r1cs.num_public_inputs;
         new_r1cs.num_virtual = r1cs.num_virtual;
         new_r1cs.interner = r1cs.interner;

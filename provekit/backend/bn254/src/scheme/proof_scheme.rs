@@ -1,6 +1,6 @@
 use {
     crate::{
-        witness::SplitWitnessBuilders, Bn254Field, MavrosSchemeData, NoirElement,
+        witness::SplitWitnessBuilders, Bn254Field, FieldElement, MavrosSchemeData, NoirElement,
         NoirWitnessGenerator,
     },
     acir::circuit::Program,
@@ -11,7 +11,7 @@ use {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NoirSchemeData {
     pub program:                Program<NoirElement>,
-    pub r1cs:                   R1CS,
+    pub r1cs:                   R1CS<FieldElement>,
     pub split_witness_builders: SplitWitnessBuilders,
     pub witness_generator:      NoirWitnessGenerator,
     pub whir_for_witness:       WhirR1CSScheme<Bn254Field>,
@@ -29,7 +29,7 @@ pub enum NoirProofScheme {
 
 impl NoirProofScheme {
     #[must_use]
-    pub fn r1cs(&self) -> &R1CS {
+    pub fn r1cs(&self) -> &R1CS<FieldElement> {
         match self {
             NoirProofScheme::Noir(d) => &d.r1cs,
             NoirProofScheme::Mavros(d) => &d.r1cs,

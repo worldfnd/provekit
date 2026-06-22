@@ -3,7 +3,7 @@ pub use self::wasm_stubs::{ConstraintsLayout, WitnessLayout};
 #[cfg(not(target_arch = "wasm32"))]
 pub use mavros_vm::{ConstraintsLayout, WitnessLayout};
 use {
-    crate::Bn254Field,
+    crate::{Bn254Field, FieldElement},
     noirc_abi::Abi,
     provekit_common::{HashConfig, WhirR1CSScheme, R1CS},
     serde::{Deserialize, Serialize},
@@ -27,7 +27,7 @@ pub struct MavrosSchemeData {
     #[serde(with = "provekit_common::utils::serde_jsonify")]
     pub abi:                Abi,
     pub num_public_inputs:  usize,
-    pub r1cs:               R1CS,
+    pub r1cs:               R1CS<FieldElement>,
     pub whir_for_witness:   WhirR1CSScheme<Bn254Field>,
     pub witgen_binary:      Vec<u64>,
     pub ad_binary:          Vec<u64>,

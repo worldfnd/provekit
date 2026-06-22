@@ -1,5 +1,5 @@
 use {
-    crate::{utils::serde_ark, FieldElement},
+    crate::utils::serde_ark,
     ark_ff::Field,
     serde::{Deserialize, Serialize},
     std::collections::HashMap,
@@ -7,7 +7,7 @@ use {
 
 #[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct Interner<F: Field = FieldElement> {
+pub struct Interner<F: Field> {
     #[serde(with = "serde_ark")]
     values: Vec<F>,
     /// Reverse index: `F` → its position in `values`. Kept in sync

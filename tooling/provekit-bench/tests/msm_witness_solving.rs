@@ -16,9 +16,8 @@ use {
     provekit_backend_bn254::{
         ec_scalar_mul, solve_witness_vec,
         witness::{ConstantOrR1CSWitness, LayerScheduler, WitnessBuilder},
-        NoirElement, TranscriptSponge,
+        FieldElement, NoirElement, TranscriptSponge,
     },
-    provekit_common::FieldElement,
     provekit_r1cs_compiler::{
         msm::{
             add_msm_with_curve,
@@ -53,7 +52,7 @@ fn split_scalar(s: &[u64; 4]) -> ([u64; 4], [u64; 4]) {
 
 /// Verify R1CS satisfaction: for each constraint row, A·w * B·w == C·w.
 fn check_r1cs_satisfaction(
-    r1cs: &provekit_common::R1CS,
+    r1cs: &provekit_common::R1CS<FieldElement>,
     witness: &[FieldElement],
 ) -> anyhow::Result<()> {
     use anyhow::ensure;

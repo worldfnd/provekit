@@ -6,8 +6,10 @@ use {
     },
     ark_ff::PrimeField,
     ark_std::One,
-    provekit_backend_bn254::witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
-    provekit_common::FieldElement,
+    provekit_backend_bn254::{
+        witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
+        FieldElement,
+    },
     std::{
         collections::{BTreeMap, BTreeSet, HashMap},
         ops::Neg,
@@ -490,7 +492,10 @@ mod tests {
     use {super::*, crate::digits::add_digital_decomposition};
 
     /// Check R1CS satisfaction: for every constraint row, (A·w)*(B·w) == C·w.
-    fn constraints_satisfied(r1cs: &provekit_common::R1CS, witness: &[FieldElement]) -> bool {
+    fn constraints_satisfied(
+        r1cs: &provekit_common::R1CS<FieldElement>,
+        witness: &[FieldElement],
+    ) -> bool {
         let a = r1cs.a() * witness;
         let b = r1cs.b() * witness;
         let c = r1cs.c() * witness;

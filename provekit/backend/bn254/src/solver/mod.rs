@@ -155,7 +155,7 @@ pub fn solve_witness_vec(
 }
 
 #[cfg(test)]
-impl R1CSSolver for R1CS {
+impl R1CSSolver for R1CS<FieldElement> {
     // Tests R1CS Witness satisfaction given the constraints provided by the
     // R1CS Matrices.
     #[instrument(skip_all, fields(size = witness.len()))]
