@@ -2,8 +2,7 @@
 //! plus the bn254-welded Noir/Mavros frontend: scheme types, the prove/verify
 //! glue and witness solver, file-format glue, and the Noir↔native field bridge.
 
-mod bigint_mod;
-mod ec_arith;
+mod fe_convert;
 #[cfg(not(target_arch = "wasm32"))]
 mod file_format;
 #[cfg(not(target_arch = "wasm32"))]
@@ -21,12 +20,11 @@ mod witness_generator;
 
 pub use {
     acir::FieldElement as NoirElement,
-    ec_arith::ec_scalar_mul,
     mavros::{MavrosProver, MavrosSchemeData},
     noir_proof_scheme::{NoirProofScheme, NoirSchemeData},
     print_abi::PrintAbi,
     prove::Prove,
-    provekit_common::{Bn254Field, ProvekitProof},
+    provekit_common::{ec_arith::ec_scalar_mul, Bn254Field, ProvekitProof},
     prover::{NoirProver, Prover},
     r1cs::solve_witness_vec,
     verifier::Verifier,

@@ -1,14 +1,6 @@
 use {
     crate::{
-        bigint_mod::{
-            add_4limb, bigint_to_fe, cmp_4limb, compute_mul_mod_carries, decompose_to_u128_limbs,
-            divmod, divmod_wide, fe_to_bigint, half_gcd, mod_pow, mul_mod, reconstruct_from_halves,
-            signed_quotient_wide, sub_u64, to_i128_limbs, widening_mul,
-        },
-        ec_arith::{
-            compute_ec_verification_carries, ec_point_add_with_lambda, ec_point_double_with_lambda,
-            ec_scalar_mul,
-        },
+        fe_convert::{bigint_to_fe, fe_to_bigint},
         noir_to_native,
         witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
         NoirElement,
@@ -18,6 +10,15 @@ use {
     ark_ff::{BigInteger, Field, PrimeField},
     ark_std::Zero,
     provekit_common::{
+        bigint_mod::{
+            add_4limb, cmp_4limb, compute_mul_mod_carries, decompose_to_u128_limbs, divmod,
+            divmod_wide, half_gcd, mod_pow, mul_mod, reconstruct_from_halves, signed_quotient_wide,
+            sub_u64, to_i128_limbs, widening_mul,
+        },
+        ec_arith::{
+            compute_ec_verification_carries, ec_point_add_with_lambda, ec_point_double_with_lambda,
+            ec_scalar_mul,
+        },
         witness::{
             compute_spread, ConstantOrR1CSWitness, ConstantTerm, NonNativeEcOp, ProductLinearTerm,
             SumTerm, WitnessBuilder, WitnessCoefficient,

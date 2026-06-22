@@ -1,17 +1,13 @@
-// Re-export shared 256-bit arithmetic from provekit_common.
-// Names are aliased where the prover's historical API differs.
-use provekit_common::u256_arith::ceil_log2;
-pub(crate) use provekit_common::u256_arith::{mod_mul as mul_mod, mod_pow, widening_mul};
+// Re-export shared 256-bit arithmetic from the sibling u256_arith module.
+// Names are aliased where the historical API differs.
+use crate::u256_arith::ceil_log2;
+pub use crate::u256_arith::{mod_mul as mul_mod, mod_pow, widening_mul};
 /// BigInteger modular arithmetic on [u64; 4] limbs (256-bit).
 ///
 /// These helpers compute modular inverse via Fermat's little theorem:
 /// a^{-1} = a^{m-2} mod m, using schoolbook multiplication and
 /// square-and-multiply exponentiation.
-use {
-    ark_ff::PrimeField,
-    num_bigint::{BigInt, Sign},
-    provekit_common::FieldElement,
-};
+use num_bigint::{BigInt, Sign};
 
 /// Compare 8-limb value with 4-limb value (zero-extended to 8 limbs).
 /// Returns Ordering::Greater if wide > narrow, etc.
@@ -531,17 +527,6 @@ fn mul_mod_no_reduce(a: &[u64; 4], b: &[u64; 4]) -> [u64; 4] {
 // Conversion helpers
 // ---------------------------------------------------------------------------
 
-/// Convert a `[u64; 4]` bigint to a `FieldElement`.
-pub fn bigint_to_fe(val: &[u64; 4]) -> FieldElement {
-    FieldElement::from_bigint(ark_ff::BigInt(*val))
-        .expect("bigint value exceeds BN254 field modulus")
-}
-
-/// Read a `FieldElement` witness as a `[u64; 4]` bigint.
-pub fn fe_to_bigint(fe: FieldElement) -> [u64; 4] {
-    fe.into_bigint().0
-}
-
 /// Reconstruct a 256-bit scalar from two 128-bit halves: `scalar = lo + hi *
 /// 2^128`.
 pub fn reconstruct_from_halves(lo: &[u64; 4], hi: &[u64; 4]) -> [u64; 4] {
@@ -631,7 +616,7 @@ mod tests {
 
     #[test]
     fn test_reduce_wide_no_reduction() {
-        use provekit_common::u256_arith::reduce_wide;
+        use crate::u256_arith::reduce_wide;
         // 5 mod 7 = 5
         let wide = [5, 0, 0, 0, 0, 0, 0, 0];
         let modulus = [7, 0, 0, 0];
@@ -640,7 +625,7 @@ mod tests {
 
     #[test]
     fn test_reduce_wide_basic() {
-        use provekit_common::u256_arith::reduce_wide;
+        use crate::u256_arith::reduce_wide;
         // 10 mod 7 = 3
         let wide = [10, 0, 0, 0, 0, 0, 0, 0];
         let modulus = [7, 0, 0, 0];

@@ -4,7 +4,7 @@
 //! EC hints (doubling, addition, scalar multiplication) and verification
 //! carries for schoolbook column equations.
 
-use provekit_common::u256_arith::{mod_add, mod_inv as mod_inverse, mod_mul as mul_mod, mod_sub};
+use crate::u256_arith::{mod_add, mod_inv as mod_inverse, mod_mul as mul_mod, mod_sub};
 
 /// EC point doubling with lambda exposed: returns (lambda, x3, y3).
 ///
@@ -156,7 +156,7 @@ pub fn compute_ec_verification_carries(
     limb_bits: u32,
     max_coeff_sum: u64,
 ) -> Vec<u128> {
-    use {num_bigint::BigInt, provekit_common::u256_arith::ceil_log2};
+    use {crate::u256_arith::ceil_log2, num_bigint::BigInt};
 
     let w = limb_bits;
     let num_columns = 2 * n - 1;

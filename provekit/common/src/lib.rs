@@ -1,4 +1,6 @@
+pub mod bigint_mod;
 mod compress;
+pub mod ec_arith;
 pub mod file;
 pub use file::binary_format;
 pub mod field;
