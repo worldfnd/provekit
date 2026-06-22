@@ -1,17 +1,17 @@
 use {
-    crate::{NoirProof, Verifier},
+    crate::{Bn254Field, ProvekitProof, Verifier},
     anyhow::{Context, Result},
     provekit_verifier::WhirR1CSVerifier,
     tracing::instrument,
 };
 
 pub trait Verify {
-    fn verify(&mut self, proof: &NoirProof) -> Result<()>;
+    fn verify(&mut self, proof: &ProvekitProof<Bn254Field>) -> Result<()>;
 }
 
 impl Verify for Verifier {
     #[instrument(skip_all)]
-    fn verify(&mut self, proof: &NoirProof) -> Result<()> {
+    fn verify(&mut self, proof: &ProvekitProof<Bn254Field>) -> Result<()> {
         provekit_common::register_ntt();
 
         self.whir_for_witness

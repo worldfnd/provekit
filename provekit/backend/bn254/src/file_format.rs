@@ -3,7 +3,7 @@
 //! impls bind the concrete scheme types to their on-disk formats.
 
 use {
-    crate::{NoirProof, NoirProofScheme, Prover, Verifier},
+    crate::{NoirProofScheme, Prover, Verifier},
     provekit_common::{
         binary_format,
         file::{Compression, FileFormat, MaybeHashAware},
@@ -23,12 +23,6 @@ impl MaybeHashAware for Prover {
 impl MaybeHashAware for Verifier {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         Some(self.hash_config)
-    }
-}
-
-impl MaybeHashAware for NoirProof {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        None
     }
 }
 
@@ -59,12 +53,5 @@ impl FileFormat for Verifier {
     const FORMAT: [u8; 8] = binary_format::VERIFIER_FORMAT;
     const EXTENSION: &'static str = "pkv";
     const VERSION: (u16, u16) = binary_format::VERIFIER_VERSION;
-    const COMPRESSION: Compression = Compression::Zstd;
-}
-
-impl FileFormat for NoirProof {
-    const FORMAT: [u8; 8] = binary_format::NOIR_PROOF_FORMAT;
-    const EXTENSION: &'static str = "np";
-    const VERSION: (u16, u16) = binary_format::NOIR_PROOF_VERSION;
     const COMPRESSION: Compression = Compression::Zstd;
 }

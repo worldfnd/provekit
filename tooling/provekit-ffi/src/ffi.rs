@@ -10,7 +10,7 @@ use {
         utils::c_str_to_str,
     },
     noirc_abi::input_parser::Format,
-    provekit_backend_bn254::{NoirProof, Prove, Prover, Verifier, Verify},
+    provekit_backend_bn254::{Bn254Field, Prove, ProvekitProof, Prover, Verifier, Verify},
     provekit_common::{file, HashConfig},
     provekit_r1cs_compiler::NoirCompiler,
     std::{
@@ -678,7 +678,7 @@ pub unsafe extern "C" fn pk_verify(
         let result = (|| -> Result<bool, PKStatus> {
             // SAFETY: proof_ptr/proof_len validity is guaranteed by the caller.
             let proof_bytes = std::slice::from_raw_parts(proof_ptr, proof_len);
-            let proof: NoirProof = file::deserialize(proof_bytes).map_err(|e| {
+            let proof: ProvekitProof<Bn254Field> = file::deserialize(proof_bytes).map_err(|e| {
                 set_last_error(format!("{e:#}"));
                 PKStatus::SerializationError
             })?;

@@ -1,5 +1,5 @@
 use {
-    provekit_backend_bn254::NoirProof,
+    provekit_backend_bn254::{Bn254Field, ProvekitProof},
     serde::{Deserialize, Serialize},
     std::collections::HashMap,
     tracing::info,
@@ -164,7 +164,7 @@ impl VerifyRequest {
     }
 
     /// Decode the NoirProof from the JSON np field
-    pub fn decode_noir_proof(&self) -> anyhow::Result<NoirProof> {
+    pub fn decode_noir_proof(&self) -> anyhow::Result<ProvekitProof<Bn254Field>> {
         serde_json::from_value(self.np.clone()).map_err(Into::into)
     }
 

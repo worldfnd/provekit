@@ -4,9 +4,11 @@ use std::fmt::Debug;
 use whir::transcript::Interaction;
 use {
     crate::{
+        binary_format,
         field::{Base, Ext, FieldHash, ProofField},
+        file::{Compression, FileFormat, MaybeHashAware},
         utils::{bytes_to_field, field_to_bytes_le, serde_hex},
-        FieldElement, HashConfig,
+        FieldElement, HashConfig, PublicInputs,
     },
     serde::{Deserialize, Serialize},
     whir::{
@@ -124,6 +126,30 @@ pub struct WhirR1CSProof {
     #[cfg(debug_assertions)]
     #[serde(skip)]
     pub pattern: Vec<Interaction>,
+}
+
+/// A ProveKit proof: the public inputs bound to the instance plus the WHIR
+/// proof payload. Produced by any frontend (Noir, Mavros), generic over the
+/// proof field — the payload is field-agnostic bytes and the public inputs
+/// live in the base field.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(bound = "")]
+pub struct ProvekitProof<P: ProofField> {
+    pub public_inputs:   PublicInputs<Base<P>>,
+    pub whir_r1cs_proof: WhirR1CSProof,
+}
+
+impl<P: ProofField> FileFormat for ProvekitProof<P> {
+    const FORMAT: [u8; 8] = binary_format::NOIR_PROOF_FORMAT;
+    const EXTENSION: &'static str = "np";
+    const VERSION: (u16, u16) = binary_format::NOIR_PROOF_VERSION;
+    const COMPRESSION: Compression = Compression::Zstd;
+}
+
+impl<P: ProofField> MaybeHashAware for ProvekitProof<P> {
+    fn maybe_hash_config(&self) -> Option<HashConfig> {
+        None
+    }
 }
 
 #[cfg(test)]

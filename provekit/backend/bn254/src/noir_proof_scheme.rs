@@ -2,8 +2,7 @@ use {
     crate::{MavrosSchemeData, NoirElement, NoirWitnessGenerator},
     acir::circuit::Program,
     provekit_common::{
-        witness::SplitWitnessBuilders, Bn254Field, HashConfig, PublicInputs, WhirR1CSProof,
-        WhirR1CSScheme, R1CS,
+        witness::SplitWitnessBuilders, Bn254Field, HashConfig, WhirR1CSScheme, R1CS,
     },
     serde::{Deserialize, Serialize},
 };
@@ -25,12 +24,6 @@ pub struct NoirSchemeData {
 pub enum NoirProofScheme {
     Noir(NoirSchemeData),
     Mavros(MavrosSchemeData),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct NoirProof {
-    pub public_inputs:   PublicInputs,
-    pub whir_r1cs_proof: WhirR1CSProof,
 }
 
 impl NoirProofScheme {

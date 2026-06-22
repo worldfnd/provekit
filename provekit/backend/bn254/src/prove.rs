@@ -11,7 +11,7 @@ use {
     crate::{
         noir_to_native,
         r1cs::{CompressedLayers, CompressedR1CS},
-        NoirElement, NoirProof, NoirProver, Prover,
+        Bn254Field, NoirElement, NoirProver, ProvekitProof, Prover,
     },
     ::tracing::{debug, info, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
@@ -32,12 +32,15 @@ use {
 /// support `prove_with_witness` (errors at runtime).
 pub trait Prove {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
-    fn prove(self, input_map: InputMap) -> Result<NoirProof>;
+    fn prove(self, input_map: InputMap) -> Result<ProvekitProof<Bn254Field>>;
 
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
-    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof>;
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<ProvekitProof<Bn254Field>>;
 
-    fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof>;
+    fn prove_with_witness(
+        self,
+        witness: WitnessMap<NoirElement>,
+    ) -> Result<ProvekitProof<Bn254Field>>;
 }
 
 #[instrument(skip_all)]
@@ -75,14 +78,14 @@ fn generate_noir_witness(
 impl Prove for NoirProver {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
-    fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
+    fn prove(mut self, input_map: InputMap) -> Result<ProvekitProof<Bn254Field>> {
         let witness = generate_noir_witness(&mut self, input_map)?;
         self.prove_with_witness(witness)
     }
 
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
     #[instrument(skip_all)]
-    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<ProvekitProof<Bn254Field>> {
         let (input_map, _return_value) =
             read_inputs_from_file(prover_toml.as_ref(), self.witness_generator.abi())?;
         self.prove(input_map)
@@ -92,7 +95,7 @@ impl Prove for NoirProver {
     fn prove_with_witness(
         self,
         acir_witness_idx_to_value_map: WitnessMap<NoirElement>,
-    ) -> Result<NoirProof> {
+    ) -> Result<ProvekitProof<Bn254Field>> {
         provekit_common::register_ntt();
 
         let mut public_input_indices = self.program.functions[0].public_inputs().indices();
@@ -253,7 +256,7 @@ impl Prove for NoirProver {
             .prove_noir(merlin, r1cs, commitments, full_witness, &public_inputs)
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof {
+        Ok(ProvekitProof {
             public_inputs,
             whir_r1cs_proof,
         })
@@ -263,7 +266,7 @@ impl Prove for NoirProver {
 #[cfg(not(target_arch = "wasm32"))]
 impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
-    fn prove(mut self, input_map: InputMap) -> Result<NoirProof> {
+    fn prove(mut self, input_map: InputMap) -> Result<ProvekitProof<Bn254Field>> {
         provekit_common::register_ntt();
 
         let params = crate::input_utils::ordered_params_from_btreemap(&self.abi, &input_map)?;
@@ -368,7 +371,7 @@ impl Prove for MavrosProver {
             )
             .context("While proving R1CS instance")?;
 
-        Ok(NoirProof {
+        Ok(ProvekitProof {
             public_inputs,
             whir_r1cs_proof,
         })
@@ -376,7 +379,7 @@ impl Prove for MavrosProver {
 
     #[cfg(feature = "witness-generation")]
     #[instrument(skip_all)]
-    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<ProvekitProof<Bn254Field>> {
         let project_path = prover_toml
             .as_ref()
             .parent()
@@ -387,7 +390,10 @@ impl Prove for MavrosProver {
         self.prove(input_map)
     }
 
-    fn prove_with_witness(self, _witness: WitnessMap<NoirElement>) -> Result<NoirProof> {
+    fn prove_with_witness(
+        self,
+        _witness: WitnessMap<NoirElement>,
+    ) -> Result<ProvekitProof<Bn254Field>> {
         Err(anyhow::anyhow!(
             "prove_with_witness is not supported for Mavros prover"
         ))
@@ -396,7 +402,7 @@ impl Prove for MavrosProver {
 
 impl Prove for Prover {
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
-    fn prove(self, input_map: InputMap) -> Result<NoirProof> {
+    fn prove(self, input_map: InputMap) -> Result<ProvekitProof<Bn254Field>> {
         match self {
             Prover::Noir(p) => p.prove(input_map),
             Prover::Mavros(p) => p.prove(input_map),
@@ -404,14 +410,17 @@ impl Prove for Prover {
     }
 
     #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
-    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<NoirProof> {
+    fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<ProvekitProof<Bn254Field>> {
         match self {
             Prover::Noir(p) => p.prove_with_toml(prover_toml),
             Prover::Mavros(p) => p.prove_with_toml(prover_toml),
         }
     }
 
-    fn prove_with_witness(self, witness: WitnessMap<NoirElement>) -> Result<NoirProof> {
+    fn prove_with_witness(
+        self,
+        witness: WitnessMap<NoirElement>,
+    ) -> Result<ProvekitProof<Bn254Field>> {
         match self {
             Prover::Noir(p) => p.prove_with_witness(witness),
             #[cfg(not(target_arch = "wasm32"))]
