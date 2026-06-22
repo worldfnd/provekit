@@ -10,9 +10,8 @@ use {
         utils::c_str_to_str,
     },
     noirc_abi::input_parser::Format,
-    provekit_backend_bn254::{NoirProof, Prover, Verifier},
+    provekit_backend_bn254::{NoirProof, Prove, Prover, Verifier},
     provekit_common::{file, HashConfig},
-    provekit_prover::Prove,
     provekit_r1cs_compiler::NoirCompiler,
     provekit_verifier::Verify,
     std::{

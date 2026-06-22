@@ -13,12 +13,11 @@
 use {
     acir::native_types::WitnessMap,
     ark_ff::{PrimeField, Zero},
-    provekit_backend_bn254::NoirElement,
+    provekit_backend_bn254::{ec_scalar_mul, solve_witness_vec, NoirElement},
     provekit_common::{
         witness::{ConstantOrR1CSWitness, LayerScheduler, WitnessBuilder},
         FieldElement, TranscriptSponge,
     },
-    provekit_prover::{ec_scalar_mul, solve_witness_vec},
     provekit_r1cs_compiler::{
         msm::{
             add_msm_with_curve,

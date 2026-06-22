@@ -2,9 +2,8 @@ use {
     super::{util::resolve_key_path, Command},
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_backend_bn254::Prover,
+    provekit_backend_bn254::{Prove, Prover},
     provekit_common::file::{read, write},
-    provekit_prover::Prove,
     std::path::PathBuf,
     tracing::{info, instrument},
 };

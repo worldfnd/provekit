@@ -11,8 +11,7 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
-provekit-backend-bn254.workspace = true
-provekit-prover = { workspace = true, features = ["witness-generation", "parallel"] }
+provekit-backend-bn254 = { workspace = true, features = ["witness-generation", "parallel"] }
 provekit-r1cs-compiler.workspace = true
 provekit-verifier.workspace = true
 

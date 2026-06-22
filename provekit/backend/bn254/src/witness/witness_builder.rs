@@ -9,13 +9,14 @@ use {
             compute_ec_verification_carries, ec_point_add_with_lambda, ec_point_double_with_lambda,
             ec_scalar_mul,
         },
+        noir_to_native,
         witness::{digits::DigitalDecompositionWitnessesSolver, ram::SpiceWitnessesSolver},
+        NoirElement,
     },
     acir::native_types::WitnessMap,
     anyhow::{ensure, Result},
     ark_ff::{BigInteger, Field, PrimeField},
     ark_std::Zero,
-    provekit_backend_bn254::{noir_to_native, NoirElement},
     provekit_common::{
         witness::{
             compute_spread, ConstantOrR1CSWitness, ConstantTerm, NonNativeEcOp, ProductLinearTerm,

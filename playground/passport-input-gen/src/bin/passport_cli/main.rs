@@ -23,7 +23,7 @@ use {
         MerkleAge720Inputs, MerkleAgeBaseConfig, PassportReader,
     },
     profiling_alloc::ProfilingAllocator,
-    provekit_prover::Prove,
+    provekit_backend_bn254::Prove,
     rsa::{pkcs8::DecodePrivateKey, RsaPrivateKey, RsaPublicKey},
     span_stats::SpanStats,
     std::{

@@ -1,9 +1,8 @@
 use {
-    crate::witness::witness_builder::WitnessBuilderSolver,
+    crate::{witness::witness_builder::WitnessBuilderSolver, NoirElement},
     ::tracing::instrument,
     acir::native_types::WitnessMap,
     anyhow::{Context, Result},
-    provekit_backend_bn254::NoirElement,
     provekit_common::{
         utils::batch_inverse_montgomery,
         witness::{LayerType, LayeredWitnessBuilders, WitnessBuilder},

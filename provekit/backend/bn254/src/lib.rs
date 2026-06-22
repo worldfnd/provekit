@@ -1,22 +1,33 @@
 //! BN254 instantiation of the ProveKit spine (`Identity<Fr>`, base == ext),
-//! plus the bn254-welded Noir/Mavros frontend: scheme types, file-format glue,
-//! and the Noir↔native field bridge.
+//! plus the bn254-welded Noir/Mavros frontend: scheme types, the prove glue
+//! and witness solver, file-format glue, and the Noir↔native field bridge.
 
+mod bigint_mod;
+mod ec_arith;
 #[cfg(not(target_arch = "wasm32"))]
 mod file_format;
+#[cfg(not(target_arch = "wasm32"))]
+mod input_utils;
+mod logging;
 mod mavros;
 mod noir_proof_scheme;
 mod print_abi;
+mod prove;
 mod prover;
+mod r1cs;
 mod verifier;
+mod witness;
 mod witness_generator;
 
 pub use {
     acir::FieldElement as NoirElement,
+    ec_arith::ec_scalar_mul,
     mavros::{MavrosProver, MavrosSchemeData},
     noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
     print_abi::PrintAbi,
+    prove::Prove,
     prover::{NoirProver, Prover},
+    r1cs::solve_witness_vec,
     verifier::Verifier,
     witness_generator::NoirWitnessGenerator,
 };
