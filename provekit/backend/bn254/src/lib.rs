@@ -8,7 +8,6 @@ mod ec_arith;
 mod file_format;
 #[cfg(not(target_arch = "wasm32"))]
 mod input_utils;
-mod logging;
 mod mavros;
 mod noir_proof_scheme;
 mod print_abi;

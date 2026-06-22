@@ -8,15 +8,14 @@ use {
     whir::transcript::VerifierMessage,
 };
 use {
-    crate::{
-        noir_to_native,
-        r1cs::{CompressedLayers, CompressedR1CS},
-        Bn254Field, NoirElement, NoirProver, ProvekitProof, Prover,
-    },
+    crate::{noir_to_native, Bn254Field, NoirElement, NoirProver, ProvekitProof, Prover},
     ::tracing::{debug, info, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
-    provekit_common::{FieldElement, PublicInputs, TranscriptSponge},
+    provekit_common::{
+        log_commit_input, CompressedLayers, CompressedR1CS, FieldElement, PublicInputs,
+        TranscriptSponge,
+    },
     provekit_prover::WhirR1CSProver,
     std::mem::{size_of, take},
     whir::transcript::ProverState,
@@ -178,7 +177,7 @@ impl Prove for NoirProver {
                 .collect::<Result<Vec<_>>>()?
         };
 
-        crate::logging::log_commit_input("noir_w1", &w1, self.whir_for_witness.domain_size());
+        log_commit_input("noir_w1", &w1, self.whir_for_witness.domain_size());
         let commitment_1 = self
             .whir_for_witness
             .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
@@ -216,7 +215,7 @@ impl Prove for NoirProver {
                     .collect::<Result<Vec<_>>>()?
             };
 
-            crate::logging::log_commit_input("noir_w2", &w2, self.whir_for_witness.domain_size());
+            log_commit_input("noir_w2", &w2, self.whir_for_witness.domain_size());
             let commitment_2 = self
                 .whir_for_witness
                 .commit(&mut merlin, num_witnesses, num_constraints, w2, false)
@@ -301,7 +300,7 @@ impl Prove for MavrosProver {
         );
 
         let w1 = phase1.out_wit_pre_comm.clone();
-        crate::logging::log_commit_input(
+        log_commit_input(
             "mavros_w1_pre_commitment",
             &w1,
             self.whir_for_witness.domain_size(),
@@ -331,7 +330,7 @@ impl Prove for MavrosProver {
 
             let mut witgen_result = witgen_result;
             let w2 = take(&mut witgen_result.out_wit_post_comm);
-            crate::logging::log_commit_input(
+            log_commit_input(
                 "mavros_w2_post_commitment",
                 &w2,
                 self.whir_for_witness.domain_size(),

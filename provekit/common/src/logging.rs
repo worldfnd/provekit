@@ -1,10 +1,10 @@
 use {
     ::tracing::{debug, enabled, Level},
-    ark_std::Zero,
-    provekit_common::FieldElement,
+    ark_ff::Field,
 };
 
-pub(crate) fn log_commit_input(label: &str, values: &[FieldElement], scheme_domain_len: usize) {
+/// Log nonzero-density statistics for a WHIR commit input (debug level only).
+pub fn log_commit_input<F: Field>(label: &str, values: &[F], scheme_domain_len: usize) {
     if !enabled!(Level::DEBUG) {
         return;
     }

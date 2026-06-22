@@ -1,8 +1,10 @@
+mod compress;
 pub mod file;
 pub use file::binary_format;
 pub mod field;
 pub mod hash_config;
 mod interner;
+mod logging;
 pub mod ntt;
 pub mod optimize;
 pub mod poseidon2;
@@ -27,8 +29,10 @@ pub use {
     // spine. The compiler flags each site, so those defaults need no individual
     // markers.
     ark_bn254::Fr as FieldElement,
+    compress::{CompressedLayers, CompressedR1CS},
     field::{Base, Ext, FieldHash, ProofField},
     hash_config::HashConfig,
+    logging::log_commit_input,
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
     r1cs::R1CS,
     transcript_sponge::TranscriptSponge,
