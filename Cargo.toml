@@ -13,6 +13,7 @@ members = [
   "provekit/verifier",
   "tooling/cli",
   "tooling/provekit-bench",
+  "tooling/provekit-fixtures",
   "tooling/provekit-ffi",
   "tooling/provekit-gnark",
   "tooling/provekit-wasm",
