@@ -4403,6 +4403,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "provekit-backend-goldilocks"
+version = "1.0.0"
+dependencies = [
+ "ark-ff",
+ "ark-serialize",
+ "blake3",
+ "provekit-common",
+ "sha2 0.10.9",
+ "sha3",
+ "spongefish",
+ "whir",
+]
+
+[[package]]
 name = "provekit-bench"
 version = "1.0.0"
 dependencies = [
@@ -4501,6 +4515,7 @@ dependencies = [
  "ark-ff",
  "ark-std",
  "provekit-backend-bn254",
+ "provekit-backend-goldilocks",
  "provekit-common",
  "provekit-prover",
  "provekit-verifier",
