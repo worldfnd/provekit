@@ -104,7 +104,8 @@ where
 
         // Pre-v3 WHIR ZK commits over a single field (`whir_zk::Config`
         // hardcodes `Identity<Ext>`), so lift the base witness to the
-        // extension. The lift is a zero-cost identity for bn254.
+        // extension. The lift is a no-op whenever base == ext (the `Identity`
+        // embedding), as today for both bn254 and goldilocks.
         // TODO(base-commit): drop this lift once zkWHIR v3 (`Basefield`) lets
         // the ZK path commit base-field elements directly (V-stage).
         let embedding = <P::Embedding>::default();
@@ -150,7 +151,8 @@ where
         drop(full_witness);
 
         // Witness bounds are computed in the base field; lift them to the
-        // extension for the sumcheck (zero-cost identity for bn254).
+        // extension for the sumcheck (a no-op under the `Identity` embedding,
+        // where base == ext).
         let embedding = <P::Embedding>::default();
         let (a, b, c) = (
             embedding.map_vec(a),

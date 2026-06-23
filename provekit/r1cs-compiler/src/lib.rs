@@ -18,5 +18,5 @@ pub use {
     noir_proof_scheme::{MavrosCompiler, NoirCompiler},
     noir_to_r1cs::{noir_to_r1cs, noir_to_r1cs_with_breakdown, R1CSBreakdown},
     optimize::{optimize_r1cs, OptimizationStats},
-    whir_r1cs::WhirR1CSSchemeBuilder,
+    whir_r1cs::MavrosSchemeBuilder,
 };

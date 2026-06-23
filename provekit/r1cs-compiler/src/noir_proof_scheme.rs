@@ -1,6 +1,6 @@
 use {
     crate::{
-        noir_to_r1cs, whir_r1cs::WhirR1CSSchemeBuilder,
+        noir_to_r1cs, whir_r1cs::MavrosSchemeBuilder,
         witness_generator::NoirWitnessGeneratorBuilder,
     },
     anyhow::{ensure, Context as _, Result},
@@ -8,7 +8,7 @@ use {
     noirc_abi::AbiVisibility,
     noirc_artifacts::program::ProgramArtifact,
     provekit_backend_bn254::{
-        witness::WitnessBuilder, MavrosSchemeData, NoirProofScheme, NoirSchemeData,
+        witness::WitnessBuilder, Bn254Field, MavrosSchemeData, NoirProofScheme, NoirSchemeData,
         NoirWitnessGenerator, PrintAbi,
     },
     provekit_common::WhirR1CSScheme,
@@ -156,7 +156,7 @@ impl NoirCompiler {
         let witness_generator =
             NoirWitnessGenerator::new(&program, remapped_witness_map, num_real + num_virtual);
 
-        let whir_for_witness = WhirR1CSScheme::new_for_r1cs(
+        let whir_for_witness = WhirR1CSScheme::<Bn254Field>::new_for_r1cs(
             &remapped_r1cs,
             split_witness_builders.w1_size,
             num_challenges,
@@ -229,7 +229,7 @@ impl MavrosCompiler {
         let challenge_offsets: Vec<usize> = (0..challenges_size).collect();
         let r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs);
 
-        let mut whir_for_witness = WhirR1CSScheme::new_from_mavros_r1cs(
+        let mut whir_for_witness = WhirR1CSScheme::<Bn254Field>::new_from_mavros_r1cs(
             &mavros_r1cs,
             mavros_r1cs.witness_layout.pre_commitment_size(),
             challenges_size,
