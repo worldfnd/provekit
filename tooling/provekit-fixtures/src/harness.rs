@@ -11,7 +11,7 @@ use {
     ark_std::rand::distributions::{Distribution, Standard},
     provekit_common::{
         Base, Ext, FieldHash, HashConfig, PublicInputs, PublicInputsHash, WhirR1CSProof,
-        R1CS, WhirR1CSScheme,
+        WhirR1CSScheme, R1CS,
     },
     provekit_prover::WhirR1CSProver,
     provekit_verifier::WhirR1CSVerifier,
@@ -101,7 +101,8 @@ where
 {
     ensure!(
         w1_size <= r1cs.num_witnesses() && r1cs.num_witnesses() <= full_witness.len(),
-        "witness too short for the split: w1_size={w1_size}, num_witnesses={}, full_witness.len()={}",
+        "witness too short for the split: w1_size={w1_size}, num_witnesses={}, \
+         full_witness.len()={}",
         r1cs.num_witnesses(),
         full_witness.len(),
     );
