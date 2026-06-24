@@ -128,6 +128,8 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme<Bn254Field> {
     ) -> Self {
         let num_witnesses = r1cs.witness_layout.size();
         let num_constraints = r1cs.constraints.len();
+        println!("num_witnesses: {}", num_witnesses);
+        println!("num_constraints: {}", num_constraints);
         let a_num_entries: usize = r1cs.constraints.iter().map(|c| c.a.len()).sum();
 
         Self::new_from_dimensions(
