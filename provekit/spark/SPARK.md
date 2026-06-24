@@ -7,9 +7,9 @@ Reference for this implementation
 ## Proposed prototype workflow
 1. Provekit prepare step
     - Compiles the circuit and writes the prover/verifier artifacts (`.pkp`, `.pkv`).
-    - With `--spark`, also runs SPARK preprocessing once and writes both the
-      SPARK setup transcript for the verifier (`.spc`) and the bundled SPARK
-      prover context containing the matrix, witnesses and setup (`.spctx`).
+    - With `--spark`, also runs SPARK preprocessing once: the SPARK setup is
+      folded into the verifier key (`.pkv`) and the bundled SPARK prover
+      context (matrix, witnesses, setup) is written to `.spctx`.
 
 2. Provekit prove step
     - Runs the provekit prover and obtains the Noir proof plus the deferred
@@ -72,21 +72,22 @@ cargo build --release --bin provekit-cli
 cd noir-examples/noir-passport-monolithic/complete_age_check
 nargo compile
 
-# 1. Prepare the circuit (compiles and writes prover/verifier artifacts plus
-#    the SPARK setup transcript and the bundled SPARK prover context).
+
+# 1. Prepare the circuit (compiles and writes prover/verifier artifacts; the
+#    SPARK setup is folded into the .pkv, and the bundled SPARK prover context
+#    is written to .spctx).
 cargo run --release --bin provekit-cli -- prepare ./target/complete_age_check.json \
-  --pkp ./benchmark-inputs/complete-age-check.pkp \
-  --pkv ./benchmark-inputs/complete-age-check.pkv \
+  --pkp ./spark-artifacts/complete-age-check.pkp \
+  --pkv ./spark-artifacts/complete-age-check.pkv \
   --spark \
-  --spc ./benchmark-inputs/complete-age-check.spc \
-  --spctx ./benchmark-inputs/complete-age-check.spctx
+  --spctx ./spark-artifacts/complete-age-check.spctx
 
 # 2. Prove (generates Noir proof + writes SPARK queries to disk).
 #    `--produce-spark-query` is required, otherwise no queries are written.
 cargo run --release --bin provekit-cli -- prove \
-  -p ./benchmark-inputs/complete-age-check.pkp \
+  -p ./spark-artifacts/complete-age-check.pkp \
   -i ./Prover.toml \
-  -o ./benchmark-inputs/complete-age-check-proof.np \
+  -o ./spark-artifacts/complete-age-check-proof.np \
   --spark-queries-dir ./spark_proofs \
   --produce-spark-query
 
@@ -94,28 +95,28 @@ cargo run --release --bin provekit-cli -- prove \
 #    The prover reads all `spark_query_*.json` files in --spark-dir plus the
 #    SPARK prover context from --spctx, batches the queries, and writes a
 #    single ./spark_proofs/spark_proof.sp.
-cargo run --release --bin provekit-cli -- prove-spark ./benchmark-inputs/complete-age-check.pkp \
+cargo run --release --bin provekit-cli -- prove-spark ./spark-artifacts/complete-age-check.pkp \
   --spark-dir ./spark_proofs \
-  --spctx ./benchmark-inputs/complete-age-check.spctx
+  --spctx ./spark-artifacts/complete-age-check.spctx
 
 # 4. Natively verify the Noir proof. Native verification evaluates MLE directly. Spark proofs are useful only in the recursive verifier.
 cargo run --release --bin provekit-cli -- verify \
-  -v ./benchmark-inputs/complete-age-check.pkv \
-  --proof ./benchmark-inputs/complete-age-check-proof.np
+  -v ./spark-artifacts/complete-age-check.pkv \
+  --proof ./spark-artifacts/complete-age-check-proof.np
 
-# 5. Verify the batched SPARK proof. Pass every query that the prover saw, in
-#    index order (`_0`, `_1`, ...). The order matters because the transcript
-#    instance is bound to the postcard-serialized query slice.
+# 5. Verify the batched SPARK proof. The verifier pulls the SPARK setup from
+#    the trusted .pkv. Pass every query that the prover saw, in index order
+#    (`_0`, `_1`, ...) — the transcript instance is bound to the postcard-
+#    serialized query slice, so order matters.
 cargo run --release --bin provekit-cli -- verify-spark \
   ./spark_proofs/spark_proof.sp \
-  ./benchmark-inputs/complete-age-check.spc \
-  ./spark_proofs/spark_query_0.json \
-  ./spark_proofs/spark_query_1.json
+  ./spark-artifacts/complete-age-check.pkv \
+  ./spark_proofs/spark_queries.json \
 
 # Or, equivalently, with a glob (single-digit indices sort lexically):
 # cargo run --release --bin provekit-cli -- verify-spark \
 #   ./spark_proofs/spark_proof.sp \
-#   ./benchmark-inputs/complete-age-check.spc \
+#   ./spark-artifacts/complete-age-check.pkv \
 #   ./spark_proofs/spark_query_*.json
 
 # TODO: 6. Recursively verify the Noir proof and SPARK.

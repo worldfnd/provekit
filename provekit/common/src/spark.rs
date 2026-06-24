@@ -1,8 +1,3 @@
-#[cfg(not(target_arch = "wasm32"))]
-use crate::file::{
-    binary_format::{SPARK_SETUP_FORMAT, SPARK_SETUP_VERSION},
-    Compression, FileFormat, MaybeHashAware,
-};
 use {
     crate::{utils::serde_ark, FieldElement, HashConfig, WhirConfig, WhirR1CSProof},
     anyhow::{Context, Result},
@@ -76,17 +71,3 @@ pub struct SparkSetup {
     pub hash_config:       HashConfig,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
-impl FileFormat for SparkSetup {
-    const FORMAT: [u8; 8] = SPARK_SETUP_FORMAT;
-    const EXTENSION: &'static str = "spc";
-    const VERSION: (u16, u16) = SPARK_SETUP_VERSION;
-    const COMPRESSION: Compression = Compression::Zstd;
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-impl MaybeHashAware for SparkSetup {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        None
-    }
-}
