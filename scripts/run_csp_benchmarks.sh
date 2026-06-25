@@ -13,6 +13,8 @@
 #   BENCH_RUNS       Iterations to average (default: 3)
 #   TEST_FILTER      Regex on circuit name
 #   MAX_TESTS        Cap on circuits (0 = unlimited)
+#   REQUIRED_NARGO_VERSION
+#                   Nargo version string to require (default: 1.0.0-beta.20)
 #
 # Output: BENCH_DIR/results.csv with one row per circuit:
 #   circuit,num_constraints,num_witnesses,prover_time_ms,prover_peak_rss_kb,
@@ -31,6 +33,7 @@ BENCH_DIR="${BENCH_DIR:-${REPO_ROOT}/csp-bench-logs}"
 BENCH_RUNS="${BENCH_RUNS:-3}"
 TEST_FILTER="${TEST_FILTER:-}"
 MAX_TESTS="${MAX_TESTS:-0}"
+REQUIRED_NARGO_VERSION="${REQUIRED_NARGO_VERSION:-1.0.0-beta.20}"
 
 if [[ "${BENCH_DIR}" != /* ]]; then
   BENCH_DIR="${REPO_ROOT}/${BENCH_DIR}"
@@ -52,6 +55,14 @@ if ! command -v nargo >/dev/null 2>&1; then
   exit 1
 fi
 
+nargo_version="$(nargo --version)"
+if [[ "${nargo_version}" != *"${REQUIRED_NARGO_VERSION}"* ]]; then
+  echo "ERROR: unsupported nargo version: ${nargo_version}" >&2
+  echo "Expected version containing: ${REQUIRED_NARGO_VERSION}" >&2
+  echo "Switch with: noirup --version v${REQUIRED_NARGO_VERSION}" >&2
+  exit 1
+fi
+
 if ! python3 -c "import tomllib" 2>/dev/null; then
   echo "ERROR: python3.11+ is required (tomllib not found)." >&2
   echo "Current: $(python3 --version 2>&1)" >&2
@@ -62,7 +73,7 @@ fi
 # builtin so users may need `gtime` from `brew install gnu-time`. CI runs on
 # ubuntu-24.04-arm where /usr/bin/time is GNU.
 TIME_BIN=""
-if [[ -x /usr/bin/time ]]; then
+if [[ -x /usr/bin/time ]] && /usr/bin/time -f '%e %M' -o /dev/null true >/dev/null 2>&1; then
   TIME_BIN=/usr/bin/time
 elif command -v gtime >/dev/null 2>&1; then
   TIME_BIN="$(command -v gtime)"
