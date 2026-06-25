@@ -1,0 +1,46 @@
+---
+title: Project status and versioning
+description: Branch policy, artifact compatibility, and integration maturity for ProveKit.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+ProveKit is under active development. Code, proof and key formats, recursive-verifier inputs, and integration APIs are branch-scoped unless a release note explicitly says otherwise.
+
+<Aside type="caution" title="Record provenance before sharing artifacts">
+Before sharing `.pkp`, `.pkv`, proof, or recursive-verifier artifacts, capture the branch, commit, lockfile, toolchain, hash choice, and full command line used to produce them.
+</Aside>
+
+## Branch policy
+
+| Branch | Audience | Status |
+| :--- | :--- | :--- |
+| `v1` | Users who need a stable interface today. | **Stable and audited.** Supports Noir `v1.0.0-beta.11`. |
+| `main` | Contributors and early adopters. | May include breaking changes to proof, key, recursive-verifier, or API formats between commits. |
+
+Use `v1` when reproducibility matters more than testing the newest implementation. Use `main` only when you are prepared to regenerate artifacts and adapt to source-level changes.
+
+## Artifact compatibility
+
+Do not assume compatibility across branches or commits unless a release note states the formats are unchanged.
+
+Regenerate every affected artifact after changing any of:
+
+- Git branch, commit, `Cargo.lock`, or Noir compiler version.
+- Noir circuit source, package selection, or workspace layout.
+- `prepare --hash` value.
+- Prover inputs (regenerate the proof, not the keys).
+- Recursive-verifier export settings or the proof/verifier pair.
+
+## Integration status
+
+| Path | Status | Compatibility notes |
+| :--- | :--- | :--- |
+| CLI `prepare` / `prove` / `verify` | Primary local workflow. | Defaults are package-derived; use explicit paths in CI and production. |
+| Rust crates | Direct integration for Rust services and tests; published to [docs.rs](https://docs.rs/provekit-common). | API names and proof/key types may move while `main` evolves. |
+| WASM bindings | Active browser/JavaScript path. | Provers are consumed after one proof; `getCircuit()` is available for Noir provers. |
+| FFI bindings | Active mobile/native host path. | Hosts must manage initialization, allocator configuration, and buffer ownership. |
+| Verifier server | Active HTTP verification path. | Requires reachable HTTP/HTTPS artifact URLs and tuned request/time/concurrency limits. |
+| Recursive verifier | Active Go/gnark wrapper. | Recursive params and R1CS JSON must be regenerated with the matching verifier/proof pair. |
+
+For deployment-specific readiness, see the [Production checklist](/reference/production-checklist/).

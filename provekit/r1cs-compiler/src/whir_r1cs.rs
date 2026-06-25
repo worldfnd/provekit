@@ -159,10 +159,14 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
             "num_challenges ({num_challenges}) != challenge_offsets.len() ({})",
             challenge_offsets.len()
         );
-        let m_raw = next_power_of_two(num_witnesses);
+        assert!(w1_size <= num_witnesses, "w1_size exceeds total witnesses");
+        let w2_size = num_witnesses - w1_size;
+
+        let m1_raw = next_power_of_two(w1_size);
+        let m2_raw = next_power_of_two(w2_size);
         let m0_raw = next_power_of_two(num_constraints);
 
-        let mut m = m_raw.max(MIN_WHIR_NUM_VARIABLES);
+        let mut m = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
         // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
@@ -188,6 +192,41 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn r1cs_with_dimensions(num_witnesses: usize, num_constraints: usize) -> R1CS {
+        let mut r1cs = R1CS::new();
+        r1cs.grow_matrices(num_constraints, num_witnesses);
+        r1cs
+    }
+
+    fn assert_dimension_builders(
+        num_witnesses: usize,
+        num_constraints: usize,
+        w1_size: usize,
+        expected_m: usize,
+        expected_m_0: usize,
+    ) {
+        let from_dimensions = WhirR1CSScheme::new_from_dimensions(
+            num_witnesses,
+            num_constraints,
+            0,
+            w1_size,
+            0,
+            vec![],
+            false,
+            HashConfig::Sha256,
+        );
+        assert_eq!(from_dimensions.m, expected_m);
+        assert_eq!(from_dimensions.m_0, expected_m_0);
+        assert_eq!(from_dimensions.w1_size, w1_size);
+
+        let r1cs = r1cs_with_dimensions(num_witnesses, num_constraints);
+        let from_r1cs =
+            WhirR1CSScheme::new_for_r1cs(&r1cs, w1_size, 0, vec![], false, HashConfig::Sha256);
+        assert_eq!(from_r1cs.m, expected_m);
+        assert_eq!(from_r1cs.m_0, expected_m_0);
+        assert_eq!(from_r1cs.w1_size, w1_size);
+    }
 
     #[test]
     fn verify_security_level() {
@@ -231,5 +270,36 @@ mod tests {
             "Blinding commitment security {sec_blinding:.2} < 128 bits at nv={}",
             MIN_WHIR_NUM_VARIABLES
         );
+    }
+
+    #[test]
+    fn mavros_dimensions_use_largest_commitment_not_total_witnesses() {
+        let scheme = WhirR1CSScheme::new_from_dimensions(
+            600_000,
+            8,
+            8,
+            300_000,
+            2,
+            vec![0, 1],
+            false,
+            HashConfig::Sha256,
+        );
+
+        assert_eq!(scheme.m, 19);
+    }
+
+    #[test]
+    fn dimension_builders_handle_empty_w2() {
+        assert_dimension_builders(64, 8, 64, MIN_WHIR_NUM_VARIABLES, 3);
+    }
+
+    #[test]
+    fn dimension_builders_handle_empty_w1() {
+        assert_dimension_builders(64, 8, 0, MIN_WHIR_NUM_VARIABLES, 3);
+    }
+
+    #[test]
+    fn dimension_builders_bump_exact_power_of_two_w1_for_blinding_room() {
+        assert_dimension_builders(12_288, 2_048, 8_192, 14, 11);
     }
 }

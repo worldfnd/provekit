@@ -1,0 +1,86 @@
+---
+title: FFI error codes
+description: Every PKError returned by the ProveKit FFI, what triggers it, and how to recover.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The ProveKit C FFI (`tooling/provekit-ffi/`) returns a `PKError` code on every function call. `PK_SUCCESS` (0) means success; any other value indicates failure. Hosts (Swift, Kotlin, Python, custom C/C++) should branch on the numeric code in production paths.
+
+The codes below are mirrored from [`provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/main/tooling/provekit-ffi/include/provekit_ffi.h).
+
+## Error code reference
+
+| Code | Constant | Description | Resolution |
+| :--- | :--- | :--- | :--- |
+| 0 | `PK_SUCCESS` | Success. | n/a |
+| 1 | `PK_INVALID_INPUT` | Null pointer or invalid argument. | Validate args; call `pk_configure_memory` before `pk_init()`. |
+| 2 | `PK_SCHEME_READ_ERROR` | Failed to read or deserialize the `.pkp` file. | Verify the path and the deployed branch. |
+| 3 | `PK_WITNESS_READ_ERROR` | Failed to read or parse the witness / input TOML. | Run `show-inputs` to confirm the expected ABI. |
+| 4 | `PK_PROOF_ERROR` | Proof generation failed inside the prover. | Reproduce with the CLI; if it also fails, inputs don't satisfy the circuit. |
+| 5 | `PK_SERIALIZATION_ERROR` | Failed to serialize the proof bytes or JSON. | Check `pk_get_memory_stats()` for allocator pressure and re-run clean. |
+| 6 | `PK_UTF8_ERROR` | A string argument wasn't valid UTF-8. | Pass valid UTF-8 null-terminated strings. |
+| 7 | `PK_FILE_WRITE_ERROR` | Failed to write an output file. | Check the output directory exists, is writable, and has free space. |
+
+<Aside type="note" title="No verify error code today">
+There is no dedicated verification error code in the current FFI surface. Verification is performed inside Rust callers of the FFI's proof outputs; verification failures surface through whichever host code wraps `Verifier::verify()`. Track [`tooling/provekit-ffi/include/provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/main/tooling/provekit-ffi/include/provekit_ffi.h) for changes, new codes may be added as the FFI surface expands.
+</Aside>
+
+## Functions that return error codes
+
+Every FFI entry point that performs work returns a `PKError` (as `int`):
+
+| Function | Purpose | Returns |
+| :--- | :--- | :--- |
+| `pk_init` | Initialize the library. Call once before any other operation. | `PK_SUCCESS` |
+| `pk_prove_to_file` | Generate a proof and write it to a file. | `PK_SUCCESS` or `PKError` |
+| `pk_prove_to_json` | Generate a proof as a JSON buffer (requires JSON support). | `PK_SUCCESS` or `PKError` |
+| `pk_configure_memory` | Configure the mmap allocator. **Must be called before `pk_init`.** | `PK_SUCCESS` or `PK_INVALID_INPUT` |
+| `pk_get_memory_stats` | Read RAM, swap, and peak memory statistics. | `PK_SUCCESS` |
+
+`pk_free_buf` and `pk_set_allocator` return `void`. For exact signatures, see [`provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/main/tooling/provekit-ffi/include/provekit_ffi.h).
+
+## Recovery patterns
+
+### Mobile: branch on the error class
+
+```swift
+let status = pk_prove_to_file(proverPath, inputPath, outputPath)
+switch status {
+case Int32(PK_SUCCESS.rawValue):
+    return .success
+case Int32(PK_SCHEME_READ_ERROR.rawValue),
+     Int32(PK_WITNESS_READ_ERROR.rawValue):
+    // Bad input, re-fetch artifacts, validate paths, retry once.
+    return .reloadArtifacts
+case Int32(PK_PROOF_ERROR.rawValue),
+     Int32(PK_SERIALIZATION_ERROR.rawValue):
+    return .failedProof
+default:
+    return .systemError
+}
+```
+
+### Server: distinguish soft and hard failures
+
+`PK_INVALID_INPUT`, `PK_WITNESS_READ_ERROR`, `PK_UTF8_ERROR` are client-shaped, the request was malformed. Return a 4xx HTTP status.
+
+`PK_PROOF_ERROR`, `PK_SERIALIZATION_ERROR`, `PK_FILE_WRITE_ERROR`, and `PK_SCHEME_READ_ERROR` are environment-shaped, your runtime is unhealthy (missing files, allocator pressure, or a real prover bug). Return a 5xx and alert.
+
+### CLI smoke test for any FFI failure
+
+When an FFI host reports an error, the fastest reproduction is the CLI:
+
+```sh
+cargo run --release --bin provekit-cli -- prove   --prover circuit.pkp --input Prover.toml
+cargo run --release --bin provekit-cli -- verify  --verifier circuit.pkv --proof proof.np
+cargo run --release --bin provekit-cli -- show-inputs --hex circuit.pkv proof.np
+```
+
+If the CLI fails the same way, the artifact set is the problem. If the CLI succeeds, the FFI host integration is.
+
+## Related pages
+
+- [Common errors](/troubleshooting/common-errors/), broader failure diagnosis across CLI, WASM, FFI, and verifier server.
+- [Integrations overview](/integrations/overview/#ffi--mobile-hosts), FFI surface and lifecycle.
+- [Production checklist](/reference/production-checklist/), FFI lifecycle controls before launch.

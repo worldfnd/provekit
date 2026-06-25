@@ -1,0 +1,50 @@
+---
+title: Security and trust model
+description: Security boundaries and operational assumptions for teams integrating ProveKit.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+This page documents integration-level security expectations. It supplements but does not replace ProveKit's audit, the formal proof-system specification, or your own production-readiness review; use it to decide where artifacts live, who may generate them, and which checks must run before accepting a proof.
+
+<Aside type="caution" title="Pin v1 for production">
+The `v1` branch is the current stable, audited release. The `main` branch is the rolling-development line and may change proof, key, or recursive-verifier formats between commits. Pin a release tag or the `v1` branch for any user-facing workflow, and walk through the [production checklist](/reference/production-checklist/) before shipping.
+</Aside>
+
+## Trust boundaries
+
+| Boundary | What crosses it | Required control |
+| :--- | :--- | :--- |
+| Circuit authoring → key preparation | Noir source, hash choice | Code review, pinned commit, reproducible command line. |
+| Key preparation → prover runtime | `.pkp` | Access control, integrity checks, recorded provenance. |
+| Prover runtime → verifier runtime | `proof.np` / proof JSON and public inputs | Verification with the matching `.pkv`; public-input review. |
+| Verifier runtime → application decision | Boolean validity plus decoded public inputs | Application-level authorization and policy checks. |
+| Recursive export → Go/gnark wrapper | `params_for_recursive_verifier`, `r1cs.json` | Regenerated from the exact verifier/proof pair; setup keys managed explicitly. |
+| Untrusted client → verifier server | `pkvUrl`, `r1csUrl`, proof JSON | Restrict artifact URL sources or proxy downloads through trusted storage; tune `VERIFIER_*` concurrency and timeout limits. |
+
+## Cryptographic assumptions
+
+ProveKit's security rests on different assumptions for the base proof and the optional recursive wrapper. Treat them separately when modeling threats.
+
+| Layer | Underlying primitives | Quantum-resistance |
+| :--- | :--- | :--- |
+| **Base WHIR proof** | Hash-based polynomial commitment scheme (WHIR) + Spartan-style sumcheck. Security reduces to the chosen hash's collision resistance. | **Post-quantum secure** under conjectured hash-function PQ-security. Grover's algorithm imposes a quadratic speedup on preimage finding, so 256-bit hashes retain ~128-bit security against quantum adversaries. |
+| **Recursive Groth16 wrap** | Pairing-based SNARK over BN254. Soundness reduces to the q-PKE (q-Power Knowledge of Exponent) assumption on pairings. | **Not post-quantum secure.** Shor's algorithm breaks discrete-log on elliptic curves; any Groth16-wrapped proof is vulnerable to a sufficiently capable quantum attacker. |
+
+If post-quantum security is part of your threat model, scope on-chain settlement carefully: verify the base WHIR proof off-chain (post-quantum secure path) rather than relying on the Groth16 outer proof for cryptographic guarantees. The wrapper is appropriate for cost-efficient EVM verification, not as a long-term cryptographic anchor.
+
+## ProveKit-specific key handling
+
+| Material | Notes |
+| :--- | :--- |
+| `.pkp` prover keys | Enable proof generation for the prepared circuit. Treat as operationally sensitive. |
+| `.pkv` verifier keys | Distributable, but always integrity-protected and pinned to a specific build. |
+| Recursive Groth16 keys | Only relevant when wrapping a WHIR proof for on-chain verification. Manage the trusted-setup proving and verifying keys explicitly; development-time generation is not sufficient for production. The base WHIR proof itself needs no trusted setup. |
+
+## Operational controls
+
+For the broader pre-launch checklist, see [Production checklist](/reference/production-checklist/). The ProveKit-specific items:
+
+- Use `provekit-cli show-inputs --hex` for byte-exact comparison of public inputs before accepting a proof.
+- Pin artifacts to a specific commit or release tag, and reject proofs whose `.pkv` / `r1cs.json` / hash configuration mismatches the expected build.
+- In the verifier server, restrict `pkvUrl` / `r1csUrl` to trusted sources (or proxy downloads through trusted storage) and tune the `VERIFIER_*` concurrency and timeout limits for your traffic profile.

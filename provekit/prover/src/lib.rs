@@ -5,14 +5,14 @@ use {
         r1cs::{CompressedLayers, CompressedR1CS},
         whir_r1cs::WhirR1CSProver,
     },
+    ::tracing::{debug, info, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{
         spark::SparkQueryBatch, utils::noir_to_native, FieldElement, NoirElement, NoirProof,
         NoirProver, Prover, PublicInputs, TranscriptSponge,
     },
-    std::mem::size_of,
-    tracing::{debug, info_span, instrument},
+    std::mem::{size_of, take},
     whir::transcript::ProverState,
 };
 #[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
@@ -30,6 +30,7 @@ pub(crate) mod bigint_mod;
 pub(crate) mod ec_arith;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod input_utils;
+mod logging;
 pub(crate) mod r1cs;
 mod whir_r1cs;
 mod witness;
@@ -179,6 +180,7 @@ fn prove_noir_inner(
             .collect::<Result<Vec<_>>>()?
     };
 
+    crate::logging::log_commit_input("noir_w1", &w1, prover.whir_for_witness.domain_size());
     let commitment_1 = prover
         .whir_for_witness
         .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
@@ -216,6 +218,7 @@ fn prove_noir_inner(
                 .collect::<Result<Vec<_>>>()?
         };
 
+        crate::logging::log_commit_input("noir_w2", &w2, prover.whir_for_witness.domain_size());
         let commitment_2 = prover
             .whir_for_witness
             .commit(&mut merlin, num_witnesses, num_constraints, w2, false)
@@ -327,6 +330,7 @@ fn prove_mavros_inner(
         prover.constraints_layout,
         &params,
     );
+    drop(prover.witgen_binary);
 
     let num_public_inputs = prover.num_public_inputs;
     let public_inputs = if num_public_inputs == 0 {
@@ -343,49 +347,68 @@ fn prove_mavros_inner(
         .instance(&instance);
     let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(prover.hash_config));
 
+    info!(
+        ?prover.witness_layout,
+        ?prover.constraints_layout,
+        scheme_domain_len = prover.whir_for_witness.domain_size(),
+        "Mavros witness layout"
+    );
+
+    let w1 = phase1.out_wit_pre_comm.clone();
+    crate::logging::log_commit_input(
+        "mavros_w1_pre_commitment",
+        &w1,
+        prover.whir_for_witness.domain_size(),
+    );
     let commitment_1 = prover
         .whir_for_witness
         .commit(
             &mut merlin,
             prover.witness_layout.size(),
             prover.constraints_layout.algebraic_size,
-            phase1.out_wit_pre_comm.clone(),
+            w1,
             true,
         )
         .context("While committing to w1")?;
 
-    let commitments = if prover.whir_for_witness.num_challenges > 0 {
+    let (commitments, witgen_result) = if prover.whir_for_witness.num_challenges > 0 {
         let challenges: Vec<FieldElement> = (0..prover.witness_layout.challenges_size)
             .map(|_| merlin.verifier_message())
             .collect();
 
-        let witgen_result = mavros_interpreter::run_phase2(
-            phase1.clone(),
+        let mut witgen_result = mavros_interpreter::run_phase2(
+            phase1,
             &challenges,
             prover.witness_layout,
             prover.constraints_layout,
         );
 
+        let w2 = take(&mut witgen_result.out_wit_post_comm);
+        crate::logging::log_commit_input(
+            "mavros_w2_post_commitment",
+            &w2,
+            prover.whir_for_witness.domain_size(),
+        );
         let commitment_2 = prover
             .whir_for_witness
             .commit(
                 &mut merlin,
                 prover.witness_layout.size(),
                 prover.constraints_layout.algebraic_size,
-                witgen_result.out_wit_post_comm.clone(),
+                w2,
                 false,
             )
             .context("While committing to w2")?;
 
-        vec![commitment_1, commitment_2]
+        (vec![commitment_1, commitment_2], witgen_result)
     } else {
-        mavros_interpreter::run_phase2(
-            phase1.clone(),
+        let witgen_result = mavros_interpreter::run_phase2(
+            phase1,
             &[],
             prover.witness_layout,
             prover.constraints_layout,
         );
-        vec![commitment_1]
+        (vec![commitment_1], witgen_result)
     };
 
     let (whir_r1cs_proof, r1cs_spark_queries) = if produce_spark_query {
@@ -393,7 +416,7 @@ fn prove_mavros_inner(
             .whir_for_witness
             .prove_mavros_with_spark(
                 merlin,
-                phase1,
+                witgen_result,
                 commitments,
                 &public_inputs,
                 prover.witness_layout,
@@ -407,7 +430,7 @@ fn prove_mavros_inner(
             .whir_for_witness
             .prove_mavros(
                 merlin,
-                phase1,
+                witgen_result,
                 commitments,
                 &public_inputs,
                 prover.witness_layout,

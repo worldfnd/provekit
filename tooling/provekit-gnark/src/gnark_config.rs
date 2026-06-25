@@ -1,6 +1,6 @@
 use {
     ark_poly::{EvaluationDomain, GeneralEvaluationDomain},
-    provekit_common::{FieldElement, PublicInputs, WhirConfig, WhirR1CSProof},
+    provekit_common::{FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme},
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
     tracing::instrument,
@@ -8,45 +8,64 @@ use {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GnarkConfig {
-    pub whir_config_witness: WHIRConfigGnark,
+    pub blinded_commitment_whir_config: WHIRConfigGnark,
+    pub blinding_commitment_whir_config: WHIRConfigGnark,
     pub log_num_constraints: usize,
-    pub log_num_variables:   usize,
-    pub log_a_num_terms:     usize,
-    pub narg_string:         Vec<u8>,
-    pub narg_string_len:     usize,
-    pub hints:               Vec<u8>,
-    pub hints_len:           usize,
-    pub num_challenges:      usize,
-    pub w1_size:             usize,
-    pub public_inputs:       PublicInputs,
+    pub log_num_variables: usize,
+    pub log_a_num_terms: usize,
+    pub narg_string: Vec<u8>,
+    pub narg_string_len: usize,
+    pub hints: Vec<u8>,
+    pub hints_len: usize,
+    pub protocol_id: Vec<u8>,
+    pub num_challenges: usize,
+    pub challenge_offsets: Vec<usize>,
+    pub w1_size: usize,
+    pub public_inputs: PublicInputs,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WHIRConfigGnark {
     /// Number of WHIR rounds.
-    pub n_rounds:               usize,
+    pub n_rounds: usize,
     /// Reed-Solomon rate (log₂ of inverse rate).
-    pub rate:                   usize,
+    pub rate: usize,
     /// Number of variables in the multilinear polynomial.
-    pub n_vars:                 usize,
+    pub n_vars: usize,
     /// Folding factor per round.
-    pub folding_factor:         Vec<usize>,
+    pub folding_factor: Vec<usize>,
     /// Out-of-domain samples per round.
-    pub ood_samples:            Vec<usize>,
+    pub ood_samples: Vec<usize>,
     /// Number of queries per round.
-    pub num_queries:            Vec<usize>,
-    /// Proof-of-work bits per round.
-    pub pow_bits:               Vec<i32>,
+    pub num_queries: Vec<usize>,
+    /// Proof-of-work bits per round (truncated integer, kept for backwards
+    /// compat).
+    pub pow_bits: Vec<i32>,
+    /// Proof-of-work u64 thresholds per WHIR round (exact values from Rust).
+    pub pow_thresholds: Vec<u64>,
+    /// Sumcheck round PoW thresholds per WHIR round.
+    pub sumcheck_pow_thresholds: Vec<u64>,
+    /// Initial sumcheck round PoW threshold.
+    pub initial_sumcheck_pow_threshold: u64,
+    /// Initial skip PoW threshold (used when initial sumcheck is skipped).
+    pub initial_skip_pow_threshold: u64,
     /// Final round query count.
-    pub final_queries:          usize,
-    /// Final round proof-of-work bits.
-    pub final_pow_bits:         i32,
-    /// Final folding proof-of-work bits.
+    pub final_queries: usize,
+    /// Final round proof-of-work bits (truncated integer).
+    pub final_pow_bits: i32,
+    /// Final round proof-of-work threshold (exact u64).
+    pub final_pow_threshold: u64,
+    /// Final folding proof-of-work bits (truncated integer).
     pub final_folding_pow_bits: i32,
+    /// Final folding proof-of-work threshold (exact u64).
+    pub final_folding_pow_threshold: u64,
     /// Domain generator as a string.
-    pub domain_generator:       String,
+    pub domain_generator: String,
     /// Batch size (number of polynomials committed together).
-    pub batch_size:             usize,
+    pub batch_size: usize,
+    /// Initial committer in-domain samples (query count for zkWHIR in-domain
+    /// verification).
+    pub initial_in_domain_samples: usize,
 }
 
 impl WHIRConfigGnark {
@@ -85,6 +104,18 @@ impl WHIRConfigGnark {
                 f64::from(whir::protocols::proof_of_work::difficulty(rc.pow.threshold)) as i32
             })
             .collect();
+        let pow_thresholds: Vec<u64> = whir_params
+            .round_configs
+            .iter()
+            .map(|rc| rc.pow.threshold)
+            .collect();
+        let sumcheck_pow_thresholds: Vec<u64> = whir_params
+            .round_configs
+            .iter()
+            .map(|rc| rc.sumcheck.round_pow.threshold)
+            .collect();
+        let initial_sumcheck_pow_threshold = whir_params.initial_sumcheck.round_pow.threshold;
+        let initial_skip_pow_threshold = whir_params.initial_skip_pow.threshold;
 
         // If there are no folding rounds, fall back to the initial commitment's
         // in-domain samples.
@@ -107,6 +138,7 @@ impl WHIRConfigGnark {
         let domain_generator = format!("{}", domain.group_gen());
 
         let batch_size = whir_params.initial_committer.num_vectors;
+        let initial_in_domain_samples = whir_params.initial_committer.in_domain_samples;
 
         WHIRConfigGnark {
             n_rounds,
@@ -116,18 +148,27 @@ impl WHIRConfigGnark {
             ood_samples,
             num_queries,
             pow_bits,
+            pow_thresholds,
+            sumcheck_pow_thresholds,
+            initial_sumcheck_pow_threshold,
+            initial_skip_pow_threshold,
             final_queries,
             final_pow_bits,
+            final_pow_threshold: whir_params.final_pow.threshold,
             final_folding_pow_bits,
+            final_folding_pow_threshold: whir_params.final_sumcheck.round_pow.threshold,
             domain_generator,
             batch_size,
+            initial_in_domain_samples,
         }
     }
 }
 
 #[instrument(skip_all)]
 pub fn gnark_parameters(
-    whir_params_witness: &WhirConfig,
+    scheme: &WhirR1CSScheme,
+    blinded_commitment: &WhirConfig,
+    blinding_commitment: &WhirConfig,
     proof: &WhirR1CSProof,
     m_0: usize,
     m: usize,
@@ -136,8 +177,11 @@ pub fn gnark_parameters(
     w1_size: usize,
     public_inputs: &PublicInputs,
 ) -> GnarkConfig {
+    let ds = scheme.create_domain_separator();
+    let protocol_id: Vec<u8> = ds.protocol_id.to_vec();
     GnarkConfig {
-        whir_config_witness: WHIRConfigGnark::new(whir_params_witness),
+        blinded_commitment_whir_config: WHIRConfigGnark::new(blinded_commitment),
+        blinding_commitment_whir_config: WHIRConfigGnark::new(blinding_commitment),
         log_num_constraints: m_0,
         log_num_variables: m,
         log_a_num_terms: a_num_terms,
@@ -145,7 +189,9 @@ pub fn gnark_parameters(
         narg_string_len: proof.narg_string.len(),
         hints: proof.hints.clone(),
         hints_len: proof.hints.len(),
+        protocol_id,
         num_challenges,
+        challenge_offsets: scheme.challenge_offsets.clone(),
         w1_size,
         public_inputs: public_inputs.clone(),
     }
@@ -153,7 +199,9 @@ pub fn gnark_parameters(
 
 #[instrument(skip_all)]
 pub fn write_gnark_parameters_to_file(
-    whir_params_witness: &WhirConfig,
+    scheme: &WhirR1CSScheme,
+    blinded_commitment: &WhirConfig,
+    blinding_commitment: &WhirConfig,
     proof: &WhirR1CSProof,
     m_0: usize,
     m: usize,
@@ -164,7 +212,9 @@ pub fn write_gnark_parameters_to_file(
     file_path: &str,
 ) {
     let gnark_config = gnark_parameters(
-        whir_params_witness,
+        scheme,
+        blinded_commitment,
+        blinding_commitment,
         proof,
         m_0,
         m,

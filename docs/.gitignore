@@ -1,0 +1,9 @@
+# Local website build artifacts
+node_modules/
+dist/
+.astro/
+
+# Root .gitignore ignores *.json because the Rust workspace emits proof artifacts.
+# Keep the website's source/config JSON files trackable.
+!pnpm-lock.yaml
+!tsconfig.json

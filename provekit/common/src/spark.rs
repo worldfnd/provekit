@@ -70,4 +70,3 @@ pub struct SparkSetup {
     pub transcript:        WhirR1CSProof,
     pub hash_config:       HashConfig,
 }
-

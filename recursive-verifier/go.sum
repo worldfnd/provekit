@@ -46,8 +46,8 @@ github.com/mattn/go-runewidth v0.0.16/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/reilabs/gnark-nimue v0.0.7-0.20250819071945-7382324c8642 h1:yszb3+OVg17bugNU8L7oXAyvJGj0LsZt82TXAyi9muw=
-github.com/reilabs/gnark-nimue v0.0.7-0.20250819071945-7382324c8642/go.mod h1:HZvEohNWtV3PHogGBe2HziYXX0CetYPxfLapf5NW6ss=
+github.com/reilabs/gnark-nimue v0.1.1 h1:UpjMdqcKbAsP/2yBqCQG0XELgJrTuap76+lO8VsTgXY=
+github.com/reilabs/gnark-nimue v0.1.1/go.mod h1:7zB2GNbqvVrCVyWZbjhOvYyFC3PbiBVV2RrhGAfwuh4=
 github.com/reilabs/gnark-skyscraper v0.0.0-20250819020215-db52e4ee2949 h1:ywiOSRWCIaOpSg0exeNRG0+rz4c62J6Z+IrJpKTso+c=
 github.com/reilabs/gnark-skyscraper v0.0.0-20250819020215-db52e4ee2949/go.mod h1:kUPBp0nHa5TpefcqeK4Otfpz8WHgpXpQ8f+NgfEF5Ks=
 github.com/reilabs/go-ark-serialize v0.0.0-20241120151746-4148c0ca17e3 h1:EZA/mA0ju0eAsvcBADuKRPYSL1UYoeGCAM/vNEWeCoA=

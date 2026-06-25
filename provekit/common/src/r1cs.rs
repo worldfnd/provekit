@@ -234,11 +234,8 @@ impl R1CS {
     /// Check if a matrix row is "constant" — either empty or only references
     /// column 0 (the constant-one witness).
     fn row_is_constant(&self, matrix: &SparseMatrix, row: usize) -> bool {
-        let entries: Vec<_> = matrix.iter_row(row).collect();
-        if entries.is_empty() {
-            return true;
-        }
-        entries.len() == 1 && entries[0].0 == 0
+        let (cols, _) = matrix.row_slices(row);
+        cols.is_empty() || (cols.len() == 1 && cols[0] == 0)
     }
 
     /// Get the constant value of a "constant" matrix row.

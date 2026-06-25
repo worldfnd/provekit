@@ -1,4 +1,5 @@
 use {
+    ::tracing::instrument,
     anyhow::{ensure, Result},
     ark_ff::UniformRand,
     ark_std::{One, Zero},
@@ -22,7 +23,6 @@ use {
         WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
-    tracing::instrument,
     whir::{
         algebra::{dot, linear_form::LinearForm},
         protocols::whir_zk::Witness as WhirZkWitness,
@@ -32,7 +32,7 @@ use {
 #[cfg(not(target_arch = "wasm32"))]
 use {
     mavros_artifacts::{ConstraintsLayout, WitnessLayout},
-    mavros_vm::interpreter::Phase1Result,
+    mavros_vm::interpreter::WitgenResult,
 };
 
 pub struct BlindingState {
@@ -44,18 +44,6 @@ pub struct WhirR1CSCommitment {
     pub witness:    WhirZkWitness<FieldElement>,
     pub polynomial: Vec<FieldElement>,
     pub blinding:   Option<BlindingState>,
-}
-
-struct ProveFromAlphasCtx<'a> {
-    scheme:           &'a WhirR1CSScheme,
-    merlin:           ProverState<TranscriptSponge>,
-    alpha:            Vec<FieldElement>,
-    alphas:           [Vec<FieldElement>; 3],
-    blinding_eval:    FieldElement,
-    blinding_offset:  usize,
-    blinding_weights: Vec<FieldElement>,
-    commitments:      Vec<WhirR1CSCommitment>,
-    public_inputs:    &'a PublicInputs,
 }
 
 pub trait WhirR1CSProver {
@@ -91,7 +79,7 @@ pub trait WhirR1CSProver {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        phase1: Phase1Result,
+        witgen: WitgenResult,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
@@ -104,7 +92,7 @@ pub trait WhirR1CSProver {
     fn prove_mavros_with_spark(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        phase1: Phase1Result,
+        witgen: WitgenResult,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
@@ -134,7 +122,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
             "Unexpected witness length for R1CS instance"
         );
         ensure!(
-            witness_size <= 1 << self.m,
+            witness_size <= self.domain_size(),
             "R1CS witness length exceeds scheme capacity"
         );
         ensure!(
@@ -184,8 +172,15 @@ impl WhirR1CSProver for WhirR1CSScheme {
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
     ) -> Result<WhirR1CSProof> {
-        let ctx = build_noir_ctx(self, merlin, r1cs, commitments, full_witness, public_inputs)?;
-        let (proof, _) = prove_from_alphas(ctx, false)?;
+        let (proof, _) = prove_noir_inner(
+            self,
+            merlin,
+            r1cs,
+            commitments,
+            full_witness,
+            public_inputs,
+            false,
+        )?;
         Ok(proof)
     }
 
@@ -198,8 +193,15 @@ impl WhirR1CSProver for WhirR1CSScheme {
         full_witness: Vec<FieldElement>,
         public_inputs: &PublicInputs,
     ) -> Result<(WhirR1CSProof, SparkQueryBatch)> {
-        let ctx = build_noir_ctx(self, merlin, r1cs, commitments, full_witness, public_inputs)?;
-        let (proof, batch) = prove_from_alphas(ctx, true)?;
+        let (proof, batch) = prove_noir_inner(
+            self,
+            merlin,
+            r1cs,
+            commitments,
+            full_witness,
+            public_inputs,
+            true,
+        )?;
         Ok((
             proof,
             batch.expect("spark batch must be produced when requested"),
@@ -212,24 +214,24 @@ impl WhirR1CSProver for WhirR1CSScheme {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        phase1: Phase1Result,
+        witgen: WitgenResult,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
     ) -> Result<WhirR1CSProof> {
-        let ctx = build_mavros_ctx(
+        let (proof, _) = prove_mavros_inner(
             self,
             merlin,
-            phase1,
+            witgen,
             commitments,
             public_inputs,
             witness_layout,
             constraints_layout,
             ad_binary,
+            false,
         )?;
-        let (proof, _) = prove_from_alphas(ctx, false)?;
         Ok(proof)
     }
 
@@ -239,24 +241,24 @@ impl WhirR1CSProver for WhirR1CSScheme {
     fn prove_mavros_with_spark(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        phase1: Phase1Result,
+        witgen: WitgenResult,
         commitments: Vec<WhirR1CSCommitment>,
         public_inputs: &PublicInputs,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         ad_binary: &[u64],
     ) -> Result<(WhirR1CSProof, SparkQueryBatch)> {
-        let ctx = build_mavros_ctx(
+        let (proof, batch) = prove_mavros_inner(
             self,
             merlin,
-            phase1,
+            witgen,
             commitments,
             public_inputs,
             witness_layout,
             constraints_layout,
             ad_binary,
+            true,
         )?;
-        let (proof, batch) = prove_from_alphas(ctx, true)?;
         Ok((
             proof,
             batch.expect("spark batch must be produced when requested"),
@@ -264,14 +266,17 @@ impl WhirR1CSProver for WhirR1CSScheme {
     }
 }
 
-fn build_noir_ctx<'a>(
-    scheme: &'a WhirR1CSScheme,
+#[instrument(skip_all)]
+#[allow(clippy::too_many_arguments)]
+fn prove_noir_inner(
+    scheme: &WhirR1CSScheme,
     mut merlin: ProverState<TranscriptSponge>,
     r1cs: R1CS,
     commitments: Vec<WhirR1CSCommitment>,
     full_witness: Vec<FieldElement>,
-    public_inputs: &'a PublicInputs,
-) -> Result<ProveFromAlphasCtx<'a>> {
+    public_inputs: &PublicInputs,
+    produce_spark_query: bool,
+) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)> {
     ensure!(!commitments.is_empty(), "Need at least one commitment");
 
     let (a, b, c) = calculate_witness_bounds(&r1cs, &full_witness);
@@ -299,7 +304,7 @@ fn build_noir_ctx<'a>(
     let blinding_offset = blinding.offset;
     let blinding_weights = expand_powers::<4>(&alpha);
 
-    Ok(ProveFromAlphasCtx {
+    prove_from_alphas(
         scheme,
         merlin,
         alpha,
@@ -309,21 +314,24 @@ fn build_noir_ctx<'a>(
         blinding_weights,
         commitments,
         public_inputs,
-    })
+        produce_spark_query,
+    )
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[instrument(skip_all)]
 #[allow(clippy::too_many_arguments)]
-fn build_mavros_ctx<'a>(
-    scheme: &'a WhirR1CSScheme,
+fn prove_mavros_inner(
+    scheme: &WhirR1CSScheme,
     mut merlin: ProverState<TranscriptSponge>,
-    phase1: Phase1Result,
+    witgen: WitgenResult,
     commitments: Vec<WhirR1CSCommitment>,
-    public_inputs: &'a PublicInputs,
+    public_inputs: &PublicInputs,
     witness_layout: WitnessLayout,
     constraints_layout: ConstraintsLayout,
     ad_binary: &[u64],
-) -> Result<ProveFromAlphasCtx<'a>> {
+    produce_spark_query: bool,
+) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)> {
     ensure!(!commitments.is_empty(), "Need at least one commitment");
 
     let blinding = commitments[0]
@@ -331,7 +339,7 @@ fn build_mavros_ctx<'a>(
         .as_ref()
         .expect("c1 must carry blinding state");
 
-    let [a, b, c] = [phase1.out_a, phase1.out_b, phase1.out_c];
+    let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
     let (alpha, blinding_eval) = run_zk_sumcheck_prover(
         a,
         b,
@@ -346,7 +354,7 @@ fn build_mavros_ctx<'a>(
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
     let (ad_a, ad_b, ad_c, _) = mavros_vm::interpreter::run_ad(
         ad_binary,
-        &eq_alpha[..constraints_layout.algebraic_size],
+        &eq_alpha[..constraints_layout.size()],
         witness_layout,
         constraints_layout,
     );
@@ -355,7 +363,7 @@ fn build_mavros_ctx<'a>(
     let blinding_offset = blinding.offset;
     let blinding_weights = expand_powers::<4>(&alpha);
 
-    Ok(ProveFromAlphasCtx {
+    prove_from_alphas(
         scheme,
         merlin,
         alpha,
@@ -365,25 +373,24 @@ fn build_mavros_ctx<'a>(
         blinding_weights,
         commitments,
         public_inputs,
-    })
+        produce_spark_query,
+    )
 }
 
 #[instrument(skip_all)]
+#[allow(clippy::too_many_arguments)]
 fn prove_from_alphas(
-    ctx: ProveFromAlphasCtx<'_>,
+    scheme: &WhirR1CSScheme,
+    mut merlin: ProverState<TranscriptSponge>,
+    alpha: Vec<FieldElement>,
+    alphas: [Vec<FieldElement>; 3],
+    blinding_eval: FieldElement,
+    blinding_offset: usize,
+    blinding_weights: Vec<FieldElement>,
+    commitments: Vec<WhirR1CSCommitment>,
+    public_inputs: &PublicInputs,
     produce_spark_query: bool,
 ) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)> {
-    let ProveFromAlphasCtx {
-        scheme,
-        mut merlin,
-        alpha,
-        alphas,
-        blinding_eval,
-        blinding_offset,
-        blinding_weights,
-        commitments,
-        public_inputs,
-    } = ctx;
     let public_inputs_hash = public_inputs.hash(scheme.hash_config);
     let public_inputs_len = public_inputs.len();
 

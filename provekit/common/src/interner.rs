@@ -1,16 +1,30 @@
 use {
     crate::{utils::serde_ark, FieldElement},
     serde::{Deserialize, Serialize},
+    std::collections::HashMap,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, Serialize, Deserialize)]
 pub struct Interner {
     #[serde(with = "serde_ark")]
     values: Vec<FieldElement>,
+    /// Reverse index: `FieldElement` → its position in `values`. Kept in sync
+    /// by `intern`. Not serialized (the on-disk format remains a single
+    /// `values` field for backward compatibility); rebuilt lazily on first
+    /// `intern` after deserialize.
+    #[serde(skip)]
+    index:  HashMap<FieldElement, usize>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct InternedFieldElement(usize);
+/// `index` is `#[serde(skip)]` and rebuilt lazily, so a roundtripped
+/// `Interner` has an empty map until the next `intern` call. Compare only
+/// the canonical `values` field — handles based on `values` indices are
+/// stable across map state, and the map is just an O(1) lookup cache.
+impl PartialEq for Interner {
+    fn eq(&self, other: &Self) -> bool {
+        self.values == other.values
+    }
+}
 
 impl Default for Interner {
     fn default() -> Self {
@@ -19,24 +33,94 @@ impl Default for Interner {
 }
 
 impl Interner {
-    pub const fn new() -> Self {
-        Self { values: Vec::new() }
+    pub fn new() -> Self {
+        Self {
+            values: Vec::new(),
+            index:  HashMap::new(),
+        }
     }
 
-    /// Interning is slow in favour of faster lookups.
+    /// Intern a `FieldElement`, returning a stable handle.
+    ///
+    /// O(1) amortized — uses a `HashMap` to deduplicate. The map is populated
+    /// lazily on first call after deserialize / `from_values`.
     pub fn intern(&mut self, value: FieldElement) -> InternedFieldElement {
-        // Deduplicate
-        if let Some(index) = self.values.iter().position(|v| *v == value) {
-            return InternedFieldElement(index);
+        // After deserialize (or `from_values` without index population), the
+        // map may be empty while `values` is not. Rebuild once.
+        if self.index.len() < self.values.len() {
+            self.rebuild_index();
         }
 
-        // Insert
-        let index = self.values.len();
+        if let Some(&idx) = self.index.get(&value) {
+            return InternedFieldElement(idx);
+        }
+
+        let idx = self.values.len();
         self.values.push(value);
-        InternedFieldElement(index)
+        self.index.insert(value, idx);
+        InternedFieldElement(idx)
     }
 
     pub fn get(&self, el: InternedFieldElement) -> Option<FieldElement> {
         self.values.get(el.0).copied()
+    }
+
+    /// Borrow the deduplicated values array. Used by mmap-format writers
+    /// that need the raw bytes.
+    pub fn values_raw(&self) -> &[FieldElement] {
+        &self.values
+    }
+
+    /// Construct an `Interner` from a pre-built values vector. Bypasses the
+    /// dedup work in `intern()` — used by mmap-format readers that have
+    /// already loaded a deduplicated set of values from disk.
+    ///
+    /// The reverse index is built eagerly so subsequent `intern` calls are
+    /// O(1) without paying for a lazy rebuild on first use.
+    ///
+    /// # Precondition
+    ///
+    /// `values` must contain no duplicate `FieldElement`s. Violating this
+    /// leaves the interner in a non-canonical state where two distinct
+    /// `InternedFieldElement` handles can refer to the same field element,
+    /// breaking the "equal values produce equal handles" invariant relied on
+    /// by handle-equality consumers (cache keys, dedup checks, etc.).
+    /// Debug builds assert this; release builds trust the caller.
+    pub fn from_values(values: Vec<FieldElement>) -> Self {
+        let mut index = HashMap::with_capacity(values.len());
+        for (i, v) in values.iter().enumerate() {
+            index.insert(*v, i);
+        }
+        debug_assert_eq!(
+            index.len(),
+            values.len(),
+            "Interner::from_values called with duplicate field elements — the caller's \
+             deduplication contract has been violated"
+        );
+        Self { values, index }
+    }
+
+    fn rebuild_index(&mut self) {
+        self.index.clear();
+        self.index.reserve(self.values.len());
+        for (i, v) in self.values.iter().enumerate() {
+            self.index.insert(*v, i);
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InternedFieldElement(usize);
+
+impl InternedFieldElement {
+    /// Construct an InternedFieldElement from a raw index. Used by
+    /// mmap-format readers that load the index Vec from raw bytes.
+    pub const fn new(idx: usize) -> Self {
+        Self(idx)
+    }
+
+    /// Inner index value.
+    pub const fn index(&self) -> usize {
+        self.0
     }
 }
