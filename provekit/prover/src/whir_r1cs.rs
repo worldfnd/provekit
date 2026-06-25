@@ -307,14 +307,16 @@ fn prove_noir_inner(
     prove_from_alphas(
         scheme,
         merlin,
-        alpha,
-        alphas,
-        blinding_eval,
-        blinding_offset,
-        blinding_weights,
-        commitments,
+        ProveFromAlphasCtx {
+            alpha,
+            alphas,
+            blinding_eval,
+            blinding_offset,
+            blinding_weights,
+            commitments,
+            produce_spark_query,
+        },
         public_inputs,
-        produce_spark_query,
     )
 }
 
@@ -366,31 +368,48 @@ fn prove_mavros_inner(
     prove_from_alphas(
         scheme,
         merlin,
+        ProveFromAlphasCtx {
+            alpha,
+            alphas,
+            blinding_eval,
+            blinding_offset,
+            blinding_weights,
+            commitments,
+            produce_spark_query,
+        },
+        public_inputs,
+    )
+}
+
+/// Owned inputs to the post-sumcheck proving stage ([`prove_from_alphas`]),
+/// produced by [`prove_noir_inner`] / [`prove_mavros_inner`].
+struct ProveFromAlphasCtx {
+    alpha:               Vec<FieldElement>,
+    alphas:              [Vec<FieldElement>; 3],
+    blinding_eval:       FieldElement,
+    blinding_offset:     usize,
+    blinding_weights:    Vec<FieldElement>,
+    commitments:         Vec<WhirR1CSCommitment>,
+    produce_spark_query: bool,
+}
+
+#[instrument(skip_all)]
+fn prove_from_alphas(
+    scheme: &WhirR1CSScheme,
+    mut merlin: ProverState<TranscriptSponge>,
+    ctx: ProveFromAlphasCtx,
+    public_inputs: &PublicInputs,
+) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)> {
+    let ProveFromAlphasCtx {
         alpha,
         alphas,
         blinding_eval,
         blinding_offset,
         blinding_weights,
         commitments,
-        public_inputs,
         produce_spark_query,
-    )
-}
+    } = ctx;
 
-#[instrument(skip_all)]
-#[allow(clippy::too_many_arguments)]
-fn prove_from_alphas(
-    scheme: &WhirR1CSScheme,
-    mut merlin: ProverState<TranscriptSponge>,
-    alpha: Vec<FieldElement>,
-    alphas: [Vec<FieldElement>; 3],
-    blinding_eval: FieldElement,
-    blinding_offset: usize,
-    blinding_weights: Vec<FieldElement>,
-    commitments: Vec<WhirR1CSCommitment>,
-    public_inputs: &PublicInputs,
-    produce_spark_query: bool,
-) -> Result<(WhirR1CSProof, Option<SparkQueryBatch>)> {
     let public_inputs_hash = public_inputs.hash(scheme.hash_config);
     let public_inputs_len = public_inputs.len();
 
