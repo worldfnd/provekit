@@ -1,5 +1,5 @@
-use poseidon2::bn254::hash_12;
+use poseidon2::bn254::permutation::t12;
 
 fn main(inputs: [Field; 12]) -> pub Field {
-    hash_12(inputs)
+    t12(inputs)[0]
 }

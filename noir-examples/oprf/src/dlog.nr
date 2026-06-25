@@ -1,6 +1,6 @@
 use super::constants::DS_DLOG;
 use babyjubjub::BabyJubJubPoint;
-use poseidon2::bn254::perm;
+use poseidon2::bn254::permutation;
 
 // Verify a Chaum-Pedersen dlog equality proof that shows that A=x*G and C=x*B share the same discrete log x, given A,B,C and proof e,s.
 // Point A is a public input in our use case (the OPRF public key and therefore we expect it to be checked to be in the prime order subgroup outside of this circuit)
@@ -59,7 +59,7 @@ pub fn verify_dlog_equality(
         0,
     ];
 
-    let hash_state = perm::x5_16(hash_input);
+    let hash_state = permutation::t16(hash_input);
     let challenge = hash_state[1];
 
     // Verify that the recomputed challenge matches e

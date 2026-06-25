@@ -37,7 +37,7 @@ impl BabyJubJubPoint {
     [x, y] = [ ---, ------- ]
                 v    u + 1
     */
-    unconstrained fn from_montgomery_unconstrained(p: MontgomeryPoint) -> (Field, Field) {
+    pub unconstrained fn from_montgomery_unconstrained(p: MontgomeryPoint) -> (Field, Field) {
         let x = p.u / p.v;
         let y = (p.u - 1) / (p.u + 1);
         (x, y)

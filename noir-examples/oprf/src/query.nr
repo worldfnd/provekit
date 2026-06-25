@@ -11,7 +11,7 @@ pub fn oprf_query_inner<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     depth: Field,
     root: Field,
     inputs: OprfQueryInputs<MAX_DEPTH, NUM_KEYS>,
-    beta_bits: [u1; 251],
+    beta_bits: [bool; 251],
 ) -> BabyJubJubPoint {
     // 1. Verify sk/pk by verifying a signature to a known message
     let chosen_pk = inputs.user_pk[inputs.pk_index as u32];
@@ -47,7 +47,7 @@ pub fn oprf_query_inner<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
 pub fn verify_unblinding(
     oprf_response: BabyJubJubPoint,
     oprf_response_blinded: BabyJubJubPoint,
-    beta_bits: [u1; 251],
+    beta_bits: [bool; 251],
 ) {
     // Check that oprf_response is on the curve and perform unblinding
     assert(oprf_response.is_on_curve(), "OPRF response must be on curve");

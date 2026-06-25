@@ -16,7 +16,6 @@ fn main(
     let g = EmbeddedCurvePoint {
         x: 1,
         y: 17631683881184975370165255887551781615748388533673675138860,
-        is_infinite: false,
     };
 
     let s1 = EmbeddedCurveScalar { lo: scalar1_lo, hi: scalar1_hi };
@@ -27,7 +26,7 @@ fn main(
 
     // Prevent dead-code elimination - forces the blackbox to be retained
     // Using is_infinite as return value ensures the MSM is computed
-    assert(result.is_infinite == (scalar1_lo + scalar1_hi + scalar2_lo + scalar2_hi == 0));
+    assert(result.is_infinite() == (scalar1_lo + scalar1_hi + scalar2_lo + scalar2_hi == 0));
 }
 
 #[test]
@@ -42,7 +41,6 @@ fn test_msm() {
     let g = EmbeddedCurvePoint {
         x: 1,
         y: 17631683881184975370165255887551781615748388533673675138860,
-        is_infinite: false,
     };
     let s3 = EmbeddedCurveScalar { lo: 3, hi: 0 };
     let check = multi_scalar_mul([g], [s3]);
