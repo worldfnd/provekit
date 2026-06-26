@@ -6,3 +6,9 @@ on:
     paths: ['docs/**']
   pull_request:
     paths: ['docs/**']
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Docs path filter matched; Vercel deployment proceeding"
