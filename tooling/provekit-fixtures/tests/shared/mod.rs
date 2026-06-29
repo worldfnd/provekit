@@ -3,17 +3,30 @@
 //!
 //! Each test binary includes this whole module but exercises only the suite it
 //! invokes, so the unused half is expected.
+//!
+//! # Scope
+//! These drive the field-generic proving spine (commitment, transcript,
+//! sumcheck, WHIR, bindings) over synthetic R1CS; the circuits are vehicles.
+//! The LogUp builders cover the dual-commit path, not the real lookup machinery
+//! (witness-builder solver, compiler emission) — memory, range, binops, EC, the
+//! frontend, and the recursive verifier are out of scope.
 #![allow(dead_code)]
 
 use {
     ark_ff::One,
     ark_std::rand::distributions::{Distribution, Standard},
-    provekit_common::{Base, Ext, FieldHash, PublicInputs},
+    provekit_common::{Base, Ext, FieldHash, HashConfig, PublicInputs},
     provekit_fixtures::{
-        builders::{random_satisfiable, satisfies, squaring_chain, two_public_inputs},
-        harness::{prove, prove_and_verify},
+        builders::{
+            logup_lookup, logup_lookup_w2, multi_challenge_inverses, multi_challenge_inverses_w2,
+            random_satisfiable, satisfies, squaring_chain, two_public_inputs, LogUpInstance,
+        },
+        harness::{
+            prove, prove_and_verify, prove_and_verify_with_challenge, prove_with_tampered_challenge,
+        },
     },
     provekit_verifier::WhirR1CSVerifier,
+    whir::algebra::embedding::Embedding,
 };
 
 // --- roundtrip bodies ---
@@ -104,6 +117,87 @@ where
     }
 }
 
+/// Prove→verify a LogUp instance under the given hash configuration.
+fn logup_roundtrip<P>(
+    table_len: usize,
+    lookup_len: usize,
+    seed: u64,
+    hash: HashConfig,
+) -> anyhow::Result<()>
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    let LogUpInstance {
+        r1cs,
+        w1,
+        challenge_offsets,
+        table_len,
+        lookup_len,
+    } = logup_lookup::<Base<P>>(table_len, lookup_len, seed);
+    prove_and_verify_with_challenge::<P>(&r1cs, w1, challenge_offsets, hash, |ch, w1v| {
+        logup_lookup_w2(ch, w1v, table_len, lookup_len)
+    })
+}
+
+/// LogUp lookup over small instances and several seeds.
+pub fn logup_lookup_small_roundtrip<P>()
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    for seed in 0..6u64 {
+        logup_roundtrip::<P>(5, 11, seed, HashConfig::Sha256)
+            .unwrap_or_else(|e| panic!("seed {seed}: honest lookup must verify: {e}"));
+    }
+}
+
+/// Larger LogUp roundtrip crossing the `2^13` witness-domain floor.
+pub fn logup_lookup_milestone_roundtrip<P>()
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    // 2 + 4·table + 2·lookup ≈ 16k witnesses crosses the 2^13 floor.
+    logup_roundtrip::<P>(2_000, 4_000, 0xa11ce, HashConfig::Sha256)
+        .expect("milestone lookup must verify");
+}
+
+/// LogUp roundtrip under each field-agnostic hash engine (`Sha256`, `Keccak`,
+/// `Blake3`). `Skyscraper`/`Poseidon2` are bn254-only.
+pub fn logup_lookup_hash_sweep_roundtrip<P>()
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    for hash in [HashConfig::Sha256, HashConfig::Keccak, HashConfig::Blake3] {
+        logup_roundtrip::<P>(5, 11, 0x5217, hash)
+            .unwrap_or_else(|e| panic!("lookup must verify under {hash:?}: {e}"));
+    }
+}
+
+/// Multi-challenge binding: several challenges, each pinned by `c · (1/c) = 1`.
+pub fn multi_challenge_binding_roundtrip<P>()
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    let (r1cs, w1, offsets) = multi_challenge_inverses::<Base<P>>(4);
+    prove_and_verify_with_challenge::<P>(
+        &r1cs,
+        w1,
+        offsets,
+        HashConfig::Sha256,
+        multi_challenge_inverses_w2::<Base<P>>,
+    )
+    .expect("multi-challenge binding roundtrip must verify");
+}
+
 // --- soundness bodies ---
 //
 // `prove` never checks satisfaction (it produces a proof even for a
@@ -177,6 +271,90 @@ where
     assert!(scheme.verify(&proof, &wrong, &r1cs).is_err());
 }
 
+/// Challenge binding: a `w2` whose committed challenge differs from the drawn
+/// one must not verify.
+pub fn tampered_challenge_is_rejected<P>()
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    let LogUpInstance {
+        r1cs,
+        w1,
+        challenge_offsets,
+        table_len,
+        lookup_len,
+    } = logup_lookup::<Base<P>>(5, 11, 5);
+    let res = prove_with_tampered_challenge::<P>(
+        &r1cs,
+        w1,
+        challenge_offsets,
+        HashConfig::Sha256,
+        |ch, w1v| logup_lookup_w2(ch, w1v, table_len, lookup_len),
+    );
+    assert!(
+        res.is_err(),
+        "a w2 disagreeing with the drawn challenge must be rejected"
+    );
+}
+
+/// Prove→verify a LogUp instance whose `w1` is corrupted by `corrupt`.
+fn logup_corrupted_verify<P>(
+    seed: u64,
+    corrupt: impl FnOnce(&mut [Base<P>], usize, usize),
+) -> anyhow::Result<()>
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    let LogUpInstance {
+        r1cs,
+        mut w1,
+        challenge_offsets,
+        table_len,
+        lookup_len,
+    } = logup_lookup::<Base<P>>(5, 11, seed);
+    corrupt(&mut w1, table_len, lookup_len);
+    prove_and_verify_with_challenge::<P>(
+        &r1cs,
+        w1,
+        challenge_offsets,
+        HashConfig::Sha256,
+        |ch, w1v| logup_lookup_w2(ch, w1v, table_len, lookup_len),
+    )
+}
+
+/// LogUp membership soundness: a looked-up value not in the table must be
+/// rejected.
+pub fn logup_non_member_is_rejected<P>()
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    let res = logup_corrupted_verify::<P>(7, |w1, table_len, _lookup_len| {
+        // First lookup sits at w1[1 + table_len]; set it outside `0..table_len`.
+        w1[1 + table_len] = Base::<P>::from(table_len as u64 + 999);
+    });
+    assert!(res.is_err(), "a non-member lookup must be rejected");
+}
+
+/// LogUp multiplicity soundness: a wrong multiplicity must be rejected.
+pub fn logup_wrong_multiplicity_is_rejected<P>()
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    let res = logup_corrupted_verify::<P>(9, |w1, table_len, lookup_len| {
+        // First multiplicity sits at w1[1 + table_len + lookup_len]; bump it.
+        w1[1 + table_len + lookup_len] += Base::<P>::one();
+    });
+    assert!(res.is_err(), "a wrong multiplicity must be rejected");
+}
+
 /// Emit the prove→verify roundtrip suite for a concrete proof field.
 /// `$register` registers that field's engines before each proving test.
 #[macro_export]
@@ -211,6 +389,26 @@ macro_rules! roundtrip_suite {
             $register();
             $crate::shared::random_satisfiable_proves_and_perturbation_rejects::<$field>();
         }
+        #[test]
+        fn logup_lookup_small_roundtrip() {
+            $register();
+            $crate::shared::logup_lookup_small_roundtrip::<$field>();
+        }
+        #[test]
+        fn logup_lookup_milestone_roundtrip() {
+            $register();
+            $crate::shared::logup_lookup_milestone_roundtrip::<$field>();
+        }
+        #[test]
+        fn logup_lookup_hash_sweep_roundtrip() {
+            $register();
+            $crate::shared::logup_lookup_hash_sweep_roundtrip::<$field>();
+        }
+        #[test]
+        fn multi_challenge_binding_roundtrip() {
+            $register();
+            $crate::shared::multi_challenge_binding_roundtrip::<$field>();
+        }
     };
 }
 
@@ -237,6 +435,21 @@ macro_rules! soundness_suite {
         fn two_public_inputs_binding_mismatch_is_rejected() {
             $register();
             $crate::shared::two_public_inputs_binding_mismatch_is_rejected::<$field>();
+        }
+        #[test]
+        fn tampered_challenge_is_rejected() {
+            $register();
+            $crate::shared::tampered_challenge_is_rejected::<$field>();
+        }
+        #[test]
+        fn logup_non_member_is_rejected() {
+            $register();
+            $crate::shared::logup_non_member_is_rejected::<$field>();
+        }
+        #[test]
+        fn logup_wrong_multiplicity_is_rejected() {
+            $register();
+            $crate::shared::logup_wrong_multiplicity_is_rejected::<$field>();
         }
     };
 }
