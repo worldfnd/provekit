@@ -368,6 +368,17 @@ macro_rules! roundtrip_suite {
             $register();
             $crate::shared::random_satisfiable_proves_and_perturbation_rejects::<$field>();
         }
+    };
+}
+
+/// Challenge-bearing roundtrip suite (LogUp + multi-challenge). The witness
+/// holds challenge-derived (ext) values, so this requires an `Identity` field
+/// (base == ext). Under the BF×EF split these need the k-base LogUp
+/// construction (plan T12) to draw challenges in the base field — until then,
+/// pin to the temporary `GoldilocksEfField`, not the base-leaf `GoldilocksField`.
+#[macro_export]
+macro_rules! challenge_roundtrip_suite {
+    ($field:ty, $register:path) => {
         #[test]
         fn logup_lookup_size_sweep_roundtrip() {
             $register();
@@ -405,6 +416,14 @@ macro_rules! soundness_suite {
             $register();
             $crate::shared::public_input_binding_mismatch_is_rejected::<$field>();
         }
+    };
+}
+
+/// Challenge-bearing soundness suite (see [`challenge_roundtrip_suite!`]): pin to
+/// an `Identity` field until the k-base LogUp construction (plan T12).
+#[macro_export]
+macro_rules! challenge_soundness_suite {
+    ($field:ty, $register:path) => {
         #[test]
         fn tampered_challenge_is_rejected() {
             $register();
