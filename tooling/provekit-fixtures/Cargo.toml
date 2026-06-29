@@ -24,6 +24,12 @@ whir.workspace = true
 # Concrete proof fields to instantiate the generic harness.
 provekit-backend-bn254.workspace = true
 provekit-backend-goldilocks.workspace = true
+# Profiling-only (the `profile` test): tracing-flame captures folded stacks from
+# the existing `#[instrument]` spans, inferno renders them to an SVG.
+inferno = { version = "0.12", default-features = false }
+tracing.workspace = true
+tracing-flame = "0.2"
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

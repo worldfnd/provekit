@@ -12,14 +12,22 @@ use {
     },
     serde::{Deserialize, Serialize},
     whir::{
-        engines::EngineId, parameters::ProtocolParameters,
-        protocols::whir_zk::Config as GenericWhirZkConfig, transcript,
+        algebra::embedding::Identity, engines::EngineId, parameters::ProtocolParameters,
+        protocols::whir::Config as GenericWhirConfig, transcript,
     },
 };
 
 /// WHIR witness-domain floor: prover work is flat at or below `2^13` variables,
 /// so smaller commitments are padded up to this many variables.
 const MIN_WHIR_NUM_VARIABLES: usize = 13;
+
+/// Domain floor for the ext blinding commitment. The blinding vector holds only
+/// `4 * m_0` coefficients, so it does NOT use the witness floor
+/// ([`MIN_WHIR_NUM_VARIABLES`], a witness-specific performance plateau) — that
+/// would inflate the proof for no soundness benefit. This is the smallest WHIR
+/// domain that remains valid for the configured folding factors
+/// (`initial_folding_factor + folding_factor = 3 + 3`).
+const MIN_BLINDING_NUM_VARIABLES: usize = 6;
 
 /// Minimum sumcheck rounds, keeping the constraint-domain polynomial
 /// non-trivial.
@@ -56,7 +64,21 @@ pub struct WhirR1CSScheme<P: ProofField> {
     pub num_challenges:    usize,
     pub challenge_offsets: Vec<usize>,
     pub has_public_inputs: bool,
-    pub whir_witness:      GenericWhirZkConfig<Ext<P>>,
+    /// Witness commitment, over the base field (`P::Embedding` has base
+    /// leaves).
+    ///
+    /// ZK SCOPE: this path provides **sumcheck** zero-knowledge only. The base
+    /// witness commitment is NOT hiding — its WHIR/FRI query openings still
+    /// leak witness values. Full witness zero-knowledge requires zkWHIR-v3
+    /// (whir_zk generalized over `Basefield`), which is out of scope here.
+    /// The Spartan sumcheck round polynomials are hidden by the separate
+    /// ext blinding commitment below.
+    pub whir_witness:      GenericWhirConfig<P::Embedding>,
+    /// Separate extension-field commitment to the Spartan sumcheck blinding
+    /// polynomial `g`. Kept distinct from the base witness commitment so the
+    /// mask lives natively in the challenge (extension) field — masking the
+    /// ext-valued sumcheck round polynomials requires ext randomness.
+    pub whir_blinding:     GenericWhirConfig<Identity<Ext<P>>>,
     pub r1cs_hash:         R1csHash,
     /// Hash configuration for Merkle commitments, Fiat-Shamir sponge, and
     /// public-input instance binding. Source of truth; the WHIR engine ID
@@ -116,13 +138,8 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         let m2_raw = next_power_of_two(w2_size);
         let m0_raw = next_power_of_two(r1cs.num_constraints());
 
-        let mut m_raw = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
+        let m_raw = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
-
-        // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
-        if (1usize << m_raw) - w1_size < 4 * m_0 {
-            m_raw += 1;
-        }
 
         Self {
             m: m_raw,
@@ -131,7 +148,8 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
             challenge_offsets,
-            whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, hash_config.engine_id()),
+            whir_witness: Self::new_whir_zk_config_for_size(m_raw, hash_config.engine_id()),
+            whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             has_public_inputs,
             r1cs_hash: r1cs.hash(),
             hash_config,
@@ -164,19 +182,15 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         let m2_raw = next_power_of_two(w2_size);
         let m0_raw = next_power_of_two(num_constraints);
 
-        let mut m = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
+        let m = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
-
-        // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
-        if (1usize << m) - w1_size < 4 * m_0 {
-            m += 1;
-        }
 
         Self {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
-            whir_witness: Self::new_whir_zk_config_for_size(m, 1, hash_config.engine_id()),
+            whir_witness: Self::new_whir_zk_config_for_size(m, hash_config.engine_id()),
+            whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             w1_size,
             num_challenges,
             challenge_offsets,
@@ -186,21 +200,16 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         }
     }
 
-    /// Build the zkWHIR configuration for a polynomial of `num_variables` over
-    /// the extension (challenge) field of `P`.
-    pub fn new_whir_zk_config_for_size(
-        num_variables: usize,
-        num_polynomials: usize,
-        hash_id: EngineId,
-    ) -> GenericWhirZkConfig<Ext<P>> {
-        let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
-
-        // Parameters tuned for 128-bit security under the Johnson bound (the old
-        // ConjectureList soundness was disproven). Rate=2 balances query count vs
-        // codeword size; ff=3 keeps blinding polynomials small; pow_bits=10 shifts
-        // security budget toward algebraic hardness (118 bits) with light PoW per
-        // round, which is faster than the default ~18-bit grinding.
-        let whir_params = ProtocolParameters {
+    /// Shared WHIR protocol parameters for both the witness and blinding
+    /// commitments.
+    ///
+    /// Tuned for 128-bit security under the Johnson bound (the old
+    /// ConjectureList soundness was disproven). Rate=2 balances query count vs
+    /// codeword size; ff=3 keeps folding cheap; pow_bits=10 shifts security
+    /// budget toward algebraic hardness (118 bits) with light PoW per round,
+    /// which is faster than the default ~18-bit grinding.
+    fn whir_protocol_params(hash_id: EngineId) -> ProtocolParameters {
+        ProtocolParameters {
             unique_decoding: false,
             security_level: 128,
             pow_bits: 10,
@@ -209,8 +218,33 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             starting_log_inv_rate: 2,
             batch_size: 1,
             hash_id,
-        };
-        GenericWhirZkConfig::<Ext<P>>::new(1 << nv, &whir_params, num_polynomials)
+        }
+    }
+
+    /// Build the (non-ZK) WHIR configuration for the witness of
+    /// `num_variables`, committing in the base field of `P` and opening at
+    /// points in the extension field.
+    pub fn new_whir_zk_config_for_size(
+        num_variables: usize,
+        hash_id: EngineId,
+    ) -> GenericWhirConfig<P::Embedding> {
+        let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
+        GenericWhirConfig::<P::Embedding>::new(1 << nv, &Self::whir_protocol_params(hash_id))
+    }
+
+    /// Build the WHIR configuration for the Spartan blinding polynomial `g`,
+    /// committing the `4 * m_0` cubic coefficients natively in the extension
+    /// (challenge) field via the `Identity` embedding.
+    pub fn new_blinding_config_for_size(
+        m_0: usize,
+        hash_id: EngineId,
+    ) -> GenericWhirConfig<Identity<Ext<P>>> {
+        let nv_blind = ((4 * m_0).next_power_of_two().trailing_zeros() as usize)
+            .max(MIN_BLINDING_NUM_VARIABLES);
+        GenericWhirConfig::<Identity<Ext<P>>>::new(
+            1 << nv_blind,
+            &Self::whir_protocol_params(hash_id),
+        )
     }
 }
 

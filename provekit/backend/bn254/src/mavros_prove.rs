@@ -52,6 +52,8 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
             .expect("c1 must carry blinding state");
 
         let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
+        // `g` is committed separately in the extension field; open `blinding_eval`
+        // against the blinding vector (g flattened at offset 0).
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
             a,
             b,
@@ -59,8 +61,8 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
             &mut merlin,
             self.m_0,
             &blinding.polynomial,
-            &commitments[0].polynomial,
-            blinding.offset,
+            &blinding.vector,
+            0,
         );
 
         let eq_alpha =
@@ -73,7 +75,6 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
         );
         let alphas = [ad_a, ad_b, ad_c];
 
-        let blinding_offset = blinding.offset;
         let blinding_weights = expand_powers::<4, _>(&alpha);
 
         prove_from_alphas(
@@ -81,7 +82,6 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
             merlin,
             alphas,
             blinding_eval,
-            blinding_offset,
             blinding_weights,
             commitments,
             public_inputs,

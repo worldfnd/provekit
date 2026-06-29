@@ -66,14 +66,21 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
 
         let commitment_1 = self
             .whir_witness
-            .receive_commitments(&mut arthur, 1)
+            .receive_commitment(&mut arthur)
             .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
+
+        // Mirror the prover: the ext blinding commitment is absorbed immediately
+        // after the (w1) witness commitment, before any challenge sampling.
+        let blinding_commitment = self
+            .whir_blinding
+            .receive_commitment(&mut arthur)
+            .map_err(|_| anyhow::anyhow!("Failed to parse blinding commitment"))?;
 
         let (commitment_2, logup_challenges) = if self.num_challenges > 0 {
             let challenges: Vec<Ext<P>> = arthur.verifier_message_vec(self.num_challenges);
             let commitment = self
                 .whir_witness
-                .receive_commitments(&mut arthur, 1)
+                .receive_commitment(&mut arthur)
                 .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?;
             (Some(commitment), Some(challenges))
         } else {
@@ -109,8 +116,6 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
 
         let blinding_eval = data_from_sumcheck_verifier.blinding_eval;
         let blinding_weights = expand_powers::<4, _>(&data_from_sumcheck_verifier.alpha);
-        let domain_size = self.domain_size();
-        let blinding_covector = OffsetCovector::new(blinding_weights, self.w1_size, domain_size);
 
         let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if let Some(commitment_2) = commitment_2 {
             let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
@@ -153,7 +158,7 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
             let mut weights_1 = build_prefix_covectors(self.m, alphas_1);
             let weights_2 = build_prefix_covectors(self.m, alphas_2);
 
-            let mut evaluations_1 = if !public_inputs.is_empty() {
+            let evaluations_1 = if !public_inputs.is_empty() {
                 let public_1: Ext<P> = arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read public_1"))?;
@@ -163,7 +168,6 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
             } else {
                 evals_1.to_vec()
             };
-            evaluations_1.push(blinding_eval);
             let mut evaluations_2 = evals_2.to_vec();
 
             // Challenge binding: verify that w2 contains the correct
@@ -180,15 +184,17 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
                 None
             };
 
-            let mut weight_refs_1: Vec<&dyn LinearForm<Ext<P>>> = weights_1
+            let weight_refs_1: Vec<&dyn LinearForm<Ext<P>>> = weights_1
                 .iter()
                 .map(|w| w as &dyn LinearForm<Ext<P>>)
                 .collect();
-            weight_refs_1.push(&blinding_covector as &dyn LinearForm<Ext<P>>);
 
-            self.whir_witness
-                .verify(&mut arthur, &weight_refs_1, &evaluations_1, &commitment_1)
+            let fc_1 = self
+                .whir_witness
+                .verify(&mut arthur, &[&commitment_1], &evaluations_1)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
+            fc_1.verify(weight_refs_1.iter().copied())
+                .map_err(|_| anyhow::anyhow!("WHIR final-claim check failed for c1"))?;
 
             let mut weight_refs_2: Vec<&dyn LinearForm<Ext<P>>> = weights_2
                 .iter()
@@ -197,9 +203,12 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
             if let Some(ref cw) = challenge_covector {
                 weight_refs_2.push(cw as &dyn LinearForm<Ext<P>>);
             }
-            self.whir_witness
-                .verify(&mut arthur, &weight_refs_2, &evaluations_2, &commitment_2)
+            let fc_2 = self
+                .whir_witness
+                .verify(&mut arthur, &[&commitment_2], &evaluations_2)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c2"))?;
+            fc_2.verify(weight_refs_2.iter().copied())
+                .map_err(|_| anyhow::anyhow!("WHIR final-claim check failed for c2"))?;
 
             (
                 evals_1[0] + evals_2[0],
@@ -221,7 +230,7 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
 
             let mut weights = build_prefix_covectors(self.m, alphas);
 
-            let mut evaluations = if !public_inputs.is_empty() {
+            let evaluations = if !public_inputs.is_empty() {
                 let public_eval: Ext<P> = arthur
                     .prover_message()
                     .map_err(|_| anyhow::anyhow!("Failed to read public eval"))?;
@@ -231,20 +240,38 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
             } else {
                 evals.to_vec()
             };
-            evaluations.push(blinding_eval);
 
-            let mut weight_refs: Vec<&dyn LinearForm<Ext<P>>> = weights
+            let weight_refs: Vec<&dyn LinearForm<Ext<P>>> = weights
                 .iter()
                 .map(|w| w as &dyn LinearForm<Ext<P>>)
                 .collect();
-            weight_refs.push(&blinding_covector as &dyn LinearForm<Ext<P>>);
 
-            self.whir_witness
-                .verify(&mut arthur, &weight_refs, &evaluations, &commitment_1)
+            let fc = self
+                .whir_witness
+                .verify(&mut arthur, &[&commitment_1], &evaluations)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed"))?;
+            fc.verify(weight_refs.iter().copied())
+                .map_err(|_| anyhow::anyhow!("WHIR final-claim check failed"))?;
 
             (evals[0], evals[1], evals[2])
         };
+
+        // Open the ext blinding commitment: verify `blinding_eval` against the
+        // sumcheck power covector over the committed blinding vector (g at
+        // offset 0). Mirrors the prover's single blinding open after all base
+        // opens.
+        {
+            let blind_domain = 1usize << self.whir_blinding.initial_num_variables();
+            let blinding_covector = OffsetCovector::new(blinding_weights, 0, blind_domain);
+            let fc_b = self
+                .whir_blinding
+                .verify(&mut arthur, &[&blinding_commitment], &[blinding_eval])
+                .map_err(|_| anyhow::anyhow!("WHIR verification failed for blinding"))?;
+            fc_b.verify(std::iter::once(
+                &blinding_covector as &dyn LinearForm<Ext<P>>,
+            ))
+            .map_err(|_| anyhow::anyhow!("WHIR final-claim check failed for blinding"))?;
+        }
 
         ensure!(
             data_from_sumcheck_verifier.f_at_alpha
