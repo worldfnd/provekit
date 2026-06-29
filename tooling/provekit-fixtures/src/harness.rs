@@ -8,6 +8,7 @@
 
 use {
     anyhow::{ensure, Result},
+    ark_ff::One,
     ark_std::rand::distributions::{Distribution, Standard},
     provekit_common::{
         Base, Ext, FieldHash, HashConfig, PublicInputs, PublicInputsHash, WhirR1CSProof,
@@ -16,7 +17,10 @@ use {
     provekit_prover::WhirR1CSProver,
     provekit_verifier::WhirR1CSVerifier,
     std::time::{Duration, Instant},
-    whir::transcript::{ProverState, VerifierMessage},
+    whir::{
+        algebra::embedding::Embedding,
+        transcript::{ProverState, VerifierMessage},
+    },
 };
 
 /// Instance-binding hash and Merkle/sponge configuration for the fixtures.
@@ -80,6 +84,119 @@ where
 {
     let (scheme, proof) = prove::<P>(r1cs, witness, public_inputs)?;
     scheme.verify(&proof, public_inputs, r1cs)
+}
+
+/// Prove→verify a dual-commitment (`num_challenges > 0`) instance: commit `w1`,
+/// draw the challenges, call `build_w2` to fill `w2`, commit `w2`, then verify.
+///
+/// The w1/w2 split is `w1.len()`. `build_w2(challenges, w1)` returns the full
+/// `w2` and must place each challenge at its offset. Requires `Base == Ext`
+/// (challenges are drawn in the extension field, stored in base witnesses); the
+/// `Embedding<Target = Base<P>>` bound enforces it.
+pub fn prove_and_verify_with_challenge<P>(
+    r1cs: &R1CS<Base<P>>,
+    w1: Vec<Base<P>>,
+    challenge_offsets: Vec<usize>,
+    hash: HashConfig,
+    build_w2: impl FnOnce(&[Base<P>], &[Base<P>]) -> Result<Vec<Base<P>>>,
+) -> Result<()>
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    dual_commit_challenge::<P>(r1cs, w1, challenge_offsets, hash, build_w2, false)
+}
+
+/// As [`prove_and_verify_with_challenge`], but corrupts the committed challenge
+/// at its first offset. Returns the verifier's `Err`.
+pub fn prove_with_tampered_challenge<P>(
+    r1cs: &R1CS<Base<P>>,
+    w1: Vec<Base<P>>,
+    challenge_offsets: Vec<usize>,
+    hash: HashConfig,
+    build_w2: impl FnOnce(&[Base<P>], &[Base<P>]) -> Result<Vec<Base<P>>>,
+) -> Result<()>
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    dual_commit_challenge::<P>(r1cs, w1, challenge_offsets, hash, build_w2, true)
+}
+
+/// Shared driver for the dual-commit path. `tamper_first` bumps the committed
+/// challenge at its first offset to force a rejection.
+fn dual_commit_challenge<P>(
+    r1cs: &R1CS<Base<P>>,
+    w1: Vec<Base<P>>,
+    challenge_offsets: Vec<usize>,
+    hash: HashConfig,
+    build_w2: impl FnOnce(&[Base<P>], &[Base<P>]) -> Result<Vec<Base<P>>>,
+    tamper_first: bool,
+) -> Result<()>
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    // The w1/w2 split is w1's length.
+    let w1_size = w1.len();
+    let num_challenges = challenge_offsets.len();
+    let scheme = WhirR1CSScheme::<P>::new_for_r1cs(
+        r1cs,
+        w1_size,
+        num_challenges,
+        challenge_offsets.clone(),
+        false,
+        hash,
+    );
+
+    let num_witnesses = r1cs.num_witnesses();
+    let num_constraints = r1cs.num_constraints();
+    let w2_size = num_witnesses - w1_size;
+
+    let public: PublicInputs<Base<P>> = PublicInputs::from_vec(Vec::new());
+    let instance = public.hash_bytes::<P>(hash);
+    let ds = scheme.create_domain_separator().instance(&instance);
+    let mut merlin = ProverState::new(&ds, P::transcript_sponge(hash));
+
+    // Commit w1, then draw the challenges bound to it.
+    let c1 = scheme.commit(
+        &mut merlin,
+        num_witnesses,
+        num_constraints,
+        w1.clone(),
+        true,
+    )?;
+
+    // Draw challenges as base-field elements (a no-op under `Base == Ext`).
+    let challenges: Vec<Base<P>> = merlin.verifier_message_vec(num_challenges);
+    let mut w2 = build_w2(&challenges, &w1)?;
+    ensure!(
+        w2.len() == w2_size,
+        "build_w2 returned {} elements, expected w2_size {w2_size}",
+        w2.len(),
+    );
+    // Each challenge must land at its declared offset, or binding is meaningless.
+    for (&offset, challenge) in challenge_offsets.iter().zip(&challenges) {
+        ensure!(
+            w2.get(offset) == Some(challenge),
+            "build_w2 must place the challenge at offset {offset}",
+        );
+    }
+    if tamper_first {
+        if let Some(&offset) = challenge_offsets.first() {
+            w2[offset] += <Base<P>>::one();
+        }
+    }
+
+    let mut full_witness = w1;
+    full_witness.extend_from_slice(&w2);
+
+    let c2 = scheme.commit(&mut merlin, num_witnesses, num_constraints, w2, false)?;
+    let proof = scheme.prove_noir(merlin, r1cs.clone(), vec![c1, c2], full_witness, &public)?;
+    scheme.verify(&proof, &public, r1cs)
 }
 
 /// Time a dual-commit (`num_challenges > 0`) prove from a precomputed witness,
