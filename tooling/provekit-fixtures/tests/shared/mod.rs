@@ -373,9 +373,9 @@ macro_rules! roundtrip_suite {
 
 /// Challenge-bearing roundtrip suite (LogUp + multi-challenge). The witness
 /// holds challenge-derived (ext) values, so this requires an `Identity` field
-/// (base == ext). Under the BF×EF split these need the k-base LogUp
-/// construction (plan T12) to draw challenges in the base field — until then,
-/// pin to the temporary `GoldilocksEfField`, not the base-leaf `GoldilocksField`.
+/// where the base and extension fields coincide.
+// TODO: support fields whose base and extension differ by drawing the LogUp
+// challenges in the base field.
 #[macro_export]
 macro_rules! challenge_roundtrip_suite {
     ($field:ty, $register:path) => {
@@ -419,8 +419,8 @@ macro_rules! soundness_suite {
     };
 }
 
-/// Challenge-bearing soundness suite (see [`challenge_roundtrip_suite!`]): pin to
-/// an `Identity` field until the k-base LogUp construction (plan T12).
+/// Challenge-bearing soundness suite (see [`challenge_roundtrip_suite!`]):
+/// requires an `Identity` field where the base and extension fields coincide.
 #[macro_export]
 macro_rules! challenge_soundness_suite {
     ($field:ty, $register:path) => {

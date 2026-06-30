@@ -261,7 +261,7 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
         // offset 0). Mirrors the prover's single blinding open after all base
         // opens.
         {
-            let blind_domain = 1usize << self.whir_blinding.initial_num_variables();
+            let blind_domain = self.blinding_domain_size();
             let blinding_covector = OffsetCovector::new(blinding_weights, 0, blind_domain);
             let fc_b = self
                 .whir_blinding

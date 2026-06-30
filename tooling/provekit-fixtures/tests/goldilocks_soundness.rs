@@ -1,7 +1,7 @@
 //! Goldilocks soundness checks: malformed witnesses and public inputs must be
 //! rejected at verification.
 //!
-//! See `goldilocks_roundtrip.rs` for the base-leaf vs temporary-`Identity` split.
+//! See `goldilocks_roundtrip.rs` for the base-leaf vs ext-leaf field split.
 
 mod shared;
 

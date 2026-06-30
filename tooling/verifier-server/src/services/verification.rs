@@ -89,8 +89,8 @@ impl VerificationService {
 
         write_gnark_parameters_to_file(
             whir_scheme,
-            &whir_scheme.whir_witness.blinded_commitment,
-            &whir_scheme.whir_witness.blinding_commitment,
+            &whir_scheme.whir_witness,
+            &whir_scheme.whir_blinding,
             &proof.whir_r1cs_proof,
             whir_scheme.m_0,
             whir_scheme.m,

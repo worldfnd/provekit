@@ -204,7 +204,7 @@ fn analyze_folded(folded: &str) {
     let pct = |w: u64| 100.0 * (w as f64) / (total as f64);
 
     let mut leaves: Vec<(&str, u64)> = leaf_self.into_iter().collect();
-    leaves.sort_by(|a, b| b.1.cmp(&a.1));
+    leaves.sort_by_key(|leaf| std::cmp::Reverse(leaf.1));
     println!("\n=== 2^20 goldilocks-BF: per-span SELF time (top 25) ===");
     println!("   self% |       weight | span");
     for (leaf, w) in leaves.iter().take(25) {
@@ -212,7 +212,7 @@ fn analyze_folded(folded: &str) {
     }
 
     let mut stacks: Vec<(&str, u64)> = stack_total.into_iter().collect();
-    stacks.sort_by(|a, b| b.1.cmp(&a.1));
+    stacks.sort_by_key(|stack| std::cmp::Reverse(stack.1));
     println!("\n=== 2^20 goldilocks-BF: top 20 folded stacks by total time ===");
     for (stack, w) in stacks.iter().take(20) {
         println!("  {:>5.1}% | {:>12} | {}", pct(*w), w, stack);

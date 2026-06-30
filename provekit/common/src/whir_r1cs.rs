@@ -21,13 +21,18 @@ use {
 /// so smaller commitments are padded up to this many variables.
 const MIN_WHIR_NUM_VARIABLES: usize = 13;
 
+/// WHIR folding factors, shared by the witness and blinding commitments via
+/// `whir_protocol_params`. The blinding domain floor is derived from these so
+/// the two cannot silently desync.
+const WHIR_INITIAL_FOLDING_FACTOR: usize = 3;
+const WHIR_FOLDING_FACTOR: usize = 3;
+
 /// Domain floor for the ext blinding commitment. The blinding vector holds only
 /// `4 * m_0` coefficients, so it does NOT use the witness floor
 /// ([`MIN_WHIR_NUM_VARIABLES`], a witness-specific performance plateau) — that
 /// would inflate the proof for no soundness benefit. This is the smallest WHIR
-/// domain that remains valid for the configured folding factors
-/// (`initial_folding_factor + folding_factor = 3 + 3`).
-const MIN_BLINDING_NUM_VARIABLES: usize = 6;
+/// domain that remains valid for the configured folding factors.
+const MIN_BLINDING_NUM_VARIABLES: usize = WHIR_INITIAL_FOLDING_FACTOR + WHIR_FOLDING_FACTOR;
 
 /// Minimum sumcheck rounds, keeping the constraint-domain polynomial
 /// non-trivial.
@@ -67,12 +72,12 @@ pub struct WhirR1CSScheme<P: ProofField> {
     /// Witness commitment, over the base field (`P::Embedding` has base
     /// leaves).
     ///
-    /// ZK SCOPE: this path provides **sumcheck** zero-knowledge only. The base
-    /// witness commitment is NOT hiding — its WHIR/FRI query openings still
-    /// leak witness values. Full witness zero-knowledge requires zkWHIR-v3
-    /// (whir_zk generalized over `Basefield`), which is out of scope here.
-    /// The Spartan sumcheck round polynomials are hidden by the separate
-    /// ext blinding commitment below.
+    /// This path provides **sumcheck** zero-knowledge only. The base witness
+    /// commitment is NOT hiding — its WHIR/FRI query openings still leak
+    /// witness values; the Spartan sumcheck round polynomials are hidden by
+    /// the separate ext blinding commitment below.
+    /// TODO: make the witness commitment itself hiding for full witness
+    /// zero-knowledge.
     pub whir_witness:      GenericWhirConfig<P::Embedding>,
     /// Separate extension-field commitment to the Spartan sumcheck blinding
     /// polynomial `g`. Kept distinct from the base witness commitment so the
@@ -90,6 +95,11 @@ impl<P: ProofField> WhirR1CSScheme<P> {
     /// Return the witness commitment domain size.
     pub const fn domain_size(&self) -> usize {
         1usize << self.m
+    }
+
+    /// Return the Spartan-blinding commitment domain size.
+    pub fn blinding_domain_size(&self) -> usize {
+        1usize << self.whir_blinding.initial_num_variables()
     }
 
     /// Create a domain separator for the provekit outer protocol.
@@ -111,8 +121,8 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
     /// Build a scheme for a concrete R1CS instance, binding the transcript to
     /// the R1CS hash.
     ///
-    /// Witness commitment domain size, sumcheck rounds, blinding room, and the
-    /// zkWHIR configuration are derived purely from R1CS dimensions.
+    /// The witness commitment domain size, sumcheck rounds, and blinding
+    /// commitment size are derived purely from R1CS dimensions.
     pub fn new_for_r1cs(
         r1cs: &R1CS<Base<P>>,
         w1_size: usize,
@@ -148,7 +158,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
             challenge_offsets,
-            whir_witness: Self::new_whir_zk_config_for_size(m_raw, hash_config.engine_id()),
+            whir_witness: Self::new_witness_config_for_size(m_raw, hash_config.engine_id()),
             whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             has_public_inputs,
             r1cs_hash: r1cs.hash(),
@@ -189,7 +199,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
-            whir_witness: Self::new_whir_zk_config_for_size(m, hash_config.engine_id()),
+            whir_witness: Self::new_witness_config_for_size(m, hash_config.engine_id()),
             whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             w1_size,
             num_challenges,
@@ -213,8 +223,8 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             unique_decoding: false,
             security_level: 128,
             pow_bits: 10,
-            initial_folding_factor: 3,
-            folding_factor: 3,
+            initial_folding_factor: WHIR_INITIAL_FOLDING_FACTOR,
+            folding_factor: WHIR_FOLDING_FACTOR,
             starting_log_inv_rate: 2,
             batch_size: 1,
             hash_id,
@@ -224,7 +234,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
     /// Build the (non-ZK) WHIR configuration for the witness of
     /// `num_variables`, committing in the base field of `P` and opening at
     /// points in the extension field.
-    pub fn new_whir_zk_config_for_size(
+    pub fn new_witness_config_for_size(
         num_variables: usize,
         hash_id: EngineId,
     ) -> GenericWhirConfig<P::Embedding> {

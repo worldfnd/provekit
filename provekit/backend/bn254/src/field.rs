@@ -8,16 +8,11 @@ use {
         FieldElement, TranscriptSponge,
     },
     provekit_common::{Base, Ext, FieldHash, HashConfig, ProofField},
-    whir::{
-        algebra::embedding::Identity,
-        protocols::{whir::Config as GenericWhirConfig, whir_zk::Config as GenericWhirZkConfig},
-    },
+    whir::{algebra::embedding::Identity, protocols::whir::Config as GenericWhirConfig},
 };
 
 /// The WHIR config over the bn254 embedding.
 pub type WhirConfig = GenericWhirConfig<Identity<FieldElement>>;
-/// The zero-knowledge WHIR config over the bn254 extension field.
-pub type WhirZkConfig = GenericWhirZkConfig<FieldElement>;
 
 /// bn254 proof field: the `Identity<Fr>` embedding (base == ext).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +64,6 @@ mod tests {
         assert_eq!(Bn254Field::default_hash(), HashConfig::Skyscraper);
     }
 
-    // Byte-exact public-input hashing is pinned by the KATs in
-    // `crate::field_hash::tests` (the bn254 bit-identical regression gate).
+    // Byte-exact public-input hashing is pinned by the known-answer tests in
+    // `crate::field_hash::tests`.
 }

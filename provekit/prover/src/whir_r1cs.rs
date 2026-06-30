@@ -115,8 +115,10 @@ where
 
         // The non-ZK WHIR config commits the base-field witness directly. NOTE:
         // this commitment is NOT hiding — its query openings still leak witness
-        // values (full witness ZK needs zkWHIR-v3). Sumcheck zero-knowledge is
-        // provided by the separate ext blinding commitment below.
+        // values (full witness ZK would need a hiding commitment scheme).
+        // The Spartan sumcheck round polynomials are masked by the separate ext
+        // blinding commitment below; that commitment is likewise non-hiding, so
+        // this path is a non-ZK prototype rather than a proven ZK scheme.
         let witness_commitment = self.whir_witness.commit(merlin, &[&padded_witness]);
 
         // Commit the Spartan sumcheck blinding `g` separately, natively in the
@@ -124,7 +126,7 @@ where
         // immediately after the witness commitment (mirrored in the verifier).
         let blinding = if is_w1 {
             let g = generate_blinding_univariates::<Ext<P>>(self.m_0);
-            let blind_len = 1usize << self.whir_blinding.initial_num_variables();
+            let blind_len = self.blinding_domain_size();
             let mut g_vector: Vec<Ext<P>> = g.iter().flatten().copied().collect();
             g_vector.resize(blind_len, <Ext<P>>::zero());
             let blinding_witness = self.whir_blinding.commit(merlin, &[&g_vector]);
@@ -171,9 +173,9 @@ where
         let blinding = commitments[0]
             .blinding
             .as_ref()
-            .expect("c1 must carry blinding state");
+            .ok_or_else(|| anyhow::anyhow!("c1 must carry blinding state"))?;
 
-        // The Spartan sumcheck runs entirely in the extension field; `g` is now
+        // The Spartan sumcheck runs entirely in the extension field; `g` is
         // native ext, committed separately. `blinding_eval` opens the ext
         // blinding vector (which holds `g` flattened at offset 0).
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
@@ -184,7 +186,6 @@ where
             self.m_0,
             &blinding.polynomial,
             &blinding.vector,
-            0,
         );
 
         let (at, bt, ct) = transpose_r1cs_matrices(&r1cs);
@@ -225,7 +226,7 @@ where
     let blinding_state = commitments[0]
         .blinding
         .take()
-        .expect("c0 must carry blinding state");
+        .ok_or_else(|| anyhow::anyhow!("c0 must carry blinding state"))?;
 
     let is_single = commitments.len() == 1;
     let (x, public_weight) =
@@ -394,7 +395,7 @@ where
     // sumcheck power covector. Sent after all base-witness opens (mirrored in
     // the verifier).
     {
-        let blind_domain = 1usize << scheme.whir_blinding.initial_num_variables();
+        let blind_domain = scheme.blinding_domain_size();
         let blinding_covector = OffsetCovector::new(blinding_weights, 0, blind_domain);
         let _ = scheme.whir_blinding.prove(
             &mut merlin,
@@ -507,8 +508,7 @@ pub fn run_zk_sumcheck_prover<F: Field + Codec, S: DuplexSpongeInterface<U = u8>
     merlin: &mut ProverState<S>,
     m_0: usize,
     blinding_polynomial: &[[F; 4]],
-    w1_polynomial: &[F],
-    blinding_offset: usize,
+    blinding_vector: &[F],
 ) -> (Vec<F>, F) {
     let r: Vec<F> = merlin.verifier_message_vec(m_0);
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r, 1 << r.len());
@@ -596,10 +596,7 @@ pub fn run_zk_sumcheck_prover<F: Field + Codec, S: DuplexSpongeInterface<U = u8>
     drop((a, b, c, eq));
 
     let weight_vec = expand_powers::<4, _>(alpha.as_slice());
-    let blinding_eval = dot(
-        &weight_vec,
-        &w1_polynomial[blinding_offset..blinding_offset + weight_vec.len()],
-    );
+    let blinding_eval = dot(&weight_vec, &blinding_vector[..weight_vec.len()]);
     merlin.prover_message(&blinding_eval);
 
     (alpha, blinding_eval)

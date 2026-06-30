@@ -1,9 +1,12 @@
 //! Goldilocks prove→verify roundtrips over synthetic R1CS fixtures.
 //!
-//! Base-compatible fixtures run on the canonical base-leaf `GoldilocksField`
-//! (the BF×EF split). The challenge-bearing fixtures (LogUp, multi-challenge)
-//! place ext challenge values in the witness, so they run on the temporary
-//! `GoldilocksEfField` (`Identity`) until the k-base LogUp construction (T12).
+//! Base-compatible fixtures run on the canonical base-leaf `GoldilocksField`.
+//! The challenge-bearing fixtures (LogUp, multi-challenge) place extension
+//! challenge values in the witness, so they run on `GoldilocksEfField`, whose
+//! base and extension fields coincide.
+//!
+//! TODO: run the challenge-bearing fixtures on the base-leaf field once a
+//! base-field LogUp construction is available.
 
 mod shared;
 
