@@ -105,7 +105,36 @@ where
     Standard: Distribution<Ext<P>>,
     P::Embedding: Embedding<Target = Base<P>>,
 {
-    dual_commit_challenge::<P>(r1cs, w1, challenge_offsets, hash, build_w2, false)
+    let public = PublicInputs::from_vec(Vec::new());
+    dual_commit_challenge::<P>(r1cs, w1, challenge_offsets, &public, hash, build_w2, false)
+}
+
+/// As [`prove_and_verify_with_challenge`], but with public inputs: the proof
+/// must satisfy both the challenge binding and the public-input binding
+/// (`witness[1 + i] == public_inputs[i]`). `w1` must carry the public values at
+/// indices `1..=public_inputs.len()`.
+pub fn prove_and_verify_with_challenge_and_public<P>(
+    r1cs: &R1CS<Base<P>>,
+    w1: Vec<Base<P>>,
+    challenge_offsets: Vec<usize>,
+    public_inputs: &PublicInputs<Base<P>>,
+    hash: HashConfig,
+    build_w2: impl FnOnce(&[Base<P>], &[Base<P>]) -> Result<Vec<Base<P>>>,
+) -> Result<()>
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    dual_commit_challenge::<P>(
+        r1cs,
+        w1,
+        challenge_offsets,
+        public_inputs,
+        hash,
+        build_w2,
+        false,
+    )
 }
 
 /// As [`prove_and_verify_with_challenge`], but corrupts the committed challenge
@@ -122,15 +151,18 @@ where
     Standard: Distribution<Ext<P>>,
     P::Embedding: Embedding<Target = Base<P>>,
 {
-    dual_commit_challenge::<P>(r1cs, w1, challenge_offsets, hash, build_w2, true)
+    let public = PublicInputs::from_vec(Vec::new());
+    dual_commit_challenge::<P>(r1cs, w1, challenge_offsets, &public, hash, build_w2, true)
 }
 
 /// Shared driver for the dual-commit path. `tamper_first` bumps the committed
 /// challenge at its first offset to force a rejection.
+#[allow(clippy::too_many_arguments)]
 fn dual_commit_challenge<P>(
     r1cs: &R1CS<Base<P>>,
     w1: Vec<Base<P>>,
     challenge_offsets: Vec<usize>,
+    public: &PublicInputs<Base<P>>,
     hash: HashConfig,
     build_w2: impl FnOnce(&[Base<P>], &[Base<P>]) -> Result<Vec<Base<P>>>,
     tamper_first: bool,
@@ -148,7 +180,7 @@ where
         w1_size,
         num_challenges,
         challenge_offsets.clone(),
-        false,
+        !public.is_empty(),
         hash,
     );
 
@@ -156,7 +188,6 @@ where
     let num_constraints = r1cs.num_constraints();
     let w2_size = num_witnesses - w1_size;
 
-    let public: PublicInputs<Base<P>> = PublicInputs::from_vec(Vec::new());
     let instance = public.hash_bytes::<P>(hash);
     let ds = scheme.create_domain_separator().instance(&instance);
     let mut merlin = ProverState::new(&ds, P::transcript_sponge(hash));
@@ -195,8 +226,8 @@ where
     full_witness.extend_from_slice(&w2);
 
     let c2 = scheme.commit(&mut merlin, num_witnesses, num_constraints, w2, false)?;
-    let proof = scheme.prove_noir(merlin, r1cs.clone(), vec![c1, c2], full_witness, &public)?;
-    scheme.verify(&proof, &public, r1cs)
+    let proof = scheme.prove_noir(merlin, r1cs.clone(), vec![c1, c2], full_witness, public)?;
+    scheme.verify(&proof, public, r1cs)
 }
 
 /// Time a dual-commit (`num_challenges > 0`) prove from a precomputed witness,
