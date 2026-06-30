@@ -18,11 +18,13 @@ use {
     provekit_common::{Base, Ext, FieldHash, HashConfig, PublicInputs},
     provekit_fixtures::{
         builders::{
-            logup_lookup, logup_lookup_w2, multi_challenge_inverses, multi_challenge_inverses_w2,
-            random_satisfiable, satisfies, squaring_chain, two_public_inputs, LogUpInstance,
+            challenge_with_public_input, logup_lookup, logup_lookup_w2, multi_challenge_inverses,
+            multi_challenge_inverses_w2, random_satisfiable, satisfies, squaring_chain,
+            two_public_inputs, LogUpInstance,
         },
         harness::{
-            prove, prove_and_verify, prove_and_verify_with_challenge, prove_with_tampered_challenge,
+            prove, prove_and_verify, prove_and_verify_with_challenge,
+            prove_and_verify_with_challenge_and_public, prove_with_tampered_challenge,
         },
     },
     provekit_verifier::WhirR1CSVerifier,
@@ -43,17 +45,6 @@ pub fn oracle_accepts_satisfying_and_rejects_broken<P: FieldHash>() {
     assert!(!satisfies(&r1cs, &broken));
 }
 
-pub fn squaring_chain_small_roundtrip<P>()
-where
-    P: FieldHash,
-    Standard: Distribution<Ext<P>>,
-{
-    let (r1cs, w) = squaring_chain::<Base<P>>(3, 8); // depth 8: m = 13 floor
-    let public_inputs = PublicInputs::from_vec(vec![w[1]]);
-    assert!(satisfies(&r1cs, &w));
-    prove_and_verify::<P>(&r1cs, w, &public_inputs).expect("roundtrip");
-}
-
 pub fn two_public_inputs_roundtrip<P>()
 where
     P: FieldHash,
@@ -65,32 +56,33 @@ where
     prove_and_verify::<P>(&r1cs, w, &public_inputs).expect("roundtrip");
 }
 
-/// Full prove→verify at exactly the `2^13` witness-domain floor (the smallest
-/// size a WHIR commitment pads up to).
-pub fn witness_domain_floor_roundtrip<P>()
+/// Full prove→verify across squaring-chain sizes straddling WHIR's
+/// witness-domain floor: exactly `2^13` (the smallest size a WHIR commitment
+/// pads up to — asserted unpadded) and past the `2^14` milestone.
+pub fn squaring_chain_size_sweep_roundtrip<P>()
 where
     P: FieldHash,
     Standard: Distribution<Ext<P>>,
 {
     const WITNESS_FLOOR: usize = 8192; // 2^13
-    let (r1cs, w) = squaring_chain::<Base<P>>(2, WITNESS_FLOOR - 2);
-    assert_eq!(r1cs.num_witnesses(), WITNESS_FLOOR);
-    let public_inputs = PublicInputs::from_vec(vec![w[1]]);
-    assert!(satisfies(&r1cs, &w));
-    prove_and_verify::<P>(&r1cs, w, &public_inputs).expect("roundtrip");
-}
 
-/// Larger-scale prove→verify past `2^14` witnesses.
-pub fn milestone_2pow14_roundtrip<P>()
-where
-    P: FieldHash,
-    Standard: Distribution<Ext<P>>,
-{
-    let (r1cs, w) = squaring_chain::<Base<P>>(2, 16_384);
-    assert!(r1cs.num_witnesses() >= 16_384 && r1cs.num_constraints() >= 16_384);
-    let public_inputs = PublicInputs::from_vec(vec![w[1]]);
-    assert!(satisfies(&r1cs, &w));
-    prove_and_verify::<P>(&r1cs, w, &public_inputs).expect("roundtrip");
+    // Each case is `(depth, exact)`: `Some(n)` requires exactly `n` (unpadded)
+    // witnesses; `None` only checks the milestone lower bound.
+    let cases: [(usize, Option<usize>); 2] =
+        [(WITNESS_FLOOR - 2, Some(WITNESS_FLOOR)), (16_384, None)];
+    for (depth, exact) in cases {
+        let (r1cs, w) = squaring_chain::<Base<P>>(2, depth);
+        match exact {
+            Some(n) => assert_eq!(r1cs.num_witnesses(), n, "depth {depth}: floor"),
+            None => assert!(
+                r1cs.num_witnesses() >= 16_384 && r1cs.num_constraints() >= 16_384,
+                "depth {depth}: past 2^14"
+            ),
+        }
+        let public_inputs = PublicInputs::from_vec(vec![w[1]]);
+        assert!(satisfies(&r1cs, &w));
+        prove_and_verify::<P>(&r1cs, w, &public_inputs).expect("roundtrip");
+    }
 }
 
 /// Per seed: the instance proves and verifies, and a perturbed output breaks
@@ -141,8 +133,9 @@ where
     })
 }
 
-/// LogUp lookup over small instances and several seeds.
-pub fn logup_lookup_small_roundtrip<P>()
+/// LogUp roundtrip across instance sizes: small instances over several seeds,
+/// plus one large instance crossing the `2^13` witness-domain floor.
+pub fn logup_lookup_size_sweep_roundtrip<P>()
 where
     P: FieldHash,
     Standard: Distribution<Ext<P>>,
@@ -152,32 +145,9 @@ where
         logup_roundtrip::<P>(5, 11, seed, HashConfig::Sha256)
             .unwrap_or_else(|e| panic!("seed {seed}: honest lookup must verify: {e}"));
     }
-}
-
-/// Larger LogUp roundtrip crossing the `2^13` witness-domain floor.
-pub fn logup_lookup_milestone_roundtrip<P>()
-where
-    P: FieldHash,
-    Standard: Distribution<Ext<P>>,
-    P::Embedding: Embedding<Target = Base<P>>,
-{
     // 2 + 4·table + 2·lookup ≈ 16k witnesses crosses the 2^13 floor.
     logup_roundtrip::<P>(2_000, 4_000, 0xa11ce, HashConfig::Sha256)
         .expect("milestone lookup must verify");
-}
-
-/// LogUp roundtrip under each field-agnostic hash engine (`Sha256`, `Keccak`,
-/// `Blake3`). `Skyscraper`/`Poseidon2` are bn254-only.
-pub fn logup_lookup_hash_sweep_roundtrip<P>()
-where
-    P: FieldHash,
-    Standard: Distribution<Ext<P>>,
-    P::Embedding: Embedding<Target = Base<P>>,
-{
-    for hash in [HashConfig::Sha256, HashConfig::Keccak, HashConfig::Blake3] {
-        logup_roundtrip::<P>(5, 11, 0x5217, hash)
-            .unwrap_or_else(|e| panic!("lookup must verify under {hash:?}: {e}"));
-    }
 }
 
 /// Multi-challenge binding: several challenges, each pinned by `c · (1/c) = 1`.
@@ -196,6 +166,28 @@ where
         multi_challenge_inverses_w2::<Base<P>>,
     )
     .expect("multi-challenge binding roundtrip must verify");
+}
+
+/// Dual-commit *and* a public input in one proof: the verifier must enforce
+/// both the challenge binding (`c · 1/c = 1`) and the public-input binding
+/// (`witness[1] == public_inputs[0]`).
+pub fn dual_commit_with_public_roundtrip<P>()
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+    P::Embedding: Embedding<Target = Base<P>>,
+{
+    let (r1cs, w1, offsets) = challenge_with_public_input::<Base<P>>(7);
+    let public_inputs = PublicInputs::from_vec(vec![w1[1]]);
+    prove_and_verify_with_challenge_and_public::<P>(
+        &r1cs,
+        w1,
+        offsets,
+        &public_inputs,
+        HashConfig::Sha256,
+        multi_challenge_inverses_w2::<Base<P>>,
+    )
+    .expect("dual-commit + public-input roundtrip must verify");
 }
 
 // --- soundness bodies ---
@@ -221,54 +213,54 @@ where
     assert!(scheme.verify(&proof, &public_inputs, &r1cs).is_err());
 }
 
-/// Instance binding: a proof must not verify against public inputs substituted
-/// after proving.
-pub fn tampered_public_input_is_rejected<P>()
+/// Instance/structure binding: a proof made for one R1CS must not verify
+/// against a structurally different R1CS.
+pub fn wrong_r1cs_is_rejected<P>()
 where
     P: FieldHash,
     Standard: Distribution<Ext<P>>,
 {
-    let (r1cs, w) = squaring_chain::<Base<P>>(3, 8);
+    let (r1cs_a, w) = squaring_chain::<Base<P>>(3, 8);
     let public_inputs = PublicInputs::from_vec(vec![w[1]]);
-    assert!(satisfies(&r1cs, &w));
-    let (scheme, proof) = prove::<P>(&r1cs, w, &public_inputs).expect("proving failed");
+    assert!(satisfies(&r1cs_a, &w));
+    let (scheme, proof) = prove::<P>(&r1cs_a, w, &public_inputs).expect("proving failed");
 
-    let tampered = PublicInputs::from_vec(vec![Base::<P>::from(999u64)]);
-    assert!(scheme.verify(&proof, &tampered, &r1cs).is_err());
+    // A structurally different instance (more constraints/witnesses).
+    let (r1cs_b, _) = squaring_chain::<Base<P>>(3, 12);
+    assert!(scheme.verify(&proof, &public_inputs, &r1cs_b).is_err());
 }
 
-/// Public-input binding: `witness[1] != public[0]` must not verify even though
-/// the R1CS is satisfied.
-pub fn mismatched_public_input_binding_is_rejected<P>()
+/// Public-input binding: a verify against wrong public inputs must reject at
+/// both `N = 1` (trivial binding) and `N = 2` (non-trivial binding loop), even
+/// though the R1CS itself is satisfied.
+pub fn public_input_binding_mismatch_is_rejected<P>()
 where
     P: FieldHash,
     Standard: Distribution<Ext<P>>,
 {
+    // N = 1: corrupt the single public input.
     let (r1cs, w) = squaring_chain::<Base<P>>(3, 8);
     assert!(satisfies(&r1cs, &w));
-
     let public_inputs = PublicInputs::from_vec(vec![w[1]]);
     let wrong = PublicInputs::from_vec(vec![w[1] + Base::<P>::one()]);
     let (scheme, proof) = prove::<P>(&r1cs, w, &public_inputs)
         .expect("proving succeeds; the binding is checked at verify time");
-    assert!(scheme.verify(&proof, &wrong, &r1cs).is_err());
-}
+    assert!(
+        scheme.verify(&proof, &wrong, &r1cs).is_err(),
+        "N=1 public-input mismatch must reject"
+    );
 
-/// Public-input binding at `N = 2`: corrupting only the second public input
-/// must still reject (the binding loop is non-trivial here, unlike `N = 1`).
-pub fn two_public_inputs_binding_mismatch_is_rejected<P>()
-where
-    P: FieldHash,
-    Standard: Distribution<Ext<P>>,
-{
+    // N = 2: corrupt only the second public input.
     let (r1cs, w) = two_public_inputs::<Base<P>>(6, 7);
     assert!(satisfies(&r1cs, &w));
-
     let public_inputs = PublicInputs::from_vec(vec![w[1], w[2]]);
     let wrong = PublicInputs::from_vec(vec![w[1], w[2] + Base::<P>::one()]);
     let (scheme, proof) = prove::<P>(&r1cs, w, &public_inputs)
         .expect("proving succeeds; the binding is checked at verify time");
-    assert!(scheme.verify(&proof, &wrong, &r1cs).is_err());
+    assert!(
+        scheme.verify(&proof, &wrong, &r1cs).is_err(),
+        "N=2 public-input mismatch must reject"
+    );
 }
 
 /// Challenge binding: a `w2` whose committed challenge differs from the drawn
@@ -326,33 +318,30 @@ where
     )
 }
 
-/// LogUp membership soundness: a looked-up value not in the table must be
+/// LogUp soundness: a non-member lookup and a wrong multiplicity must each be
 /// rejected.
-pub fn logup_non_member_is_rejected<P>()
+pub fn logup_corruption_is_rejected<P>()
 where
     P: FieldHash,
     Standard: Distribution<Ext<P>>,
     P::Embedding: Embedding<Target = Base<P>>,
 {
-    let res = logup_corrupted_verify::<P>(7, |w1, table_len, _lookup_len| {
-        // First lookup sits at w1[1 + table_len]; set it outside `0..table_len`.
-        w1[1 + table_len] = Base::<P>::from(table_len as u64 + 999);
-    });
-    assert!(res.is_err(), "a non-member lookup must be rejected");
-}
-
-/// LogUp multiplicity soundness: a wrong multiplicity must be rejected.
-pub fn logup_wrong_multiplicity_is_rejected<P>()
-where
-    P: FieldHash,
-    Standard: Distribution<Ext<P>>,
-    P::Embedding: Embedding<Target = Base<P>>,
-{
-    let res = logup_corrupted_verify::<P>(9, |w1, table_len, lookup_len| {
-        // First multiplicity sits at w1[1 + table_len + lookup_len]; bump it.
-        w1[1 + table_len + lookup_len] += Base::<P>::one();
-    });
-    assert!(res.is_err(), "a wrong multiplicity must be rejected");
+    // First lookup sits at w1[1 + table_len]; set it outside `0..table_len`.
+    assert!(
+        logup_corrupted_verify::<P>(7, |w1, table_len, _lookup_len| {
+            w1[1 + table_len] = Base::<P>::from(table_len as u64 + 999);
+        })
+        .is_err(),
+        "a non-member lookup must be rejected"
+    );
+    // First multiplicity sits at w1[1 + table_len + lookup_len]; bump it.
+    assert!(
+        logup_corrupted_verify::<P>(9, |w1, table_len, lookup_len| {
+            w1[1 + table_len + lookup_len] += Base::<P>::one();
+        })
+        .is_err(),
+        "a wrong multiplicity must be rejected"
+    );
 }
 
 /// Emit the prove→verify roundtrip suite for a concrete proof field.
@@ -365,24 +354,14 @@ macro_rules! roundtrip_suite {
             $crate::shared::oracle_accepts_satisfying_and_rejects_broken::<$field>();
         }
         #[test]
-        fn squaring_chain_small_roundtrip() {
-            $register();
-            $crate::shared::squaring_chain_small_roundtrip::<$field>();
-        }
-        #[test]
         fn two_public_inputs_roundtrip() {
             $register();
             $crate::shared::two_public_inputs_roundtrip::<$field>();
         }
         #[test]
-        fn witness_domain_floor_roundtrip() {
+        fn squaring_chain_size_sweep_roundtrip() {
             $register();
-            $crate::shared::witness_domain_floor_roundtrip::<$field>();
-        }
-        #[test]
-        fn milestone_2pow14_roundtrip() {
-            $register();
-            $crate::shared::milestone_2pow14_roundtrip::<$field>();
+            $crate::shared::squaring_chain_size_sweep_roundtrip::<$field>();
         }
         #[test]
         fn random_satisfiable_proves_and_perturbation_rejects() {
@@ -390,24 +369,19 @@ macro_rules! roundtrip_suite {
             $crate::shared::random_satisfiable_proves_and_perturbation_rejects::<$field>();
         }
         #[test]
-        fn logup_lookup_small_roundtrip() {
+        fn logup_lookup_size_sweep_roundtrip() {
             $register();
-            $crate::shared::logup_lookup_small_roundtrip::<$field>();
-        }
-        #[test]
-        fn logup_lookup_milestone_roundtrip() {
-            $register();
-            $crate::shared::logup_lookup_milestone_roundtrip::<$field>();
-        }
-        #[test]
-        fn logup_lookup_hash_sweep_roundtrip() {
-            $register();
-            $crate::shared::logup_lookup_hash_sweep_roundtrip::<$field>();
+            $crate::shared::logup_lookup_size_sweep_roundtrip::<$field>();
         }
         #[test]
         fn multi_challenge_binding_roundtrip() {
             $register();
             $crate::shared::multi_challenge_binding_roundtrip::<$field>();
+        }
+        #[test]
+        fn dual_commit_with_public_roundtrip() {
+            $register();
+            $crate::shared::dual_commit_with_public_roundtrip::<$field>();
         }
     };
 }
@@ -422,19 +396,14 @@ macro_rules! soundness_suite {
             $crate::shared::corrupted_witness_is_rejected::<$field>();
         }
         #[test]
-        fn tampered_public_input_is_rejected() {
+        fn wrong_r1cs_is_rejected() {
             $register();
-            $crate::shared::tampered_public_input_is_rejected::<$field>();
+            $crate::shared::wrong_r1cs_is_rejected::<$field>();
         }
         #[test]
-        fn mismatched_public_input_binding_is_rejected() {
+        fn public_input_binding_mismatch_is_rejected() {
             $register();
-            $crate::shared::mismatched_public_input_binding_is_rejected::<$field>();
-        }
-        #[test]
-        fn two_public_inputs_binding_mismatch_is_rejected() {
-            $register();
-            $crate::shared::two_public_inputs_binding_mismatch_is_rejected::<$field>();
+            $crate::shared::public_input_binding_mismatch_is_rejected::<$field>();
         }
         #[test]
         fn tampered_challenge_is_rejected() {
@@ -442,14 +411,9 @@ macro_rules! soundness_suite {
             $crate::shared::tampered_challenge_is_rejected::<$field>();
         }
         #[test]
-        fn logup_non_member_is_rejected() {
+        fn logup_corruption_is_rejected() {
             $register();
-            $crate::shared::logup_non_member_is_rejected::<$field>();
-        }
-        #[test]
-        fn logup_wrong_multiplicity_is_rejected() {
-            $register();
-            $crate::shared::logup_wrong_multiplicity_is_rejected::<$field>();
+            $crate::shared::logup_corruption_is_rejected::<$field>();
         }
     };
 }
