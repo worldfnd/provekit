@@ -20,6 +20,9 @@ pub struct Bn254Field;
 
 impl ProofField for Bn254Field {
     type Embedding = Identity<FieldElement>;
+
+    // Field tag written into the `.np` proof format header; 0 identifies bn254.
+    const FIELD_ID: u8 = 0;
 }
 
 impl FieldHash for Bn254Field {

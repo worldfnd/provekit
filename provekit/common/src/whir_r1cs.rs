@@ -283,8 +283,20 @@ pub struct ProvekitProof<P: ProofField> {
     pub whir_r1cs_proof: WhirR1CSProof,
 }
 
+/// Derive the `.np` format magic for a given [`ProofField::FIELD_ID`].
+///
+/// The base magic [`binary_format::NOIR_PROOF_FORMAT`] is used verbatim for
+/// bn254 (`field_id == 0`); other fields offset the final byte so a proof from
+/// one field fails the format check when read by a verifier of another. The
+/// header layout is unchanged — only this 8-byte magic varies by field.
+const fn np_format(field_id: u8) -> [u8; 8] {
+    let mut f = binary_format::NOIR_PROOF_FORMAT;
+    f[7] = f[7].wrapping_add(field_id);
+    f
+}
+
 impl<P: ProofField> FileFormat for ProvekitProof<P> {
-    const FORMAT: [u8; 8] = binary_format::NOIR_PROOF_FORMAT;
+    const FORMAT: [u8; 8] = np_format(<P as ProofField>::FIELD_ID);
     const EXTENSION: &'static str = "np";
     const VERSION: (u16, u16) = binary_format::NOIR_PROOF_VERSION;
     const COMPRESSION: Compression = Compression::Zstd;
@@ -293,5 +305,20 @@ impl<P: ProofField> FileFormat for ProvekitProof<P> {
 impl<P: ProofField> MaybeHashAware for ProvekitProof<P> {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{binary_format, np_format};
+
+    #[test]
+    fn np_format_preserves_bn254_and_distinguishes_fields() {
+        // bn254 (id 0) must stay byte-identical to the historical magic.
+        assert_eq!(np_format(0), binary_format::NOIR_PROOF_FORMAT);
+        // Other fields produce distinct magics from bn254 and each other.
+        assert_ne!(np_format(1), np_format(0));
+        assert_ne!(np_format(2), np_format(0));
+        assert_ne!(np_format(2), np_format(1));
     }
 }

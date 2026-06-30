@@ -9,14 +9,22 @@ use {
 /// Algebra carrier for a proof field: `Embedding::Source` is the base
 /// (committed) field, `Embedding::Target` the extension (challenge) field.
 ///
-/// bn254 uses `Identity<Fr>` (base == ext); goldilocks uses
-/// `Identity<Field64_3>` pre-v3, `Basefield<Field64_3>` once zkWHIR v3 lands.
+/// bn254 uses `Identity<Fr>` (base == ext); a field with a genuine
+/// extension uses an embedding whose source and target differ (e.g.
+/// `Basefield<Field64_3>`).
 pub trait ProofField: Copy + Debug + Eq + Send + Sync {
     /// `Default` lets the spine construct the embedding instance for mixed
     /// base×ext products (`Identity`/`Basefield` both derive it). The extension
     /// (`Target`) must be FFT-friendly and transcript-codec-able — WHIR's
     /// requirement for any challenge/commitment field.
     type Embedding: Embedding<Target: FftField + Codec> + Default;
+
+    /// Per-field tag distinguishing on-disk proof (`.np`) formats so a proof
+    /// from one field cannot be read by a verifier of another. It is folded
+    /// into the `.np` file's format magic; `0` is reserved for bn254 to keep
+    /// its legacy magic byte-identical. Values must be small and unique per
+    /// field (the base-field byte layouts genuinely differ).
+    const FIELD_ID: u8;
 }
 
 /// Base (committed) field of a [`ProofField`].
@@ -51,6 +59,5 @@ pub trait FieldHash: ProofField {
     /// Construct the transcript sponge matching `config`.
     fn transcript_sponge(config: crate::HashConfig) -> Self::Sponge;
 
-    // TODO(base-bridge): add a base (`Source`) bridge when base commitment lands
-    // (V-stage).
+    // TODO: add a base-field (`Source`) byte bridge when one is needed.
 }

@@ -14,30 +14,34 @@ use {
     },
 };
 
-/// The canonical Goldilocks proof field: the BF×EF split, `Basefield<Field64_3>`.
+/// The Goldilocks proof field: `Basefield<Field64_3>`.
 ///
-/// Commits the witness in the base field `Field64` (BF) and uses the degree-3
-/// extension `Field64_3` (EF) only for challenges and sumcheck. This is the real
-/// target; [`GoldilocksEfField`] (`Identity`) is a temporary crutch to be removed.
+/// Commits the witness in the base field `Field64` and uses the degree-3
+/// extension `Field64_3` only for challenges and sumcheck.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GoldilocksField;
 
 impl ProofField for GoldilocksField {
     type Embedding = Basefield<Field64_3>;
+
+    const FIELD_ID: u8 = 1;
 }
 
-/// TEMPORARY ext-leaf Goldilocks field (`Identity<Field64_3>`, base == ext).
+/// Ext-leaf Goldilocks field (`Identity<Field64_3>`, base == ext).
 ///
-/// Exists only for (a) the same-field EF baseline in BF-vs-EF profiling and
-/// (b) the challenge-bearing fixtures (LogUp, dual-commit, multi-challenge) that
-/// place ext challenge values in the witness, which a base witness can't hold.
-/// To be DELETED once the k-base LogUp construction (plan T12) lets those run
-/// under [`GoldilocksField`] (base challenges, k=3 parallel repetition).
+/// Used for fixtures that place extension challenge values in the witness,
+/// which a base-field witness cannot hold.
+// TODO: remove once challenge-bearing fixtures can run under `GoldilocksField`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GoldilocksEfField;
 
 impl ProofField for GoldilocksEfField {
     type Embedding = Identity<Field64_3>;
+
+    // Distinct from `GoldilocksField`: the ext-leaf base layout (`Field64_3`)
+    // differs from its base-commit layout (`Field64`), so their serialized bytes
+    // differ.
+    const FIELD_ID: u8 = 2;
 }
 
 /// Both Goldilocks fields share the same hash/byte glue: the challenge field is
