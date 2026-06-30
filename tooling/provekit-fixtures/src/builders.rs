@@ -381,3 +381,25 @@ pub fn multi_challenge_inverses_w2<F: Field>(challenges: &[F], _w1: &[F]) -> Res
     }
     Ok(w2)
 }
+
+/// A dual-commitment instance that *also* carries a public input, so a single
+/// proof must satisfy both the challenge binding and the public-input binding
+/// (`witness[1] == public_inputs[0]`). The public value `p` lives in `w1` (the
+/// public weight binds the `w1` commitment), and a single challenge `c` is
+/// pinned by `c · (1/c) = 1`.
+///
+/// Layout `[one, p | c, inv]`, split at `w1_size = 2`; `c` at `w2` offset `0`.
+/// Pair with [`multi_challenge_inverses_w2`] (`k = 1` → `[c, 1/c]`). Returns
+/// `(r1cs, w1, challenge_offsets)`. Set `public_inputs = [p]`.
+#[must_use]
+pub fn challenge_with_public_input<F: Field>(p: u64) -> (R1CS<F>, Vec<F>, Vec<usize>) {
+    let mut r1cs = R1CS::<F>::new();
+    r1cs.add_witnesses(4); // [one, p, c, inv]
+    r1cs.num_public_inputs = 1;
+    let one = F::one();
+    // p · 1 = p — binds the public witness (index 1) into the constraint system.
+    r1cs.add_constraint(&[(one, 1)], &[(one, 0)], &[(one, 1)]);
+    // c · inv = 1 — challenge binding (c at index 2 = w2[0], inv at index 3).
+    r1cs.add_constraint(&[(one, 2)], &[(one, 3)], &[(one, 0)]);
+    (r1cs, vec![one, F::from(p)], vec![0])
+}
