@@ -96,3 +96,60 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: crate-ci/typos@v1.44.0
+
+  field_separation:
+    name: Field-backend separation guard
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup rust toolchain, cache and bins
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+      - name: Check field-backend dependency separation
+        run: ./scripts/check-field-separation.sh
+
+  goldilocks_standalone:
+    name: Goldilocks backend (standalone, no --all-features)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup rust toolchain, cache and bins
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+      - name: Build goldilocks backend in isolation
+        run: cargo build --all-targets -p provekit-backend-goldilocks
+      - name: Test goldilocks backend in isolation
+        run: cargo test --no-fail-fast --lib --tests --bins -p provekit-backend-goldilocks
+      - name: Test goldilocks fixtures
+        run: cargo test -p provekit-fixtures --test goldilocks_roundtrip --test goldilocks_soundness
+
+  bn254_standalone:
+    name: BN254 backend (standalone, no --all-features)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup rust toolchain, cache and bins
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+      - name: Build bn254 backend in isolation
+        run: cargo build --all-targets -p provekit-backend-bn254 --features witness-generation,provekit_ntt
+      - name: Build bn254-welded tooling in isolation
+        run: >
+          cargo build --all-targets
+          -p provekit-r1cs-compiler -p provekit-cli -p provekit-ffi -p provekit-gnark
+          -p provekit-bench -p verifier-server -p passport-input-gen
+      - name: Test bn254 backend in isolation
+        run: cargo test --no-fail-fast --lib --tests --bins -p provekit-backend-bn254 --features witness-generation,provekit_ntt
+      - name: Test bn254-welded tooling in isolation
+        run: >
+          cargo test --no-fail-fast --lib --tests --bins
+          -p provekit-r1cs-compiler -p provekit-cli -p provekit-ffi -p provekit-gnark
+          -p provekit-bench -p verifier-server -p passport-input-gen
+      - name: Test bn254 fixtures
+        run: cargo test -p provekit-fixtures --test bn254_roundtrip --test bn254_soundness
