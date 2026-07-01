@@ -56,8 +56,8 @@ impl Command for Args {
 
         write_gnark_parameters_to_file(
             &verifier.whir_for_witness.clone().unwrap(),
-            &wfw.whir_witness.blinded_commitment,
-            &wfw.whir_witness.blinding_commitment,
+            &wfw.whir_witness,
+            &wfw.whir_blinding,
             &proof.whir_r1cs_proof,
             wfw.m_0,
             wfw.m,
