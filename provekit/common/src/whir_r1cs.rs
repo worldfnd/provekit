@@ -18,14 +18,22 @@ use {
     },
     serde::{Deserialize, Serialize},
     whir::{
-        engines::EngineId, parameters::ProtocolParameters,
-        protocols::whir_zk::Config as GenericWhirZkConfig, transcript,
+        algebra::embedding::Identity, engines::EngineId, parameters::ProtocolParameters,
+        protocols::whir::Config as GenericWhirConfig, transcript,
     },
 };
 
 /// WHIR witness-domain floor: prover work is flat at or below `2^13` variables,
 /// so smaller commitments are padded up to this many variables.
 pub const MIN_WHIR_NUM_VARIABLES: usize = 13;
+
+/// WHIR folding factors, shared by the witness and blinding commitments.
+const WHIR_INITIAL_FOLDING_FACTOR: usize = 3;
+const WHIR_FOLDING_FACTOR: usize = 3;
+
+/// Domain floor for the ext blinding commitment: smallest WHIR domain valid for
+/// the folding factors (not the witness floor — `g` is only `4 * m_0` coeffs).
+const MIN_BLINDING_NUM_VARIABLES: usize = WHIR_INITIAL_FOLDING_FACTOR + WHIR_FOLDING_FACTOR;
 
 /// Minimum sumcheck rounds, keeping the constraint-domain polynomial
 /// non-trivial.
@@ -62,7 +70,14 @@ pub struct WhirR1CSScheme<P: ProofField> {
     pub num_challenges:    usize,
     pub challenge_offsets: Vec<usize>,
     pub has_public_inputs: bool,
-    pub whir_witness:      GenericWhirZkConfig<Ext<P>>,
+    /// Base-field witness commitment. Non-hiding — WHIR openings leak witness
+    /// values, so this provides sumcheck ZK only, not witness ZK.
+    /// TODO: make the witness commitment hiding for full witness ZK.
+    pub whir_witness:      GenericWhirConfig<P::Embedding>,
+    /// Separate ext-field commitment to the Spartan blinding polynomial `g`;
+    /// masking the ext-valued sumcheck rounds needs ext randomness, so `g`
+    /// cannot ride on the base witness commitment.
+    pub whir_blinding:     GenericWhirConfig<Identity<Ext<P>>>,
     pub r1cs_hash:         R1csHash,
     /// Hash configuration for Merkle commitments, Fiat-Shamir sponge, and
     /// public-input instance binding. Source of truth; the WHIR engine ID
@@ -74,6 +89,11 @@ impl<P: ProofField> WhirR1CSScheme<P> {
     /// Return the witness commitment domain size.
     pub const fn domain_size(&self) -> usize {
         1usize << self.m
+    }
+
+    /// Return the Spartan-blinding commitment domain size.
+    pub fn blinding_domain_size(&self) -> usize {
+        1usize << self.whir_blinding.initial_num_variables()
     }
 
     /// Create a domain separator for the provekit outer protocol.
@@ -96,8 +116,8 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
     /// transcript can later be bound to this instance (in
     /// [`Self::create_domain_separator`]).
     ///
-    /// Witness commitment domain size, sumcheck rounds, blinding room, and the
-    /// zkWHIR configuration are derived purely from R1CS dimensions.
+    /// The witness commitment domain size, sumcheck rounds, and blinding
+    /// commitment size are derived purely from R1CS dimensions.
     pub fn new_for_r1cs(
         r1cs: &R1CS<Base<P>>,
         w1_size: usize,
@@ -146,19 +166,15 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         let m2_raw = next_power_of_two(w2_size);
         let m0_raw = next_power_of_two(num_constraints);
 
-        let mut m = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
+        let m = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
-
-        // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
-        if (1usize << m) - w1_size < 4 * m_0 {
-            m += 1;
-        }
 
         Self {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
-            whir_witness: Self::new_whir_zk_config_for_size(m, 1, hash_config.engine_id()),
+            whir_witness: Self::new_witness_config_for_size(m, hash_config.engine_id()),
+            whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             w1_size,
             num_challenges,
             challenge_offsets,
@@ -168,31 +184,44 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         }
     }
 
-    /// Build the zkWHIR configuration for a polynomial of `num_variables` over
-    /// the extension (challenge) field of `P`.
-    pub fn new_whir_zk_config_for_size(
-        num_variables: usize,
-        num_polynomials: usize,
-        hash_id: EngineId,
-    ) -> GenericWhirZkConfig<Ext<P>> {
-        let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
-
-        // Parameters tuned for 128-bit security under the Johnson bound (the old
-        // ConjectureList soundness was disproven). Rate=2 balances query count vs
-        // codeword size; ff=3 keeps blinding polynomials small; pow_bits=10 shifts
-        // security budget toward algebraic hardness (118 bits) with light PoW per
-        // round, which is faster than the default ~18-bit grinding.
-        let whir_params = ProtocolParameters {
+    /// Shared WHIR parameters for the witness and blinding commitments: 128-bit
+    /// security under the Johnson bound, rate 2, folding factor 3, pow_bits 10
+    /// (≈118-bit algebraic hardness plus light per-round PoW).
+    fn whir_protocol_params(hash_id: EngineId) -> ProtocolParameters {
+        ProtocolParameters {
             unique_decoding: false,
             security_level: 128,
             pow_bits: 10,
-            initial_folding_factor: 3,
-            folding_factor: 3,
+            initial_folding_factor: WHIR_INITIAL_FOLDING_FACTOR,
+            folding_factor: WHIR_FOLDING_FACTOR,
             starting_log_inv_rate: 2,
             batch_size: 1,
             hash_id,
-        };
-        GenericWhirZkConfig::<Ext<P>>::new(1 << nv, &whir_params, num_polynomials)
+        }
+    }
+
+    /// Build the non-ZK witness WHIR config: commits in `P`'s base field, opens
+    /// at extension-field points.
+    pub fn new_witness_config_for_size(
+        num_variables: usize,
+        hash_id: EngineId,
+    ) -> GenericWhirConfig<P::Embedding> {
+        let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
+        GenericWhirConfig::<P::Embedding>::new(1 << nv, &Self::whir_protocol_params(hash_id))
+    }
+
+    /// Build the WHIR config for the blinding polynomial `g`: its `4 * m_0`
+    /// cubic coefficients committed in the ext field via `Identity`.
+    pub fn new_blinding_config_for_size(
+        m_0: usize,
+        hash_id: EngineId,
+    ) -> GenericWhirConfig<Identity<Ext<P>>> {
+        let nv_blind = ((4 * m_0).next_power_of_two().trailing_zeros() as usize)
+            .max(MIN_BLINDING_NUM_VARIABLES);
+        GenericWhirConfig::<Identity<Ext<P>>>::new(
+            1 << nv_blind,
+            &Self::whir_protocol_params(hash_id),
+        )
     }
 }
 
@@ -221,9 +250,19 @@ pub struct ProvekitProof<P: ProofField> {
     pub whir_r1cs_proof: WhirR1CSProof,
 }
 
+/// Derive the `.np` format magic from [`ProofField::FIELD_ID`] by offsetting the
+/// final magic byte: bn254 (id 0) keeps the historical magic, other fields a
+/// distinct one.
+#[cfg(not(target_arch = "wasm32"))]
+const fn np_format(field_id: u8) -> [u8; 8] {
+    let mut f = binary_format::NOIR_PROOF_FORMAT;
+    f[7] = f[7].wrapping_add(field_id);
+    f
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 impl<P: ProofField> FileFormat for ProvekitProof<P> {
-    const FORMAT: [u8; 8] = binary_format::NOIR_PROOF_FORMAT;
+    const FORMAT: [u8; 8] = np_format(<P as ProofField>::FIELD_ID);
     const EXTENSION: &'static str = "np";
     const VERSION: (u16, u16) = binary_format::NOIR_PROOF_VERSION;
     const COMPRESSION: Compression = Compression::Zstd;
@@ -233,5 +272,18 @@ impl<P: ProofField> FileFormat for ProvekitProof<P> {
 impl<P: ProofField> MaybeHashAware for ProvekitProof<P> {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         None
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::{binary_format, np_format};
+
+    #[test]
+    fn np_format_preserves_bn254_and_distinguishes_fields() {
+        assert_eq!(np_format(0), binary_format::NOIR_PROOF_FORMAT);
+        assert_ne!(np_format(1), np_format(0));
+        assert_ne!(np_format(2), np_format(0));
+        assert_ne!(np_format(2), np_format(1));
     }
 }
