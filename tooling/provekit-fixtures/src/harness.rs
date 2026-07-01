@@ -39,7 +39,7 @@ pub fn prove<P>(
 ) -> Result<(WhirR1CSScheme<P>, WhirR1CSProof)>
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     let scheme = WhirR1CSScheme::<P>::new_for_r1cs(
         r1cs,
@@ -80,7 +80,7 @@ pub fn prove_and_verify<P>(
 ) -> Result<()>
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     let (scheme, proof) = prove::<P>(r1cs, witness, public_inputs)?;
     scheme.verify(&proof, public_inputs, r1cs)
@@ -245,7 +245,7 @@ pub fn time_dual_commit_prove<P>(
 ) -> Result<Duration>
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     ensure!(
         w1_size <= r1cs.num_witnesses() && r1cs.num_witnesses() <= full_witness.len(),
