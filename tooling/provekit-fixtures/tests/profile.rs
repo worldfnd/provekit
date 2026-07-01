@@ -44,7 +44,8 @@ struct ProveInputs<P: FieldHash> {
     num_constraints: usize,
 }
 
-/// Build the scheme + ownership copies (excluded from the timer and flamegraph).
+/// Build the scheme + ownership copies (excluded from the timer and
+/// flamegraph).
 fn prove_setup<P>(r1cs: &R1CS<Base<P>>, witness: &[Base<P>]) -> ProveInputs<P>
 where
     P: FieldHash,
