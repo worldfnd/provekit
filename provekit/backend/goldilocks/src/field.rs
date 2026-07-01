@@ -1,34 +1,72 @@
-//! The Goldilocks degree-3 extension proof field and its `FieldHash` glue.
+//! The Goldilocks proof fields (base-leaf and ext-leaf) and their shared
+//! `FieldHash` glue.
 
 use {
     crate::{bytes::field_to_bytes_le, field_hash::hash_field_elements, TranscriptSponge},
     provekit_common::{Base, Ext, FieldHash, HashConfig, ProofField},
-    whir::algebra::{embedding::Identity, fields::Field64_3},
+    whir::algebra::{
+        embedding::{Basefield, Identity},
+        fields::Field64_3,
+    },
 };
 
-/// Goldilocks degree-3 extension proof field.
+/// The Goldilocks proof field: `Basefield<Field64_3>`.
+///
+/// Commits the witness in the base field `Field64` and uses the degree-3
+/// extension `Field64_3` only for challenges and sumcheck.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GoldilocksField;
 
 impl ProofField for GoldilocksField {
+    type Embedding = Basefield<Field64_3>;
+
+    const FIELD_ID: u8 = 1;
+}
+
+/// Ext-leaf Goldilocks field (`Identity<Field64_3>`, base == ext).
+///
+/// Stand-in for challenge-bearing fixtures: an ext challenge can't live in a
+/// base witness slot, so the challenge-binding path runs here at 128-bit.
+// TODO: drop once `GoldilocksField` binds challenges directly. Needs (1) a base
+// transcript codec so base challenges can be drawn from Fiat-Shamir (the
+// `FieldHash` `Source` byte bridge), and (2) k-fold repetition — a single
+// `Field64` challenge is only ~64-bit sound. Soundness-layer work, not fixtures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GoldilocksEfField;
+
+impl ProofField for GoldilocksEfField {
     type Embedding = Identity<Field64_3>;
+
+    // Distinct from `GoldilocksField`: the ext-leaf base layout (`Field64_3`)
+    // differs from its base-commit layout (`Field64`), so their serialized bytes
+    // differ.
+    const FIELD_ID: u8 = 2;
 }
 
-impl FieldHash for GoldilocksField {
-    fn hash_public_inputs(config: HashConfig, inputs: &[Base<Self>]) -> Ext<Self> {
-        hash_field_elements(config, inputs)
-    }
+/// Both Goldilocks fields share the same hash/byte glue: the challenge field is
+/// `Field64_3` either way, and the public-input hash is base-generic.
+macro_rules! impl_goldilocks_field_hash {
+    ($field:ty) => {
+        impl FieldHash for $field {
+            fn hash_public_inputs(config: HashConfig, inputs: &[Base<Self>]) -> Ext<Self> {
+                hash_field_elements(config, inputs)
+            }
 
-    fn ext_to_bytes_le(x: &Ext<Self>) -> Vec<u8> {
-        field_to_bytes_le(*x).to_vec()
-    }
+            fn ext_to_bytes_le(x: &Ext<Self>) -> Vec<u8> {
+                field_to_bytes_le(*x).to_vec()
+            }
 
-    type Sponge = TranscriptSponge;
+            type Sponge = TranscriptSponge;
 
-    fn transcript_sponge(config: HashConfig) -> Self::Sponge {
-        TranscriptSponge::from_config(config)
-    }
+            fn transcript_sponge(config: HashConfig) -> Self::Sponge {
+                TranscriptSponge::from_config(config)
+            }
+        }
+    };
 }
+
+impl_goldilocks_field_hash!(GoldilocksField);
+impl_goldilocks_field_hash!(GoldilocksEfField);
 
 #[cfg(test)]
 mod tests {
