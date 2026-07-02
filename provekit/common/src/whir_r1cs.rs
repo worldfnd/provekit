@@ -1,3 +1,11 @@
+// The on-disk file-format glue lives behind the `io` module, which is not
+// compiled for wasm (no filesystem). wasm serializes proofs via serde/postcard
+// instead, so gate these impls out there.
+#[cfg(not(target_arch = "wasm32"))]
+use crate::{
+    binary_format,
+    file::{Compression, FileFormat, MaybeHashAware},
+};
 #[cfg(debug_assertions)]
 use std::fmt::Debug;
 #[cfg(debug_assertions)]
@@ -10,15 +18,6 @@ use {
     },
     serde::{Deserialize, Serialize},
     whir::{protocols::whir_zk::Config as GenericWhirZkConfig, transcript},
-};
-
-// The on-disk file-format glue lives behind the `io` module, which is not
-// compiled for wasm (no filesystem). wasm serializes proofs via serde/postcard
-// instead, so gate these impls out there.
-#[cfg(not(target_arch = "wasm32"))]
-use crate::{
-    binary_format,
-    file::{Compression, FileFormat, MaybeHashAware},
 };
 
 /// Type alias for the whir domain separator used in provekit's outer protocol.

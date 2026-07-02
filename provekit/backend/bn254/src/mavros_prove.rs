@@ -70,7 +70,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
             &eq_alpha[..constraints_layout.size()],
             witness_layout,
             constraints_layout,
-        );
+        )?;
         let alphas = [ad_a, ad_b, ad_c];
 
         let blinding_offset = blinding.offset;

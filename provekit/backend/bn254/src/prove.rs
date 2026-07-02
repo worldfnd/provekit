@@ -274,7 +274,8 @@ impl Prove for MavrosProver {
             self.witness_layout,
             self.constraints_layout,
             &params,
-        );
+        )
+        .context("While running Mavros witness phase 1")?;
 
         let num_public_inputs = self.num_public_inputs;
         let public_inputs = if num_public_inputs == 0 {
