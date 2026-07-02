@@ -34,6 +34,7 @@ tracing.workspace = true
 
 # Target-specific dependencies: only on non-WASM targets
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+provekit-zinc-backend.workspace = true
 bn254_blackbox_solver = { workspace = true, optional = true }
 nargo = { workspace = true, optional = true }
 noir_artifact_cli = { workspace = true, optional = true }

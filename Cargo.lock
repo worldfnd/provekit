@@ -322,6 +322,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "paste",
+ "rayon",
  "zeroize",
 ]
 
@@ -418,6 +419,7 @@ dependencies = [
  "educe",
  "fnv",
  "hashbrown 0.15.5",
+ "rayon",
 ]
 
 [[package]]
@@ -452,6 +454,7 @@ dependencies = [
  "arrayvec",
  "digest 0.10.7",
  "num-bigint",
+ "rayon",
 ]
 
 [[package]]
@@ -493,6 +496,7 @@ checksum = "246a225cc6131e9ee4f24619af0f19d67761fff15d7ccc22e42b80846e69449a"
 dependencies = [
  "num-traits",
  "rand 0.8.5",
+ "rayon",
 ]
 
 [[package]]
@@ -981,6 +985,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
+name = "chacha20"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.0",
+ "rand_core 0.10.0",
+]
+
+[[package]]
 name = "chrono"
 version = "0.4.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1267,6 +1282,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "convert_case"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "633458d4ef8c78b72454de2d54fd6ab2e60f9e02be22f3c6104cdc8a4e0fceb9"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1388,9 +1412,9 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "crypto-bigint"
-version = "0.7.3"
+version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "42a0d26b245348befa0c121944541476763dcc46ede886c88f9d12e1697d27c3"
+checksum = "1a52aa3fcda4e6302a9f48734f234d35d4721b96f8fe07d073f07ce9df4f0271"
 dependencies = [
  "cpubits",
  "ctutils",
@@ -1398,6 +1422,7 @@ dependencies = [
  "hybrid-array",
  "num-traits",
  "rand_core 0.10.0",
+ "serdect",
  "subtle",
  "zeroize",
 ]
@@ -1421,6 +1446,44 @@ dependencies = [
  "getrandom 0.4.2",
  "hybrid-array",
  "rand_core 0.10.0",
+]
+
+[[package]]
+name = "crypto-primes"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3633a51a39c69ebbaa4feaa694bd83d241e4093901c84a0963b19d9bb3f0cf8f"
+dependencies = [
+ "crypto-bigint",
+ "rand_core 0.10.0",
+]
+
+[[package]]
+name = "crypto-primitives"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/crypto-primitives.git?rev=59a19d5#59a19d55c83545c144b4e75707cc7af7ef6e7e52"
+dependencies = [
+ "ark-ff 0.5.0",
+ "ark-std 0.5.0",
+ "crypto-bigint",
+ "crypto-primitives-proc-macros",
+ "num-traits",
+ "pastey",
+ "rand 0.10.0",
+ "rayon",
+ "serde",
+ "thiserror 2.0.18",
+ "zeroize",
+]
+
+[[package]]
+name = "crypto-primitives-proc-macros"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/crypto-primitives.git?rev=59a19d5#59a19d55c83545c144b4e75707cc7af7ef6e7e52"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -1571,6 +1634,29 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "derive_more"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d751e9e49156b02b44f9c1815bcb94b984cdcc4396ecc32521c739452808b134"
+dependencies = [
+ "derive_more-impl",
+]
+
+[[package]]
+name = "derive_more-impl"
+version = "2.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
+dependencies = [
+ "convert_case 0.10.0",
+ "proc-macro2",
+ "quote",
+ "rustc_version 0.4.1",
+ "syn 2.0.117",
+ "unicode-xid",
 ]
 
 [[package]]
@@ -2385,9 +2471,9 @@ checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
 
 [[package]]
 name = "hybrid-array"
-version = "0.4.11"
+version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d46837a0ed51fe95bd3b05de33cd64a1ee88fc797477ca48446872504507c5"
+checksum = "818356c5132c1fede50f837ca96afbe78ff42413047f4abb886217845e1b6c8c"
 dependencies = [
  "subtle",
  "typenum",
@@ -3588,7 +3674,7 @@ dependencies = [
  "acvm",
  "async-lsp",
  "codespan-lsp",
- "convert_case",
+ "convert_case 0.6.0",
  "fm",
  "fuzzy-matcher",
  "iter-extended",
@@ -4316,6 +4402,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
+name = "pastey"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
+
+[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4584,7 +4676,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-bench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4606,7 +4698,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4635,7 +4727,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-common"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4675,7 +4767,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-ffi"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -4705,7 +4797,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-prover"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4720,13 +4812,14 @@ dependencies = [
  "num-bigint",
  "postcard",
  "provekit-common",
+ "provekit-zinc-backend",
  "tracing",
  "whir",
 ]
 
 [[package]]
 name = "provekit-r1cs-compiler"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4747,11 +4840,12 @@ dependencies = [
 
 [[package]]
 name = "provekit-verifier"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "ark-std 0.5.0",
  "provekit-common",
+ "provekit-zinc-backend",
  "rayon",
  "tracing",
  "whir",
@@ -4780,6 +4874,25 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "wasm-bindgen-rayon",
+]
+
+[[package]]
+name = "provekit-zinc-backend"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "ark-ff 0.5.0",
+ "crypto-bigint",
+ "crypto-primitives",
+ "provekit-common",
+ "tracing",
+ "zinc-poly",
+ "zinc-primality",
+ "zinc-protocol",
+ "zinc-transcript",
+ "zinc-uair",
+ "zinc-utils",
+ "zip-plus",
 ]
 
 [[package]]
@@ -4875,6 +4988,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc266eb313df6c5c09c1c7b1fbe2510961e5bcd3add930c1e31f7ed9da0feff8"
 dependencies = [
+ "chacha20",
  "getrandom 0.4.2",
  "rand_core 0.10.0",
 ]
@@ -5861,6 +5975,16 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "serdect"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "66cf8fedced2fcf12406bcb34223dffb92eaf34908ede12fed414c82b7f00b3e"
+dependencies = [
+ "base16ct",
+ "serde",
 ]
 
 [[package]]
@@ -6966,6 +7090,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 
 [[package]]
+name = "uninit"
+version = "0.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "359fdaaabedff944f100847f2e0ea88918d8012fe64baf5b54c191ad010168c9"
+
+[[package]]
 name = "untrusted"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7034,7 +7164,7 @@ dependencies = [
 
 [[package]]
 name = "verifier-server"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -7977,6 +8107,134 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "zinc-piop"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/zinc-plus?rev=b45993c#b45993c4bbb5657285725f76edb229e556ed3c4d"
+dependencies = [
+ "crypto-primitives",
+ "derive_more",
+ "itertools 0.14.0",
+ "num-traits",
+ "rayon",
+ "thiserror 2.0.18",
+ "zinc-poly",
+ "zinc-primality",
+ "zinc-transcript",
+ "zinc-uair",
+ "zinc-utils",
+]
+
+[[package]]
+name = "zinc-poly"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/zinc-plus?rev=b45993c#b45993c4bbb5657285725f76edb229e556ed3c4d"
+dependencies = [
+ "crypto-bigint",
+ "crypto-primitives",
+ "derive_more",
+ "itertools 0.14.0",
+ "num-traits",
+ "rand 0.10.0",
+ "rand_core 0.10.0",
+ "rayon",
+ "thiserror 2.0.18",
+ "zinc-transcript",
+ "zinc-utils",
+]
+
+[[package]]
+name = "zinc-primality"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/zinc-plus?rev=b45993c#b45993c4bbb5657285725f76edb229e556ed3c4d"
+dependencies = [
+ "crypto-bigint",
+ "crypto-primes",
+ "crypto-primitives",
+]
+
+[[package]]
+name = "zinc-protocol"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/zinc-plus?rev=b45993c#b45993c4bbb5657285725f76edb229e556ed3c4d"
+dependencies = [
+ "crypto-primitives",
+ "itertools 0.14.0",
+ "num-traits",
+ "rayon",
+ "thiserror 2.0.18",
+ "zinc-piop",
+ "zinc-poly",
+ "zinc-primality",
+ "zinc-transcript",
+ "zinc-uair",
+ "zinc-utils",
+ "zip-plus",
+]
+
+[[package]]
+name = "zinc-transcript"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/zinc-plus?rev=b45993c#b45993c4bbb5657285725f76edb229e556ed3c4d"
+dependencies = [
+ "blake3",
+ "crypto-bigint",
+ "crypto-primitives",
+ "itertools 0.14.0",
+ "num-traits",
+ "zinc-primality",
+ "zinc-utils",
+]
+
+[[package]]
+name = "zinc-uair"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/zinc-plus?rev=b45993c#b45993c4bbb5657285725f76edb229e556ed3c4d"
+dependencies = [
+ "crypto-primitives",
+ "num-traits",
+ "rayon",
+ "thiserror 2.0.18",
+ "zinc-poly",
+ "zinc-utils",
+]
+
+[[package]]
+name = "zinc-utils"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/zinc-plus?rev=b45993c#b45993c4bbb5657285725f76edb229e556ed3c4d"
+dependencies = [
+ "crypto-bigint",
+ "crypto-primitives",
+ "num-traits",
+ "rayon",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "zip-plus"
+version = "0.1.0"
+source = "git+https://github.com/NethermindEth/zinc-plus?rev=b45993c#b45993c4bbb5657285725f76edb229e556ed3c4d"
+dependencies = [
+ "ark-ff 0.5.0",
+ "ark-poly",
+ "blake3",
+ "crypto-bigint",
+ "crypto-primitives",
+ "itertools 0.14.0",
+ "num-traits",
+ "rand 0.10.0",
+ "rand_core 0.10.0",
+ "rayon",
+ "thiserror 2.0.18",
+ "uninit",
+ "zinc-poly",
+ "zinc-primality",
+ "zinc-transcript",
+ "zinc-utils",
+ "zstd",
 ]
 
 [[package]]

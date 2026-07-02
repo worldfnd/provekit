@@ -34,6 +34,8 @@ mod logging;
 pub(crate) mod r1cs;
 mod whir_r1cs;
 mod witness;
+#[cfg(not(target_arch = "wasm32"))]
+mod zinc_plus;
 
 // Public re-exports for items used by integration tests and benchmarks.
 pub use {ec_arith::ec_scalar_mul, r1cs::solve_witness_vec};
@@ -411,6 +413,7 @@ impl Prove for Prover {
         match self {
             Prover::Noir(p) => p.prove(input_map),
             Prover::Mavros(p) => p.prove(input_map),
+            Prover::ZincPlus(p) => p.prove(input_map),
         }
     }
 
@@ -419,6 +422,7 @@ impl Prove for Prover {
         match self {
             Prover::Noir(p) => p.prove_with_toml(prover_toml),
             Prover::Mavros(p) => p.prove_with_toml(prover_toml),
+            Prover::ZincPlus(p) => p.prove_with_toml(prover_toml),
         }
     }
 
@@ -430,6 +434,12 @@ impl Prove for Prover {
             #[cfg(target_arch = "wasm32")]
             Prover::Mavros(_) => {
                 anyhow::bail!("Mavros prover is not supported on WASM")
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            Prover::ZincPlus(p) => p.prove_with_witness(witness),
+            #[cfg(target_arch = "wasm32")]
+            Prover::ZincPlus(_) => {
+                anyhow::bail!("Zinc+ prover is not supported on WASM")
             }
         }
     }

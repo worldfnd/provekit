@@ -13,6 +13,11 @@ use {
 ///
 /// Holds the R1CS, the WHIR-for-witness commitment configuration, and the
 /// ABI needed to bind public inputs back to their Noir-level names.
+///
+/// `whir_for_witness` doubles as the scheme discriminator: WHIR verifiers
+/// (Noir and Mavros) are always serialized with `Some`, while Zinc+
+/// verifiers are serialized with `None` and verify against the R1CS alone.
+/// This keeps the `.pkv` wire format unchanged (postcard is positional).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Verifier {
     pub hash_config:      HashConfig,
@@ -36,6 +41,14 @@ impl Verifier {
                 whir_for_witness: Some(d.whir_for_witness),
                 abi:              d.abi.clone(),
                 hash_config:      d.hash_config,
+            },
+            // `whir_for_witness: None` marks a Zinc+ verifier (see the type
+            // docs); Zinc+ verification needs only the R1CS and the ABI.
+            NoirProofScheme::ZincPlus(d) => Self {
+                r1cs:             d.0.r1cs,
+                whir_for_witness: None,
+                abi:              d.0.witness_generator.abi.clone(),
+                hash_config:      d.0.hash_config,
             },
         }
     }

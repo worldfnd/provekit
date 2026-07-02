@@ -38,6 +38,24 @@ impl argh::FromArgValue for Compiler {
     }
 }
 
+#[derive(PartialEq, Eq, Debug)]
+enum Scheme {
+    Whir,
+    ZincPlus,
+}
+
+impl argh::FromArgValue for Scheme {
+    fn from_arg_value(value: &str) -> std::result::Result<Self, String> {
+        match value {
+            "whir" => Ok(Scheme::Whir),
+            "zinc-plus" => Ok(Scheme::ZincPlus),
+            other => Err(format!(
+                "Unknown scheme: {other}. Use \"whir\" or \"zinc-plus\"."
+            )),
+        }
+    }
+}
+
 /// Compile a Noir program and build its prover and verifier keys.
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prepare")]
@@ -54,6 +72,11 @@ pub struct Args {
     /// compiler backend to use: "noir" (default) or "mavros"
     #[argh(option, long = "compiler", default = "Compiler::Noir")]
     compiler: Compiler,
+
+    /// proof scheme: "whir" (default) or "zinc-plus" (noir compiler only;
+    /// challenge-free circuits only)
+    #[argh(option, long = "scheme", default = "Scheme::Whir")]
+    scheme: Scheme,
 
     /// name of the package to compile (noir only; default: enclosing package)
     #[argh(option)]
@@ -111,6 +134,9 @@ impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         let hash_config = HashConfig::from_str(&self.hash).map_err(|e| anyhow!("{}", e))?;
+        if self.scheme == Scheme::ZincPlus && self.compiler == Compiler::Mavros {
+            bail!("the zinc-plus scheme is only supported with the noir compiler");
+        }
         match self.compiler {
             Compiler::Noir => self.run_noir(hash_config),
             Compiler::Mavros => self.run_mavros(hash_config),
@@ -183,8 +209,13 @@ impl Args {
         )?;
 
         for (package, artifact) in binary_packages.iter().zip(artifacts) {
-            let scheme = NoirCompiler::from_program(artifact, hash_config)
+            let mut scheme = NoirCompiler::from_program(artifact, hash_config)
                 .context("while building Noir proof scheme")?;
+            if self.scheme == Scheme::ZincPlus {
+                scheme = scheme
+                    .into_zinc_plus()
+                    .context("while re-tagging the scheme for the Zinc+ backend")?;
+            }
             let pkp_path = self
                 .pkp_path
                 .clone()
@@ -193,10 +224,10 @@ impl Args {
                 .pkv_path
                 .clone()
                 .unwrap_or_else(|| format!("{}.pkv", package.name).into());
-            write(&Prover::from_noir_proof_scheme(scheme.clone()), &pkp_path)
-                .context("while writing prover key")?;
-            write(&Verifier::from_noir_proof_scheme(scheme), &pkv_path)
-                .context("while writing verifier key")?;
+            let p = Prover::from_noir_proof_scheme(scheme.clone());
+            let v = Verifier::from_noir_proof_scheme(scheme);
+            write(&p, &pkp_path).context("while writing prover key")?;
+            write(&v, &pkv_path).context("while writing verifier key")?;
         }
         Ok(())
     }

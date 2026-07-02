@@ -39,6 +39,7 @@ impl MaybeHashAware for Prover {
         match self {
             Prover::Noir(p) => Some(p.hash_config),
             Prover::Mavros(p) => Some(p.hash_config),
+            Prover::ZincPlus(p) => Some(p.0.hash_config),
         }
     }
 }
@@ -63,6 +64,7 @@ impl MaybeHashAware for NoirProofScheme {
         match self {
             NoirProofScheme::Noir(d) => Some(d.hash_config),
             NoirProofScheme::Mavros(d) => Some(d.hash_config),
+            NoirProofScheme::ZincPlus(d) => Some(d.0.hash_config),
         }
     }
 }

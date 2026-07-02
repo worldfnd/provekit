@@ -1,0 +1,34 @@
+[package]
+name = "provekit-zinc-backend"
+version = "1.0.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace crates
+provekit-common.workspace = true
+
+# Zinc+ (local sibling repo) and its field/ring primitives
+zinc-protocol = { workspace = true, features = ["parallel"] }
+zinc-poly.workspace = true
+zinc-primality.workspace = true
+zinc-transcript.workspace = true
+zinc-uair.workspace = true
+zinc-utils.workspace = true
+zip-plus = { workspace = true, features = ["parallel"] }
+crypto-primitives.workspace = true
+crypto-bigint.workspace = true
+
+# Cryptography
+ark-ff.workspace = true
+
+# 3rd party
+anyhow.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

@@ -10,6 +10,7 @@ members = [
   "provekit/r1cs-compiler",
   "provekit/prover",
   "provekit/verifier",
+  "provekit/zinc-backend",
   "tooling/cli",
   "tooling/provekit-bench",
   "tooling/provekit-ffi",
@@ -104,6 +105,23 @@ provekit-prover = { path = "provekit/prover", default-features = false }
 provekit-r1cs-compiler = { path = "provekit/r1cs-compiler" }
 provekit-verifier = { path = "provekit/verifier" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
+provekit-zinc-backend = { path = "provekit/zinc-backend" }
+
+
+
+# Zinc+ proving backend and its field/ring primitives.
+# crypto-primitives is pinned to the exact rev zinc-plus pins so the
+# `MontyField`/`Int` types unify across the dependency graph.
+zinc-protocol = { git = "https://github.com/NethermindEth/zinc-plus", rev = "b45993c" }
+zinc-poly = { git = "https://github.com/NethermindEth/zinc-plus", rev = "b45993c" }
+zinc-primality = { git = "https://github.com/NethermindEth/zinc-plus", rev = "b45993c" }
+zinc-transcript = { git = "https://github.com/NethermindEth/zinc-plus", rev = "b45993c" }
+zinc-uair = { git = "https://github.com/NethermindEth/zinc-plus", rev = "b45993c" }
+zinc-utils = { git = "https://github.com/NethermindEth/zinc-plus", rev = "b45993c" }
+zip-plus = { git = "https://github.com/NethermindEth/zinc-plus", rev = "b45993c" }
+crypto-primitives = { git = "https://github.com/NethermindEth/crypto-primitives.git", rev = "59a19d5", features = ["std", "crypto_bigint", "rand"] }
+crypto-bigint = { version = "0.7.5", features = ["zeroize"] }
+
 provekit-wasm = { path = "tooling/provekit-wasm" }
 
 # 3rd party
