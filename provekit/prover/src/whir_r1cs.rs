@@ -16,8 +16,8 @@ use {
             pad_to_power_of_two,
             sumcheck::{
                 calculate_evaluations_over_boolean_hypercube_for_eq, calculate_witness_bounds,
-                eval_cubic_poly, multiply_transposed_by_eq_alpha, sumcheck_fold_map_reduce,
-                transpose_r1cs_matrices,
+                eval_cubic_poly, mixed_fold, mixed_sumcheck_map_reduce,
+                multiply_transposed_by_eq_alpha, sumcheck_fold_map_reduce, transpose_r1cs_matrices,
             },
         },
         Base, Ext, FieldHash, PrefixCovector, ProofField, PublicInputs, WhirR1CSProof,
@@ -156,28 +156,21 @@ where
         let (a, b, c) = calculate_witness_bounds(&r1cs, &full_witness);
         drop(full_witness);
 
-        // Witness bounds are computed in the base field; lift them to the
-        // extension for the sumcheck (a no-op under the `Identity` embedding,
-        // where base == ext).
         let embedding = <P::Embedding>::default();
-        let (a, b, c) = (
-            embedding.map_vec(a),
-            embedding.map_vec(b),
-            embedding.map_vec(c),
-        );
 
         let blinding = commitments[0]
             .blinding
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("c1 must carry blinding state"))?;
 
-        // The Spartan sumcheck runs entirely in the extension field; `g` is
-        // native ext, committed separately. `blinding_eval` opens the ext
-        // blinding vector (which holds `g` flattened at offset 0).
+        // The witness bounds stay in the base field for the first sumcheck
+        // round; the fold at the first challenge lifts them into the
+        // extension. `g` is native ext, committed separately; `blinding_eval`
+        // opens the ext blinding vector (which holds `g` flattened at
+        // offset 0).
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
-            a,
-            b,
-            c,
+            &embedding,
+            [a, b, c],
             &mut merlin,
             self.m_0,
             &blinding.polynomial,
@@ -495,17 +488,25 @@ pub fn pad_to_pow2_len_min2<F: Field>(v: &mut Vec<F>) {
     }
 }
 
+/// Run the blinded Spartan sumcheck. The first round consumes the base-field
+/// mles directly; the fold at the first challenge lifts them into the
+/// extension, where the remaining rounds run.
 #[instrument(skip_all)]
-pub fn run_zk_sumcheck_prover<F: Field + Codec, S: DuplexSpongeInterface<U = u8>>(
-    mut a: Vec<F>,
-    mut b: Vec<F>,
-    mut c: Vec<F>,
+pub fn run_zk_sumcheck_prover<M, S>(
+    embedding: &M,
+    mles: [Vec<M::Source>; 3],
     merlin: &mut ProverState<S>,
     m_0: usize,
-    blinding_polynomial: &[[F; 4]],
-    blinding_vector: &[F],
-) -> (Vec<F>, F) {
-    let r: Vec<F> = merlin.verifier_message_vec(m_0);
+    blinding_polynomial: &[[M::Target; 4]],
+    blinding_vector: &[M::Target],
+) -> (Vec<M::Target>, M::Target)
+where
+    M: Embedding,
+    M::Target: Codec,
+    S: DuplexSpongeInterface<U = u8>,
+{
+    let [mut a, mut b, mut c] = mles;
+    let r: Vec<M::Target> = merlin.verifier_message_vec(m_0);
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r, 1 << r.len());
 
     pad_to_pow2_len_min2(&mut a);
@@ -513,26 +514,52 @@ pub fn run_zk_sumcheck_prover<F: Field + Codec, S: DuplexSpongeInterface<U = u8>
     pad_to_pow2_len_min2(&mut c);
     pad_to_pow2_len_min2(&mut eq);
 
-    let mut alpha = Vec::<F>::with_capacity(m_0);
+    let mut alpha = Vec::<M::Target>::with_capacity(m_0);
 
     let sum_g_reduce = sum_over_hypercube(blinding_polynomial);
 
     merlin.prover_message(&sum_g_reduce);
 
-    let rho: F = merlin.verifier_message();
+    let rho: M::Target = merlin.verifier_message();
 
     // Prove that sum of F + ρ·G over the boolean hypercube equals ρ·Σ(G).
     let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g_reduce;
 
+    // First round: a, b, c are base-field, so the constraint products stay in
+    // the base field with one mixed mul per point against the ext eq.
+    let hhat = mixed_sumcheck_map_reduce([&a[..], &b[..], &c[..]], &eq, |[a, b, c], eq| {
+        let f0 = embedding.mixed_mul(eq.0, a.0 * b.0 - c.0);
+        let f_em1 = embedding.mixed_mul(
+            eq.0 + eq.0 - eq.1,
+            (a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1),
+        );
+        let f_inf = embedding.mixed_mul(eq.1 - eq.0, (a.1 - a.0) * (b.1 - b.0));
+
+        [f0, f_em1, f_inf]
+    });
+    let g_poly = compute_blinding_coefficients_for_round(blinding_polynomial, 0, &[]);
+    let (alpha_0, saved_val) = combined_round_message(
+        merlin,
+        hhat,
+        g_poly,
+        rho,
+        saved_val_for_sumcheck_equality_assertion,
+    );
+    saved_val_for_sumcheck_equality_assertion = saved_val;
+    alpha.push(alpha_0);
+
+    // Fold at the first challenge, lifting the mles into the extension.
+    let folded_a = mixed_fold(embedding, &a, alpha_0);
+    let folded_b = mixed_fold(embedding, &b, alpha_0);
+    let folded_c = mixed_fold(embedding, &c, alpha_0);
+    let folded_eq = mixed_fold(&Identity::new(), &eq, alpha_0);
+    drop((a, b, c, eq));
+    let (mut a, mut b, mut c, mut eq) = (folded_a, folded_b, folded_c, folded_eq);
+
     let mut fold = None;
 
-    // 2 is invertible in any field of odd characteristic.
-    let half = (F::one() + F::one())
-        .inverse()
-        .expect("field characteristic is not 2");
-
-    for idx in 0..m_0 {
-        let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] =
+    for idx in 1..m_0 {
+        let hhat =
             sumcheck_fold_map_reduce([&mut a, &mut b, &mut c, &mut eq], fold, |[a, b, c, eq]| {
                 let f0 = eq.0 * (a.0 * b.0 - c.0);
                 let f_em1 = (eq.0 + eq.0 - eq.1)
@@ -550,47 +577,17 @@ pub fn run_zk_sumcheck_prover<F: Field + Codec, S: DuplexSpongeInterface<U = u8>
 
         let g_poly =
             compute_blinding_coefficients_for_round(blinding_polynomial, idx, alpha.as_slice());
-
-        let mut combined_hhat_i_coeffs = [F::zero(); 4];
-
-        combined_hhat_i_coeffs[0] = hhat_i_at_0 + rho * g_poly[0];
-
-        let g_at_minus_one = g_poly[0] - g_poly[1] + g_poly[2] - g_poly[3];
-        let combined_at_em1 = hhat_i_at_em1 + rho * g_at_minus_one;
-
-        combined_hhat_i_coeffs[2] = (saved_val_for_sumcheck_equality_assertion + combined_at_em1
-            - combined_hhat_i_coeffs[0]
-            - combined_hhat_i_coeffs[0]
-            - combined_hhat_i_coeffs[0])
-            * half;
-
-        combined_hhat_i_coeffs[3] = hhat_i_at_inf_over_x_cube + rho * g_poly[3];
-
-        combined_hhat_i_coeffs[1] = saved_val_for_sumcheck_equality_assertion
-            - combined_hhat_i_coeffs[0]
-            - combined_hhat_i_coeffs[0]
-            - combined_hhat_i_coeffs[3]
-            - combined_hhat_i_coeffs[2];
-
-        assert_eq!(
+        let (alpha_i, saved_val) = combined_round_message(
+            merlin,
+            hhat,
+            g_poly,
+            rho,
             saved_val_for_sumcheck_equality_assertion,
-            combined_hhat_i_coeffs[0]
-                + combined_hhat_i_coeffs[0]
-                + combined_hhat_i_coeffs[1]
-                + combined_hhat_i_coeffs[2]
-                + combined_hhat_i_coeffs[3]
         );
-
-        for coeff in &combined_hhat_i_coeffs {
-            merlin.prover_message(coeff);
-        }
-        let alpha_i: F = merlin.verifier_message();
+        saved_val_for_sumcheck_equality_assertion = saved_val;
         alpha.push(alpha_i);
 
         fold = Some(alpha_i);
-
-        saved_val_for_sumcheck_equality_assertion =
-            eval_cubic_poly(combined_hhat_i_coeffs, alpha_i);
     }
     drop((a, b, c, eq));
 
@@ -599,6 +596,57 @@ pub fn run_zk_sumcheck_prover<F: Field + Codec, S: DuplexSpongeInterface<U = u8>
     merlin.prover_message(&blinding_eval);
 
     (alpha, blinding_eval)
+}
+
+/// Absorb the combined round polynomial `hhat_i + ρ·g_i` into the transcript
+/// and draw the round challenge; returns it with the sumcheck equality value
+/// for the next round.
+fn combined_round_message<F: Field + Codec, S: DuplexSpongeInterface<U = u8>>(
+    merlin: &mut ProverState<S>,
+    hhat: [F; 3],
+    g_poly: [F; 4],
+    rho: F,
+    saved_val_for_sumcheck_equality_assertion: F,
+) -> (F, F) {
+    let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] = hhat;
+
+    let mut combined_hhat_i_coeffs = [F::zero(); 4];
+
+    combined_hhat_i_coeffs[0] = hhat_i_at_0 + rho * g_poly[0];
+
+    let g_at_minus_one = g_poly[0] - g_poly[1] + g_poly[2] - g_poly[3];
+    let combined_at_em1 = hhat_i_at_em1 + rho * g_at_minus_one;
+
+    let two = F::one() + F::one();
+    combined_hhat_i_coeffs[2] = (saved_val_for_sumcheck_equality_assertion + combined_at_em1
+        - combined_hhat_i_coeffs[0]
+        - combined_hhat_i_coeffs[0]
+        - combined_hhat_i_coeffs[0])
+        / two;
+
+    combined_hhat_i_coeffs[3] = hhat_i_at_inf_over_x_cube + rho * g_poly[3];
+
+    combined_hhat_i_coeffs[1] = saved_val_for_sumcheck_equality_assertion
+        - combined_hhat_i_coeffs[0]
+        - combined_hhat_i_coeffs[0]
+        - combined_hhat_i_coeffs[3]
+        - combined_hhat_i_coeffs[2];
+
+    assert_eq!(
+        saved_val_for_sumcheck_equality_assertion,
+        combined_hhat_i_coeffs[0]
+            + combined_hhat_i_coeffs[0]
+            + combined_hhat_i_coeffs[1]
+            + combined_hhat_i_coeffs[2]
+            + combined_hhat_i_coeffs[3]
+    );
+
+    for coeff in &combined_hhat_i_coeffs {
+        merlin.prover_message(coeff);
+    }
+    let alpha_i: F = merlin.verifier_message();
+
+    (alpha_i, eval_cubic_poly(combined_hhat_i_coeffs, alpha_i))
 }
 
 fn create_weights_and_evaluations<const N: usize, M: Embedding>(
