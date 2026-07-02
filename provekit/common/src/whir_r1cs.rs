@@ -1,12 +1,18 @@
+// The on-disk file-format glue lives behind the `io` module, which is not
+// compiled for wasm (no filesystem). wasm serializes proofs via serde/postcard
+// instead, so gate these impls out there.
+#[cfg(not(target_arch = "wasm32"))]
+use crate::{
+    binary_format,
+    file::{Compression, FileFormat, MaybeHashAware},
+};
 #[cfg(debug_assertions)]
 use std::fmt::Debug;
 #[cfg(debug_assertions)]
 use whir::transcript::Interaction;
 use {
     crate::{
-        binary_format,
         field::{Base, Ext, FieldHash, ProofField},
-        file::{Compression, FileFormat, MaybeHashAware},
         utils::{next_power_of_two, serde_hex},
         HashConfig, PublicInputs, R1CS,
     },
@@ -19,7 +25,7 @@ use {
 
 /// WHIR witness-domain floor: prover work is flat at or below `2^13` variables,
 /// so smaller commitments are padded up to this many variables.
-const MIN_WHIR_NUM_VARIABLES: usize = 13;
+pub const MIN_WHIR_NUM_VARIABLES: usize = 13;
 
 /// Minimum sumcheck rounds, keeping the constraint-domain polynomial
 /// non-trivial.
@@ -239,6 +245,7 @@ pub struct ProvekitProof<P: ProofField> {
     pub whir_r1cs_proof: WhirR1CSProof,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<P: ProofField> FileFormat for ProvekitProof<P> {
     const FORMAT: [u8; 8] = binary_format::NOIR_PROOF_FORMAT;
     const EXTENSION: &'static str = "np";
@@ -246,6 +253,7 @@ impl<P: ProofField> FileFormat for ProvekitProof<P> {
     const COMPRESSION: Compression = Compression::Zstd;
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl<P: ProofField> MaybeHashAware for ProvekitProof<P> {
     fn maybe_hash_config(&self) -> Option<HashConfig> {
         None

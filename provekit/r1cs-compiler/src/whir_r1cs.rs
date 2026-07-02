@@ -49,10 +49,11 @@ impl MavrosSchemeBuilder for WhirR1CSScheme<Bn254Field> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, provekit_backend_bn254::FieldElement, provekit_common::R1CS};
-
-    /// Matches the witness-domain floor used by the scheme builder.
-    const MIN_WHIR_NUM_VARIABLES: usize = 13;
+    use {
+        super::*,
+        provekit_backend_bn254::FieldElement,
+        provekit_common::{MIN_WHIR_NUM_VARIABLES, R1CS},
+    };
 
     fn r1cs_with_dimensions(num_witnesses: usize, num_constraints: usize) -> R1CS<FieldElement> {
         let mut r1cs = R1CS::new();
