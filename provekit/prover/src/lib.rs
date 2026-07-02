@@ -152,7 +152,7 @@ impl Prove for NoirProver {
                 &mut witness,
                 self.split_witness_builders.w1_layers,
                 &acir_witness_idx_to_value_map,
-                &mut merlin,
+                &mut merlin, // QUESTION: why does that need the transcript?
             )
             .context("While solving w1 witnesses")?;
         }
@@ -184,6 +184,7 @@ impl Prove for NoirProver {
                 .collect::<Result<Vec<_>>>()?
         };
 
+        // The zk-R1CS commit to w1.  
         let commitment_1 = self
             .whir_for_witness
             .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
@@ -221,6 +222,7 @@ impl Prove for NoirProver {
                     .collect::<Result<Vec<_>>>()?
             };
 
+            // the zk-R1CS commit of w2
             let commitment_2 = self
                 .whir_for_witness
                 .commit(&mut merlin, num_witnesses, num_constraints, w2, false)

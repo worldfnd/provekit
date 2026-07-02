@@ -36,16 +36,26 @@ impl R1csHash {
     }
 }
 
+/// Our scheme for proving a two-round R1CS, which uses WHIR to eventually 
+/// reduce to evaluation claims of the three R1CS matrices. 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct WhirR1CSScheme {
+    // the max of the two witness lengths is 2^m. The size of the WHIR inputs.
     pub m:                 usize,
-    pub w1_size:           usize,
-    pub m_0:               usize,
+    // size of the first round witness, before receiving the logup challenges
+    pub w1_size:           usize, 
+    // the number of constraints is 2^{m_0}
+    pub m_0:               usize, 
+    // the number of non-zero terms in the first matrix A, again log2.
     pub a_num_terms:       usize,
-    pub num_challenges:    usize,
+    // the number of Fiat-Shamir challenges supplied to the circuit
+    pub num_challenges:    usize, 
+    // and their position on the domain
     pub challenge_offsets: Vec<usize>,
     pub has_public_inputs: bool,
+    // the WHIR config, using ZO0K strategy for zk.
     pub whir_witness:      WhirZkConfig,
+    // hash of the R1CS
     pub r1cs_hash:         R1csHash,
     /// Hash configuration for Merkle commitments, Fiat-Shamir sponge, and
     /// public-input instance binding. Source of truth; the WHIR engine ID

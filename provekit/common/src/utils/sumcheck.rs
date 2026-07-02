@@ -11,6 +11,14 @@ use {
 
 /// Compute the sum of a vector valued function over the boolean hypercube in
 /// the leading variable.
+// Given N multilinear functions p_1, ... p_N by their values over {0,1}^m.
+// Given a vector valued function
+//      map( [v_{1,0}, v_{1,1}], .., [v_{N,0},v_{N,1}] ),
+// with M components.
+// Given an optional folding point `fold`.  
+// Computes 
+//      sum_{.} map(p_1( . ,0/1,fold),..., p_N( . ,0/1,fold))
+// over {0,1}^{m-2}.  
 pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize>(
     mles: [&mut [FieldElement]; N],
     fold: Option<FieldElement>,
@@ -23,6 +31,8 @@ pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize>(
 
     if let Some(fold) = fold {
         assert!(size >= 4);
+        // we now want to evaluate each p(fold, X, . ) = (1 - X) p(fold, 0, .) + X p(fold, 1, .)
+        // For this we split p into p(0,0, . ), p(0,1, .), p(1,0, .), p(1,1, . )
         let slices = mles.map(|mle| {
             let (p0, tail) = mle.split_at_mut(size / 4);
             let (p1, tail) = tail.split_at_mut(size / 4);
@@ -31,12 +41,15 @@ pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize>(
         });
         sumcheck_fold_map_reduce_inner::<N, M>(slices, fold, map)
     } else {
+        // we start with fold = None 
+        // we want to evaluate the maps on p_i(X, . ) = (1-X) p_i(0, .) + X p_i(1, . )
         let slices = mles.map(|mle| mle.split_at(size / 2));
         sumcheck_map_reduce_inner::<N, M>(slices, map)
     }
 }
 
 fn sumcheck_map_reduce_inner<const N: usize, const M: usize>(
+    // mles, each given splitted into halfs.
     mles: [(&[FieldElement], &[FieldElement]); N],
     map: impl Fn([(FieldElement, FieldElement); N]) -> [FieldElement; M] + Send + Sync + Copy,
 ) -> [FieldElement; M] {
@@ -56,9 +69,11 @@ fn sumcheck_map_reduce_inner<const N: usize, const M: usize>(
         // Combine results
         array::from_fn(|i| l[i] + r[i])
     } else {
+        // the main logic, non-recursive. compute the hypercube sum for the maps
         let mut result = [FieldElement::zero(); M];
         for i in 0..size {
             let e = mles.map(|(p0, p1)| (p0[i], p1[i]));
+            // map obviously defines how to combine each p_j(0,i), p_j(1,i)
             let local = map(e);
             result.iter_mut().zip(local).for_each(|(r, l)| *r += l);
         }
@@ -86,15 +101,20 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
         // Combine results
         array::from_fn(|i| l[i] + r[i])
     } else {
+        // the main logic 
         let mut result = [FieldElement::zero(); M];
         for i in 0..size {
             let e = array::from_fn(|j| {
                 let mle = &mut mles[j];
+                // mle = [p() ] 
+                // p(fold, 0, . ) = fold p(0,0, .) + (1 - fold) p(1,0, . ) 
                 mle[0][i] += fold * (mle[2][i] - mle[0][i]);
+                // p(fold, 1, . ) = fold p(0,1, .) + (1 - fold) p(1,1, . )
                 mle[1][i] += fold * (mle[3][i] - mle[1][i]);
                 (mle[0][i], mle[1][i])
             });
             let local = map(e);
+            // add to the hypercube sum
             result.iter_mut().zip(local).for_each(|(r, l)| *r += l);
         }
         result
