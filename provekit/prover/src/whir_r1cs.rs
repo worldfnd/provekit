@@ -497,6 +497,11 @@ pub fn run_zk_sumcheck_prover<F: Field + Codec, S: DuplexSpongeInterface<U = u8>
 
     let mut fold = None;
 
+    // 2 is invertible in any field of odd characteristic.
+    let half = (F::one() + F::one())
+        .inverse()
+        .expect("field characteristic is not 2");
+
     for idx in 0..m_0 {
         let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] =
             sumcheck_fold_map_reduce([&mut a, &mut b, &mut c, &mut eq], fold, |[a, b, c, eq]| {
@@ -524,12 +529,11 @@ pub fn run_zk_sumcheck_prover<F: Field + Codec, S: DuplexSpongeInterface<U = u8>
         let g_at_minus_one = g_poly[0] - g_poly[1] + g_poly[2] - g_poly[3];
         let combined_at_em1 = hhat_i_at_em1 + rho * g_at_minus_one;
 
-        let two = F::one() + F::one();
         combined_hhat_i_coeffs[2] = (saved_val_for_sumcheck_equality_assertion + combined_at_em1
             - combined_hhat_i_coeffs[0]
             - combined_hhat_i_coeffs[0]
             - combined_hhat_i_coeffs[0])
-            / two;
+            * half;
 
         combined_hhat_i_coeffs[3] = hhat_i_at_inf_over_x_cube + rho * g_poly[3];
 
