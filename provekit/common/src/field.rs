@@ -28,8 +28,6 @@ pub type Ext<P> = <<P as ProofField>::Embedding as Embedding>::Target;
 /// Hash and byte-bridge glue, kept out of [`ProofField`]'s algebra surface and
 /// composed as a supertrait so [`Ext<Self>`] is nameable.
 pub trait FieldHash: ProofField {
-    fn default_hash() -> crate::HashConfig;
-
     /// Instance-binding hash of base-field public inputs to an extension
     /// transcript element.
     fn hash_public_inputs(config: crate::HashConfig, inputs: &[Base<Self>]) -> Ext<Self>;
@@ -37,11 +35,6 @@ pub trait FieldHash: ProofField {
     /// Little-endian bytes of an extension element (32B for `Fr`, 24B for
     /// `Field64_3`).
     fn ext_to_bytes_le(x: &Ext<Self>) -> Vec<u8>;
-
-    fn ext_from_bytes(bytes: &[u8]) -> Ext<Self>;
-
-    /// Reduce a hash digest to an extension element.
-    fn from_digest(digest: &[u8]) -> Ext<Self>;
 
     /// Fiat-Shamir transcript sponge for this field, selected at runtime by
     /// [`crate::HashConfig`]. Byte-oriented (`U = u8`) so the spine names it
