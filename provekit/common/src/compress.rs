@@ -1,13 +1,15 @@
 //! Memory-saving postcard compression of the R1CS.
 //!
 //! The R1CS is only needed during specific proving phases; serializing it to a
-//! compact blob frees that memory in between. Field-agnostic: the blob is raw
-//! bytes, only (de)serialization is typed.
+//! compact blob frees that memory in between. The blob is raw bytes, but the
+//! struct carries the field as a phantom type so a compress/decompress
+//! round-trip cannot change fields.
 
 use {
     crate::R1CS,
     anyhow::{Context, Result},
     ark_ff::Field,
+    std::marker::PhantomData,
 };
 
 /// Serialized R1CS matrices held as a compact postcard blob.
@@ -15,15 +17,16 @@ use {
 /// The R1CS is only needed during the sumcheck phase. Compressing it
 /// into a serialized blob frees that memory during the commit phase,
 /// then decompresses when the sumcheck begins.
-pub struct CompressedR1CS {
+pub struct CompressedR1CS<F> {
     num_constraints: usize,
     num_witnesses:   usize,
     num_virtual:     usize,
     blob:            Vec<u8>,
+    _field:          PhantomData<F>,
 }
 
-impl CompressedR1CS {
-    pub fn compress<F: Field>(r1cs: R1CS<F>) -> Result<Self> {
+impl<F: Field> CompressedR1CS<F> {
+    pub fn compress(r1cs: R1CS<F>) -> Result<Self> {
         let num_constraints = r1cs.num_constraints();
         let num_witnesses = r1cs.num_witnesses();
         let num_virtual = r1cs.num_virtual;
@@ -34,10 +37,11 @@ impl CompressedR1CS {
             num_witnesses,
             num_virtual,
             blob,
+            _field: PhantomData,
         })
     }
 
-    pub fn decompress<F: Field>(self) -> Result<R1CS<F>> {
+    pub fn decompress(self) -> Result<R1CS<F>> {
         postcard::from_bytes(&self.blob).context("R1CS deserialization failed")
     }
 
