@@ -11,26 +11,14 @@ repository.workspace = true
 [features]
 default = ["parallel"]
 parallel = []
-provekit_ntt = []
 
 [dependencies]
-# Workspace crates
-ntt.workspace = true
-poseidon2.workspace = true
-skyscraper.workspace = true
-
-# Noir language
-acir.workspace = true
-noirc_abi.workspace = true
-
 # Cryptography and proof systems
 keccak.workspace = true
-ark-bn254.workspace = true
 ark-ff.workspace = true
 ark-serialize.workspace = true
 ark-std.workspace = true
 spongefish.workspace = true
-spongefish-pow.workspace = true
 whir.workspace = true
 
 # 3rd party
@@ -38,37 +26,21 @@ anyhow.workspace = true
 base64.workspace = true
 bytes.workspace = true
 hex.workspace = true
-itertools.workspace = true
+num-bigint.workspace = true
 postcard.workspace = true
 rayon.workspace = true
-ruint.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-blake3.workspace = true
-sha2.workspace = true
 sha3.workspace = true
 tracing.workspace = true
-zerocopy.workspace = true
 
 # Target-specific dependencies: only on non-WASM targets
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 zstd.workspace = true
-mavros-vm.workspace = true
-mavros-artifacts.workspace = true
 xz2.workspace = true
 
 [package.metadata.cargo-machete]
 ignored = ["keccak"] # Intentionally anchored to keep Noir beta.19-compatible RC version
-
-[dev-dependencies]
-divan.workspace = true
-
-[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
-proptest.workspace = true
-
-[[bench]]
-name = "rs_bench"
-harness = false
 
 [lints]
 workspace = true

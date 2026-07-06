@@ -5,7 +5,7 @@
 
 use {
     crate::error::{AppError, AppResult},
-    provekit_common::Verifier,
+    provekit_backend_bn254::Verifier,
     sha2::{Digest, Sha256},
     std::path::{Path, PathBuf},
     tracing::{info, instrument},

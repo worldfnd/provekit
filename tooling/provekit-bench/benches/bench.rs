@@ -3,9 +3,8 @@ use {
     anyhow::Context,
     core::hint::black_box,
     divan::Bencher,
-    provekit_common::{file::read, NoirProof, Prover, Verifier},
-    provekit_prover::Prove,
-    provekit_verifier::Verify,
+    provekit_backend_bn254::{Bn254Field, Prove, ProvekitProof, Prover, Verifier, Verify},
+    provekit_common::file::read,
     std::path::Path,
 };
 
@@ -61,7 +60,7 @@ fn verify_poseidon_1000(bencher: Bencher) {
     let crate_dir: &Path = "../../noir-examples/poseidon-rounds".as_ref();
     let proof_verifier_path = crate_dir.join("noir-provekit-verifier.pkv");
     let proof_path = crate_dir.join("noir-proof.np");
-    let proof: NoirProof = read(&proof_path).unwrap();
+    let proof: ProvekitProof<Bn254Field> = read(&proof_path).unwrap();
 
     bencher.bench_local(|| {
         // Read a fresh verifier for each iteration (verify consumes internal state)

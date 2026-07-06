@@ -2,7 +2,7 @@ use {
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     ark_ff::Field,
     ark_std::One,
-    provekit_common::{
+    provekit_backend_bn254::{
         witness::{DigitalDecompositionWitnesses, WitnessBuilder},
         FieldElement,
     },

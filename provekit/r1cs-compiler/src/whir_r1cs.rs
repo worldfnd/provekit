@@ -1,8 +1,7 @@
 use {
     mavros_artifacts::R1CS as MavrosR1CS,
-    provekit_common::{
-        utils::next_power_of_two, HashConfig, R1csHash, WhirR1CSScheme, WhirZkConfig, R1CS,
-    },
+    provekit_backend_bn254::{Bn254Field, FieldElement, WhirZkConfig},
+    provekit_common::{utils::next_power_of_two, HashConfig, R1csHash, WhirR1CSScheme, R1CS},
     whir::{engines::EngineId, parameters::ProtocolParameters},
 };
 
@@ -11,7 +10,7 @@ const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
 pub trait WhirR1CSSchemeBuilder {
     fn new_for_r1cs(
-        r1cs: &R1CS,
+        r1cs: &R1CS<FieldElement>,
         w1_size: usize,
         num_challenges: usize,
         challenge_offsets: Vec<usize>,
@@ -46,9 +45,9 @@ pub trait WhirR1CSSchemeBuilder {
     ) -> WhirZkConfig;
 }
 
-impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
+impl WhirR1CSSchemeBuilder for WhirR1CSScheme<Bn254Field> {
     fn new_for_r1cs(
-        r1cs: &R1CS,
+        r1cs: &R1CS<FieldElement>,
         w1_size: usize,
         num_challenges: usize,
         challenge_offsets: Vec<usize>,
@@ -193,7 +192,7 @@ impl WhirR1CSSchemeBuilder for WhirR1CSScheme {
 mod tests {
     use super::*;
 
-    fn r1cs_with_dimensions(num_witnesses: usize, num_constraints: usize) -> R1CS {
+    fn r1cs_with_dimensions(num_witnesses: usize, num_constraints: usize) -> R1CS<FieldElement> {
         let mut r1cs = R1CS::new();
         r1cs.grow_matrices(num_constraints, num_witnesses);
         r1cs

@@ -9,7 +9,7 @@ use {
         models::VerifyRequest,
         services::artifact::ArtifactPaths,
     },
-    provekit_common::{NoirProof, Verifier},
+    provekit_backend_bn254::{Bn254Field, ProvekitProof, Verifier},
     provekit_gnark::write_gnark_parameters_to_file,
     std::time::Instant,
     tokio_util::sync::CancellationToken,
@@ -38,7 +38,7 @@ impl VerificationService {
     pub async fn verify_proof(
         &self,
         request: &VerifyRequest,
-        proof: &NoirProof,
+        proof: &ProvekitProof<Bn254Field>,
         verifier: &Verifier,
         paths: &ArtifactPaths,
         cancellation_token: CancellationToken,
@@ -68,7 +68,7 @@ impl VerificationService {
     /// Prepare gnark parameters file for verification
     fn prepare_gnark_parameters(
         &self,
-        proof: &NoirProof,
+        proof: &ProvekitProof<Bn254Field>,
         verifier: &Verifier,
         paths: &ArtifactPaths,
     ) -> AppResult<()> {

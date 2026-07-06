@@ -7,11 +7,8 @@ use {
     },
     anyhow::Context,
     base64::{engine::general_purpose::STANDARD as BASE64, Engine as _},
-    provekit_common::{
-        binary_format::{HEADER_SIZE, MAGIC_BYTES},
-        NoirElement, NoirProof, Prover as ProverCore,
-    },
-    provekit_prover::Prove,
+    provekit_backend_bn254::{Bn254Field, NoirElement, Prove, ProvekitProof, Prover as ProverCore},
+    provekit_common::binary_format::{HEADER_SIZE, MAGIC_BYTES},
     std::{cell::RefCell, collections::BTreeMap},
     wasm_bindgen::prelude::*,
 };
@@ -109,7 +106,7 @@ impl Prover {
             .ok_or_else(|| JsError::new("Prover has been consumed by a previous prove() call"))
     }
 
-    fn prove_inner(&mut self, witness_map: JsValue) -> Result<NoirProof, JsError> {
+    fn prove_inner(&mut self, witness_map: JsValue) -> Result<ProvekitProof<Bn254Field>, JsError> {
         let witness = parse_witness_map(witness_map)?;
         let inner = self
             .inner

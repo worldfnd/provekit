@@ -22,7 +22,7 @@ base64.workspace = true
 hex.workspace = true
 noirc_abi.workspace = true
 provekit-common.workspace = true
-provekit-prover = { workspace = true, features = ["witness-generation"] }
+provekit-backend-bn254 = { workspace = true, features = ["witness-generation"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2 = { workspace = true, features = ["compress"] }

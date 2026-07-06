@@ -1,4 +1,3 @@
-mod print_abi;
 pub mod serde_ark;
 pub mod serde_ark_option;
 pub mod serde_ark_vec;
@@ -6,42 +5,14 @@ pub mod serde_hex;
 pub mod serde_jsonify;
 pub mod sumcheck;
 
-pub use self::print_abi::PrintAbi;
-
-/// Deserializes a BN254 field element from up to 32 little-endian bytes.
-#[inline]
-pub fn bytes_to_field(bytes: &[u8]) -> FieldElement {
-    FieldElement::from_le_bytes_mod_order(bytes)
-}
-
-/// Serializes a BN254 field element to its canonical 32-byte little-endian
-/// representation. Zero-allocation: copies the 4 canonical limbs directly
-/// instead of routing through `BigInt::to_bytes_le`'s `Vec<u8>`.
-#[inline]
-pub fn field_to_bytes_le(fe: FieldElement) -> [u8; 32] {
-    let limbs = fe.into_bigint().0;
-    let mut out = [0u8; 32];
-    for (i, &limb) in limbs.iter().enumerate() {
-        out[i * 8..(i + 1) * 8].copy_from_slice(&limb.to_le_bytes());
-    }
-    out
-}
-
 use {
-    crate::{FieldElement, NoirElement},
-    ark_ff::{BigInt, Field, PrimeField},
-    ruint::{aliases::U256, uint},
+    ark_ff::Field,
     std::{
         fmt::{Display, Formatter, Result as FmtResult},
         mem::MaybeUninit,
     },
     tracing::instrument,
 };
-
-/// 1/2 for the BN254
-pub const HALF: FieldElement = uint_to_field(uint!(
-    10944121435919637611123202872628637544274182200208017171849102093287904247809_U256
-));
 
 /// Target single-thread workload size for `T`.
 /// Should ideally be a multiple of a cache line (64 bytes)
@@ -74,17 +45,6 @@ fn unzip_double_array<T: Sized, const N: usize, const M: usize>(
     let left = left.map(|a| a.map(|u| unsafe { u.assume_init() }));
     let right = right.map(|a| a.map(|u| unsafe { u.assume_init() }));
     (left, right)
-}
-
-pub const fn uint_to_field(i: U256) -> FieldElement {
-    FieldElement::new(BigInt(i.into_limbs()))
-}
-
-/// Convert a Noir field element to a native `FieldElement`
-#[inline(always)]
-pub fn noir_to_native(n: NoirElement) -> FieldElement {
-    let limbs = n.into_repr().into_bigint().0;
-    FieldElement::from(BigInt(limbs))
 }
 
 /// Calculates the degree of the next smallest power of two
@@ -147,7 +107,7 @@ pub fn human(value: f64) -> impl Display {
 ///
 /// Reduces N field inversions to 1 inversion + 3N multiplications.
 /// See: <https://encrypt.a41.io/primitives/abstract-algebra/group/batch-inverse>
-pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
+pub fn batch_inverse_montgomery<F: Field>(values: &[F]) -> Vec<F> {
     let batch_size = values.len();
     if batch_size == 0 {
         return Vec::new();
@@ -159,7 +119,7 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
 
     // Forward pass: compute prefix products
     let mut prefix = Vec::with_capacity(batch_size);
-    let mut acc = FieldElement::from(1u32);
+    let mut acc = F::one();
     for &v in values {
         acc *= v;
         prefix.push(acc);
@@ -171,7 +131,7 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
         .expect("Batch inversion: zero product");
 
     // Backward pass: compute individual inverses
-    let mut inverses = vec![FieldElement::from(0u32); batch_size];
+    let mut inverses = vec![F::zero(); batch_size];
     for i in (1..batch_size).rev() {
         inverses[i] = inv_acc * prefix[i - 1];
         inv_acc *= values[i];
@@ -179,58 +139,4 @@ pub fn batch_inverse_montgomery(values: &[FieldElement]) -> Vec<FieldElement> {
     inverses[0] = inv_acc;
 
     inverses
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn convert_mavros_r1cs_to_provekit(mavros_r1cs: &mavros_artifacts::R1CS) -> crate::R1CS {
-    let num_witnesses = mavros_r1cs.witness_layout.size();
-    let num_constraints = mavros_r1cs.constraints.len();
-
-    let total_entries: usize = mavros_r1cs
-        .constraints
-        .iter()
-        .map(|c| c.a.len() + c.b.len() + c.c.len())
-        .sum();
-
-    let mut r1cs = crate::R1CS::new();
-    r1cs.add_witnesses(num_witnesses);
-    r1cs.reserve_constraints(num_constraints, total_entries);
-
-    let mut a_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
-    let mut b_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
-    let mut c_buf: Vec<(u32, crate::InternedFieldElement)> = Vec::with_capacity(64);
-
-    for constraint in &mavros_r1cs.constraints {
-        a_buf.clear();
-        a_buf.extend(
-            constraint
-                .a
-                .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
-        );
-
-        b_buf.clear();
-        b_buf.extend(
-            constraint
-                .b
-                .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
-        );
-
-        c_buf.clear();
-        c_buf.extend(
-            constraint
-                .c
-                .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
-        );
-
-        r1cs.push_constraint(
-            a_buf.iter().copied(),
-            b_buf.iter().copied(),
-            c_buf.iter().copied(),
-        );
-    }
-
-    r1cs
 }

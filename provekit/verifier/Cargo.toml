@@ -13,6 +13,7 @@ repository.workspace = true
 provekit-common.workspace = true
 
 # Cryptography and proof systems
+ark-ff.workspace = true
 ark-std.workspace = true
 whir.workspace = true
 

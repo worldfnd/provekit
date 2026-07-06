@@ -4,7 +4,7 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_std::{ops::Neg, One},
-    provekit_common::{
+    provekit_backend_bn254::{
         witness::{SumTerm, WitnessBuilder, WitnessCoefficient},
         FieldElement,
     },

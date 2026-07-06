@@ -4293,8 +4293,8 @@ dependencies = [
  "noir-bignum-paramgen",
  "noirc_abi",
  "poseidon2",
+ "provekit-backend-bn254",
  "provekit-common",
- "provekit-prover",
  "rasn",
  "rasn-cms",
  "rasn-pkix",
@@ -4583,8 +4583,46 @@ dependencies = [
 ]
 
 [[package]]
+name = "provekit-backend-bn254"
+version = "1.0.0"
+dependencies = [
+ "acir",
+ "anyhow",
+ "ark-bn254",
+ "ark-ff 0.5.0",
+ "ark-std 0.5.0",
+ "blake3",
+ "bn254_blackbox_solver",
+ "divan",
+ "itertools 0.14.0",
+ "mavros-artifacts",
+ "mavros-vm",
+ "nargo",
+ "noir_artifact_cli",
+ "noirc_abi",
+ "ntt",
+ "poseidon2",
+ "postcard",
+ "proptest",
+ "provekit-common",
+ "provekit-prover",
+ "provekit-verifier",
+ "rayon",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sha3",
+ "skyscraper",
+ "spongefish",
+ "spongefish-pow",
+ "tracing",
+ "whir",
+ "zerocopy",
+]
+
+[[package]]
 name = "provekit-bench"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4594,10 +4632,9 @@ dependencies = [
  "nargo_cli",
  "nargo_toml",
  "noirc_driver",
+ "provekit-backend-bn254",
  "provekit-common",
- "provekit-prover",
  "provekit-r1cs-compiler",
- "provekit-verifier",
  "serde",
  "test-case",
  "toml 0.8.23",
@@ -4606,7 +4643,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4620,11 +4657,10 @@ dependencies = [
  "noirc_abi",
  "noirc_driver",
  "postcard",
+ "provekit-backend-bn254",
  "provekit-common",
  "provekit-gnark",
- "provekit-prover",
  "provekit-r1cs-compiler",
- "provekit-verifier",
  "rayon",
  "serde_json",
  "tikv-jemallocator",
@@ -4635,47 +4671,35 @@ dependencies = [
 
 [[package]]
 name = "provekit-common"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
- "acir",
  "anyhow",
- "ark-bn254",
  "ark-ff 0.5.0",
  "ark-serialize 0.5.0",
  "ark-std 0.5.0",
  "base64",
- "blake3",
  "bytes",
- "divan",
  "hex",
  "itertools 0.14.0",
  "keccak 0.2.0-rc.2",
- "mavros-artifacts",
- "mavros-vm",
- "noirc_abi",
- "ntt",
- "poseidon2",
+ "num-bigint",
  "postcard",
  "proptest",
  "rayon",
  "ruint",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "sha3",
- "skyscraper",
  "spongefish",
- "spongefish-pow",
  "tracing",
  "whir",
  "xz2",
- "zerocopy",
  "zstd",
 ]
 
 [[package]]
 name = "provekit-ffi"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "libc",
@@ -4684,10 +4708,9 @@ dependencies = [
  "noirc_abi",
  "noirc_driver",
  "parking_lot",
+ "provekit-backend-bn254",
  "provekit-common",
- "provekit-prover",
  "provekit-r1cs-compiler",
- "provekit-verifier",
  "tempfile",
 ]
 
@@ -4696,6 +4719,7 @@ name = "provekit-gnark"
 version = "0.1.0"
 dependencies = [
  "ark-poly",
+ "provekit-backend-bn254",
  "provekit-common",
  "serde",
  "serde_json",
@@ -4705,20 +4729,11 @@ dependencies = [
 
 [[package]]
 name = "provekit-prover"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
- "acir",
  "anyhow",
  "ark-ff 0.5.0",
  "ark-std 0.5.0",
- "bn254_blackbox_solver",
- "mavros-artifacts",
- "mavros-vm",
- "nargo",
- "noir_artifact_cli",
- "noirc_abi",
- "num-bigint",
- "postcard",
  "provekit-common",
  "tracing",
  "whir",
@@ -4726,7 +4741,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-r1cs-compiler"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
@@ -4738,7 +4753,9 @@ dependencies = [
  "noirc_artifacts",
  "poseidon2",
  "postcard",
+ "provekit-backend-bn254",
  "provekit-common",
+ "rayon",
  "serde",
  "serde_json",
  "tracing",
@@ -4747,9 +4764,10 @@ dependencies = [
 
 [[package]]
 name = "provekit-verifier"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
+ "ark-ff 0.5.0",
  "ark-std 0.5.0",
  "provekit-common",
  "rayon",
@@ -4772,9 +4790,8 @@ dependencies = [
  "js-sys",
  "lzma-rs",
  "postcard",
+ "provekit-backend-bn254",
  "provekit-common",
- "provekit-prover",
- "provekit-verifier",
  "ruzstd",
  "serde-wasm-bindgen",
  "serde_json",
@@ -7034,11 +7051,12 @@ dependencies = [
 
 [[package]]
 name = "verifier-server"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "provekit-backend-bn254",
  "provekit-common",
  "provekit-gnark",
  "reqwest",

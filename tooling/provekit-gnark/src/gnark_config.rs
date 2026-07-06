@@ -1,6 +1,7 @@
 use {
     ark_poly::{EvaluationDomain, GeneralEvaluationDomain},
-    provekit_common::{FieldElement, PublicInputs, WhirConfig, WhirR1CSProof, WhirR1CSScheme},
+    provekit_backend_bn254::{Bn254Field, FieldElement, WhirConfig},
+    provekit_common::{PublicInputs, WhirR1CSProof, WhirR1CSScheme},
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
     tracing::instrument,
@@ -21,7 +22,7 @@ pub struct GnarkConfig {
     pub num_challenges: usize,
     pub challenge_offsets: Vec<usize>,
     pub w1_size: usize,
-    pub public_inputs: PublicInputs,
+    pub public_inputs: PublicInputs<FieldElement>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -166,7 +167,7 @@ impl WHIRConfigGnark {
 
 #[instrument(skip_all)]
 pub fn gnark_parameters(
-    scheme: &WhirR1CSScheme,
+    scheme: &WhirR1CSScheme<Bn254Field>,
     blinded_commitment: &WhirConfig,
     blinding_commitment: &WhirConfig,
     proof: &WhirR1CSProof,
@@ -175,7 +176,7 @@ pub fn gnark_parameters(
     a_num_terms: usize,
     num_challenges: usize,
     w1_size: usize,
-    public_inputs: &PublicInputs,
+    public_inputs: &PublicInputs<FieldElement>,
 ) -> GnarkConfig {
     let ds = scheme.create_domain_separator();
     let protocol_id: Vec<u8> = ds.protocol_id.to_vec();
@@ -199,7 +200,7 @@ pub fn gnark_parameters(
 
 #[instrument(skip_all)]
 pub fn write_gnark_parameters_to_file(
-    scheme: &WhirR1CSScheme,
+    scheme: &WhirR1CSScheme<Bn254Field>,
     blinded_commitment: &WhirConfig,
     blinding_commitment: &WhirConfig,
     proof: &WhirR1CSProof,
@@ -208,7 +209,7 @@ pub fn write_gnark_parameters_to_file(
     a_num_terms: usize,
     num_challenges: usize,
     w1_size: usize,
-    public_inputs: &PublicInputs,
+    public_inputs: &PublicInputs<FieldElement>,
     file_path: &str,
 ) {
     let gnark_config = gnark_parameters(
