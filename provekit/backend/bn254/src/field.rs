@@ -3,10 +3,7 @@
 //! field-generic `ProofField`/`FieldHash` traits defined in `provekit-common`.
 
 use {
-    crate::{
-        bytes::{bytes_to_field, field_to_bytes_le},
-        FieldElement, TranscriptSponge,
-    },
+    crate::{bytes::field_to_bytes_le, FieldElement, TranscriptSponge},
     provekit_common::{Base, Ext, FieldHash, HashConfig, ProofField},
     whir::{
         algebra::embedding::Identity,
@@ -28,24 +25,12 @@ impl ProofField for Bn254Field {
 }
 
 impl FieldHash for Bn254Field {
-    fn default_hash() -> HashConfig {
-        HashConfig::Skyscraper
-    }
-
     fn hash_public_inputs(config: HashConfig, inputs: &[Base<Self>]) -> Ext<Self> {
         crate::field_hash::hash_field_elements(config, inputs)
     }
 
     fn ext_to_bytes_le(x: &Ext<Self>) -> Vec<u8> {
         field_to_bytes_le(*x).to_vec()
-    }
-
-    fn ext_from_bytes(bytes: &[u8]) -> Ext<Self> {
-        bytes_to_field(bytes)
-    }
-
-    fn from_digest(digest: &[u8]) -> Ext<Self> {
-        bytes_to_field(digest)
     }
 
     type Sponge = TranscriptSponge;
@@ -57,16 +42,14 @@ impl FieldHash for Bn254Field {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, crate::bytes::bytes_to_field};
 
     #[test]
     fn bn254_field_hash_roundtrip() {
         let x: Ext<Bn254Field> = FieldElement::from(123_456_789u64);
         let bytes = Bn254Field::ext_to_bytes_le(&x);
         assert_eq!(bytes.len(), 32);
-        assert_eq!(Bn254Field::ext_from_bytes(&bytes), x);
-        assert_eq!(Bn254Field::from_digest(&bytes), x);
-        assert_eq!(Bn254Field::default_hash(), HashConfig::Skyscraper);
+        assert_eq!(bytes_to_field(&bytes), x);
     }
 
     // Byte-exact public-input hashing is pinned by the KATs in
