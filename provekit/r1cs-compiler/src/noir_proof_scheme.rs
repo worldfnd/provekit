@@ -178,9 +178,8 @@ impl NoirCompiler {
 
 #[derive(Deserialize)]
 struct BasicArtifacts {
-    abi:           noirc_abi::Abi,
-    ad_binary:     Vec<u64>,
-    witgen_binary: Vec<u64>,
+    abi:    noirc_abi::Abi,
+    binary: Vec<u64>,
 }
 
 pub struct MavrosCompiler;
@@ -243,8 +242,7 @@ impl MavrosCompiler {
             abi,
             num_public_inputs,
             whir_for_witness,
-            witgen_binary: basic.witgen_binary,
-            ad_binary: basic.ad_binary,
+            binary: basic.binary,
             r1cs,
             constraints_layout: mavros_r1cs.constraints_layout,
             witness_layout: mavros_r1cs.witness_layout,

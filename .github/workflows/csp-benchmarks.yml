@@ -22,7 +22,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   BENCH_RUNS: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.bench_runs != '' && github.event.inputs.bench_runs || '3') || '3' }}
-  REQUIRED_NARGO_VERSION: "1.0.0-beta.19"
+  REQUIRED_NARGO_VERSION: "1.0.0-beta.20"
 
 concurrency:
   group: csp-benchmarks-${{ github.ref }}

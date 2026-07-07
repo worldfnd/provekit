@@ -3,24 +3,24 @@ mod bb_poseidon2;
 mod ext {
 
     pub fn hash_2(xs: [Field; 2]) -> Field {
-        poseidon2::bn254::hash_2(xs)
+        poseidon2::bn254::permutation::t2(xs)[0]
     }
     pub fn hash_4(xs: [Field; 4]) -> Field {
-        poseidon2::bn254::hash_4(xs)
+        poseidon2::bn254::permutation::t4(xs)[0]
     }
     pub fn hash_8(xs: [Field; 8]) -> Field {
-        poseidon2::bn254::hash_8(xs)
+        poseidon2::bn254::permutation::t8(xs)[0]
     }
     pub fn hash_12(xs: [Field; 12]) -> Field {
-        poseidon2::bn254::hash_12(xs)
+        poseidon2::bn254::permutation::t12(xs)[0]
     }
     pub fn hash_16(xs: [Field; 16]) -> Field {
-        poseidon2::bn254::hash_16(xs)
+        poseidon2::bn254::permutation::t16(xs)[0]
     }
 }
 // Return the permuted state publicly
 fn main(st: pub [Field; 4]) -> pub [Field; 4] {
-    std::hash::poseidon2_permutation(st, 4)
+    std::hash::poseidon2_permutation(st)
 }
 
 // ----------------------- Tests -----------------------

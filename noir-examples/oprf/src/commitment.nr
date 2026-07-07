@@ -1,6 +1,6 @@
 use super::{constants::{DS_C, DS_N, DS_Q}, types::{OprfNullifierOutputs, OprfQueryInputs}};
 use babyjubjub::BabyJubJubPoint;
-use poseidon2::bn254::perm;
+use poseidon2::bn254::permutation;
 
 pub fn generate_commitment(
     query: Field,
@@ -14,12 +14,12 @@ pub fn generate_commitment(
 }
 
 fn generate_nullifier(query: Field, oprf_response: BabyJubJubPoint) -> Field {
-    let state = perm::x5_4([DS_N, query, oprf_response.x, oprf_response.y]);
+    let state = permutation::t4([DS_N, query, oprf_response.x, oprf_response.y]);
     state[1]
 }
 
 fn generate_id_commitment(mt_index: Field, commitment_r: Field) -> Field {
-    let state = perm::x5_3([DS_C, mt_index, commitment_r]);
+    let state = permutation::t3([DS_C, mt_index, commitment_r]);
     state[1]
 }
 
@@ -28,6 +28,6 @@ pub fn generate_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     rp_id: Field,
     action: Field,
 ) -> Field {
-    let state = perm::x5_4([DS_Q, query.merkle_proof.mt_index, rp_id, action]);
+    let state = permutation::t4([DS_Q, query.merkle_proof.mt_index, rp_id, action]);
     state[1]
 }

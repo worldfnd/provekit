@@ -267,8 +267,8 @@ fn scalar_mul_wnaf(P: GPoint, scalar_lo: Field, scalar_hi: Field) -> GPointResul
     for i in 0..64 { r = r * 16; r += (slices[i] as Field) * 2 - 15; }
     r -= skew as Field;
 
-    let lo_bits: [u1; 128] = scalar_lo.to_le_bits();
-    let hi_bits: [u1; 128] = scalar_hi.to_le_bits();
+    let lo_bits: [bool; 128] = scalar_lo.to_le_bits();
+    let hi_bits: [bool; 128] = scalar_hi.to_le_bits();
     let mut expected: Field = 0;
     let mut pow: Field = 1;
     for i in 0..128 { expected += (lo_bits[i] as Field) * pow; pow *= 2; }

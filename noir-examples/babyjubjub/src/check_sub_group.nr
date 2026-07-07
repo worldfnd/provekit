@@ -1,15 +1,13 @@
 use super::{BabyJubJubPoint, montgomery::MontgomeryPoint};
 
 fn bit_element_mul_fix_scalar(
-    bit: u1,
+    bit: bool,
     dbl_in: MontgomeryPoint,
     add_in: MontgomeryPoint,
 ) -> (MontgomeryPoint, MontgomeryPoint) {
-    assert((bit == 0) | (bit == 1), "Bit must be 0 or 1 in fixed-scalar step");
-
     let dbl_out = dbl_in.double();
 
-    let add_out = if bit == 1 {
+    let add_out = if bit {
         dbl_out.add(add_in)
     } else {
         add_in
@@ -19,7 +17,7 @@ fn bit_element_mul_fix_scalar(
 }
 
 fn segment_mul_fix_scalar<let N: u32>(
-    bits: [u1; N],
+    bits: [bool; N],
     base: BabyJubJubPoint,
 ) -> (BabyJubJubPoint, MontgomeryPoint) {
     assert(N >= 2, "Segment size must be >= 2 bits");
@@ -49,13 +47,13 @@ fn segment_mul_fix_scalar<let N: u32>(
     (result, dbl_out_montgomery)
 }
 
-pub fn esc_mul_fix_scalar(bits: [u1; 251], base: BabyJubJubPoint) -> BabyJubJubPoint {
-    let mut bits1: [u1; 148] = [0; 148];
+pub fn esc_mul_fix_scalar(bits: [bool; 251], base: BabyJubJubPoint) -> BabyJubJubPoint {
+    let mut bits1: [bool; 148] = [false; 148];
     for i in 0..148 {
         bits1[i] = bits[i];
     }
 
-    let mut bits2: [u1; 103] = [0; 103];
+    let mut bits2: [bool; 103] = [false; 103];
     for i in 0..103 {
         bits2[i] = bits[148 + i];
     }
