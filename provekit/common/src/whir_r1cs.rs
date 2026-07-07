@@ -92,8 +92,9 @@ impl<P: ProofField> WhirR1CSScheme<P> {
 }
 
 impl<P: FieldHash> WhirR1CSScheme<P> {
-    /// Build a scheme for a concrete R1CS instance, binding the transcript to
-    /// the R1CS hash.
+    /// Build a scheme for a concrete R1CS instance, recording its hash so the
+    /// transcript can later be bound to this instance (in
+    /// [`Self::create_domain_separator`]).
     ///
     /// Witness commitment domain size, sumcheck rounds, blinding room, and the
     /// zkWHIR configuration are derived purely from R1CS dimensions.
@@ -105,43 +106,18 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         has_public_inputs: bool,
         hash_config: HashConfig,
     ) -> Self {
-        assert_eq!(
-            num_challenges,
-            challenge_offsets.len(),
-            "num_challenges ({num_challenges}) != challenge_offsets.len() ({})",
-            challenge_offsets.len()
-        );
-        let total_witnesses = r1cs.num_witnesses();
-        assert!(
-            w1_size <= total_witnesses,
-            "w1_size exceeds total witnesses"
-        );
-        let w2_size = total_witnesses - w1_size;
-
-        let m1_raw = next_power_of_two(w1_size);
-        let m2_raw = next_power_of_two(w2_size);
-        let m0_raw = next_power_of_two(r1cs.num_constraints());
-
-        let mut m_raw = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
-        let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
-
-        // Ensure w1's zero-padding has room for the blinding polynomial coefficients.
-        if (1usize << m_raw) - w1_size < 4 * m_0 {
-            m_raw += 1;
-        }
-
-        Self {
-            m: m_raw,
+        let mut scheme = Self::new_from_dimensions(
+            r1cs.num_witnesses(),
+            r1cs.num_constraints(),
+            r1cs.a().iter().count(),
             w1_size,
-            m_0,
-            a_num_terms: next_power_of_two(r1cs.a().iter().count()),
             num_challenges,
             challenge_offsets,
-            whir_witness: Self::new_whir_zk_config_for_size(m_raw, 1, hash_config.engine_id()),
             has_public_inputs,
-            r1cs_hash: r1cs.hash(),
             hash_config,
-        }
+        );
+        scheme.r1cs_hash = r1cs.hash();
+        scheme
     }
 
     /// Build a scheme from raw dimensions, leaving `r1cs_hash` unset (the

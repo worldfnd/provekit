@@ -11,6 +11,10 @@ use {
 /// dimensions to [`WhirR1CSScheme::new_from_dimensions`].
 pub trait MavrosSchemeBuilder {
     /// Build a scheme from a Mavros R1CS instance's dimensions.
+    ///
+    /// Like [`WhirR1CSScheme::new_from_dimensions`], this leaves `r1cs_hash`
+    /// UNSET: the caller must populate it (from the converted provekit R1CS)
+    /// before creating a domain separator.
     fn new_from_mavros_r1cs(
         r1cs: &MavrosR1CS,
         w1_size: usize,
