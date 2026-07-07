@@ -1,6 +1,6 @@
 use super::constants::{CREDENTIAL_DS, DS_C_CS};
 use eddsa_poseidon2::verify_eddsa_poseidon2;
-use poseidon2::bn254::perm;
+use poseidon2::bn254::permutation;
 
 pub fn check_credential_signature(
     s: Field,
@@ -21,7 +21,7 @@ pub fn check_credential_signature(
     // Check genesis issued at is valid
     assert(genesis_issued_at >= genesis_issued_at_min, "Credential issued_at too old");
 
-    let blinded_user_id = perm::x5_3([DS_C_CS, user_id, user_id_r])[1];
+    let blinded_user_id = permutation::t3([DS_C_CS, user_id, user_id_r])[1];
 
     // Calculate message hash
     let hash_inputs = [
@@ -34,7 +34,7 @@ pub fn check_credential_signature(
         hashes[1],
         credential_id,
     ];
-    let hash_state = perm::x5_8(hash_inputs);
+    let hash_state = permutation::t8(hash_inputs);
     let message = hash_state[1];
 
     // Verify EdDSA signature and assert directly

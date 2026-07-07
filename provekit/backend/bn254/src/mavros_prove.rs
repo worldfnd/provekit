@@ -28,7 +28,7 @@ pub trait MavrosR1CSProver {
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
-        ad_binary: &[u64],
+        binary: &[u64],
     ) -> Result<WhirR1CSProof>;
 }
 
@@ -42,7 +42,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
-        ad_binary: &[u64],
+        binary: &[u64],
     ) -> Result<WhirR1CSProof> {
         ensure!(!commitments.is_empty(), "Need at least one commitment");
 
@@ -66,11 +66,11 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
         let eq_alpha =
             calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
         let (ad_a, ad_b, ad_c, _) = run_ad(
-            ad_binary,
+            binary,
             &eq_alpha[..constraints_layout.size()],
             witness_layout,
             constraints_layout,
-        );
+        )?;
         let alphas = [ad_a, ad_b, ad_c];
 
         let blinding_offset = blinding.offset;

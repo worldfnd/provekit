@@ -265,17 +265,17 @@ impl Prove for NoirProver {
 #[cfg(not(target_arch = "wasm32"))]
 impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
-    fn prove(mut self, input_map: InputMap) -> Result<ProvekitProof<Bn254Field>> {
+    fn prove(self, input_map: InputMap) -> Result<ProvekitProof<Bn254Field>> {
         crate::register();
 
         let params = crate::frontend::input::ordered_params_from_btreemap(&self.abi, &input_map)?;
         let phase1 = mavros_interpreter::run_phase1(
-            &mut self.witgen_binary,
+            &self.binary,
             self.witness_layout,
             self.constraints_layout,
             &params,
-        );
-        drop(self.witgen_binary);
+        )
+        .context("While running Mavros witness phase 1")?;
 
         let num_public_inputs = self.num_public_inputs;
         let public_inputs = if num_public_inputs == 0 {
@@ -366,7 +366,7 @@ impl Prove for MavrosProver {
                 &public_inputs,
                 self.witness_layout,
                 self.constraints_layout,
-                &self.ad_binary,
+                &self.binary,
             )
             .context("While proving R1CS instance")?;
 

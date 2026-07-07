@@ -179,6 +179,7 @@ impl Args {
         let artifacts = report_errors(
             collect_errors(program_results),
             &file_manager,
+            &parsed_files,
             options.deny_warnings,
             options.silence_warnings,
         )?;

@@ -3,9 +3,9 @@
 // https://www.rfc-editor.org/rfc/rfc9380.html
 
 use super::BabyJubJubPoint;
-use poseidon2::bn254::perm;
+use poseidon2::bn254::permutation;
 
-comptime global Z: Field = 5;
+global Z: Field = 5;
 global C1: u32 = 28;
 global C3: Field = 40770029410420498293352137776570907027550720424234931066070132305055;
 global C5: Field = 19103219067921713944291392827692070036145651957329286315305642004821462161904;
@@ -13,7 +13,7 @@ global C5: Field = 1910321906792171394429139282769207003614565195732928631530564
 fn hash_to_field(input: Field) -> Field {
     // element 0 is the DS string "OPRF_HashToField_BabyJubJub"
     let hash_input = [32627786498498119128812045057993354633158048678109587794777765218, input, 0];
-    let hash_result = perm::x5_3(hash_input);
+    let hash_result = permutation::t3(hash_input);
 
     hash_result[1]
 }
@@ -50,7 +50,7 @@ fn inverse_or_zero(x: Field) -> Field {
 
 fn pow(x: Field, y: Field) -> Field {
     let mut r = 1 as Field;
-    let b: [u1; 254] = y.to_le_bits();
+    let b: [bool; 254] = y.to_le_bits();
 
     for i in 0..254 {
         r *= r;
@@ -132,7 +132,7 @@ fn is_quadratic_residue_or_zero(x: Field) -> bool {
 }
 
 fn sgn0(x: Field) -> bool {
-    x.sgn0() == 1
+    x.sgn0()
 }
 
 // Map to Montgomery curve using Elligator2
