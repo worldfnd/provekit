@@ -29,5 +29,5 @@ pub use {
     public_inputs::{PublicInputs, PublicInputsHash},
     r1cs::R1CS,
     sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
-    whir_r1cs::{ProvekitProof, R1csHash, WhirR1CSProof, WhirR1CSScheme},
+    whir_r1cs::{ProvekitProof, R1csHash, WhirR1CSProof, WhirR1CSScheme, MIN_WHIR_NUM_VARIABLES},
 };

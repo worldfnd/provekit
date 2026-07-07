@@ -4486,6 +4486,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "provekit-fixtures"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "ark-ff",
+ "ark-std",
+ "provekit-backend-bn254",
+ "provekit-common",
+ "provekit-prover",
+ "provekit-verifier",
+ "whir",
+]
+
+[[package]]
 name = "provekit-gnark"
 version = "0.1.0"
 dependencies = [
