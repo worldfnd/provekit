@@ -14,9 +14,9 @@ use {
 ///
 /// **Protocol-visible constant.** Absorbed into the SHA-256, Keccak, and BLAKE3
 /// hashes used for public-input commitments; changing it invalidates every
-/// proof generated under those configurations. The `V1` suffix reserves an
-/// unambiguous upgrade path (`_V2`, …) for any future construction change.
-const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V1";
+/// proof generated under those configurations. The `V2` suffix reserves an
+/// unambiguous upgrade path (`_V3`, …) for any future construction change.
+const PUBLIC_INPUTS_DST: &[u8] = b"PROVEKIT_PUBLIC_INPUTS_V2";
 
 /// Hashes `elements` into a single extension element under `config`.
 ///
@@ -188,11 +188,11 @@ mod tests {
     }
 
     const KAT_ONE_TWO_SHA256: [u8; 24] = [
-        131, 95, 205, 190, 68, 78, 13, 206, 7, 169, 28, 14, 140, 41, 211, 19, 89, 89, 231, 3, 187,
-        207, 164, 81,
+        144, 151, 90, 51, 195, 199, 243, 14, 232, 100, 108, 85, 172, 25, 243, 123, 239, 248, 244,
+        191, 147, 179, 129, 175,
     ];
     const KAT_EMPTY_SHA256: [u8; 24] = [
-        49, 169, 159, 226, 44, 164, 90, 5, 24, 184, 147, 146, 122, 173, 128, 130, 53, 228, 237, 18,
-        113, 109, 221, 55,
+        237, 21, 149, 253, 83, 146, 92, 253, 78, 221, 223, 150, 211, 21, 198, 216, 149, 39, 253, 95,
+        255, 41, 133, 1,
     ];
 }

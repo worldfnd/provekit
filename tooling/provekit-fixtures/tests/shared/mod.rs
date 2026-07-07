@@ -230,36 +230,72 @@ where
     assert!(scheme.verify(&proof, &public_inputs, &r1cs_b).is_err());
 }
 
-/// Public-input binding: a verify against wrong public inputs must reject at
-/// both `N = 1` (trivial binding) and `N = 2` (non-trivial binding loop), even
-/// though the R1CS itself is satisfied.
+/// Public-input binding covector: prover and verifier agree on public inputs
+/// that disagree with the witness (`public[i] != witness[1 + i]`). The
+/// public-inputs hash matches on both sides, so the "hash mismatch" guard
+/// passes and the binding covector (the PR #321 path) is what rejects. Unlike
+/// [`tampered_public_input_is_rejected`], which trips the guard first, this
+/// exercises the covector math itself — at both `N = 1` (trivial binding) and
+/// `N = 2` (non-trivial binding loop), with the R1CS itself satisfied.
 pub fn public_input_binding_mismatch_is_rejected<P>()
 where
     P: FieldHash,
     Standard: Distribution<Ext<P>>,
 {
-    // N = 1: corrupt the single public input.
+    // N = 1: prove and verify with the same wrong public input.
+    let (r1cs, w) = squaring_chain::<Base<P>>(3, 8);
+    assert!(satisfies(&r1cs, &w));
+    let wrong = PublicInputs::from_vec(vec![w[1] + Base::<P>::one()]);
+    let (scheme, proof) = prove::<P>(&r1cs, w, &wrong)
+        .expect("proving succeeds; the binding is checked at verify time");
+    assert!(
+        scheme.verify(&proof, &wrong, &r1cs).is_err(),
+        "N=1 covector binding must reject"
+    );
+
+    // N = 2: corrupt only the second public input, identically on both sides.
+    let (r1cs, w) = two_public_inputs::<Base<P>>(6, 7);
+    assert!(satisfies(&r1cs, &w));
+    let wrong = PublicInputs::from_vec(vec![w[1], w[2] + Base::<P>::one()]);
+    let (scheme, proof) = prove::<P>(&r1cs, w, &wrong)
+        .expect("proving succeeds; the binding is checked at verify time");
+    assert!(
+        scheme.verify(&proof, &wrong, &r1cs).is_err(),
+        "N=2 covector binding must reject"
+    );
+}
+
+/// Public-input instance binding: a proof made for the correct public inputs
+/// must not verify when the verifier substitutes different inputs after
+/// proving. The substitution changes the public-inputs hash, so the verifier
+/// rejects at the hash guard (before the binding covector runs) — the
+/// complement of [`public_input_binding_mismatch_is_rejected`], which passes
+/// the guard. Checked at `N = 1` and `N = 2`.
+pub fn tampered_public_input_is_rejected<P>()
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>>,
+{
+    // N = 1.
     let (r1cs, w) = squaring_chain::<Base<P>>(3, 8);
     assert!(satisfies(&r1cs, &w));
     let public_inputs = PublicInputs::from_vec(vec![w[1]]);
-    let wrong = PublicInputs::from_vec(vec![w[1] + Base::<P>::one()]);
-    let (scheme, proof) = prove::<P>(&r1cs, w, &public_inputs)
-        .expect("proving succeeds; the binding is checked at verify time");
+    let tampered = PublicInputs::from_vec(vec![w[1] + Base::<P>::one()]);
+    let (scheme, proof) = prove::<P>(&r1cs, w, &public_inputs).expect("proving failed");
     assert!(
-        scheme.verify(&proof, &wrong, &r1cs).is_err(),
-        "N=1 public-input mismatch must reject"
+        scheme.verify(&proof, &tampered, &r1cs).is_err(),
+        "N=1 tampered public input must reject"
     );
 
-    // N = 2: corrupt only the second public input.
+    // N = 2.
     let (r1cs, w) = two_public_inputs::<Base<P>>(6, 7);
     assert!(satisfies(&r1cs, &w));
     let public_inputs = PublicInputs::from_vec(vec![w[1], w[2]]);
-    let wrong = PublicInputs::from_vec(vec![w[1], w[2] + Base::<P>::one()]);
-    let (scheme, proof) = prove::<P>(&r1cs, w, &public_inputs)
-        .expect("proving succeeds; the binding is checked at verify time");
+    let tampered = PublicInputs::from_vec(vec![w[1], w[2] + Base::<P>::one()]);
+    let (scheme, proof) = prove::<P>(&r1cs, w, &public_inputs).expect("proving failed");
     assert!(
-        scheme.verify(&proof, &wrong, &r1cs).is_err(),
-        "N=2 public-input mismatch must reject"
+        scheme.verify(&proof, &tampered, &r1cs).is_err(),
+        "N=2 tampered public input must reject"
     );
 }
 
@@ -404,6 +440,11 @@ macro_rules! soundness_suite {
         fn public_input_binding_mismatch_is_rejected() {
             $register();
             $crate::shared::public_input_binding_mismatch_is_rejected::<$field>();
+        }
+        #[test]
+        fn tampered_public_input_is_rejected() {
+            $register();
+            $crate::shared::tampered_public_input_is_rejected::<$field>();
         }
         #[test]
         fn tampered_challenge_is_rejected() {
