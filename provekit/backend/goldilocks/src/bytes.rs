@@ -11,7 +11,7 @@ pub(crate) const EXT_BYTES: usize = 24;
 
 /// The Goldilocks base prime, `2^64 − 2^32 + 1`. A canonical little-endian
 /// coefficient encodes a value strictly below this.
-const GOLDILOCKS_MODULUS: u64 = 0xFFFF_FFFF_0000_0001;
+const GOLDILOCKS_MODULUS: u64 = 0xffff_ffff_0000_0001;
 
 /// Serializes an extension element to its canonical 24-byte little-endian
 /// representation: three 8-byte base coefficients, low coordinate first.
@@ -26,8 +26,8 @@ pub(crate) fn field_to_bytes_le(fe: Field64_3) -> [u8; EXT_BYTES] {
 }
 
 /// Deserializes an extension element from up to 24 little-endian bytes: three
-/// 8-byte base coefficients, low coordinate first. A short input is zero-padded;
-/// bytes beyond the 24th are ignored.
+/// 8-byte base coefficients, low coordinate first. A short input is
+/// zero-padded; bytes beyond the 24th are ignored.
 ///
 /// Each coefficient must be canonical (`< GOLDILOCKS_MODULUS`); the debug
 /// assertion catches non-canonical limbs, which `from_le_bytes_mod_order` would
