@@ -21,8 +21,9 @@ ark-std.workspace = true
 whir.workspace = true
 
 [dev-dependencies]
-# A concrete proof field to instantiate the generic harness.
+# Concrete proof fields to instantiate the generic harness.
 provekit-backend-bn254.workspace = true
+provekit-backend-goldilocks.workspace = true
 
 [lints]
 workspace = true

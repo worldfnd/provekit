@@ -8,6 +8,7 @@ members = [
   "skyscraper/core",
   "provekit/common",
   "provekit/backend/bn254",
+  "provekit/backend/goldilocks",
   "provekit/r1cs-compiler",
   "provekit/prover",
   "provekit/verifier",
@@ -98,6 +99,7 @@ poseidon2 = { path = "poseidon2" }
 
 # Workspace members - ProveKit
 provekit-backend-bn254 = { path = "provekit/backend/bn254", features = ["provekit_ntt"] }
+provekit-backend-goldilocks = { path = "provekit/backend/goldilocks" }
 provekit-bench = { path = "tooling/provekit-bench" }
 provekit-cli = { path = "tooling/cli" }
 provekit-common = { path = "provekit/common" }
