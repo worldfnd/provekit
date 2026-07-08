@@ -216,8 +216,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         m_0: usize,
         hash_id: EngineId,
     ) -> GenericWhirConfig<Identity<Ext<P>>> {
-        let nv_blind = ((4 * m_0).next_power_of_two().trailing_zeros() as usize)
-            .max(MIN_BLINDING_NUM_VARIABLES);
+        let nv_blind = next_power_of_two(4 * m_0).max(MIN_BLINDING_NUM_VARIABLES);
         GenericWhirConfig::<Identity<Ext<P>>>::new(
             1 << nv_blind,
             &Self::whir_protocol_params(hash_id),
@@ -250,9 +249,9 @@ pub struct ProvekitProof<P: ProofField> {
     pub whir_r1cs_proof: WhirR1CSProof,
 }
 
-/// Derive the `.np` format magic from [`ProofField::FIELD_ID`] by offsetting the
-/// final magic byte: bn254 (id 0) keeps the historical magic, other fields a
-/// distinct one.
+/// Derive the `.np` format magic from [`ProofField::FIELD_ID`] by offsetting
+/// the final magic byte: bn254 (id 0) keeps the historical magic, other fields
+/// a distinct one.
 #[cfg(not(target_arch = "wasm32"))]
 const fn np_format(field_id: u8) -> [u8; 8] {
     let mut f = binary_format::NOIR_PROOF_FORMAT;

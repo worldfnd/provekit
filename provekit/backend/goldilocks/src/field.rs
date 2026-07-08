@@ -23,14 +23,17 @@ impl ProofField for GoldilocksField {
     const FIELD_ID: u8 = 1;
 }
 
-/// Ext-leaf Goldilocks field (`Identity<Field64_3>`, base == ext).
+/// Goldilocks proof field with the identity embedding (`Identity<Field64_3>`,
+/// base == ext): challenges are both drawn from and committed in the full
+/// `Field64_3` extension.
 ///
-/// Stand-in for challenge-bearing fixtures: an ext challenge can't live in a
-/// base witness slot, so the challenge-binding path runs here at 128-bit.
-// TODO: drop once `GoldilocksField` binds challenges directly. Needs (1) a base
-// transcript codec so base challenges can be drawn from Fiat-Shamir (the
-// `FieldHash` `Source` byte bridge), and (2) k-fold repetition — a single
-// `Field64` challenge is only ~64-bit sound. Soundness-layer work, not fixtures.
+/// Serves challenge-bearing circuits, where an extension challenge cannot be
+/// stored in a base-field (`Field64`) witness slot; committing in the extension
+/// keeps 128-bit soundness.
+// TODO: `GoldilocksField` (base-committed) can subsume this once it binds
+// challenges directly — needs (1) a base transcript codec so base challenges can
+// be drawn from Fiat-Shamir (the `FieldHash` `Source` byte bridge), and (2)
+// k-fold repetition, since a single `Field64` challenge is only ~64-bit sound.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GoldilocksEfField;
 
