@@ -274,7 +274,7 @@ where
 pub fn tampered_public_input_is_rejected<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     // N = 1.
     let (r1cs, w) = squaring_chain::<Base<P>>(3, 8);
