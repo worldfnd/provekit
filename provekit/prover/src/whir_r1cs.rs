@@ -1,7 +1,7 @@
 use {
     ::tracing::instrument,
     anyhow::{ensure, Result},
-    ark_ff::Field,
+    ark_ff::{Field, One},
     ark_std::{
         rand::distributions::{Distribution, Standard},
         Zero,
@@ -525,6 +525,10 @@ where
     // Prove that sum of F + ρ·G over the boolean hypercube equals ρ·Σ(G).
     let mut saved_val_for_sumcheck_equality_assertion = rho * sum_g_reduce;
 
+    // 2 is invertible in any field of odd characteristic; precompute 1/2 once
+    // and reuse it for each round's cubic-coefficient solve.
+    let half = M::Target::one() / (M::Target::one() + M::Target::one());
+
     // First round: a, b, c are base-field, so the constraint products stay in
     // the base field with one mixed mul per point against the ext eq.
     let hhat = mixed_sumcheck_map_reduce([&a[..], &b[..], &c[..]], &eq, |[a, b, c], eq| {
@@ -543,6 +547,7 @@ where
         hhat,
         g_poly,
         rho,
+        half,
         saved_val_for_sumcheck_equality_assertion,
     );
     saved_val_for_sumcheck_equality_assertion = saved_val;
@@ -582,6 +587,7 @@ where
             hhat,
             g_poly,
             rho,
+            half,
             saved_val_for_sumcheck_equality_assertion,
         );
         saved_val_for_sumcheck_equality_assertion = saved_val;
@@ -606,6 +612,7 @@ fn combined_round_message<F: Field + Codec, S: DuplexSpongeInterface<U = u8>>(
     hhat: [F; 3],
     g_poly: [F; 4],
     rho: F,
+    half: F,
     saved_val_for_sumcheck_equality_assertion: F,
 ) -> (F, F) {
     let [hhat_i_at_0, hhat_i_at_em1, hhat_i_at_inf_over_x_cube] = hhat;
@@ -617,12 +624,11 @@ fn combined_round_message<F: Field + Codec, S: DuplexSpongeInterface<U = u8>>(
     let g_at_minus_one = g_poly[0] - g_poly[1] + g_poly[2] - g_poly[3];
     let combined_at_em1 = hhat_i_at_em1 + rho * g_at_minus_one;
 
-    let two = F::one() + F::one();
     combined_hhat_i_coeffs[2] = (saved_val_for_sumcheck_equality_assertion + combined_at_em1
         - combined_hhat_i_coeffs[0]
         - combined_hhat_i_coeffs[0]
         - combined_hhat_i_coeffs[0])
-        / two;
+        * half;
 
     combined_hhat_i_coeffs[3] = hhat_i_at_inf_over_x_cube + rho * g_poly[3];
 

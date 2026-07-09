@@ -12,100 +12,21 @@
 
 use {
     ark_std::rand::distributions::{Distribution, Standard},
-    provekit_common::{
-        Base, Ext, FieldHash, HashConfig, PublicInputs, PublicInputsHash, WhirR1CSProof,
-        WhirR1CSScheme, R1CS,
+    provekit_common::{Base, Ext, FieldHash, PublicInputs},
+    provekit_fixtures::{
+        builders::squaring_chain,
+        harness::{prove_setup, time_prove_core},
     },
-    provekit_fixtures::builders::squaring_chain,
-    provekit_prover::WhirR1CSProver,
     provekit_verifier::WhirR1CSVerifier,
     std::{
         collections::HashMap,
         path::PathBuf,
         time::{Duration, Instant},
     },
-    whir::transcript::ProverState,
 };
 
 /// Log2 witness sizes to sweep.
 const SIZES: [u32; 4] = [14, 16, 18, 20];
-
-/// Instance-binding hash for the probes (matches the harness default).
-const HASH: HashConfig = HashConfig::Sha256;
-
-/// Inputs for a single-commit prove, built outside the timer so scheme
-/// construction and the `commit`/`prove_noir` ownership copies aren't measured.
-struct ProveInputs<P: FieldHash> {
-    scheme:          WhirR1CSScheme<P>,
-    r1cs_owned:      R1CS<Base<P>>,
-    witness_commit:  Vec<Base<P>>,
-    witness_prove:   Vec<Base<P>>,
-    num_witnesses:   usize,
-    num_constraints: usize,
-}
-
-/// Build the scheme + ownership copies (excluded from the timer and
-/// flamegraph).
-fn prove_setup<P>(r1cs: &R1CS<Base<P>>, witness: &[Base<P>]) -> ProveInputs<P>
-where
-    P: FieldHash,
-    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
-{
-    let scheme = WhirR1CSScheme::<P>::new_for_r1cs(r1cs, witness.len(), 0, Vec::new(), true, HASH);
-    ProveInputs {
-        scheme,
-        r1cs_owned: r1cs.clone(),
-        witness_commit: witness.to_vec(),
-        witness_prove: witness.to_vec(),
-        num_witnesses: r1cs.num_witnesses(),
-        num_constraints: r1cs.num_constraints(),
-    }
-}
-
-/// Time the proving core — `commit` + `prove_noir` — from pre-built inputs.
-fn time_prove_core<P>(
-    inp: ProveInputs<P>,
-    public_inputs: &PublicInputs<Base<P>>,
-) -> (Duration, WhirR1CSProof, WhirR1CSScheme<P>)
-where
-    P: FieldHash,
-    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
-{
-    let ProveInputs {
-        scheme,
-        r1cs_owned,
-        witness_commit,
-        witness_prove,
-        num_witnesses,
-        num_constraints,
-    } = inp;
-
-    // Transcript binding derives from the scheme; built before the timer starts.
-    let instance = public_inputs.hash_bytes::<P>(HASH);
-    let ds = scheme.create_domain_separator().instance(&instance);
-
-    let start = Instant::now();
-    let mut merlin = ProverState::new(&ds, P::transcript_sponge(HASH));
-    let commitment = scheme
-        .commit(
-            &mut merlin,
-            num_witnesses,
-            num_constraints,
-            witness_commit,
-            true,
-        )
-        .expect("commit");
-    let proof = scheme
-        .prove_noir(
-            merlin,
-            r1cs_owned,
-            vec![commitment],
-            witness_prove,
-            public_inputs,
-        )
-        .expect("prove_noir");
-    (start.elapsed(), proof, scheme)
-}
 
 /// Build a `2^log_size`-witness squaring chain, prove, verify, and return
 /// `(prove, verify, narg_bytes, hints_bytes)`.
@@ -120,7 +41,7 @@ where
 
     // Only commit + prove_noir are timed (setup excluded above).
     let inp = prove_setup::<P>(&r1cs, &w);
-    let (prove_t, proof, scheme) = time_prove_core::<P>(inp, &public_inputs);
+    let (prove_t, proof, scheme) = time_prove_core::<P>(inp, &public_inputs).expect("prove");
 
     let t = Instant::now();
     scheme
@@ -187,13 +108,14 @@ fn size_sweep() {
     println!();
 }
 
-/// Repo `provekit/.claude/profile/` directory (created if absent).
+/// Workspace `target/profile/` directory (created if absent). Lives under the
+/// gitignored build dir so the artifacts are not committed and the probe is
+/// portable across machines.
 fn profile_dir() -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("..")
         .join("..")
-        .join("provekit")
-        .join(".claude")
+        .join("target")
         .join("profile");
     std::fs::create_dir_all(&dir).expect("create profile dir");
     dir
@@ -230,7 +152,8 @@ fn flamegraph_2pow20_bf() {
 
     // Timed + captured: the true prove core only (setup/clones already done).
     let (prove_t, proof, _scheme) =
-        time_prove_core::<provekit_backend_goldilocks::GoldilocksField>(inp, &public_inputs);
+        time_prove_core::<provekit_backend_goldilocks::GoldilocksField>(inp, &public_inputs)
+            .expect("prove");
     println!(
         "\n[flamegraph] 2^20 goldilocks-BF prove={prove_t:.3?} narg={} hints={}",
         proof.narg_string.len(),

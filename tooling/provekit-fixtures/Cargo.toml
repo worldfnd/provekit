@@ -24,9 +24,9 @@ whir.workspace = true
 # Concrete proof fields to instantiate the generic harness.
 provekit-backend-bn254.workspace = true
 provekit-backend-goldilocks.workspace = true
-inferno = { version = "0.12", default-features = false }
+inferno.workspace = true
 tracing.workspace = true
-tracing-flame = "0.2"
+tracing-flame.workspace = true
 tracing-subscriber.workspace = true
 
 [lints]
