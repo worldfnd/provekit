@@ -7,11 +7,8 @@ use {
     },
     anyhow::Context,
     base64::{engine::general_purpose::STANDARD as BASE64, Engine as _},
-    provekit_common::{
-        binary_format::{HEADER_SIZE, MAGIC_BYTES},
-        NoirElement, NoirProof, Prover as ProverCore,
-    },
-    provekit_prover::Prove,
+    provekit_backend_bn254::{Bn254Field, NoirElement, Prove, ProvekitProof, Prover as ProverCore},
+    provekit_common::binary_format::{HEADER_SIZE, MAGIC_BYTES},
     std::{cell::RefCell, collections::BTreeMap},
     wasm_bindgen::prelude::*,
 };
@@ -20,9 +17,9 @@ use {
     ark_ff::PrimeField,
     js_sys::{Array, Function, Reflect, Uint8Array},
     noirc_abi::{AbiType, MAIN_RETURN_NAME},
-    provekit_common::{ConstraintsLayout, FieldElement as NativeFieldElement, WitnessLayout},
-    provekit_prover::{
-        prove_mavros_with_wasm_driver, MavrosPhase1Result, MavrosTableInfo, MavrosWasmDriver,
+    provekit_backend_bn254::{
+        prove_mavros_with_wasm_driver, ConstraintsLayout, FieldElement as NativeFieldElement,
+        MavrosPhase1Result, MavrosTableInfo, MavrosWasmDriver, WitnessLayout,
     },
     serde::Deserialize,
     serde_json::Value,
@@ -172,7 +169,7 @@ impl Prover {
         &mut self,
         inputs: JsValue,
         runner: JsValue,
-    ) -> Result<NoirProof, JsError> {
+    ) -> Result<ProvekitProof<Bn254Field>, JsError> {
         validate_runner_abi(&runner).map_err(|err| JsError::new(&format!("{err:#}")))?;
         runner_method(&runner, "runWitgenInto").map_err(|err| JsError::new(&format!("{err:#}")))?;
         runner_method(&runner, "runAdInto").map_err(|err| JsError::new(&format!("{err:#}")))?;
@@ -598,7 +595,7 @@ impl Prover {
             .ok_or_else(|| JsError::new("Prover has been consumed by a previous prove() call"))
     }
 
-    fn prove_inner(&mut self, witness_map: JsValue) -> Result<NoirProof, JsError> {
+    fn prove_inner(&mut self, witness_map: JsValue) -> Result<ProvekitProof<Bn254Field>, JsError> {
         let witness = parse_witness_map(witness_map)?;
         let inner = self
             .inner

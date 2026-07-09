@@ -4,10 +4,9 @@ use {
     nargo_cli::cli::compile_cmd::compile_workspace_full,
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
     noirc_driver::CompileOptions,
-    provekit_common::{HashConfig, Prover, Verifier},
-    provekit_prover::Prove,
+    provekit_backend_bn254::{Prove, Prover, Verifier, Verify},
+    provekit_common::HashConfig,
     provekit_r1cs_compiler::NoirCompiler,
-    provekit_verifier::Verify,
     serde::Deserialize,
     std::path::{Path, PathBuf},
     test_case::test_case,
@@ -257,7 +256,7 @@ fn case_noir_msm_conditional(path: &str, witness_file: &str) {
 /// tampered with.
 #[test]
 fn test_public_input_binding_exploit() {
-    use provekit_common::{witness::PublicInputs, FieldElement};
+    use {provekit_backend_bn254::FieldElement, provekit_common::PublicInputs};
 
     let test_case_path = Path::new("../../noir-examples/basic-4");
 

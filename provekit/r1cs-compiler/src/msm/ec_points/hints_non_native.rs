@@ -16,7 +16,7 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_ff::{Field, PrimeField},
-    provekit_common::{
+    provekit_backend_bn254::{
         witness::{NonNativeEcOp, WitnessBuilder},
         FieldElement,
     },

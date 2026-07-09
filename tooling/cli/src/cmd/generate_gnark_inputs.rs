@@ -2,7 +2,8 @@ use {
     crate::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, NoirProof, Verifier},
+    provekit_backend_bn254::{Bn254Field, ProvekitProof, Verifier},
+    provekit_common::file::read,
     provekit_gnark::write_gnark_parameters_to_file,
     std::{fs::File, io::Write, path::PathBuf},
     tracing::{info, instrument},
@@ -45,7 +46,8 @@ impl Command for Args {
         info!(constraints, witnesses, "Read verifier data");
 
         // Read the proof
-        let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
+        let proof: ProvekitProof<Bn254Field> =
+            read(&self.proof_path).context("while reading proof")?;
 
         let wfw = verifier
             .whir_for_witness

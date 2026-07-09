@@ -4,7 +4,8 @@ use {
     argh::FromArgs,
     ark_ff::{BigInteger, PrimeField},
     noirc_abi::{AbiType, AbiVisibility, Sign},
-    provekit_common::{file::read, FieldElement, NoirProof, Verifier},
+    provekit_backend_bn254::{Bn254Field, FieldElement, ProvekitProof, Verifier},
+    provekit_common::file::read,
     std::path::PathBuf,
     tracing::instrument,
 };
@@ -32,7 +33,8 @@ impl Command for Args {
         let verifier: Verifier =
             read(&self.verifier_path).context("while reading Provekit Verifier")?;
 
-        let proof: NoirProof = read(&self.proof_path).context("while reading proof")?;
+        let proof: ProvekitProof<Bn254Field> =
+            read(&self.proof_path).context("while reading proof")?;
 
         let abi = &verifier.abi;
         let values = &proof.public_inputs.0;

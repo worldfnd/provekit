@@ -2,7 +2,7 @@
 // Complete implementation of EdDSA signature verification using Poseidon2 hash
 
 use babyjubjub::BabyJubJubPoint;
-use poseidon2::bn254::perm;
+use poseidon2::bn254::permutation;
 mod tests;
 
 // Domain separator for EdDSA signatures: b"EdDSA Signature"
@@ -44,7 +44,7 @@ pub fn verify_eddsa_poseidon2(
     assert(r_point.is_on_curve(), "R must be on curve");
 
     // Step 4 - Compute h = Poseidon2(domain_separator, Rx, Ry, Ax, Ay, M, 0, 0)
-    let hash_state = perm::x5_8([
+    let hash_state = permutation::t8([
         DOMAIN_SEPARATOR,
         signature_r[0],
         signature_r[1],

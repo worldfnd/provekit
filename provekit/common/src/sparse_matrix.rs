@@ -1,7 +1,7 @@
 use {
-    crate::{FieldElement, InternedFieldElement, Interner},
+    crate::{InternedFieldElement, Interner},
     anyhow::{bail, Result},
-    ark_std::Zero,
+    ark_ff::Field,
     rayon::{
         iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator},
         slice::ParallelSliceMut,
@@ -15,6 +15,7 @@ use {
         fmt::{self, Debug},
         ops::{Mul, Range},
     },
+    whir::algebra::embedding::Embedding,
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -296,9 +297,9 @@ impl<'de> Deserialize<'de> for SparseMatrix {
 
 /// A hydrated sparse matrix with uninterned field elements
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HydratedSparseMatrix<'a> {
+pub struct HydratedSparseMatrix<'a, F: Field> {
     pub matrix: &'a SparseMatrix,
-    interner:   &'a Interner,
+    interner:   &'a Interner<F>,
 }
 
 impl SparseMatrix {
@@ -351,7 +352,10 @@ impl SparseMatrix {
         }
     }
 
-    pub const fn hydrate<'a>(&'a self, interner: &'a Interner) -> HydratedSparseMatrix<'a> {
+    pub const fn hydrate<'a, F: Field>(
+        &'a self,
+        interner: &'a Interner<F>,
+    ) -> HydratedSparseMatrix<'a, F> {
         HydratedSparseMatrix {
             matrix: self,
             interner,
@@ -672,9 +676,9 @@ impl SparseMatrix {
     }
 }
 
-impl HydratedSparseMatrix<'_> {
+impl<F: Field> HydratedSparseMatrix<'_, F> {
     /// Iterate over the non-default entries of a row of the matrix.
-    pub fn iter_row(&self, row: usize) -> impl Iterator<Item = (usize, FieldElement)> + use<'_> {
+    pub fn iter_row(&self, row: usize) -> impl Iterator<Item = (usize, F)> + use<'_, F> {
         self.matrix.iter_row(row).map(|(col, value)| {
             (
                 col,
@@ -684,7 +688,7 @@ impl HydratedSparseMatrix<'_> {
     }
 
     /// Iterate over the non-default entries of the matrix.
-    pub fn iter(&self) -> impl Iterator<Item = ((usize, usize), FieldElement)> + use<'_> {
+    pub fn iter(&self) -> impl Iterator<Item = ((usize, usize), F)> + use<'_, F> {
         self.matrix.iter().map(|((i, j), v)| {
             (
                 (i, j),
@@ -692,13 +696,40 @@ impl HydratedSparseMatrix<'_> {
             )
         })
     }
+
+    /// Right-multiply this base-field matrix by an extension-field vector,
+    /// lifting each base coefficient through `embedding`:
+    /// `out[i] = Σ_col mixed_mul(rhs[col], matrix[i, col])`.
+    ///
+    /// The extension-field analogue of the homogeneous `Mul<&[F]>` vector
+    /// product. Argument order matches WHIR's `mixed_dot` (extension value
+    /// first, base coefficient second).
+    pub fn mixed_multiply<M, G>(&self, embedding: &M, rhs: &[G]) -> Vec<G>
+    where
+        M: Embedding<Source = F, Target = G>,
+        G: Field,
+    {
+        assert_eq!(
+            self.matrix.num_cols,
+            rhs.len(),
+            "Vector length does not match number of columns."
+        );
+        (0..self.matrix.num_rows)
+            .into_par_iter()
+            .map(|row| {
+                self.iter_row(row)
+                    .map(|(col, value)| embedding.mixed_mul(rhs[col], value))
+                    .fold(G::zero(), |acc, x| acc + x)
+            })
+            .collect()
+    }
 }
 
 /// Right multiplication by vector (parallel over rows).
-impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
-    type Output = Vec<FieldElement>;
+impl<F: Field> Mul<&[F]> for HydratedSparseMatrix<'_, F> {
+    type Output = Vec<F>;
 
-    fn mul(self, rhs: &[FieldElement]) -> Self::Output {
+    fn mul(self, rhs: &[F]) -> Self::Output {
         assert_eq!(
             self.matrix.num_cols,
             rhs.len(),
@@ -709,7 +740,7 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
             .map(|row| {
                 self.iter_row(row)
                     .map(|(col, value)| value * rhs[col])
-                    .fold(FieldElement::zero(), |acc, x| acc + x)
+                    .fold(F::zero(), |acc, x| acc + x)
             })
             .collect()
     }
@@ -719,16 +750,16 @@ impl Mul<&[FieldElement]> for HydratedSparseMatrix<'_> {
 ///
 /// The primary call site (`calculate_external_row_of_r1cs_matrices`)
 /// now uses transpose + parallel right-multiply instead.
-impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
-    type Output = Vec<FieldElement>;
+impl<F: Field> Mul<HydratedSparseMatrix<'_, F>> for &[F] {
+    type Output = Vec<F>;
 
-    fn mul(self, rhs: HydratedSparseMatrix<'_>) -> Self::Output {
+    fn mul(self, rhs: HydratedSparseMatrix<'_, F>) -> Self::Output {
         assert_eq!(
             self.len(),
             rhs.matrix.num_rows,
             "Vector length does not match number of rows."
         );
-        let mut result = vec![FieldElement::zero(); rhs.matrix.num_cols];
+        let mut result = vec![F::zero(); rhs.matrix.num_cols];
         for ((i, j), value) in rhs.iter() {
             result[j] += value * self[i];
         }
@@ -738,7 +769,7 @@ impl Mul<HydratedSparseMatrix<'_>> for &[FieldElement] {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {super::*, whir::algebra::fields::Field64 as FieldElement};
 
     #[test]
     fn test_delta_encoding_roundtrip() {
@@ -905,6 +936,43 @@ mod tests {
             postcard::from_bytes(&serialized).expect("deserialization failed");
 
         assert_eq!(matrix, deserialized);
+    }
+
+    #[test]
+    fn test_mixed_multiply_matches_homogeneous_under_identity() {
+        use whir::algebra::embedding::Identity;
+
+        let mut interner = Interner::new();
+        let v1 = interner.intern(FieldElement::from(2u64));
+        let v2 = interner.intern(FieldElement::from(3u64));
+        let v3 = interner.intern(FieldElement::from(5u64));
+
+        // 2×3 matrix: row 0 = [2, 0, 3], row 1 = [0, 5, 0].
+        let mut matrix = SparseMatrix::new(2, 3);
+        matrix.grow(2, 3);
+        matrix.set(0, 0, v1);
+        matrix.set(0, 2, v2);
+        matrix.set(1, 1, v3);
+
+        let rhs = [
+            FieldElement::from(7u64),
+            FieldElement::from(11u64),
+            FieldElement::from(13u64),
+        ];
+
+        // Under the Identity embedding (Source == Target == FieldElement), the
+        // mixed product must equal the homogeneous matrix-vector product.
+        let homogeneous = matrix.hydrate(&interner) * rhs.as_slice();
+        let mixed = matrix
+            .hydrate(&interner)
+            .mixed_multiply(&Identity::new(), &rhs);
+
+        assert_eq!(mixed, homogeneous);
+        // Sanity: row 0 = 2·7 + 3·13 = 53, row 1 = 5·11 = 55.
+        assert_eq!(mixed, vec![
+            FieldElement::from(53u64),
+            FieldElement::from(55u64)
+        ]);
     }
 
     #[test]

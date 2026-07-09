@@ -6,7 +6,7 @@ use {
     },
     ark_ff::PrimeField,
     ark_std::One,
-    provekit_common::{
+    provekit_backend_bn254::{
         witness::{ConstantOrR1CSWitness, SumTerm, WitnessBuilder},
         FieldElement,
     },
@@ -79,7 +79,7 @@ fn cow_to_digit(
     cow: ConstantOrR1CSWitness,
     digit_i: usize,
     atomic_bits: u32,
-    dd: &provekit_common::witness::DigitalDecompositionWitnesses,
+    dd: &provekit_backend_bn254::witness::DigitalDecompositionWitnesses,
     witness_to_offset: &HashMap<usize, usize>,
 ) -> ConstantOrR1CSWitness {
     match cow {
@@ -384,7 +384,7 @@ fn add_table_entry_quotient(
     xor_out: u32,
     multiplicity_witness: usize,
 ) -> usize {
-    use provekit_common::witness::CombinedTableEntryInverseData;
+    use provekit_backend_bn254::witness::CombinedTableEntryInverseData;
 
     // Step 1: Create inverse witness (1/denominator) for batch inversion
     let inverse = r1cs_compiler.add_witness_builder(WitnessBuilder::CombinedTableEntryInverse(
@@ -492,7 +492,10 @@ mod tests {
     use {super::*, crate::digits::add_digital_decomposition};
 
     /// Check R1CS satisfaction: for every constraint row, (A·w)*(B·w) == C·w.
-    fn constraints_satisfied(r1cs: &provekit_common::R1CS, witness: &[FieldElement]) -> bool {
+    fn constraints_satisfied(
+        r1cs: &provekit_common::R1CS<FieldElement>,
+        witness: &[FieldElement],
+    ) -> bool {
         let a = r1cs.a() * witness;
         let b = r1cs.b() * witness;
         let c = r1cs.c() * witness;
@@ -549,7 +552,7 @@ mod tests {
             let byte_idx = compiler.num_witnesses();
             compiler.r1cs.add_witnesses(1);
             compiler.witness_builders.push(WitnessBuilder::Constant(
-                provekit_common::witness::ConstantTerm(byte_idx, FieldElement::from(200u64)),
+                provekit_backend_bn254::witness::ConstantTerm(byte_idx, FieldElement::from(200u64)),
             ));
 
             // Decompose — adds digit witnesses + recomposition constraints.

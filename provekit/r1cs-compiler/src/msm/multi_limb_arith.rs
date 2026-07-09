@@ -7,7 +7,7 @@ use {
     super::{ceil_log2, multi_limb_ops::ModulusParams, Limbs},
     crate::noir_to_r1cs::NoirToR1CSCompiler,
     ark_ff::{AdditiveGroup, Field, PrimeField},
-    provekit_common::{
+    provekit_backend_bn254::{
         witness::{SumTerm, WitnessBuilder},
         FieldElement,
     },

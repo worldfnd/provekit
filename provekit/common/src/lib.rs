@@ -1,65 +1,33 @@
+pub mod bigint_mod;
+mod compress;
+pub mod ec_arith;
 pub mod file;
 pub use file::binary_format;
+pub mod field;
 pub mod hash_config;
 mod interner;
-mod mavros;
-mod noir_proof_scheme;
-pub mod ntt;
-pub mod optimize;
-pub mod poseidon2;
+mod logging;
 pub mod prefix_covector;
-mod prover;
+pub mod public_inputs;
 mod r1cs;
-pub mod skyscraper;
 pub mod sparse_matrix;
-mod transcript_sponge;
 pub mod u256_arith;
 pub mod utils;
-mod verifier;
 mod whir_r1cs;
-pub mod witness;
 
-use crate::{
-    interner::{InternedFieldElement, Interner},
-    sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
-};
+// The R1CS matrix interner is part of the matrix-construction internals, not a
+// stable public type; exposed only so the Noir compiler (a separate crate) can
+// build and optimize matrices.
+#[doc(hidden)]
+pub use crate::interner::{InternedFieldElement, Interner};
 pub use {
-    acir::FieldElement as NoirElement,
-    ark_bn254::Fr as FieldElement,
-    hash_config::HashConfig,
-    mavros::{ConstraintsLayout, MavrosProver, MavrosSchemeData, WitnessLayout},
-    noir_proof_scheme::{NoirProof, NoirProofScheme, NoirSchemeData},
+    compress::CompressedR1CS,
+    field::{Base, Ext, FieldHash, ProofField},
+    hash_config::{HashConfig, POSEIDON2, SKYSCRAPER},
+    logging::log_commit_input,
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
-    prover::{NoirProver, Prover},
+    public_inputs::{PublicInputs, PublicInputsHash},
     r1cs::R1CS,
-    transcript_sponge::TranscriptSponge,
-    verifier::Verifier,
-    whir_r1cs::{R1csHash, WhirConfig, WhirR1CSProof, WhirR1CSScheme, WhirZkConfig},
-    witness::PublicInputs,
+    sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
+    whir_r1cs::{ProvekitProof, R1csHash, WhirR1CSProof, WhirR1CSScheme, MIN_WHIR_NUM_VARIABLES},
 };
-
-/// Register provekit's custom implementations in whir's global registries.
-///
-/// Must be called once before any prove/verify operations.
-/// Idempotent — safe to call multiple times.
-pub fn register_ntt() {
-    use std::sync::{Arc, Once};
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        // Register NTT for polynomial operations
-        #[cfg(not(feature = "provekit_ntt"))]
-        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(whir::algebra::ntt::NttEngine::<FieldElement>::new_from_fftfield());
-
-        #[cfg(feature = "provekit_ntt")]
-        let ntt: Arc<dyn whir::algebra::ntt::ReedSolomon<FieldElement>> =
-            Arc::new(crate::ntt::RSFr);
-
-        whir::algebra::ntt::NTT.insert(ntt);
-
-        // Register ProveKit-specific engines; WHIR's built-in engines
-        // (SHA2, Keccak, Blake3, etc.) are pre-registered via whir::hash::ENGINES.
-        whir::hash::ENGINES.register(Arc::new(skyscraper::SkyscraperHashEngine));
-        whir::hash::ENGINES.register(Arc::new(poseidon2::Poseidon2HashEngine));
-    });
-}
