@@ -1,7 +1,7 @@
 use {
     crate::{
-        Bn254Field, ConstraintsLayout, FieldElement, MavrosProver, ProvekitProof,
-        TranscriptSponge, WitnessLayout,
+        Bn254Field, ConstraintsLayout, FieldElement, MavrosProver, ProvekitProof, TranscriptSponge,
+        WitnessLayout,
     },
     anyhow::{Context, Result},
     provekit_common::{
@@ -9,7 +9,9 @@ use {
         utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, PublicInputs,
         PublicInputsHash, WhirR1CSProof, WhirR1CSScheme,
     },
-    provekit_prover::{prove_from_alphas, run_zk_sumcheck_prover, WhirR1CSCommitment, WhirR1CSProver},
+    provekit_prover::{
+        prove_from_alphas, run_zk_sumcheck_prover, WhirR1CSCommitment, WhirR1CSProver,
+    },
     tracing::instrument,
     whir::transcript::{ProverState, VerifierMessage},
 };
@@ -82,7 +84,11 @@ pub fn prove_mavros_with_wasm_driver<D: MavrosWasmDriver>(
     crate::register();
 
     let mut phase1 = driver
-        .run_witgen(&input_fields, prover.witness_layout, prover.constraints_layout)
+        .run_witgen(
+            &input_fields,
+            prover.witness_layout,
+            prover.constraints_layout,
+        )
         .context("while running Mavros WASM witness generation")?;
     validate_mavros_phase1(
         &phase1,
@@ -217,8 +223,7 @@ where
         blinding.offset,
     );
 
-    let eq_alpha =
-        calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
+    let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
     let alphas = run_ad(&eq_alpha[..constraints_layout.size()])?;
 
     prove_from_alphas(

@@ -22,6 +22,10 @@ mod verify;
 mod wasm_mavros_prove;
 pub mod witness;
 
+#[cfg(target_arch = "wasm32")]
+pub use wasm_mavros_prove::{
+    prove_mavros_with_wasm_driver, MavrosPhase1Result, MavrosTableInfo, MavrosWasmDriver,
+};
 pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
@@ -39,10 +43,6 @@ pub use {
     solver::solve_witness_vec,
     transcript_sponge::TranscriptSponge,
     verify::Verify,
-};
-#[cfg(target_arch = "wasm32")]
-pub use wasm_mavros_prove::{
-    prove_mavros_with_wasm_driver, MavrosPhase1Result, MavrosTableInfo, MavrosWasmDriver,
 };
 
 /// Register the bn254 ProveKit engines in whir's global registries.
