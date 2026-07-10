@@ -60,6 +60,16 @@ impl R1csHash {
     }
 }
 
+/// WHIR proving/verifying parameters for one R1CS instance, generic over the
+/// proof field `P`.
+///
+/// # Zero-knowledge
+///
+/// The ZK posture is fixed, not configurable:
+/// - Sumcheck ZK is always on: the Spartan sumcheck rounds are masked by a
+///   blinding polynomial `g`, committed separately in `whir_blinding`.
+/// - Witness ZK is off: the witness is committed non-hiding in `whir_witness`,
+///   whose WHIR openings leak witness values. It will be enabled by zkWHIR 3.0.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct WhirR1CSScheme<P: ProofField> {

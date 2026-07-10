@@ -56,7 +56,8 @@ mod tests {
     use {
         super::*,
         provekit_backend_bn254::FieldElement,
-        provekit_common::{MIN_WHIR_NUM_VARIABLES, R1CS},
+        provekit_backend_goldilocks::GoldilocksField,
+        provekit_common::{FieldHash, MIN_WHIR_NUM_VARIABLES, R1CS},
     };
 
     fn r1cs_with_dimensions(num_witnesses: usize, num_constraints: usize) -> R1CS<FieldElement> {
@@ -103,31 +104,34 @@ mod tests {
         assert_eq!(from_r1cs.num_challenges, from_dimensions.num_challenges);
     }
 
-    fn assert_configs_secure(size: usize) {
-        let witness =
-            WhirR1CSScheme::<Bn254Field>::new_witness_config_for_size(size, whir::hash::SHA2);
-        let blinding =
-            WhirR1CSScheme::<Bn254Field>::new_blinding_config_for_size(size, whir::hash::SHA2);
+    /// Assert both WHIR commitments reach 128-bit security for field `P`.
+
+    fn assert_configs_secure<P: FieldHash>(size: usize) {
+        let field = std::any::type_name::<P>();
+        let witness = WhirR1CSScheme::<P>::new_witness_config_for_size(size, whir::hash::SHA2);
+        let blinding = WhirR1CSScheme::<P>::new_blinding_config_for_size(size, whir::hash::SHA2);
         let sec_witness = witness.security_level(witness.initial_committer.num_vectors, 1);
         let sec_blinding = blinding.security_level(blinding.initial_committer.num_vectors, 1);
         assert!(
             sec_witness >= 128.0,
-            "Witness commitment security {sec_witness:.2} < 128 bits at size {size}"
+            "Witness commitment security {sec_witness:.2} < 128 bits at size {size} for {field}"
         );
         assert!(
             sec_blinding >= 128.0,
-            "Blinding commitment security {sec_blinding:.2} < 128 bits at size {size}"
+            "Blinding commitment security {sec_blinding:.2} < 128 bits at size {size} for {field}"
         );
     }
 
     #[test]
     fn verify_security_level() {
-        assert_configs_secure(20);
+        assert_configs_secure::<Bn254Field>(20);
+        assert_configs_secure::<GoldilocksField>(20);
     }
 
     #[test]
     fn verify_security_level_min_variables() {
-        assert_configs_secure(MIN_WHIR_NUM_VARIABLES);
+        assert_configs_secure::<Bn254Field>(MIN_WHIR_NUM_VARIABLES);
+        assert_configs_secure::<GoldilocksField>(MIN_WHIR_NUM_VARIABLES);
     }
 
     #[test]
