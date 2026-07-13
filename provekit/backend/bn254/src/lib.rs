@@ -24,7 +24,7 @@ pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
     compress::CompressedLayers,
-    field::{Bn254Field, WhirConfig, WhirZkConfig},
+    field::{Bn254Field, WhirConfig},
     frontend::{noir_to_native, NoirWitnessGenerator, PrintAbi},
     ntt::RSFr,
     prove::Prove,

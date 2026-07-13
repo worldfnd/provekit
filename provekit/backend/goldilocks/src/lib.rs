@@ -6,7 +6,10 @@ mod field;
 mod field_hash;
 mod transcript_sponge;
 
-pub use {field::GoldilocksField, transcript_sponge::TranscriptSponge};
+pub use {
+    field::{GoldilocksEfField, GoldilocksField},
+    transcript_sponge::TranscriptSponge,
+};
 
 /// Register the Goldilocks engines in whir's global registries.
 ///

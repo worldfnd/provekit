@@ -1,8 +1,10 @@
-//! Mavros WHIR proving, welded to bn254 (the Mavros VM's automatic-
-//! differentiation pass returns `ark_bn254::Fr`). It composes the generic
-//! proving primitives from `provekit-prover` (`run_zk_sumcheck_prover`,
-//! `prove_from_alphas`) rather than living in the field-generic spine, and
-//! folds back into `WhirR1CSProver<P>` once the Mavros VM is field-agnostic.
+//! Mavros WHIR proving for bn254. The Mavros VM's automatic-differentiation
+//! pass returns `ark_bn254::Fr`, so this proving path is bn254-specific; it
+//! composes the generic proving primitives from `provekit-prover`
+//! (`run_zk_sumcheck_prover`, `prove_from_alphas`).
+//!
+//! TODO: make field-generic and fold into `WhirR1CSProver<P>` when the Mavros
+//! VM is field-agnostic.
 
 use {
     crate::{Bn254Field, FieldElement, TranscriptSponge},
@@ -49,9 +51,11 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
         let blinding = commitments[0]
             .blinding
             .as_ref()
-            .expect("c1 must carry blinding state");
+            .ok_or_else(|| anyhow::anyhow!("c1 must carry blinding state"))?;
 
         let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
+        // `g` is committed separately in the extension field; open `blinding_eval`
+        // against the blinding vector (g flattened at offset 0).
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
             a,
             b,
@@ -59,8 +63,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
             &mut merlin,
             self.m_0,
             &blinding.polynomial,
-            &commitments[0].polynomial,
-            blinding.offset,
+            &blinding.vector,
         );
 
         let eq_alpha =
@@ -73,7 +76,6 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
         )?;
         let alphas = [ad_a, ad_b, ad_c];
 
-        let blinding_offset = blinding.offset;
         let blinding_weights = expand_powers::<4, _>(&alpha);
 
         prove_from_alphas(
@@ -81,7 +83,6 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
             merlin,
             alphas,
             blinding_eval,
-            blinding_offset,
             blinding_weights,
             commitments,
             public_inputs,

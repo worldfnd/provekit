@@ -1,6 +1,6 @@
 use {
-    ark_ff::Field,
-    whir::algebra::{dot, linear_form::LinearForm, multilinear_extend},
+    ark_ff::{Field, One, Zero},
+    whir::algebra::{embedding::Embedding, linear_form::LinearForm, mixed_dot, multilinear_extend},
 };
 
 /// A covector that stores only a power-of-two prefix, with the rest
@@ -207,13 +207,14 @@ pub fn build_prefix_covectors<const N: usize, F: Field>(
 /// allocating [`PrefixCovector`] weights. Used to write transcript hints
 /// before deferring weight construction (saves memory in dual-commit).
 #[must_use]
-pub fn compute_alpha_evals<const N: usize, F: Field>(
-    polynomial: &[F],
-    alphas: &[Vec<F>; N],
-) -> Vec<F> {
+pub fn compute_alpha_evals<const N: usize, M: Embedding>(
+    embedding: &M,
+    polynomial: &[M::Source],
+    alphas: &[Vec<M::Target>; N],
+) -> Vec<M::Target> {
     alphas
         .iter()
-        .map(|w| dot(w, &polynomial[..w.len()]))
+        .map(|w| mixed_dot(embedding, w, &polynomial[..w.len()]))
         .collect()
 }
 
@@ -221,12 +222,17 @@ pub fn compute_alpha_evals<const N: usize, F: Field>(
 /// without allocating a [`PrefixCovector`]. Covers the R1CS constant at
 /// position 0 and `num_public_inputs` public input positions.
 #[must_use]
-pub fn compute_public_eval<F: Field>(x: F, num_public_inputs: usize, polynomial: &[F]) -> F {
+pub fn compute_public_eval<M: Embedding>(
+    embedding: &M,
+    x: M::Target,
+    num_public_inputs: usize,
+    polynomial: &[M::Source],
+) -> M::Target {
     let n = num_public_inputs + 1;
-    let mut eval = F::zero();
-    let mut x_pow = F::one();
+    let mut eval = M::Target::zero();
+    let mut x_pow = M::Target::one();
     for &p in polynomial.iter().take(n) {
-        eval += x_pow * p;
+        eval += embedding.mixed_mul(x_pow, p);
         x_pow *= x;
     }
     eval
@@ -321,11 +327,16 @@ pub fn make_challenge_weight<F: Field>(
 /// `⟨[1, x, x², …], poly[offsets[0]], poly[offsets[1]], …⟩` without
 /// allocating a [`SparseCovector`].
 #[must_use]
-pub fn compute_challenge_eval<F: Field>(x: F, challenge_offsets: &[usize], polynomial: &[F]) -> F {
-    let mut eval = F::zero();
-    let mut x_pow = F::one();
+pub fn compute_challenge_eval<M: Embedding>(
+    embedding: &M,
+    x: M::Target,
+    challenge_offsets: &[usize],
+    polynomial: &[M::Source],
+) -> M::Target {
+    let mut eval = M::Target::zero();
+    let mut x_pow = M::Target::one();
     for &offset in challenge_offsets {
-        eval += x_pow * polynomial[offset];
+        eval += embedding.mixed_mul(x_pow, polynomial[offset]);
         x_pow *= x;
     }
     eval
@@ -605,7 +616,8 @@ mod tests {
         poly[5] = fe(99);
         poly[11] = fe(17);
 
-        let eval = compute_challenge_eval(x, &offsets, &poly);
+        let embedding = whir::algebra::embedding::Identity::<FieldElement>::new();
+        let eval = compute_challenge_eval(&embedding, x, &offsets, &poly);
         let expected = fe(42) + fe(7) * fe(99) + fe(49) * fe(17);
         assert_eq!(eval, expected);
     }

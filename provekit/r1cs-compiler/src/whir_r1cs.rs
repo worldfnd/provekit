@@ -56,7 +56,8 @@ mod tests {
     use {
         super::*,
         provekit_backend_bn254::FieldElement,
-        provekit_common::{MIN_WHIR_NUM_VARIABLES, R1CS},
+        provekit_backend_goldilocks::GoldilocksField,
+        provekit_common::{FieldHash, MIN_WHIR_NUM_VARIABLES, R1CS},
     };
 
     fn r1cs_with_dimensions(num_witnesses: usize, num_constraints: usize) -> R1CS<FieldElement> {
@@ -103,49 +104,34 @@ mod tests {
         assert_eq!(from_r1cs.num_challenges, from_dimensions.num_challenges);
     }
 
-    #[test]
-    fn verify_security_level() {
-        let config =
-            WhirR1CSScheme::<Bn254Field>::new_whir_zk_config_for_size(20, 1, whir::hash::SHA2);
-        let sec_blinded = config
-            .blinded_commitment
-            .security_level(config.blinded_commitment.initial_committer.num_vectors, 1);
-        let sec_blinding = config
-            .blinding_commitment
-            .security_level(config.blinding_commitment.initial_committer.num_vectors, 1);
+    /// Assert both WHIR commitments reach 128-bit security for field `P`.
+
+    fn assert_configs_secure<P: FieldHash>(size: usize) {
+        let field = std::any::type_name::<P>();
+        let witness = WhirR1CSScheme::<P>::new_witness_config_for_size(size, whir::hash::SHA2);
+        let blinding = WhirR1CSScheme::<P>::new_blinding_config_for_size(size, whir::hash::SHA2);
+        let sec_witness = witness.security_level(witness.initial_committer.num_vectors, 1);
+        let sec_blinding = blinding.security_level(blinding.initial_committer.num_vectors, 1);
         assert!(
-            sec_blinded >= 128.0,
-            "Blinded commitment security {sec_blinded:.2} < 128 bits"
+            sec_witness >= 128.0,
+            "Witness commitment security {sec_witness:.2} < 128 bits at size {size} for {field}"
         );
         assert!(
             sec_blinding >= 128.0,
-            "Blinding commitment security {sec_blinding:.2} < 128 bits"
+            "Blinding commitment security {sec_blinding:.2} < 128 bits at size {size} for {field}"
         );
     }
 
     #[test]
+    fn verify_security_level() {
+        assert_configs_secure::<Bn254Field>(20);
+        assert_configs_secure::<GoldilocksField>(20);
+    }
+
+    #[test]
     fn verify_security_level_min_variables() {
-        let config = WhirR1CSScheme::<Bn254Field>::new_whir_zk_config_for_size(
-            MIN_WHIR_NUM_VARIABLES,
-            1,
-            whir::hash::SHA2,
-        );
-        let sec_blinded = config
-            .blinded_commitment
-            .security_level(config.blinded_commitment.initial_committer.num_vectors, 1);
-        let sec_blinding = config
-            .blinding_commitment
-            .security_level(config.blinding_commitment.initial_committer.num_vectors, 1);
-        assert!(
-            sec_blinded >= 128.0,
-            "Blinded commitment security {sec_blinded:.2} < 128 bits at nv={}",
-            MIN_WHIR_NUM_VARIABLES
-        );
-        assert!(
-            sec_blinding >= 128.0,
-            "Blinding commitment security {sec_blinding:.2} < 128 bits at nv={}",
-            MIN_WHIR_NUM_VARIABLES
-        );
+        assert_configs_secure::<Bn254Field>(MIN_WHIR_NUM_VARIABLES);
+        assert_configs_secure::<GoldilocksField>(MIN_WHIR_NUM_VARIABLES);
     }
 
     #[test]
@@ -175,7 +161,7 @@ mod tests {
     }
 
     #[test]
-    fn dimension_builders_bump_exact_power_of_two_w1_for_blinding_room() {
-        assert_dimension_builders(12_288, 2_048, 8_192, 14, 11);
+    fn dimension_builders_exact_power_of_two_w1() {
+        assert_dimension_builders(12_288, 2_048, 8_192, 13, 11);
     }
 }
