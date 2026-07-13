@@ -259,13 +259,45 @@ pub struct ProvekitProof<P: ProofField> {
     pub whir_r1cs_proof: WhirR1CSProof,
 }
 
+/// Formats whose magic `.np` must never alias.
+#[cfg(not(target_arch = "wasm32"))]
+const NON_NP_FORMATS: [[u8; 8]; 3] = [
+    binary_format::PROVER_FORMAT,
+    binary_format::VERIFIER_FORMAT,
+    binary_format::NOIR_PROOF_SCHEME_FORMAT,
+];
+
+#[cfg(not(target_arch = "wasm32"))]
+const fn formats_eq(a: [u8; 8], b: [u8; 8]) -> bool {
+    let mut i = 0;
+    while i < 8 {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
 /// Derive the `.np` format magic from [`ProofField::FIELD_ID`] by offsetting
 /// the final magic byte: bn254 (id 0) keeps the historical magic, other fields
 /// a distinct one.
+///
+/// The offset is a bijection on `u8`, so distinct ids always yield distinct
+/// magics — at the cost of reserving all 256 values of the final byte.
 #[cfg(not(target_arch = "wasm32"))]
 const fn np_format(field_id: u8) -> [u8; 8] {
     let mut f = binary_format::NOIR_PROOF_FORMAT;
     f[7] = f[7].wrapping_add(field_id);
+
+    let mut i = 0;
+    while i < NON_NP_FORMATS.len() {
+        assert!(
+            !formats_eq(f, NON_NP_FORMATS[i]),
+            "FIELD_ID makes the `.np` magic collide with another ProveKit file format"
+        );
+        i += 1;
+    }
     f
 }
 
@@ -286,13 +318,26 @@ impl<P: ProofField> MaybeHashAware for ProvekitProof<P> {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
-    use super::{binary_format, np_format};
+    use {
+        super::{binary_format, np_format, NON_NP_FORMATS},
+        std::collections::HashSet,
+    };
 
     #[test]
-    fn np_format_preserves_bn254_and_distinguishes_fields() {
+    fn np_format_preserves_bn254() {
         assert_eq!(np_format(0), binary_format::NOIR_PROOF_FORMAT);
-        assert_ne!(np_format(1), np_format(0));
-        assert_ne!(np_format(2), np_format(0));
-        assert_ne!(np_format(2), np_format(1));
+    }
+
+    #[test]
+    fn np_format_is_collision_free_over_every_field_id() {
+        let magics: HashSet<[u8; 8]> = (0..=u8::MAX).map(np_format).collect();
+        assert_eq!(magics.len(), 256, "FIELD_ID -> magic must be injective");
+        for other in NON_NP_FORMATS {
+            assert!(
+                !magics.contains(&other),
+                "`.np` magic space collides with {:?}",
+                std::str::from_utf8(&other)
+            );
+        }
     }
 }
