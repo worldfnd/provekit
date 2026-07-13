@@ -123,7 +123,7 @@ divan = "0.1.21"
 hex = "0.4.3"
 itertools = "0.14.0"
 inventory = "0.3"
-mobench-sdk = { version = "0.1.41", default-features = false, features = ["registry"] }
+mobench-sdk = { version = "0.1.43", default-features = false, features = ["registry"] }
 paste = "1.0.15"
 postcard = { version = "1.1.1", features = ["use-std"] }
 primitive-types = "0.13.1"

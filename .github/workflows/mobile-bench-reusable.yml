@@ -70,12 +70,12 @@ on:
         description: "Mobench version to install"
         required: false
         type: string
-        default: "0.1.41"
+        default: "0.1.43"
       mobench_ref:
         description: "Optional Git ref for mobile-bench-rs to override the released mobench install"
         required: false
         type: string
-        default: "8c3f002ae515afaa7440107f4e671f7067d276e3"
+        default: ""
       pr_number:
         description: "PR number for reporting"
         required: false
@@ -940,7 +940,7 @@ jobs:
                   continue
                 fi
 
-                python3 .github/scripts/merge_mobench_split_runs.py \
+                cargo-mobench ci merge-split-runs \
                   --samples-dir "${split_output_dir}" \
                   --output-dir "${result_output_dir}" \
                   --function "${benchmark_function}" \
