@@ -452,6 +452,11 @@ macro_rules! soundness_suite {
             $register();
             $crate::shared::public_input_binding_mismatch_is_rejected::<$field>();
         }
+        #[test]
+        fn tampered_public_input_is_rejected() {
+            $register();
+            $crate::shared::tampered_public_input_is_rejected::<$field>();
+        }
     };
 }
 
@@ -460,11 +465,6 @@ macro_rules! soundness_suite {
 #[macro_export]
 macro_rules! challenge_soundness_suite {
     ($field:ty, $register:path) => {
-        #[test]
-        fn tampered_public_input_is_rejected() {
-            $register();
-            $crate::shared::tampered_public_input_is_rejected::<$field>();
-        }
         #[test]
         fn tampered_challenge_is_rejected() {
             $register();
