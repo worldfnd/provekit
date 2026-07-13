@@ -287,3 +287,67 @@ where
     scheme.prove_noir(merlin, r1cs_owned, vec![c1, c2], full_witness, &public)?;
     Ok(start.elapsed())
 }
+
+/// Pre-built inputs for a timed single-commit prove, constructed outside the
+/// timer/flamegraph so scheme construction and the witness clones are not
+/// measured. Opaque: build with [`prove_setup`], consume with
+/// [`time_prove_core`].
+pub struct ProveInputs<P: FieldHash> {
+    scheme:         WhirR1CSScheme<P>,
+    r1cs:           R1CS<Base<P>>,
+    witness_commit: Vec<Base<P>>,
+    witness_prove:  Vec<Base<P>>,
+}
+
+/// Build the scheme and owned witness copies for a single-commit prove. Kept
+/// separate from [`time_prove_core`] so a profiler can install its subscriber
+/// between setup and the timed region (only the latter is captured).
+pub fn prove_setup<P>(r1cs: &R1CS<Base<P>>, witness: &[Base<P>]) -> ProveInputs<P>
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
+{
+    let scheme = WhirR1CSScheme::<P>::new_for_r1cs(r1cs, witness.len(), 0, Vec::new(), true, HASH);
+    ProveInputs {
+        scheme,
+        r1cs: r1cs.clone(),
+        witness_commit: witness.to_vec(),
+        witness_prove: witness.to_vec(),
+    }
+}
+
+/// Time the single-commit proving core — `commit` + `prove_noir` — from
+/// pre-built inputs, returning the elapsed time alongside the proof and scheme.
+pub fn time_prove_core<P>(
+    inp: ProveInputs<P>,
+    public_inputs: &PublicInputs<Base<P>>,
+) -> Result<(Duration, WhirR1CSProof, WhirR1CSScheme<P>)>
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
+{
+    let ProveInputs {
+        scheme,
+        r1cs,
+        witness_commit,
+        witness_prove,
+    } = inp;
+
+    // Transcript binding derives from the scheme; built before the timer starts.
+    let instance = public_inputs.hash_bytes::<P>(HASH);
+    let ds = scheme.create_domain_separator().instance(&instance);
+    let num_witnesses = r1cs.num_witnesses();
+    let num_constraints = r1cs.num_constraints();
+
+    let start = Instant::now();
+    let mut merlin = ProverState::new(&ds, P::transcript_sponge(HASH));
+    let commitment = scheme.commit(
+        &mut merlin,
+        num_witnesses,
+        num_constraints,
+        witness_commit,
+        true,
+    )?;
+    let proof = scheme.prove_noir(merlin, r1cs, vec![commitment], witness_prove, public_inputs)?;
+    Ok((start.elapsed(), proof, scheme))
+}
