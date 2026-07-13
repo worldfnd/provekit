@@ -18,7 +18,7 @@ use {
     anyhow::Result,
     serde::{Deserialize, Serialize},
     std::{ffi::OsStr, path::Path},
-    tracing::instrument,
+    tracing::{instrument, warn},
 };
 
 /// Trait for structures that can be serialized to and deserialized from files.
@@ -68,7 +68,17 @@ fn write_bin_with_hash_config<T: FileFormat + MaybeHashAware>(
 #[instrument()]
 pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
     match path.extension().and_then(OsStr::to_str) {
-        Some("json") => read_json(path),
+        Some("json") => {
+            warn!(
+                "Reading a JSON artifact. JSON files carry no header, so the format, version, and \
+                 proof-field checks that the binary `.{ext}` format performs are all skipped \
+                 here. A file written by an incompatible ProveKit version, or for a different \
+                 proof field, is not rejected up front; it fails later during verification with \
+                 an error that does not name the real cause.",
+                ext = T::EXTENSION
+            );
+            read_json(path)
+        }
         Some(ext) if ext == T::EXTENSION => read_bin(path, T::FORMAT, T::VERSION),
         _ => Err(anyhow::anyhow!(
             "Unsupported file extension, please specify .{} or .json",
