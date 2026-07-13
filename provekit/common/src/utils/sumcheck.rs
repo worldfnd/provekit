@@ -5,7 +5,6 @@ use {
         R1CS,
     },
     ark_ff::Field,
-    rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
     std::array,
     tracing::instrument,
     whir::algebra::embedding::Embedding,
@@ -101,73 +100,6 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize, F: Field>(
         }
         result
     }
-}
-
-/// Compute the sum of a vector valued function over the boolean hypercube in
-/// the leading variable, with base-field `mles` against an extension-field
-/// `ext_mle`.
-pub fn mixed_sumcheck_map_reduce<const N: usize, const M: usize, F: Field, G: Field>(
-    mles: [&[F]; N],
-    ext_mle: &[G],
-    map: impl Fn([(F, F); N], (G, G)) -> [G; M] + Send + Sync + Copy,
-) -> [G; M] {
-    let size = ext_mle.len();
-    assert!(size.is_power_of_two());
-    assert!(size >= 2);
-    assert!(mles.iter().all(|mle| mle.len() == size));
-
-    let mles = mles.map(|mle| mle.split_at(size / 2));
-    mixed_map_reduce_inner::<N, M, F, G>(mles, ext_mle.split_at(size / 2), map)
-}
-
-fn mixed_map_reduce_inner<const N: usize, const M: usize, F: Field, G: Field>(
-    mles: [(&[F], &[F]); N],
-    ext_mle: (&[G], &[G]),
-    map: impl Fn([(F, F); N], (G, G)) -> [G; M] + Send + Sync + Copy,
-) -> [G; M] {
-    let size = ext_mle.0.len();
-    if size * (N + 1) * 2 > workload_size::<G>() {
-        // Split slices
-        let pairs = mles.map(|(p0, p1)| (p0.split_at(size / 2), p1.split_at(size / 2)));
-        let left = pairs.map(|((l0, _), (l1, _))| (l0, l1));
-        let right = pairs.map(|((_, r0), (_, r1))| (r0, r1));
-        let (ext_p0, ext_p1) = (ext_mle.0.split_at(size / 2), ext_mle.1.split_at(size / 2));
-
-        // Parallel recurse
-        let (l, r) = rayon::join(
-            || mixed_map_reduce_inner(left, (ext_p0.0, ext_p1.0), map),
-            || mixed_map_reduce_inner(right, (ext_p0.1, ext_p1.1), map),
-        );
-
-        // Combine results
-        array::from_fn(|i| l[i] + r[i])
-    } else {
-        let mut result = [G::zero(); M];
-        for i in 0..size {
-            let e = mles.map(|(p0, p1)| (p0[i], p1[i]));
-            let local = map(e, (ext_mle.0[i], ext_mle.1[i]));
-            result.iter_mut().zip(local).for_each(|(r, l)| *r += l);
-        }
-        result
-    }
-}
-
-/// Fold the leading variable of a base-field mle at an extension-field point,
-/// lifting it into the extension: `out[i] = mle[i] + point * (mle[i + n/2] -
-/// mle[i])`.
-pub fn mixed_fold<M: Embedding>(
-    embedding: &M,
-    mle: &[M::Source],
-    point: M::Target,
-) -> Vec<M::Target> {
-    assert!(mle.len().is_power_of_two());
-    assert!(mle.len() >= 2);
-    let (p0, p1) = mle.split_at(mle.len() / 2);
-    p0.par_iter()
-        .zip(p1.par_iter())
-        .with_min_len(workload_size::<M::Target>())
-        .map(|(&e0, &e1)| embedding.mixed_add(embedding.mixed_mul(point, e1 - e0), e0))
-        .collect()
 }
 
 /// List of evaluations for eq(r, x) over the boolean hypercube, truncated to
@@ -298,10 +230,7 @@ mod tests {
     use {
         super::*,
         ark_std::{One, Zero},
-        whir::algebra::{
-            embedding::{Basefield, Identity},
-            fields::{Field64 as FieldElement, Field64_3},
-        },
+        whir::algebra::fields::Field64 as FieldElement,
     };
 
     fn fe(v: i64) -> FieldElement {
@@ -310,10 +239,6 @@ mod tests {
         } else {
             FieldElement::from(0u64) - FieldElement::from((-v) as u64)
         }
-    }
-
-    fn fe3(a: i64, b: i64, c: i64) -> Field64_3 {
-        Field64_3::from_base_prime_field_elems(vec![fe(a), fe(b), fe(c)]).unwrap()
     }
 
     /// Build a small 3×4 R1CS for matrix tests.
@@ -433,131 +358,6 @@ mod tests {
         let r = [fe(2), fe(3)];
         let result = calculate_evaluations_over_boolean_hypercube_for_eq(&r, 1);
         assert_eq!(result, vec![calculate_eq(&r, &[fe(0), fe(0)])]);
-    }
-
-    // mixed_sumcheck_map_reduce / mixed_fold
-
-    /// The cubic sumcheck round evaluations, base mles against ext eq.
-    fn mixed_round_map(
-        embedding: &Basefield<Field64_3>,
-        [a, b, c]: [(FieldElement, FieldElement); 3],
-        eq: (Field64_3, Field64_3),
-    ) -> [Field64_3; 3] {
-        let f0 = embedding.mixed_mul(eq.0, a.0 * b.0 - c.0);
-        let f_em1 = embedding.mixed_mul(
-            eq.0 + eq.0 - eq.1,
-            (a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1),
-        );
-        let f_inf = embedding.mixed_mul(eq.1 - eq.0, (a.1 - a.0) * (b.1 - b.0));
-        [f0, f_em1, f_inf]
-    }
-
-    /// The same round evaluations, everything lifted to the extension.
-    fn ext_round_map([a, b, c, eq]: [(Field64_3, Field64_3); 4]) -> [Field64_3; 3] {
-        let f0 = eq.0 * (a.0 * b.0 - c.0);
-        let f_em1 =
-            (eq.0 + eq.0 - eq.1) * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1));
-        let f_inf = (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
-        [f0, f_em1, f_inf]
-    }
-
-    fn mixed_test_mles(n: usize) -> ([Vec<FieldElement>; 3], Vec<Field64_3>) {
-        let a = (0..n).map(|i| fe(i as i64 + 1)).collect();
-        let b = (0..n).map(|i| fe(2 * i as i64 + 3)).collect();
-        let c = (0..n).map(|i| fe(7 * i as i64 + 5)).collect();
-        let eq = (0..n)
-            .map(|i| fe3(i as i64 + 2, 3 * i as i64 + 1, i as i64))
-            .collect();
-        ([a, b, c], eq)
-    }
-
-    #[test]
-    fn test_mixed_map_reduce_matches_lifted() {
-        let embedding = Basefield::<Field64_3>::new();
-        let ([a, b, c], eq) = mixed_test_mles(16);
-
-        let mixed = mixed_sumcheck_map_reduce([&a[..], &b[..], &c[..]], &eq, |mles, eq| {
-            mixed_round_map(&embedding, mles, eq)
-        });
-
-        let (mut la, mut lb, mut lc, mut leq) = (
-            embedding.map_vec(a),
-            embedding.map_vec(b),
-            embedding.map_vec(c),
-            eq,
-        );
-        let lifted =
-            sumcheck_fold_map_reduce([&mut la, &mut lb, &mut lc, &mut leq], None, ext_round_map);
-
-        assert_eq!(mixed, lifted);
-    }
-
-    #[test]
-    fn test_mixed_fold_matches_lifted() {
-        let embedding = Basefield::<Field64_3>::new();
-        let n = 8;
-        let mle: Vec<FieldElement> = (0..n).map(|i| fe(3 * i as i64 + 2)).collect();
-        let point = fe3(5, 7, 11);
-
-        let folded = mixed_fold(&embedding, &mle, point);
-
-        let lifted = embedding.map_vec(mle);
-        let (p0, p1) = lifted.split_at(n / 2);
-        let expected: Vec<Field64_3> = p0
-            .iter()
-            .zip(p1)
-            .map(|(&l, &h)| l + point * (h - l))
-            .collect();
-        assert_eq!(folded, expected);
-    }
-
-    #[test]
-    fn test_mixed_fold_identity() {
-        let n = 4;
-        let mle: Vec<Field64_3> = (0..n)
-            .map(|i| fe3(i as i64 + 1, i as i64, 2 * i as i64))
-            .collect();
-        let point = fe3(9, 4, 6);
-
-        let folded = mixed_fold(&Identity::new(), &mle, point);
-
-        let expected: Vec<Field64_3> = (0..n / 2)
-            .map(|i| mle[i] + point * (mle[i + n / 2] - mle[i]))
-            .collect();
-        assert_eq!(folded, expected);
-    }
-
-    /// Explicit `mixed_fold` + fold-free round must match the fused in-place
-    /// fold inside `sumcheck_fold_map_reduce` — the parity the prover's
-    /// base-field first round relies on.
-    #[test]
-    fn test_explicit_mixed_fold_matches_fused_fold() {
-        let embedding = Basefield::<Field64_3>::new();
-        let ([a, b, c], eq) = mixed_test_mles(8);
-        let alpha = fe3(3, 8, 2);
-
-        let (mut la, mut lb, mut lc, mut leq) = (
-            embedding.map_vec(a.clone()),
-            embedding.map_vec(b.clone()),
-            embedding.map_vec(c.clone()),
-            eq.clone(),
-        );
-        let fused = sumcheck_fold_map_reduce(
-            [&mut la, &mut lb, &mut lc, &mut leq],
-            Some(alpha),
-            ext_round_map,
-        );
-
-        let (mut fa, mut fb, mut fc, mut feq) = (
-            mixed_fold(&embedding, &a, alpha),
-            mixed_fold(&embedding, &b, alpha),
-            mixed_fold(&embedding, &c, alpha),
-            mixed_fold(&Identity::new(), &eq, alpha),
-        );
-        let explicit =
-            sumcheck_fold_map_reduce([&mut fa, &mut fb, &mut fc, &mut feq], None, ext_round_map);
-
-        assert_eq!(fused, explicit);
     }
 
     /// transpose_r1cs_matrices

@@ -123,7 +123,6 @@ chrono = "0.4.41"
 # This is a workaround because different package selection based on target does not mix well with workspace dependencies.
 divan = "0.1.21"
 hex = "0.4.3"
-inferno = { version = "0.12", default-features = false }
 itertools = "0.14.0"
 num-bigint = "0.4"
 paste = "1.0.15"
@@ -154,7 +153,6 @@ tokio-util = "0.7.13"
 tower = "0.5.2"
 tower-http = { version = "0.6.6", features = ["cors", "timeout", "trace"] }
 tracing = "0.1.41"
-tracing-flame = "0.2"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
 tracing-tracy = "=0.11.4"
 tracy-client = "=0.18.0"

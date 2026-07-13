@@ -18,7 +18,7 @@ use {
     },
     provekit_prover::{prove_from_alphas, run_zk_sumcheck_prover, WhirR1CSCommitment},
     tracing::instrument,
-    whir::{algebra::embedding::Identity, transcript::ProverState},
+    whir::transcript::ProverState,
 };
 
 pub trait MavrosR1CSProver {
@@ -53,11 +53,13 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("c1 must carry blinding state"))?;
 
+        let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
         // `g` is committed separately in the extension field; open `blinding_eval`
         // against the blinding vector (g flattened at offset 0).
         let (alpha, blinding_eval) = run_zk_sumcheck_prover(
-            &Identity::new(),
-            [witgen.out_a, witgen.out_b, witgen.out_c],
+            a,
+            b,
+            c,
             &mut merlin,
             self.m_0,
             &blinding.polynomial,
