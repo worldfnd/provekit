@@ -1,10 +1,10 @@
 use {
-    anyhow::{Context, Result},
-    provekit_common::NoirProof,
-    provekit_ffi::in_process::{
+    crate::in_process::{
         prepare_noir_program_from_json, trim_process_memory, PreparedNoirProgram,
         VerifiedNoirProgram,
     },
+    anyhow::{Context, Result},
+    provekit_common::NoirProof,
 };
 
 const COMPLETE_AGE_CHECK_PROGRAM: &str = include_str!(concat!(

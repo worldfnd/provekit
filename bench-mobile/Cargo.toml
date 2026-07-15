@@ -20,12 +20,19 @@ crate-type = ["lib", "cdylib", "staticlib"]
 anyhow.workspace = true
 inventory.workspace = true
 mobench-sdk.workspace = true
-provekit-ffi.workspace = true
+noirc_abi.workspace = true
+noirc_artifacts.workspace = true
 provekit-common.workspace = true
+provekit-prover.workspace = true
+provekit-r1cs-compiler.workspace = true
+provekit-verifier.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror = "1.0"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [lints]
 workspace = true

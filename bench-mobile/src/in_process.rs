@@ -1,5 +1,4 @@
-//! Safe in-process helpers built on the same ProveKit implementation as the C
-//! FFI entrypoints.
+//! Safe in-process helpers for mobile benchmark fixtures.
 
 use {
     anyhow::{Context, Result},
@@ -11,7 +10,7 @@ use {
     provekit_verifier::Verify,
 };
 
-/// Ask the platform allocator to return free pages to the OS after a large
+/// Ask platform allocator return free pages OS large
 /// proof allocation burst.
 pub fn trim_process_memory() {
     #[cfg(any(target_os = "android", target_os = "linux"))]
@@ -24,13 +23,13 @@ pub fn trim_process_memory() {
         }
         let malloc_trim: MallocTrim = std::mem::transmute(symbol);
 
-        // SAFETY: malloc_trim does not take ownership of Rust allocations. It
-        // only asks the process allocator to release unused free-list pages.
+        // SAFETY: malloc_trim does not take ownership Rust allocations. It
+        // only asks process allocator release unused free-list pages.
         malloc_trim(0);
     }
 }
 
-/// Prepared proving and verification state for one Noir benchmark program.
+/// Prepared proving verification state one Noir benchmark program.
 #[derive(Clone)]
 pub struct PreparedNoirProgram {
     name:      String,
@@ -40,22 +39,22 @@ pub struct PreparedNoirProgram {
 }
 
 impl PreparedNoirProgram {
-    /// Return the R1CS size exposed by the prepared prover.
+    /// Return R1CS size exposed by prepared prover.
     pub fn prover_size(&self) -> (usize, usize) {
         self.prover.size()
     }
 
-    /// Return the number of R1CS constraints in the prepared verifier.
+    /// Return number R1CS constraints in prepared verifier.
     pub fn constraint_count(&self) -> usize {
         self.verifier.r1cs.num_constraints()
     }
 
-    /// Return the number of parsed ABI input values.
+    /// Return number parsed ABI input values.
     pub fn input_count(&self) -> usize {
         self.input_map.len()
     }
 
-    /// Generate and bind a proof to the matching verifier state.
+    /// Generate bind proof matching verifier state.
     pub fn prove(self) -> Result<VerifiedNoirProgram> {
         let proof = self
             .prover
@@ -69,7 +68,7 @@ impl PreparedNoirProgram {
         })
     }
 
-    /// Generate only the proof, dropping verifier-side state before proving.
+    /// Generate only proof, dropping verifier-side state before proving.
     pub fn prove_only(self) -> Result<NoirProof> {
         let Self {
             name,
@@ -87,7 +86,7 @@ impl PreparedNoirProgram {
     }
 }
 
-/// Verified-ready proof plus verifier state for one Noir benchmark program.
+/// Verified-ready proof plus verifier state one Noir benchmark program.
 #[derive(Clone)]
 pub struct VerifiedNoirProgram {
     name:     String,
@@ -96,7 +95,7 @@ pub struct VerifiedNoirProgram {
 }
 
 impl VerifiedNoirProgram {
-    /// Verify the proof against its matching verifier state.
+    /// Verify proof matching verifier state.
     pub fn verify(mut self) -> Result<Self> {
         self.verifier
             .verify(&self.proof)
@@ -106,7 +105,7 @@ impl VerifiedNoirProgram {
     }
 }
 
-/// Prepare a Noir program from an already-compiled artifact JSON string and a
+/// Prepare Noir already-compiled artifact JSON string and
 /// TOML witness input string.
 pub fn prepare_noir_program_from_json(
     name: impl Into<String>,

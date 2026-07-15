@@ -609,9 +609,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "inventory",
+ "libc",
  "mobench-sdk",
  "provekit-common",
- "provekit-ffi",
+ "provekit-prover",
+ "provekit-r1cs-compiler",
+ "provekit-verifier",
+ "provekit_noirc_abi",
+ "provekit_noirc_artifacts",
  "rayon",
  "serde",
  "serde_json",
@@ -3789,9 +3794,7 @@ dependencies = [
  "provekit-r1cs-compiler",
  "provekit-verifier",
  "provekit_noirc_abi",
- "provekit_noirc_artifacts",
  "serde",
- "serde_json",
 ]
 
 [[package]]

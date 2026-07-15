@@ -14,6 +14,7 @@ use {
 };
 
 pub mod examples;
+mod in_process;
 pub mod passport;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
