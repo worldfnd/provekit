@@ -1,9 +1,8 @@
 use {
-    anyhow::{Context, Result},
-    provekit_common::NoirProof,
-    provekit_ffi::in_process::{
-        prepare_noir_program_from_json, PreparedNoirProgram, VerifiedNoirProgram,
+    crate::in_process::{
+        prepare_noir_program_from_json, NoirProof, PreparedNoirProgram, VerifiedNoirProgram,
     },
+    anyhow::{Context, Result},
 };
 
 const COMPLETE_AGE_CHECK_PROGRAM: &str = include_str!(concat!(

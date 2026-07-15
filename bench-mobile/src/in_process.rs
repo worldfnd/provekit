@@ -5,11 +5,13 @@ use {
     anyhow::{Context, Result},
     noirc_abi::{input_parser::Format, InputMap},
     noirc_artifacts::program::ProgramArtifact,
-    provekit_common::{HashConfig, NoirProof, Prover, Verifier},
-    provekit_prover::Prove,
+    provekit_backend_bn254::{Bn254Field, Prove, ProvekitProof, Prover, Verifier, Verify},
+    provekit_common::HashConfig,
     provekit_r1cs_compiler::NoirCompiler,
-    provekit_verifier::Verify,
 };
+
+/// BN254 proof produced by the mobile benchmark fixtures.
+pub type NoirProof = ProvekitProof<Bn254Field>;
 
 /// Ask the platform allocator to return free pages to the OS after a large
 /// proof allocation burst.
