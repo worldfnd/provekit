@@ -216,6 +216,11 @@ fn eval_eq<F: Field>(eval: &[F], out: &mut [F], scalar: F, subtree_size: usize) 
     }
 }
 
+/// Evaluates a quadratic polynomial on a value
+pub fn eval_quadratic_poly<F: Field>(poly: [F; 3], point: F) -> F {
+    poly[0] + point * (poly[1] + point * poly[2])
+}
+
 /// Evaluates a cubic polynomial on a value
 pub fn eval_cubic_poly<F: Field>(poly: [F; 4], point: F) -> F {
     poly[0] + point * (poly[1] + point * (poly[2] + point * poly[3]))

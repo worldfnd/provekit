@@ -1,0 +1,614 @@
+use {
+    crate::{
+        gpa::run_gpa4,
+        memory::{prove_axis_init_final_product, AxisConfig},
+        sumcheck::run_spark_sumcheck,
+        types::{
+            Challenges, EValuesForMatrix, MatrixDimensions, Memory, SparkMatrix, SparkProof,
+            SparkProverContext, SparkWhirConfigs, WhirWitness,
+        },
+        utils::{alphas_from_spark, calculate_memory},
+    },
+    anyhow::{ensure, Result},
+    ark_ff::{AdditiveGroup, Field, Zero},
+    provekit_backend_bn254::{
+        spark::{SparkColQuery, SparkQueryBatch},
+        FieldElement, TranscriptSponge, WhirConfig,
+    },
+    provekit_common::{
+        utils::{
+            next_power_of_two,
+            sumcheck::{
+                calculate_evaluations_over_boolean_hypercube_for_eq, eval_quadratic_poly,
+                sumcheck_fold_map_reduce,
+            },
+        },
+        HashConfig, WhirR1CSProof,
+    },
+    rayon::{join, prelude::*},
+    std::borrow::Cow,
+    tracing::instrument,
+    whir::{
+        algebra::{linear_form::MultilinearExtension, multilinear_extend},
+        engines::EngineId,
+        parameters::ProtocolParameters,
+        transcript::{DomainSeparator, ProverState, VerifierMessage},
+    },
+};
+
+pub struct SparkProverScheme {
+    pub whir_configs:      SparkWhirConfigs,
+    pub matrix_dimensions: MatrixDimensions,
+}
+
+pub fn new_whir_config_for_size(
+    log_size: usize,
+    batch_size: usize,
+    hash_id: EngineId,
+) -> WhirConfig {
+    let nv = log_size.max(4);
+
+    let whir_params = ProtocolParameters {
+        unique_decoding: false,
+        initial_folding_factor: 3,
+        security_level: 128,
+        pow_bits: 10,
+        folding_factor: 3,
+        starting_log_inv_rate: 2,
+        batch_size,
+        hash_id,
+    };
+
+    WhirConfig::new(1 << nv, &whir_params)
+}
+
+impl SparkProverScheme {
+    pub fn new_for_r1cs(
+        r1cs: &provekit_common::R1CS<FieldElement>,
+        hash_config: HashConfig,
+    ) -> Self {
+        let num_rows = 2 * r1cs.num_constraints();
+        let num_cols = 2 * r1cs.num_witnesses();
+        let nonzero_terms =
+            r1cs.a().iter().count() + r1cs.b().iter().count() + r1cs.c().iter().count();
+
+        Self::new(num_rows, num_cols, nonzero_terms, hash_config)
+    }
+
+    pub fn new(
+        num_rows: usize,
+        num_cols: usize,
+        nonzero_terms: usize,
+        hash_config: HashConfig,
+    ) -> Self {
+        let padded_num_entries = 1 << next_power_of_two(nonzero_terms);
+        let hash_id = hash_config.engine_id();
+
+        let row_config = new_whir_config_for_size(next_power_of_two(num_rows), 1, hash_id);
+        let col_config = new_whir_config_for_size(next_power_of_two(num_cols), 1, hash_id);
+        let num_terms_2batched_config =
+            new_whir_config_for_size(next_power_of_two(padded_num_entries), 2, hash_id);
+        let num_terms_5batched_config =
+            new_whir_config_for_size(next_power_of_two(padded_num_entries), 5, hash_id);
+
+        Self {
+            whir_configs:      SparkWhirConfigs {
+                row:                row_config,
+                col:                col_config,
+                num_terms_2batched: num_terms_2batched_config,
+                num_terms_5batched: num_terms_5batched_config,
+            },
+            matrix_dimensions: MatrixDimensions {
+                num_rows,
+                num_cols,
+                nonzero_terms,
+            },
+        }
+    }
+}
+
+impl SparkProverScheme {
+    #[instrument(skip_all)]
+    pub fn prove(
+        &self,
+        spark_data: &SparkProverContext,
+        batch: &SparkQueryBatch,
+    ) -> Result<SparkProof> {
+        ensure!(
+            !batch.queries.is_empty(),
+            "SPARK prover needs at least one query"
+        );
+
+        let padded_num_entries = spark_data.matrix.coo.val.len();
+
+        let mut merlin = ProverState::new(
+            &DomainSeparator::protocol(&self.whir_configs)
+                .session(&spark_data.setup.transcript.narg_string)
+                .instance(&batch.hash_bytes()?),
+            TranscriptSponge::from_config(spark_data.setup.hash_config),
+        );
+
+        let request: SparkColQuery = if batch.queries.len() == 1 {
+            batch.queries[0].clone()
+        } else {
+            let alphas = alphas_from_spark(
+                &spark_data.matrix,
+                &spark_data.setup.matrix_dimensions,
+                &batch.row,
+            );
+
+            let beta: FieldElement = merlin.verifier_message();
+
+            let domain_size = spark_data.setup.matrix_dimensions.num_cols / 2;
+            let mut hypercube = vec![FieldElement::ZERO; domain_size];
+            let mut claimed_evals = [FieldElement::ZERO; 3];
+            let mut beta_pow = FieldElement::ONE;
+            for query in &batch.queries {
+                let eq =
+                    calculate_evaluations_over_boolean_hypercube_for_eq(&query.col, domain_size);
+                for (slot, &e) in hypercube.iter_mut().zip(eq.iter()) {
+                    *slot += beta_pow * e;
+                }
+                claimed_evals[0] += beta_pow * query.claimed_a;
+                claimed_evals[1] += beta_pow * query.claimed_b;
+                claimed_evals[2] += beta_pow * query.claimed_c;
+                beta_pow *= beta;
+            }
+
+            let alpha_refs: [&[FieldElement]; 3] = [&alphas[0], &alphas[1], &alphas[2]];
+            let (folded_values, folding_randomness) =
+                run_parallel_sumchecks(&mut merlin, &hypercube, alpha_refs, claimed_evals)?;
+
+            SparkColQuery {
+                col:       folding_randomness,
+                claimed_a: folded_values[1],
+                claimed_b: folded_values[2],
+                claimed_c: folded_values[3],
+            }
+        };
+
+        let r: FieldElement = merlin.verifier_message();
+        ensure!(
+            !(FieldElement::ONE + r).is_zero(),
+            "SPARK RLC randomness must not equal -1 (would zero the denominator)"
+        );
+
+        let b1 = r / (FieldElement::ONE + r);
+        let combined = request.claimed_a + r * request.claimed_b + r * r * request.claimed_c;
+        let claimed_value = combined / (FieldElement::ONE + r) / (FieldElement::ONE + r);
+
+        let (memory, e_values) =
+            compute_spark_data(&batch.row, &request, b1, spark_data, padded_num_entries);
+
+        prove_spark(
+            &mut merlin,
+            spark_data,
+            &e_values,
+            claimed_value,
+            &memory,
+            &self.whir_configs,
+        )?;
+
+        let proof = merlin.proof();
+        Ok(SparkProof(WhirR1CSProof {
+            narg_string: proof.narg_string,
+            hints: proof.hints,
+            #[cfg(debug_assertions)]
+            pattern: proof.pattern,
+        }))
+    }
+}
+
+#[instrument(skip_all)]
+fn compute_spark_data(
+    row: &[FieldElement],
+    request: &SparkColQuery,
+    b1: FieldElement,
+    spark_data: &SparkProverContext,
+    padded_num_entries: usize,
+) -> (Memory, EValuesForMatrix) {
+    let memory = calculate_memory(b1, row, &request.col);
+    let e_values = compute_e_values(spark_data, &memory, padded_num_entries);
+    (memory, e_values)
+}
+
+#[instrument(skip_all)]
+fn compute_e_values(
+    spark_data: &SparkProverContext,
+    memory: &Memory,
+    padded_num_entries: usize,
+) -> EValuesForMatrix {
+    let (e_rx, e_ry) = rayon::join(
+        || {
+            spark_data.matrix.coo.row[..padded_num_entries]
+                .par_iter()
+                .map(|&r| memory.eq_rx[r])
+                .collect()
+        },
+        || {
+            spark_data.matrix.coo.col[..padded_num_entries]
+                .par_iter()
+                .map(|&c| memory.eq_ry[c])
+                .collect()
+        },
+    );
+    EValuesForMatrix { e_rx, e_ry }
+}
+
+#[instrument(skip_all)]
+fn prove_spark(
+    merlin: &mut ProverState<TranscriptSponge>,
+    data: &SparkProverContext,
+    e_values: &EValuesForMatrix,
+    claimed_value: FieldElement,
+    memory: &Memory,
+    whir_configs: &SparkWhirConfigs,
+) -> Result<()> {
+    let e_values_witness = commit_e_values(merlin, whir_configs, e_values);
+
+    let (folding_randomness, sumcheck_final_folds) =
+        sumcheck_and_its_proofs(merlin, &data.matrix, e_values, claimed_value)?;
+
+    memory_checking(
+        merlin,
+        data,
+        e_values,
+        &e_values_witness,
+        memory,
+        whir_configs,
+        &folding_randomness,
+        sumcheck_final_folds,
+    )?;
+
+    Ok(())
+}
+
+#[instrument(skip_all)]
+fn memory_checking(
+    merlin: &mut ProverState<TranscriptSponge>,
+    data: &SparkProverContext,
+    e_values: &EValuesForMatrix,
+    e_values_witness: &WhirWitness,
+    memory: &Memory,
+    whir_configs: &SparkWhirConfigs,
+    folding_randomness: &[FieldElement],
+    sumcheck_final_folds: [FieldElement; 3],
+) -> Result<()> {
+    let tau: FieldElement = merlin.verifier_message();
+    let gamma: FieldElement = merlin.verifier_message();
+    let challenges = Challenges { tau, gamma };
+
+    prove_combined_rs_ws_product(
+        merlin,
+        &data.matrix,
+        e_values,
+        e_values_witness,
+        &data.witnesses.vals_rs_ws_witness,
+        whir_configs,
+        &challenges,
+        folding_randomness,
+        sumcheck_final_folds,
+    )?;
+
+    let final_row_field = data.matrix.timestamps.final_row_field();
+    prove_axis_init_final_product(
+        merlin,
+        AxisConfig {
+            eq_memory:       &memory.eq_rx,
+            final_timestamp: &final_row_field,
+            whir_config:     &whir_configs.row,
+        },
+        &data.witnesses.final_row_ts_witness,
+        &challenges,
+    )?;
+    drop(final_row_field);
+
+    let final_col_field = data.matrix.timestamps.final_col_field();
+    prove_axis_init_final_product(
+        merlin,
+        AxisConfig {
+            eq_memory:       &memory.eq_ry,
+            final_timestamp: &final_col_field,
+            whir_config:     &whir_configs.col,
+        },
+        &data.witnesses.final_col_ts_witness,
+        &challenges,
+    )?;
+    drop(final_col_field);
+
+    Ok(())
+}
+
+#[instrument(skip_all)]
+fn sumcheck_and_its_proofs(
+    merlin: &mut ProverState<TranscriptSponge>,
+    matrix: &SparkMatrix,
+    e_values: &EValuesForMatrix,
+    claimed_value: FieldElement,
+) -> Result<(Vec<FieldElement>, [FieldElement; 3])> {
+    let mles: [&[FieldElement]; 3] = [&matrix.coo.val, &e_values.e_rx, &e_values.e_ry];
+    let (sumcheck_final_folds, folding_randomness) =
+        run_spark_sumcheck(merlin, mles, claimed_value)?;
+
+    merlin.prover_hint_ark(&[
+        sumcheck_final_folds[0],
+        sumcheck_final_folds[1],
+        sumcheck_final_folds[2],
+    ]);
+
+    Ok((folding_randomness, [
+        sumcheck_final_folds[0],
+        sumcheck_final_folds[1],
+        sumcheck_final_folds[2],
+    ]))
+}
+
+#[instrument(skip_all)]
+fn prove_combined_rs_ws_product(
+    merlin: &mut ProverState<TranscriptSponge>,
+    matrix: &SparkMatrix,
+    e_values: &EValuesForMatrix,
+    e_values_witness: &WhirWitness,
+    vals_rs_ws_witness: &WhirWitness,
+    whir_configs: &SparkWhirConfigs,
+    challenges: &Challenges,
+    folding_randomness: &[FieldElement],
+    sumcheck_final_folds: [FieldElement; 3],
+) -> Result<()> {
+    let gamma_sq = challenges.gamma * challenges.gamma;
+    let one = FieldElement::ONE;
+
+    let row_field = matrix.coo.row_field();
+    let col_field = matrix.coo.col_field();
+    let read_row_field = matrix.timestamps.read_row_field();
+    let read_col_field = matrix.timestamps.read_col_field();
+    let n = row_field.len();
+
+    let gpa_leaves_flat = tracing::info_span!("build_rs_ws_pairs").in_scope(|| {
+        let mut buf = vec![FieldElement::ZERO; 4 * n];
+        let (row_section, col_section) = buf.split_at_mut(2 * n);
+        let (row_rs, row_ws) = row_section.split_at_mut(n);
+        let (col_rs, col_ws) = col_section.split_at_mut(n);
+
+        row_rs
+            .par_iter_mut()
+            .zip(row_ws.par_iter_mut())
+            .zip(col_rs.par_iter_mut())
+            .zip(col_ws.par_iter_mut())
+            .enumerate()
+            .for_each(|(i, (((rs_r, ws_r), rs_c), ws_c))| {
+                let row_base = row_field[i] * gamma_sq
+                    + e_values.e_rx[i] * challenges.gamma
+                    + read_row_field[i]
+                    - challenges.tau;
+                let col_base = col_field[i] * gamma_sq
+                    + e_values.e_ry[i] * challenges.gamma
+                    + read_col_field[i]
+                    - challenges.tau;
+                *rs_r = row_base;
+                *ws_r = row_base + one;
+                *rs_c = col_base;
+                *ws_c = col_base + one;
+            });
+        buf
+    });
+    let gpa_randomness = run_gpa4(merlin, gpa_leaves_flat)?;
+
+    let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(2);
+
+    let polys: [&[FieldElement]; 4] = [&row_field, &read_row_field, &col_field, &read_col_field];
+    let [row_address_eval, row_timestamp_eval, col_address_eval, col_timestamp_eval]: [_; 4] =
+        tracing::info_span!("multilinear_extend_rs_ws")
+            .in_scope(|| {
+                polys
+                    .par_iter()
+                    .map(|p| multilinear_extend(p, evaluation_randomness))
+                    .collect::<Vec<_>>()
+            })
+            .try_into()
+            .expect("4 polys");
+
+    merlin.prover_hint_ark(&row_address_eval);
+    merlin.prover_hint_ark(&row_timestamp_eval);
+    merlin.prover_hint_ark(&col_address_eval);
+    merlin.prover_hint_ark(&col_timestamp_eval);
+
+    let pairs: [(&[FieldElement], &[FieldElement]); 5] = [
+        (&row_field, folding_randomness),
+        (&read_row_field, folding_randomness),
+        (&col_field, folding_randomness),
+        (&read_col_field, folding_randomness),
+        (&matrix.coo.val, evaluation_randomness),
+    ];
+    let [row_field_at_fold, read_row_at_fold, col_field_at_fold, read_col_at_fold, vals_at_eval]: [_; 5] =
+        tracing::info_span!("multilinear_extend_vals_rs_ws_cross")
+            .in_scope(|| {
+                pairs
+                    .par_iter()
+                    .map(|(p, r)| multilinear_extend(p, r))
+                    .collect::<Vec<_>>()
+            })
+            .try_into()
+            .expect("5 polys");
+
+    merlin.prover_hint_ark(&row_field_at_fold);
+    merlin.prover_hint_ark(&read_row_at_fold);
+    merlin.prover_hint_ark(&col_field_at_fold);
+    merlin.prover_hint_ark(&read_col_at_fold);
+    merlin.prover_hint_ark(&vals_at_eval);
+
+    let fold_lf_for_vals_rs_ws = MultilinearExtension::new(folding_randomness.to_vec());
+    let eval_lf_for_vals_rs_ws = MultilinearExtension::new(evaluation_randomness.to_vec());
+    // Layout: linear_form-major, then poly. Polys: [vals, row_field, read_row,
+    // col_field, read_col].
+    let vals_rs_ws_evaluations = [
+        // fold_lf
+        sumcheck_final_folds[0],
+        row_field_at_fold,
+        read_row_at_fold,
+        col_field_at_fold,
+        read_col_at_fold,
+        // eval_lf
+        vals_at_eval,
+        row_address_eval,
+        row_timestamp_eval,
+        col_address_eval,
+        col_timestamp_eval,
+    ];
+    let _ = whir_configs.num_terms_5batched.prove(
+        merlin,
+        vec![
+            Cow::Borrowed(&matrix.coo.val),
+            Cow::Borrowed(&row_field),
+            Cow::Borrowed(&read_row_field),
+            Cow::Borrowed(&col_field),
+            Cow::Borrowed(&read_col_field),
+        ],
+        vec![Cow::Borrowed(vals_rs_ws_witness)],
+        vec![
+            Box::new(fold_lf_for_vals_rs_ws)
+                as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
+            Box::new(eval_lf_for_vals_rs_ws)
+                as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
+        ],
+        Cow::Borrowed(&vals_rs_ws_evaluations),
+    );
+
+    let (row_value_eval, col_value_eval) = tracing::info_span!("multilinear_extend_e_values")
+        .in_scope(|| {
+            join(
+                || multilinear_extend(&e_values.e_rx, evaluation_randomness),
+                || multilinear_extend(&e_values.e_ry, evaluation_randomness),
+            )
+        });
+    merlin.prover_hint_ark(&row_value_eval);
+    merlin.prover_hint_ark(&col_value_eval);
+
+    let fold_lf = MultilinearExtension::new(folding_randomness.to_vec());
+    let eval_lf = MultilinearExtension::new(evaluation_randomness.to_vec());
+    let evaluations = [
+        sumcheck_final_folds[1],
+        sumcheck_final_folds[2],
+        row_value_eval,
+        col_value_eval,
+    ];
+    let _ = whir_configs.num_terms_2batched.prove(
+        merlin,
+        vec![Cow::Borrowed(&e_values.e_rx), Cow::Borrowed(&e_values.e_ry)],
+        vec![Cow::Borrowed(e_values_witness)],
+        vec![
+            Box::new(fold_lf) as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
+            Box::new(eval_lf) as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
+        ],
+        Cow::Borrowed(&evaluations),
+    );
+
+    Ok(())
+}
+
+#[instrument(skip_all)]
+fn commit_e_values(
+    merlin: &mut ProverState<TranscriptSponge>,
+    whir_configs: &SparkWhirConfigs,
+    e_values: &EValuesForMatrix,
+) -> WhirWitness {
+    whir_configs
+        .num_terms_2batched
+        .commit(merlin, &[&e_values.e_rx, &e_values.e_ry])
+}
+
+pub fn run_parallel_sumchecks(
+    merlin: &mut ProverState<TranscriptSponge>,
+    hypercube: &[FieldElement],
+    alphas: [&[FieldElement]; 3],
+    mut claimed_values: [FieldElement; 3],
+) -> Result<([FieldElement; 4], Vec<FieldElement>)> {
+    let mut sumcheck_randomness;
+    let mut sumcheck_randomness_accumulator = Vec::<FieldElement>::new();
+    let mut fold = None;
+
+    let mut h_mle = hypercube.to_vec();
+    let mut a_mle = alphas[0].to_vec();
+    let mut b_mle = alphas[1].to_vec();
+    let mut c_mle = alphas[2].to_vec();
+    loop {
+        let [a_hhat_i_at_0, a_highest_coeff, b_hhat_i_at_0, b_highest_coeff, c_hhat_i_at_0, c_highest_coeff] =
+            sumcheck_fold_map_reduce(
+                [&mut h_mle, &mut a_mle, &mut b_mle, &mut c_mle],
+                fold,
+                |[h_mle, a_mle, b_mle, c_mle]| {
+                    [
+                        h_mle.0 * a_mle.0,
+                        (h_mle.1 - h_mle.0) * (a_mle.1 - a_mle.0),
+                        h_mle.0 * b_mle.0,
+                        (h_mle.1 - h_mle.0) * (b_mle.1 - b_mle.0),
+                        h_mle.0 * c_mle.0,
+                        (h_mle.1 - h_mle.0) * (c_mle.1 - c_mle.0),
+                    ]
+                },
+            );
+
+        if fold.is_some() {
+            h_mle.truncate(h_mle.len() / 2);
+            a_mle.truncate(a_mle.len() / 2);
+            b_mle.truncate(b_mle.len() / 2);
+            c_mle.truncate(c_mle.len() / 2);
+        }
+
+        let mut a_hhat_i_coeffs = [FieldElement::zero(); 3];
+
+        a_hhat_i_coeffs[0] = a_hhat_i_at_0;
+        a_hhat_i_coeffs[2] = a_highest_coeff;
+        a_hhat_i_coeffs[1] =
+            claimed_values[0] - a_hhat_i_coeffs[0] - a_hhat_i_coeffs[0] - a_hhat_i_coeffs[2];
+
+        for a_coeff in &a_hhat_i_coeffs {
+            merlin.prover_message(a_coeff);
+        }
+
+        let mut b_hhat_i_coeffs = [FieldElement::zero(); 3];
+
+        b_hhat_i_coeffs[0] = b_hhat_i_at_0;
+        b_hhat_i_coeffs[2] = b_highest_coeff;
+        b_hhat_i_coeffs[1] =
+            claimed_values[1] - b_hhat_i_coeffs[0] - b_hhat_i_coeffs[0] - b_hhat_i_coeffs[2];
+
+        for b_coeff in &b_hhat_i_coeffs {
+            merlin.prover_message(b_coeff);
+        }
+
+        let mut c_hhat_i_coeffs = [FieldElement::zero(); 3];
+
+        c_hhat_i_coeffs[0] = c_hhat_i_at_0;
+        c_hhat_i_coeffs[2] = c_highest_coeff;
+        c_hhat_i_coeffs[1] =
+            claimed_values[2] - c_hhat_i_coeffs[0] - c_hhat_i_coeffs[0] - c_hhat_i_coeffs[2];
+
+        for c_coeff in &c_hhat_i_coeffs {
+            merlin.prover_message(c_coeff);
+        }
+
+        sumcheck_randomness = merlin.verifier_message();
+        fold = Some(sumcheck_randomness);
+        claimed_values[0] = eval_quadratic_poly(a_hhat_i_coeffs, sumcheck_randomness);
+        claimed_values[1] = eval_quadratic_poly(b_hhat_i_coeffs, sumcheck_randomness);
+        claimed_values[2] = eval_quadratic_poly(c_hhat_i_coeffs, sumcheck_randomness);
+
+        sumcheck_randomness_accumulator.push(sumcheck_randomness);
+        if h_mle.len() <= 2 {
+            break;
+        }
+    }
+
+    let folded_h = h_mle[0] + (h_mle[1] - h_mle[0]) * sumcheck_randomness;
+    let folded_a = a_mle[0] + (a_mle[1] - a_mle[0]) * sumcheck_randomness;
+    let folded_b = b_mle[0] + (b_mle[1] - b_mle[0]) * sumcheck_randomness;
+    let folded_c = c_mle[0] + (c_mle[1] - c_mle[0]) * sumcheck_randomness;
+
+    merlin.prover_hint_ark(&[folded_a, folded_b, folded_c]);
+
+    Ok((
+        [folded_h, folded_a, folded_b, folded_c],
+        sumcheck_randomness_accumulator,
+    ))
+}

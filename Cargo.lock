@@ -4465,7 +4465,9 @@ dependencies = [
  "argh",
  "ark-ff",
  "base64",
+ "bincode",
  "hex",
+ "mavros-artifacts",
  "nargo",
  "nargo_toml",
  "noir_artifact_cli",
@@ -4476,6 +4478,7 @@ dependencies = [
  "provekit-common",
  "provekit-gnark",
  "provekit-r1cs-compiler",
+ "provekit-spark",
  "rayon",
  "serde_json",
  "tikv-jemallocator",
@@ -4590,6 +4593,22 @@ dependencies = [
  "rayon",
  "serde",
  "serde_json",
+ "tracing",
+ "whir",
+]
+
+[[package]]
+name = "provekit-spark"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ark-ff",
+ "ark-serialize",
+ "ark-std",
+ "provekit-backend-bn254",
+ "provekit-common",
+ "rayon",
+ "serde",
  "tracing",
  "whir",
 ]

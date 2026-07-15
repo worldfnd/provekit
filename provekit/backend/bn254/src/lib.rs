@@ -16,6 +16,7 @@ mod prove;
 mod scheme;
 mod skyscraper;
 mod solver;
+pub mod spark;
 mod transcript_sponge;
 mod verify;
 pub mod witness;
@@ -35,6 +36,7 @@ pub use {
     },
     skyscraper::SkyscraperPoW,
     solver::solve_witness_vec,
+    spark::{MatrixDimensions, SparkSetup, SparkWhirConfigs},
     transcript_sponge::TranscriptSponge,
     verify::Verify,
 };

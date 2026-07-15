@@ -1,11 +1,13 @@
 mod analyze_pkp;
 mod circuit_stats;
 mod generate_gnark_inputs;
-mod prepare;
+pub mod prepare;
 mod prove;
+mod prove_spark;
 mod show_inputs;
 mod util;
 mod verify;
+mod verify_spark;
 
 use {anyhow::Result, argh::FromArgs};
 
@@ -42,8 +44,10 @@ enum Commands {
     AnalyzePkp(analyze_pkp::Args),
     Prepare(prepare::Args),
     Prove(prove::Args),
+    ProveSpark(prove_spark::Args),
     CircuitStats(circuit_stats::Args),
     Verify(verify::Args),
+    VerifySpark(verify_spark::Args),
     GenerateGnarkInputs(generate_gnark_inputs::Args),
     ShowInputs(show_inputs::Args),
 }
@@ -60,8 +64,10 @@ impl Command for Commands {
             Self::AnalyzePkp(args) => args.run(),
             Self::Prepare(args) => args.run(),
             Self::Prove(args) => args.run(),
+            Self::ProveSpark(args) => args.run(),
             Self::CircuitStats(args) => args.run(),
             Self::Verify(args) => args.run(),
+            Self::VerifySpark(args) => args.run(),
             Self::GenerateGnarkInputs(args) => args.run(),
             Self::ShowInputs(args) => args.run(),
         }

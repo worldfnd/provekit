@@ -21,10 +21,16 @@ pub const PROVER_FORMAT: [u8; 8] = *b"PrvKitPr";
 pub const PROVER_VERSION: (u16, u16) = (2, 0);
 
 pub const VERIFIER_FORMAT: [u8; 8] = *b"PrvKitVr";
-pub const VERIFIER_VERSION: (u16, u16) = (2, 0);
+pub const VERIFIER_VERSION: (u16, u16) = (2, 1);
 
 pub const NOIR_PROOF_SCHEME_FORMAT: [u8; 8] = *b"NrProScm";
 pub const NOIR_PROOF_SCHEME_VERSION: (u16, u16) = (2, 0);
 
 pub const NOIR_PROOF_FORMAT: [u8; 8] = *b"NPSProof";
 pub const NOIR_PROOF_VERSION: (u16, u16) = (2, 0);
+
+pub const SPARK_PROOF_FORMAT: [u8; 8] = *b"SparkPrf";
+pub const SPARK_PROOF_VERSION: (u16, u16) = (1, 0);
+
+pub const SPARK_CONTEXT_FORMAT: [u8; 8] = *b"SparkCtx";
+pub const SPARK_CONTEXT_VERSION: (u16, u16) = (1, 0);
