@@ -9,11 +9,11 @@ use {
     },
     anyhow::{ensure, Context, Result},
     ark_ff::{AdditiveGroup, Field, Zero},
-    provekit_common::{
+    provekit_backend_bn254::{
         spark::{SparkColQuery, SparkQueryBatch},
-        utils::{next_power_of_two, sumcheck::calculate_eq},
         FieldElement, TranscriptSponge,
     },
+    provekit_common::utils::{next_power_of_two, sumcheck::calculate_eq},
     tracing::instrument,
     whir::{
         algebra::linear_form::MultilinearExtension,

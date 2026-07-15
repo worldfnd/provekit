@@ -1,5 +1,6 @@
-pub use provekit_common::{MatrixDimensions, SparkSetup, SparkWhirConfigs};
+pub use provekit_backend_bn254::{MatrixDimensions, SparkSetup, SparkWhirConfigs};
 use {
+    provekit_backend_bn254::FieldElement,
     provekit_common::{
         file::{
             binary_format::{
@@ -9,7 +10,7 @@ use {
             Compression, FileFormat, MaybeHashAware,
         },
         utils::serde_ark_vec,
-        FieldElement, HashConfig, WhirR1CSProof,
+        HashConfig, WhirR1CSProof,
     },
     serde::{Deserialize, Serialize},
     whir::protocols::irs_commit,

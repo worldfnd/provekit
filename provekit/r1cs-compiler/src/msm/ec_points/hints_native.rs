@@ -3,7 +3,7 @@
 use {
     crate::{msm::multi_limb_ops::EcFieldParams, noir_to_r1cs::NoirToR1CSCompiler},
     ark_ff::{Field, PrimeField},
-    provekit_common::{witness::WitnessBuilder, FieldElement},
+    provekit_backend_bn254::{witness::WitnessBuilder, FieldElement},
 };
 
 /// Hint-verified point doubling for native field.

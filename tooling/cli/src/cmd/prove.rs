@@ -1,17 +1,14 @@
+#[cfg(test)]
+use provekit_backend_bn254::{Verifier, Verify};
 use {
     super::{util::resolve_key_path, Command},
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{
-        file::{read, write},
-        Prover,
-    },
-    provekit_prover::Prove,
+    provekit_backend_bn254::{Prove, Prover},
+    provekit_common::file::{read, write},
     std::path::PathBuf,
     tracing::{info, instrument},
 };
-#[cfg(test)]
-use {provekit_common::Verifier, provekit_verifier::Verify};
 
 /// Prove a prepared Noir program.
 #[derive(FromArgs, PartialEq, Eq, Debug)]

@@ -22,7 +22,7 @@ use {
     },
     ark_ff::AdditiveGroup,
     curve::decompose_to_limbs as decompose_to_limbs_pub,
-    provekit_common::FieldElement,
+    provekit_backend_bn254::FieldElement,
     std::collections::BTreeMap,
 };
 

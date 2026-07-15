@@ -10,7 +10,7 @@ use {
     },
     anyhow::Result,
     ark_ff::{Field, PrimeField},
-    provekit_common::{
+    provekit_backend_bn254::{
         witness::{ConstantOrR1CSWitness, SumTerm},
         FieldElement,
     },

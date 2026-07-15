@@ -1,13 +1,10 @@
 use {
-    crate::utils::read_hint,
+    crate::utils::{read_hint, HALF},
     anyhow::{ensure, Result},
     ark_std::{One, Zero},
-    provekit_common::{
-        utils::{
-            sumcheck::{eval_cubic_poly, eval_quadratic_poly, sumcheck_fold_map_reduce},
-            HALF,
-        },
-        FieldElement, TranscriptSponge,
+    provekit_backend_bn254::{FieldElement, TranscriptSponge},
+    provekit_common::utils::sumcheck::{
+        eval_cubic_poly, eval_quadratic_poly, sumcheck_fold_map_reduce,
     },
     tracing::instrument,
     whir::transcript::{ProverState, VerifierMessage, VerifierState},

@@ -2,11 +2,8 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{
-        file::{read, write},
-        spark::SparkQueryBatch,
-        Prover,
-    },
+    provekit_backend_bn254::{spark::SparkQueryBatch, Prover},
+    provekit_common::file::{read, write},
     provekit_spark::{SparkProverContext, SparkProverScheme},
     std::{fs::File, io::BufReader, path::PathBuf},
     tracing::{info, instrument},
@@ -42,7 +39,7 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        provekit_common::register_ntt();
+        provekit_backend_bn254::register();
 
         let prover: Prover = read(&self.prover_path).context("while reading Provekit Prover")?;
 

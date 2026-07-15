@@ -11,8 +11,11 @@ use {
     },
     anyhow::{ensure, Result},
     ark_ff::{AdditiveGroup, Field, Zero},
-    provekit_common::{
+    provekit_backend_bn254::{
         spark::{SparkColQuery, SparkQueryBatch},
+        FieldElement, TranscriptSponge, WhirConfig,
+    },
+    provekit_common::{
         utils::{
             next_power_of_two,
             sumcheck::{
@@ -20,7 +23,7 @@ use {
                 sumcheck_fold_map_reduce,
             },
         },
-        FieldElement, HashConfig, TranscriptSponge, WhirConfig, WhirR1CSProof,
+        HashConfig, WhirR1CSProof,
     },
     rayon::{join, prelude::*},
     std::borrow::Cow,
@@ -60,7 +63,10 @@ pub fn new_whir_config_for_size(
 }
 
 impl SparkProverScheme {
-    pub fn new_for_r1cs(r1cs: &provekit_common::R1CS, hash_config: HashConfig) -> Self {
+    pub fn new_for_r1cs(
+        r1cs: &provekit_common::R1CS<FieldElement>,
+        hash_config: HashConfig,
+    ) -> Self {
         let num_rows = 2 * r1cs.num_constraints();
         let num_cols = 2 * r1cs.num_witnesses();
         let nonzero_terms =

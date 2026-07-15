@@ -2,7 +2,8 @@ use {
     super::Command,
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, spark::SparkQueryBatch, Verifier},
+    provekit_backend_bn254::{spark::SparkQueryBatch, Verifier},
+    provekit_common::file::read,
     provekit_spark::{SparkProof, SparkVerifierScheme},
     std::{fs::File, io::BufReader, path::PathBuf},
     tracing::instrument,
@@ -29,7 +30,7 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        provekit_common::register_ntt();
+        provekit_backend_bn254::register();
 
         let (proof, (verifier, queries)) = rayon::join(
             || read::<SparkProof>(&self.proof_path).context("while reading SPARK proof"),

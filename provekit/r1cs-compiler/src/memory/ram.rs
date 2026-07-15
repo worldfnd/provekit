@@ -4,7 +4,7 @@ use {
         noir_to_r1cs::NoirToR1CSCompiler,
     },
     ark_ff::{One, Zero},
-    provekit_common::{
+    provekit_backend_bn254::{
         witness::{
             SpiceMemoryOperation, SpiceWitnesses, SumTerm, WitnessBuilder, WitnessCoefficient,
         },

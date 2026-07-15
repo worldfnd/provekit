@@ -1,6 +1,7 @@
 use {
     crate::types::WhirWitness,
-    provekit_common::{utils::serde_ark_vec, FieldElement},
+    provekit_backend_bn254::FieldElement,
+    provekit_common::utils::serde_ark_vec,
     serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer},
     whir::protocols::{
         irs_commit::{Evaluations, Witness},

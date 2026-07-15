@@ -4,7 +4,8 @@ use {
         types::{SparkMatrix, SparkSetup, SparkWitnesses},
     },
     anyhow::Result,
-    provekit_common::{FieldElement, HashConfig, TranscriptSponge, WhirR1CSProof},
+    provekit_backend_bn254::{FieldElement, TranscriptSponge},
+    provekit_common::{HashConfig, WhirR1CSProof},
     tracing::instrument,
     whir::{
         protocols::irs_commit::Commitment,

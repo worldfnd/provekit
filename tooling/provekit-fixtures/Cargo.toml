@@ -1,0 +1,33 @@
+[package]
+name = "provekit-fixtures"
+version = "1.0.0"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Workspace crates
+provekit-common.workspace = true
+provekit-prover = { workspace = true, features = ["parallel"] }
+provekit-verifier.workspace = true
+
+# 3rd party
+anyhow.workspace = true
+ark-ff.workspace = true
+ark-std.workspace = true
+whir.workspace = true
+
+[dev-dependencies]
+# Concrete proof fields to instantiate the generic harness.
+provekit-backend-bn254.workspace = true
+provekit-backend-goldilocks.workspace = true
+inferno.workspace = true
+tracing.workspace = true
+tracing-flame.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

@@ -9,6 +9,7 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+provekit-backend-bn254.workspace = true
 provekit-common.workspace = true
 ark-ff.workspace = true
 ark-serialize.workspace = true

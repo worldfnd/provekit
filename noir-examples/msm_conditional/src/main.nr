@@ -4,7 +4,6 @@ use std::embedded_curve_ops::{EmbeddedCurvePoint, EmbeddedCurveScalar, multi_sca
 global GEN: EmbeddedCurvePoint = EmbeddedCurvePoint {
     x: 1,
     y: 17631683881184975370165255887551781615748388533673675138860,
-    is_infinite: false,
 };
 
 /// Exercises MultiScalarMul with a Witness predicate.
@@ -21,16 +20,16 @@ fn main(condition: bool, scalar_lo: Field, scalar_hi: Field, expected_x: Field, 
         multi_scalar_mul([GEN], [scalar])
     } else {
         // When predicate=0, ACVM assigns identity (0, 0, true) to result.
-        EmbeddedCurvePoint { x: 0, y: 0, is_infinite: true }
+        EmbeddedCurvePoint::point_at_infinity()
     };
 
     if condition {
-        assert(!result.is_infinite);
+        assert(!result.is_infinite());
         assert_eq(result.x, expected_x);
         assert_eq(result.y, expected_y);
     } else {
         assert(result.x == 0);
         assert(result.y == 0);
-        assert(result.is_infinite);
+        assert(result.is_infinite());
     }
 }

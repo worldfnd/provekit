@@ -7,7 +7,7 @@ use {
     anyhow::{ensure, Result},
     ark_ff::AdditiveGroup,
     ark_std::One,
-    provekit_common::{FieldElement, TranscriptSponge, WhirConfig},
+    provekit_backend_bn254::{FieldElement, TranscriptSponge, WhirConfig},
     rayon::prelude::*,
     std::borrow::Cow,
     tracing::instrument,

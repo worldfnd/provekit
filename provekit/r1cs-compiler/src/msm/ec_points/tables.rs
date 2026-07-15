@@ -10,7 +10,7 @@ use {
         EcPoint,
     },
     ark_ff::Field,
-    provekit_common::{witness::SumTerm, FieldElement},
+    provekit_backend_bn254::{witness::SumTerm, FieldElement},
 };
 
 /// Builds a signed point table of odd multiples:

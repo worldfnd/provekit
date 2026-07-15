@@ -2,8 +2,8 @@ use {
     super::{util::resolve_key_path, Command},
     anyhow::{Context, Result},
     argh::FromArgs,
-    provekit_common::{file::read, NoirProof, Verifier},
-    provekit_verifier::Verify,
+    provekit_backend_bn254::{Bn254Field, ProvekitProof, Verifier, Verify},
+    provekit_common::file::read,
     std::path::PathBuf,
     tracing::instrument,
 };
@@ -28,7 +28,7 @@ impl Command for Args {
 
         let (verifier, proof) = rayon::join(
             || read::<Verifier>(&verifier_path).context("while reading Provekit Verifier"),
-            || read::<NoirProof>(&self.proof_path).context("while reading proof"),
+            || read::<ProvekitProof<Bn254Field>>(&self.proof_path).context("while reading proof"),
         );
         let mut verifier = verifier?;
         let proof = proof?;

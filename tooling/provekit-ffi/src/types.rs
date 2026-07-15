@@ -1,7 +1,7 @@
 //! Type definitions for ProveKit FFI bindings.
 
 use {
-    provekit_common::{Prover, Verifier},
+    provekit_backend_bn254::{Prover, Verifier},
     std::{os::raw::c_int, ptr},
 };
 

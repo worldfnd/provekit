@@ -11,6 +11,7 @@ repository.workspace = true
 [dependencies]
 # Workspace crates
 provekit-common.workspace = true
+provekit-backend-bn254.workspace = true
 provekit-gnark.workspace = true
 
 # 3rd party

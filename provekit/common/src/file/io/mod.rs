@@ -14,11 +14,11 @@ use {
         counting_writer::CountingWriter,
         json::{read_json, write_json},
     },
-    crate::{HashConfig, NoirProof, NoirProofScheme, Prover, Verifier},
+    crate::HashConfig,
     anyhow::Result,
     serde::{Deserialize, Serialize},
     std::{ffi::OsStr, path::Path},
-    tracing::instrument,
+    tracing::{instrument, warn},
 };
 
 /// Trait for structures that can be serialized to and deserialized from files.
@@ -29,71 +29,10 @@ pub trait FileFormat: Serialize + for<'a> Deserialize<'a> {
     const COMPRESSION: Compression;
 }
 
-/// Helper trait to optionally extract hash config.
+/// Helper trait to optionally extract hash config. Implemented for the concrete
+/// scheme types in their owning crate (e.g. `provekit-backend-bn254`).
 pub trait MaybeHashAware {
     fn maybe_hash_config(&self) -> Option<HashConfig>;
-}
-
-/// Impl for Prover (has hash config).
-impl MaybeHashAware for Prover {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        match self {
-            Prover::Noir(p) => Some(p.hash_config),
-            Prover::Mavros(p) => Some(p.hash_config),
-        }
-    }
-}
-
-/// Impl for Verifier (has hash config).
-impl MaybeHashAware for Verifier {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        Some(self.hash_config)
-    }
-}
-
-/// Impl for NoirProof (no hash config).
-impl MaybeHashAware for NoirProof {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        None
-    }
-}
-
-/// Impl for NoirProofScheme (has hash config).
-impl MaybeHashAware for NoirProofScheme {
-    fn maybe_hash_config(&self) -> Option<HashConfig> {
-        match self {
-            NoirProofScheme::Noir(d) => Some(d.hash_config),
-            NoirProofScheme::Mavros(d) => Some(d.hash_config),
-        }
-    }
-}
-
-impl FileFormat for NoirProofScheme {
-    const FORMAT: [u8; 8] = crate::binary_format::NOIR_PROOF_SCHEME_FORMAT;
-    const EXTENSION: &'static str = "nps";
-    const VERSION: (u16, u16) = crate::binary_format::NOIR_PROOF_SCHEME_VERSION;
-    const COMPRESSION: Compression = Compression::Zstd;
-}
-
-impl FileFormat for Prover {
-    const FORMAT: [u8; 8] = crate::binary_format::PROVER_FORMAT;
-    const EXTENSION: &'static str = "pkp";
-    const VERSION: (u16, u16) = crate::binary_format::PROVER_VERSION;
-    const COMPRESSION: Compression = Compression::Xz;
-}
-
-impl FileFormat for Verifier {
-    const FORMAT: [u8; 8] = crate::binary_format::VERIFIER_FORMAT;
-    const EXTENSION: &'static str = "pkv";
-    const VERSION: (u16, u16) = crate::binary_format::VERIFIER_VERSION;
-    const COMPRESSION: Compression = Compression::Zstd;
-}
-
-impl FileFormat for NoirProof {
-    const FORMAT: [u8; 8] = crate::binary_format::NOIR_PROOF_FORMAT;
-    const EXTENSION: &'static str = "np";
-    const VERSION: (u16, u16) = crate::binary_format::NOIR_PROOF_VERSION;
-    const COMPRESSION: Compression = Compression::Zstd;
 }
 
 /// Write a file with format determined from extension.
@@ -129,7 +68,17 @@ fn write_bin_with_hash_config<T: FileFormat + MaybeHashAware>(
 #[instrument()]
 pub fn read<T: FileFormat>(path: &Path) -> Result<T> {
     match path.extension().and_then(OsStr::to_str) {
-        Some("json") => read_json(path),
+        Some("json") => {
+            warn!(
+                "Reading a JSON artifact. JSON files carry no header, so the format, version, and \
+                 proof-field checks that the binary `.{ext}` format performs are all skipped \
+                 here. A file written by an incompatible ProveKit version, or for a different \
+                 proof field, is not rejected up front; it fails later during verification with \
+                 an error that does not name the real cause.",
+                ext = T::EXTENSION
+            );
+            read_json(path)
+        }
         Some(ext) if ext == T::EXTENSION => read_bin(path, T::FORMAT, T::VERSION),
         _ => Err(anyhow::anyhow!(
             "Unsupported file extension, please specify .{} or .json",

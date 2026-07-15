@@ -2,20 +2,22 @@ use {
     crate::{
         sparse_matrix::SparseMatrix,
         utils::{unzip_double_array, workload_size},
-        FieldElement, R1CS,
+        R1CS,
     },
-    ark_std::{One, Zero},
+    ark_ff::Field,
+    rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator},
     std::array,
     tracing::instrument,
+    whir::algebra::embedding::Embedding,
 };
 
 /// Compute the sum of a vector valued function over the boolean hypercube in
 /// the leading variable.
-pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize>(
-    mles: [&mut [FieldElement]; N],
-    fold: Option<FieldElement>,
-    map: impl Fn([(FieldElement, FieldElement); N]) -> [FieldElement; M] + Send + Sync + Copy,
-) -> [FieldElement; M] {
+pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize, F: Field>(
+    mles: [&mut [F]; N],
+    fold: Option<F>,
+    map: impl Fn([(F, F); N]) -> [F; M] + Send + Sync + Copy,
+) -> [F; M] {
     let size = mles[0].len();
     assert!(size.is_power_of_two());
     assert!(size >= 2);
@@ -29,19 +31,19 @@ pub fn sumcheck_fold_map_reduce<const N: usize, const M: usize>(
             let (p2, p3) = tail.split_at_mut(size / 4);
             [p0, p1, p2, p3]
         });
-        sumcheck_fold_map_reduce_inner::<N, M>(slices, fold, map)
+        sumcheck_fold_map_reduce_inner::<N, M, F>(slices, fold, map)
     } else {
         let slices = mles.map(|mle| mle.split_at(size / 2));
-        sumcheck_map_reduce_inner::<N, M>(slices, map)
+        sumcheck_map_reduce_inner::<N, M, F>(slices, map)
     }
 }
 
-fn sumcheck_map_reduce_inner<const N: usize, const M: usize>(
-    mles: [(&[FieldElement], &[FieldElement]); N],
-    map: impl Fn([(FieldElement, FieldElement); N]) -> [FieldElement; M] + Send + Sync + Copy,
-) -> [FieldElement; M] {
+fn sumcheck_map_reduce_inner<const N: usize, const M: usize, F: Field>(
+    mles: [(&[F], &[F]); N],
+    map: impl Fn([(F, F); N]) -> [F; M] + Send + Sync + Copy,
+) -> [F; M] {
     let size = mles[0].0.len();
-    if size * N * 2 > workload_size::<FieldElement>() {
+    if size * N * 2 > workload_size::<F>() {
         // Split slices
         let pairs = mles.map(|(p0, p1)| (p0.split_at(size / 2), p1.split_at(size / 2)));
         let left = pairs.map(|((l0, _), (l1, _))| (l0, l1));
@@ -56,7 +58,7 @@ fn sumcheck_map_reduce_inner<const N: usize, const M: usize>(
         // Combine results
         array::from_fn(|i| l[i] + r[i])
     } else {
-        let mut result = [FieldElement::zero(); M];
+        let mut result = [F::zero(); M];
         for i in 0..size {
             let e = mles.map(|(p0, p1)| (p0[i], p1[i]));
             let local = map(e);
@@ -66,13 +68,13 @@ fn sumcheck_map_reduce_inner<const N: usize, const M: usize>(
     }
 }
 
-fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
-    mut mles: [[&mut [FieldElement]; 4]; N],
-    fold: FieldElement,
-    map: impl Fn([(FieldElement, FieldElement); N]) -> [FieldElement; M] + Send + Sync + Copy,
-) -> [FieldElement; M] {
+fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize, F: Field>(
+    mut mles: [[&mut [F]; 4]; N],
+    fold: F,
+    map: impl Fn([(F, F); N]) -> [F; M] + Send + Sync + Copy,
+) -> [F; M] {
     let size = mles[0][0].len();
-    if size * N * 4 > workload_size::<FieldElement>() {
+    if size * N * 4 > workload_size::<F>() {
         // Split slices
         let pairs = mles.map(|mles| mles.map(|p| p.split_at_mut(size / 2)));
         let (left, right) = unzip_double_array(pairs);
@@ -86,7 +88,7 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
         // Combine results
         array::from_fn(|i| l[i] + r[i])
     } else {
-        let mut result = [FieldElement::zero(); M];
+        let mut result = [F::zero(); M];
         for i in 0..size {
             let e = array::from_fn(|j| {
                 let mle = &mut mles[j];
@@ -101,33 +103,95 @@ fn sumcheck_fold_map_reduce_inner<const N: usize, const M: usize>(
     }
 }
 
+/// Compute the sum of a vector valued function over the boolean hypercube in
+/// the leading variable, with base-field `mles` against an extension-field
+/// `ext_mle`.
+pub fn mixed_sumcheck_map_reduce<const N: usize, const M: usize, F: Field, G: Field>(
+    mles: [&[F]; N],
+    ext_mle: &[G],
+    map: impl Fn([(F, F); N], (G, G)) -> [G; M] + Send + Sync + Copy,
+) -> [G; M] {
+    let size = ext_mle.len();
+    assert!(size.is_power_of_two());
+    assert!(size >= 2);
+    assert!(mles.iter().all(|mle| mle.len() == size));
+
+    let mles = mles.map(|mle| mle.split_at(size / 2));
+    mixed_map_reduce_inner::<N, M, F, G>(mles, ext_mle.split_at(size / 2), map)
+}
+
+fn mixed_map_reduce_inner<const N: usize, const M: usize, F: Field, G: Field>(
+    mles: [(&[F], &[F]); N],
+    ext_mle: (&[G], &[G]),
+    map: impl Fn([(F, F); N], (G, G)) -> [G; M] + Send + Sync + Copy,
+) -> [G; M] {
+    let size = ext_mle.0.len();
+    if size * (N + 1) * 2 > workload_size::<G>() {
+        // Split slices
+        let pairs = mles.map(|(p0, p1)| (p0.split_at(size / 2), p1.split_at(size / 2)));
+        let left = pairs.map(|((l0, _), (l1, _))| (l0, l1));
+        let right = pairs.map(|((_, r0), (_, r1))| (r0, r1));
+        let (ext_p0, ext_p1) = (ext_mle.0.split_at(size / 2), ext_mle.1.split_at(size / 2));
+
+        // Parallel recurse
+        let (l, r) = rayon::join(
+            || mixed_map_reduce_inner(left, (ext_p0.0, ext_p1.0), map),
+            || mixed_map_reduce_inner(right, (ext_p0.1, ext_p1.1), map),
+        );
+
+        // Combine results
+        array::from_fn(|i| l[i] + r[i])
+    } else {
+        let mut result = [G::zero(); M];
+        for i in 0..size {
+            let e = mles.map(|(p0, p1)| (p0[i], p1[i]));
+            let local = map(e, (ext_mle.0[i], ext_mle.1[i]));
+            result.iter_mut().zip(local).for_each(|(r, l)| *r += l);
+        }
+        result
+    }
+}
+
+/// Fold the leading variable of a base-field mle at an extension-field point,
+/// lifting it into the extension: `out[i] = mle[i] + point * (mle[i + n/2] -
+/// mle[i])`.
+pub fn mixed_fold<M: Embedding>(
+    embedding: &M,
+    mle: &[M::Source],
+    point: M::Target,
+) -> Vec<M::Target> {
+    assert!(mle.len().is_power_of_two());
+    assert!(mle.len() >= 2);
+    let (p0, p1) = mle.split_at(mle.len() / 2);
+    p0.par_iter()
+        .zip(p1.par_iter())
+        .with_min_len(workload_size::<M::Target>())
+        .map(|(&e0, &e1)| embedding.mixed_add(embedding.mixed_mul(point, e1 - e0), e0))
+        .collect()
+}
+
 /// List of evaluations for eq(r, x) over the boolean hypercube, truncated to
 /// `num_entries` elements. When `num_entries < 2^r.len()`, avoids allocating
 /// the full hypercube.
 #[instrument(skip_all)]
-pub fn calculate_evaluations_over_boolean_hypercube_for_eq(
-    r: &[FieldElement],
+pub fn calculate_evaluations_over_boolean_hypercube_for_eq<F: Field>(
+    r: &[F],
     num_entries: usize,
-) -> Vec<FieldElement> {
+) -> Vec<F> {
     if num_entries == 0 {
         return vec![];
     }
     let full_size = 1usize << r.len();
     assert!(num_entries <= full_size);
-    let mut result = vec![FieldElement::zero(); num_entries];
-    eval_eq(r, &mut result, FieldElement::one(), full_size);
+    let mut result = vec![F::zero(); num_entries];
+    eval_eq(r, &mut result, F::one(), full_size);
     result
 }
 
 /// Evaluates the equality polynomial recursively. `subtree_size` tracks the
 /// logical size of this recursion level so that truncated output buffers are
 /// split correctly.
-fn eval_eq(
-    eval: &[FieldElement],
-    out: &mut [FieldElement],
-    scalar: FieldElement,
-    subtree_size: usize,
-) {
+fn eval_eq<F: Field>(eval: &[F], out: &mut [F], scalar: F, subtree_size: usize) {
     debug_assert!(out.len() <= subtree_size);
     if let Some((&x, tail)) = eval.split_first() {
         let half = subtree_size / 2;
@@ -138,7 +202,7 @@ fn eval_eq(
         let s0 = scalar - s1;
         if right_len == 0 {
             eval_eq(tail, o0, s0, half);
-        } else if subtree_size > workload_size::<FieldElement>() {
+        } else if subtree_size > workload_size::<F>() {
             rayon::join(
                 || eval_eq(tail, o0, s0, half),
                 || eval_eq(tail, o1, s1, half),
@@ -153,42 +217,42 @@ fn eval_eq(
 }
 
 /// Evaluates a quadratic polynomial on a value
-pub fn eval_quadratic_poly(poly: [FieldElement; 3], point: FieldElement) -> FieldElement {
+pub fn eval_quadratic_poly<F: Field>(poly: [F; 3], point: F) -> F {
     poly[0] + point * (poly[1] + point * poly[2])
 }
 
 /// Evaluates a cubic polynomial on a value
-pub fn eval_cubic_poly(poly: [FieldElement; 4], point: FieldElement) -> FieldElement {
+pub fn eval_cubic_poly<F: Field>(poly: [F; 4], point: F) -> F {
     poly[0] + point * (poly[1] + point * (poly[2] + point * poly[3]))
 }
 
 /// Given a path to JSON file with sparse matrices and a witness, calculates
 /// matrix-vector multiplication and returns them
 #[instrument(skip_all)]
-pub fn calculate_witness_bounds(
-    r1cs: &R1CS,
-    witness: &[FieldElement],
-) -> (Vec<FieldElement>, Vec<FieldElement>, Vec<FieldElement>) {
+pub fn calculate_witness_bounds<F: Field>(
+    r1cs: &R1CS<F>,
+    witness: &[F],
+) -> (Vec<F>, Vec<F>, Vec<F>) {
     let (a, b) = rayon::join(|| r1cs.a() * witness, || r1cs.b() * witness);
 
     let target_len = a.len().next_power_of_two();
     let mut c = Vec::with_capacity(target_len);
     c.extend(a.iter().zip(b.iter()).map(|(a, b)| *a * *b));
-    c.resize(target_len, FieldElement::zero());
+    c.resize(target_len, F::zero());
 
     let mut a = a;
     let mut b = b;
-    a.resize(target_len, FieldElement::zero());
-    b.resize(target_len, FieldElement::zero());
+    a.resize(target_len, F::zero());
+    b.resize(target_len, F::zero());
     (a, b, c)
 }
 
 /// Calculates eq(r, alpha)
-pub fn calculate_eq(r: &[FieldElement], alpha: &[FieldElement]) -> FieldElement {
+pub fn calculate_eq<F: Field>(r: &[F], alpha: &[F]) -> F {
     r.iter()
         .zip(alpha.iter())
-        .fold(FieldElement::from(1), |acc, (&r, &alpha)| {
-            acc * (r * alpha + (FieldElement::from(1) - r) * (FieldElement::from(1) - alpha))
+        .fold(F::one(), |acc, (&r, &alpha)| {
+            acc * (r * alpha + (F::one() - r) * (F::one() - alpha))
         })
 }
 
@@ -197,7 +261,9 @@ pub fn calculate_eq(r: &[FieldElement], alpha: &[FieldElement]) -> FieldElement 
 /// This depends only on the R1CS structure (from the verifier key), not on any
 /// proof-specific data, so it can run concurrently with sumcheck verification.
 #[instrument(skip_all)]
-pub fn transpose_r1cs_matrices(r1cs: &R1CS) -> (SparseMatrix, SparseMatrix, SparseMatrix) {
+pub fn transpose_r1cs_matrices<F: Field>(
+    r1cs: &R1CS<F>,
+) -> (SparseMatrix, SparseMatrix, SparseMatrix) {
     let ((at, bt), ct) = rayon::join(
         || rayon::join(|| r1cs.a.transpose(), || r1cs.b.transpose()),
         || r1cs.c.transpose(),
@@ -208,24 +274,25 @@ pub fn transpose_r1cs_matrices(r1cs: &R1CS) -> (SparseMatrix, SparseMatrix, Spar
 /// Multiply pre-transposed R1CS matrices by eq(alpha, ·) to compute the
 /// external row.
 #[instrument(skip_all)]
-pub fn multiply_transposed_by_eq_alpha(
+pub fn multiply_transposed_by_eq_alpha<M: Embedding>(
+    embedding: &M,
     at: &SparseMatrix,
     bt: &SparseMatrix,
     ct: &SparseMatrix,
-    alpha: &[FieldElement],
-    r1cs: &R1CS,
-) -> [Vec<FieldElement>; 3] {
+    alpha: &[M::Target],
+    r1cs: &R1CS<M::Source>,
+) -> [Vec<M::Target>; 3] {
     let eq_alpha =
         calculate_evaluations_over_boolean_hypercube_for_eq(alpha, r1cs.num_constraints());
     let interner = &r1cs.interner;
     let ((a, b), c) = rayon::join(
         || {
             rayon::join(
-                || at.hydrate(interner) * eq_alpha.as_slice(),
-                || bt.hydrate(interner) * eq_alpha.as_slice(),
+                || at.hydrate(interner).mixed_multiply(embedding, &eq_alpha),
+                || bt.hydrate(interner).mixed_multiply(embedding, &eq_alpha),
             )
         },
-        || ct.hydrate(interner) * eq_alpha.as_slice(),
+        || ct.hydrate(interner).mixed_multiply(embedding, &eq_alpha),
     );
 
     [a, b, c]
@@ -233,7 +300,14 @@ pub fn multiply_transposed_by_eq_alpha(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use {
+        super::*,
+        ark_std::{One, Zero},
+        whir::algebra::{
+            embedding::{Basefield, Identity},
+            fields::{Field64 as FieldElement, Field64_3},
+        },
+    };
 
     fn fe(v: i64) -> FieldElement {
         if v >= 0 {
@@ -243,13 +317,17 @@ mod tests {
         }
     }
 
+    fn fe3(a: i64, b: i64, c: i64) -> Field64_3 {
+        Field64_3::from_base_prime_field_elems(vec![fe(a), fe(b), fe(c)]).unwrap()
+    }
+
     /// Build a small 3×4 R1CS for matrix tests.
     ///
     /// A = [[1, 2, 0, 0],   B = [[0, 1, 0, 0],   C = [[0, 0, 1, 0],
     ///      [0, 0, 3, 0],        [2, 0, 0, 1],        [0, 1, 0, 3],
     ///      [1, 0, 0, 1]]        [0, 0, 4, 0]]        [2, 0, 0, 0]]
-    fn make_test_r1cs() -> crate::R1CS {
-        let mut r1cs = crate::R1CS::new();
+    fn make_test_r1cs() -> crate::R1CS<FieldElement> {
+        let mut r1cs = crate::R1CS::<FieldElement>::new();
         r1cs.add_witnesses(4);
         r1cs.add_constraint(&[(fe(1), 0), (fe(2), 1)], &[(fe(1), 1)], &[(fe(1), 2)]);
         r1cs.add_constraint(&[(fe(3), 2)], &[(fe(2), 0), (fe(1), 3)], &[
@@ -280,7 +358,7 @@ mod tests {
 
     #[test]
     fn test_calculate_eq_empty() {
-        assert_eq!(calculate_eq(&[], &[]), fe(1));
+        assert_eq!(calculate_eq::<FieldElement>(&[], &[]), fe(1));
     }
 
     /// calculate_evaluations_over_boolean_hypercube_for_eq
@@ -312,7 +390,7 @@ mod tests {
 
     #[test]
     fn test_eq_hypercube_empty_r() {
-        let result = calculate_evaluations_over_boolean_hypercube_for_eq(&[], 1);
+        let result = calculate_evaluations_over_boolean_hypercube_for_eq::<FieldElement>(&[], 1);
         assert_eq!(result, vec![fe(1)]);
     }
 
@@ -321,7 +399,7 @@ mod tests {
         let result = calculate_evaluations_over_boolean_hypercube_for_eq(&[fe(2), fe(3), fe(5)], 0);
         assert!(result.is_empty(), "non-empty r, zero entries");
 
-        let result = calculate_evaluations_over_boolean_hypercube_for_eq(&[], 0);
+        let result = calculate_evaluations_over_boolean_hypercube_for_eq::<FieldElement>(&[], 0);
         assert!(result.is_empty(), "empty r, zero entries");
     }
 
@@ -360,6 +438,131 @@ mod tests {
         let r = [fe(2), fe(3)];
         let result = calculate_evaluations_over_boolean_hypercube_for_eq(&r, 1);
         assert_eq!(result, vec![calculate_eq(&r, &[fe(0), fe(0)])]);
+    }
+
+    // mixed_sumcheck_map_reduce / mixed_fold
+
+    /// The cubic sumcheck round evaluations, base mles against ext eq.
+    fn mixed_round_map(
+        embedding: &Basefield<Field64_3>,
+        [a, b, c]: [(FieldElement, FieldElement); 3],
+        eq: (Field64_3, Field64_3),
+    ) -> [Field64_3; 3] {
+        let f0 = embedding.mixed_mul(eq.0, a.0 * b.0 - c.0);
+        let f_em1 = embedding.mixed_mul(
+            eq.0 + eq.0 - eq.1,
+            (a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1),
+        );
+        let f_inf = embedding.mixed_mul(eq.1 - eq.0, (a.1 - a.0) * (b.1 - b.0));
+        [f0, f_em1, f_inf]
+    }
+
+    /// The same round evaluations, everything lifted to the extension.
+    fn ext_round_map([a, b, c, eq]: [(Field64_3, Field64_3); 4]) -> [Field64_3; 3] {
+        let f0 = eq.0 * (a.0 * b.0 - c.0);
+        let f_em1 =
+            (eq.0 + eq.0 - eq.1) * ((a.0 + a.0 - a.1) * (b.0 + b.0 - b.1) - (c.0 + c.0 - c.1));
+        let f_inf = (eq.1 - eq.0) * (a.1 - a.0) * (b.1 - b.0);
+        [f0, f_em1, f_inf]
+    }
+
+    fn mixed_test_mles(n: usize) -> ([Vec<FieldElement>; 3], Vec<Field64_3>) {
+        let a = (0..n).map(|i| fe(i as i64 + 1)).collect();
+        let b = (0..n).map(|i| fe(2 * i as i64 + 3)).collect();
+        let c = (0..n).map(|i| fe(7 * i as i64 + 5)).collect();
+        let eq = (0..n)
+            .map(|i| fe3(i as i64 + 2, 3 * i as i64 + 1, i as i64))
+            .collect();
+        ([a, b, c], eq)
+    }
+
+    #[test]
+    fn test_mixed_map_reduce_matches_lifted() {
+        let embedding = Basefield::<Field64_3>::new();
+        let ([a, b, c], eq) = mixed_test_mles(16);
+
+        let mixed = mixed_sumcheck_map_reduce([&a[..], &b[..], &c[..]], &eq, |mles, eq| {
+            mixed_round_map(&embedding, mles, eq)
+        });
+
+        let (mut la, mut lb, mut lc, mut leq) = (
+            embedding.map_vec(a),
+            embedding.map_vec(b),
+            embedding.map_vec(c),
+            eq,
+        );
+        let lifted =
+            sumcheck_fold_map_reduce([&mut la, &mut lb, &mut lc, &mut leq], None, ext_round_map);
+
+        assert_eq!(mixed, lifted);
+    }
+
+    #[test]
+    fn test_mixed_fold_matches_lifted() {
+        let embedding = Basefield::<Field64_3>::new();
+        let n = 8;
+        let mle: Vec<FieldElement> = (0..n).map(|i| fe(3 * i as i64 + 2)).collect();
+        let point = fe3(5, 7, 11);
+
+        let folded = mixed_fold(&embedding, &mle, point);
+
+        let lifted = embedding.map_vec(mle);
+        let (p0, p1) = lifted.split_at(n / 2);
+        let expected: Vec<Field64_3> = p0
+            .iter()
+            .zip(p1)
+            .map(|(&l, &h)| l + point * (h - l))
+            .collect();
+        assert_eq!(folded, expected);
+    }
+
+    #[test]
+    fn test_mixed_fold_identity() {
+        let n = 4;
+        let mle: Vec<Field64_3> = (0..n)
+            .map(|i| fe3(i as i64 + 1, i as i64, 2 * i as i64))
+            .collect();
+        let point = fe3(9, 4, 6);
+
+        let folded = mixed_fold(&Identity::new(), &mle, point);
+
+        let expected: Vec<Field64_3> = (0..n / 2)
+            .map(|i| mle[i] + point * (mle[i + n / 2] - mle[i]))
+            .collect();
+        assert_eq!(folded, expected);
+    }
+
+    /// Explicit `mixed_fold` + fold-free round must match the fused in-place
+    /// fold inside `sumcheck_fold_map_reduce` — the parity the prover's
+    /// base-field first round relies on.
+    #[test]
+    fn test_explicit_mixed_fold_matches_fused_fold() {
+        let embedding = Basefield::<Field64_3>::new();
+        let ([a, b, c], eq) = mixed_test_mles(8);
+        let alpha = fe3(3, 8, 2);
+
+        let (mut la, mut lb, mut lc, mut leq) = (
+            embedding.map_vec(a.clone()),
+            embedding.map_vec(b.clone()),
+            embedding.map_vec(c.clone()),
+            eq.clone(),
+        );
+        let fused = sumcheck_fold_map_reduce(
+            [&mut la, &mut lb, &mut lc, &mut leq],
+            Some(alpha),
+            ext_round_map,
+        );
+
+        let (mut fa, mut fb, mut fc, mut feq) = (
+            mixed_fold(&embedding, &a, alpha),
+            mixed_fold(&embedding, &b, alpha),
+            mixed_fold(&embedding, &c, alpha),
+            mixed_fold(&Identity::new(), &eq, alpha),
+        );
+        let explicit =
+            sumcheck_fold_map_reduce([&mut fa, &mut fb, &mut fc, &mut feq], None, ext_round_map);
+
+        assert_eq!(fused, explicit);
     }
 
     /// transpose_r1cs_matrices
@@ -430,8 +633,14 @@ mod tests {
         let expected_b = vec![fe(-6), fe(2), fe(-16), fe(-3)];
         let expected_c = vec![fe(-8), fe(-3), fe(2), fe(-9)];
 
-        let [actual_a, actual_b, actual_c] =
-            multiply_transposed_by_eq_alpha(&at, &bt, &ct, &alpha, &r1cs);
+        let [actual_a, actual_b, actual_c] = multiply_transposed_by_eq_alpha(
+            &whir::algebra::embedding::Identity::<FieldElement>::new(),
+            &at,
+            &bt,
+            &ct,
+            &alpha,
+            &r1cs,
+        );
 
         assert_eq!(actual_a.len(), r1cs.num_witnesses());
         assert_eq!(actual_a, expected_a, "A result mismatch");

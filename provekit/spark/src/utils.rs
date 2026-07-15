@@ -4,12 +4,15 @@ use {
     anyhow::{anyhow, Result},
     ark_ff::Zero,
     ark_serialize::CanonicalDeserialize,
-    provekit_common::{
-        utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq, FieldElement,
-        TranscriptSponge,
-    },
+    provekit_backend_bn254::{FieldElement, TranscriptSponge},
+    provekit_common::utils::sumcheck::calculate_evaluations_over_boolean_hypercube_for_eq,
     whir::transcript::VerifierState,
 };
+
+/// 1/2 for BN254.
+pub(crate) const HALF: FieldElement = ark_ff::MontFp!(
+    "10944121435919637611123202872628637544274182200208017171849102093287904247809"
+);
 
 pub fn read_hint<T: CanonicalDeserialize>(
     arthur: &mut VerifierState<'_, TranscriptSponge>,

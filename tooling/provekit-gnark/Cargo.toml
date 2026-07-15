@@ -10,6 +10,7 @@ repository.workspace = true
 
 [dependencies]
 # Workspace crates
+provekit-backend-bn254.workspace = true
 provekit-common.workspace = true
 
 # Cryptography and proof systems

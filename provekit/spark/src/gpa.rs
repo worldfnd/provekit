@@ -1,16 +1,14 @@
 use {
+    crate::utils::HALF,
     anyhow::{ensure, Context},
     ark_ff::{AdditiveGroup, Field},
-    provekit_common::{
-        utils::{
-            next_power_of_two,
-            sumcheck::{
-                calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq, eval_cubic_poly,
-                sumcheck_fold_map_reduce,
-            },
-            HALF,
+    provekit_backend_bn254::{FieldElement, TranscriptSponge},
+    provekit_common::utils::{
+        next_power_of_two,
+        sumcheck::{
+            calculate_eq, calculate_evaluations_over_boolean_hypercube_for_eq, eval_cubic_poly,
+            sumcheck_fold_map_reduce,
         },
-        FieldElement, TranscriptSponge,
     },
     tracing::instrument,
     whir::transcript::{ProverState, VerifierMessage, VerifierState},
