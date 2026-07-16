@@ -1,3 +1,5 @@
+#![cfg(feature = "fixture-tests")]
+
 use bench_mobile::examples::{fixture_end_to_end_smoke, prepare_fixture, MobileBenchFixture};
 
 #[test]

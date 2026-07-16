@@ -1,6 +1,6 @@
 use {
     crate::in_process::{
-        prepare_noir_program_from_json, trim_process_memory, PreparedNoirProgram,
+        prepare_noir_program_from_json, PreparedNoirProgram, PreparedNoirProver,
         VerifiedNoirProgram,
     },
     anyhow::{Context, Result},
@@ -46,6 +46,7 @@ const FRAGMENTED_ATTEST_TOML: &str = include_str!(
 );
 
 pub type PreparedCompleteAgeCheckFixture = PreparedNoirProgram;
+pub type PreparedCompleteAgeCheckProver = PreparedNoirProver;
 pub type VerifiedCompleteAgeCheckFixture = VerifiedNoirProgram;
 
 /// Prepared prover state for the four-stage fragmented age-check fixture.
@@ -55,6 +56,27 @@ pub struct PreparedFragmentedAgeCheckFixture {
     pub add_id_data:          PreparedNoirProgram,
     pub add_integrity_commit: PreparedNoirProgram,
     pub attest:               PreparedNoirProgram,
+}
+
+/// Prover-only state for the four-stage fragmented age-check fixture.
+#[derive(Clone)]
+pub struct PreparedFragmentedAgeCheckProvers {
+    pub add_dsc:              PreparedNoirProver,
+    pub add_id_data:          PreparedNoirProver,
+    pub add_integrity_commit: PreparedNoirProver,
+    pub attest:               PreparedNoirProver,
+}
+
+impl PreparedFragmentedAgeCheckFixture {
+    /// Drop all verifier-side state before a measured proof iteration.
+    pub fn into_provers(self) -> PreparedFragmentedAgeCheckProvers {
+        PreparedFragmentedAgeCheckProvers {
+            add_dsc:              self.add_dsc.into_prover_only(),
+            add_id_data:          self.add_id_data.into_prover_only(),
+            add_integrity_commit: self.add_integrity_commit.into_prover_only(),
+            attest:               self.attest.into_prover_only(),
+        }
+    }
 }
 
 /// Verified proof outputs for the four-stage fragmented age-check fixture.
@@ -88,15 +110,13 @@ pub fn prove_complete_age_check_fixture(
     prepared: PreparedCompleteAgeCheckFixture,
 ) -> Result<VerifiedCompleteAgeCheckFixture> {
     let verified = prepared.prove()?;
-    trim_process_memory();
     Ok(verified)
 }
 
 pub fn prove_complete_age_check_fixture_proof_only(
-    prepared: PreparedCompleteAgeCheckFixture,
+    prepared: PreparedCompleteAgeCheckProver,
 ) -> Result<NoirProof> {
-    let proof = prepared.prove_only()?;
-    trim_process_memory();
+    let proof = prepared.prove()?;
     Ok(proof)
 }
 
@@ -139,19 +159,15 @@ pub fn prepare_fragmented_age_check_fixture() -> Result<PreparedFragmentedAgeChe
 /// Prove every fragmented age-check stage once, dropping verifier state before
 /// each proof.
 pub fn prove_fragmented_age_check_fixture_proof_only(
-    prepared: PreparedFragmentedAgeCheckFixture,
+    prepared: PreparedFragmentedAgeCheckProvers,
 ) -> Result<FragmentedAgeCheckProofs> {
-    let add_dsc = prepared.add_dsc.prove_only()?;
-    trim_process_memory();
+    let add_dsc = prepared.add_dsc.prove()?;
 
-    let add_id_data = prepared.add_id_data.prove_only()?;
-    trim_process_memory();
+    let add_id_data = prepared.add_id_data.prove()?;
 
-    let add_integrity_commit = prepared.add_integrity_commit.prove_only()?;
-    trim_process_memory();
+    let add_integrity_commit = prepared.add_integrity_commit.prove()?;
 
-    let attest = prepared.attest.prove_only()?;
-    trim_process_memory();
+    let attest = prepared.attest.prove()?;
 
     Ok(FragmentedAgeCheckProofs {
         add_dsc,
@@ -166,16 +182,12 @@ pub fn prove_fragmented_age_check_fixture(
     prepared: PreparedFragmentedAgeCheckFixture,
 ) -> Result<VerifiedFragmentedAgeCheckFixture> {
     let add_dsc = prepared.add_dsc.prove()?;
-    trim_process_memory();
 
     let add_id_data = prepared.add_id_data.prove()?;
-    trim_process_memory();
 
     let add_integrity_commit = prepared.add_integrity_commit.prove()?;
-    trim_process_memory();
 
     let attest = prepared.attest.prove()?;
-    trim_process_memory();
 
     Ok(VerifiedFragmentedAgeCheckFixture {
         add_dsc,

@@ -1,3 +1,5 @@
+#![cfg(feature = "fixture-tests")]
+
 use bench_mobile::passport::{
     passport_complete_age_check_end_to_end_smoke, passport_fragmented_age_check_end_to_end_smoke,
     prepare_complete_age_check_fixture, prepare_fragmented_age_check_fixture,

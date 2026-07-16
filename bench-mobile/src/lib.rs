@@ -4,10 +4,12 @@ use {
     crate::passport::{
         prove_complete_age_check_fixture, prove_complete_age_check_fixture_proof_only,
         prove_fragmented_age_check_fixture_proof_only, verify_complete_age_check_fixture,
-        PreparedCompleteAgeCheckFixture, PreparedFragmentedAgeCheckFixture,
-        VerifiedCompleteAgeCheckFixture,
+        PreparedCompleteAgeCheckFixture, PreparedCompleteAgeCheckProver,
+        PreparedFragmentedAgeCheckProvers, VerifiedCompleteAgeCheckFixture,
     },
-    examples::{MobileBenchFixture, PreparedCircuitFixture, VerifiedCircuitFixture},
+    examples::{
+        MobileBenchFixture, PreparedCircuitFixture, PreparedProverFixture, VerifiedCircuitFixture,
+    },
     mobench_sdk::{benchmark, profile_phase},
     serde_json::json,
     std::hint::black_box,
@@ -268,35 +270,78 @@ pub fn run_benchmark(spec: BenchSpec) -> Result<BenchReport, BenchError> {
 mobench_sdk::export_native_c_abi!();
 
 fn setup_complete_age_check_prepared() -> PreparedCompleteAgeCheckFixture {
-    passport::prepare_complete_age_check_fixture().expect("prepare complete_age_check fixture")
+    let prepared =
+        passport::prepare_complete_age_check_fixture().expect("prepare complete_age_check fixture");
+    in_process::trim_process_memory();
+    prepared
 }
 
 fn setup_complete_age_check_verified() -> VerifiedCompleteAgeCheckFixture {
     let prepared = setup_complete_age_check_prepared();
-    prove_complete_age_check_fixture(prepared).expect("prove complete_age_check fixture")
+    let verified =
+        prove_complete_age_check_fixture(prepared).expect("prove complete_age_check fixture");
+    in_process::trim_process_memory();
+    verified
 }
 
-fn setup_fragmented_age_check_prepared() -> PreparedFragmentedAgeCheckFixture {
-    passport::prepare_fragmented_age_check_fixture().expect("prepare fragmented age_check fixture")
+fn setup_complete_age_check_prover() -> PreparedCompleteAgeCheckProver {
+    let prover = passport::prepare_complete_age_check_fixture()
+        .expect("prepare complete_age_check fixture")
+        .into_prover_only();
+    in_process::trim_process_memory();
+    prover
+}
+
+fn setup_fragmented_age_check_provers() -> PreparedFragmentedAgeCheckProvers {
+    let provers = passport::prepare_fragmented_age_check_fixture()
+        .expect("prepare fragmented age_check fixture")
+        .into_provers();
+    in_process::trim_process_memory();
+    provers
 }
 
 fn setup_oprf_prepared() -> PreparedCircuitFixture {
-    examples::prepare_fixture(MobileBenchFixture::Oprf).expect("prepare oprf fixture")
+    let prepared =
+        examples::prepare_fixture(MobileBenchFixture::Oprf).expect("prepare oprf fixture");
+    in_process::trim_process_memory();
+    prepared
 }
 
 fn setup_oprf_verified() -> VerifiedCircuitFixture {
     let prepared = setup_oprf_prepared();
-    examples::prove_fixture(prepared).expect("prove oprf fixture")
+    let verified = examples::prove_fixture(prepared).expect("prove oprf fixture");
+    in_process::trim_process_memory();
+    verified
+}
+
+fn setup_oprf_prover() -> PreparedProverFixture {
+    let prover = examples::prepare_fixture(MobileBenchFixture::Oprf)
+        .expect("prepare oprf fixture")
+        .into_prover_only();
+    in_process::trim_process_memory();
+    prover
 }
 
 fn setup_p256_bigcurve_prepared() -> PreparedCircuitFixture {
-    examples::prepare_fixture(MobileBenchFixture::P256Bigcurve)
-        .expect("prepare p256_bigcurve fixture")
+    let prepared = examples::prepare_fixture(MobileBenchFixture::P256Bigcurve)
+        .expect("prepare p256_bigcurve fixture");
+    in_process::trim_process_memory();
+    prepared
 }
 
 fn setup_p256_bigcurve_verified() -> VerifiedCircuitFixture {
     let prepared = setup_p256_bigcurve_prepared();
-    examples::prove_fixture(prepared).expect("prove p256_bigcurve fixture")
+    let verified = examples::prove_fixture(prepared).expect("prove p256_bigcurve fixture");
+    in_process::trim_process_memory();
+    verified
+}
+
+fn setup_p256_bigcurve_prover() -> PreparedProverFixture {
+    let prover = examples::prepare_fixture(MobileBenchFixture::P256Bigcurve)
+        .expect("prepare p256_bigcurve fixture")
+        .into_prover_only();
+    in_process::trim_process_memory();
+    prover
 }
 
 #[benchmark]
@@ -312,8 +357,8 @@ pub fn bench_passport_complete_age_check_prepare() {
     ));
 }
 
-#[benchmark(setup = setup_complete_age_check_prepared, per_iteration)]
-pub fn bench_passport_complete_age_check_prove(prepared: PreparedCompleteAgeCheckFixture) {
+#[benchmark(setup = setup_complete_age_check_prover, per_iteration)]
+pub fn bench_passport_complete_age_check_prove(prepared: PreparedCompleteAgeCheckProver) {
     let proof = profile_phase("prove", || {
         prove_complete_age_check_fixture_proof_only(prepared)
             .expect("prove complete_age_check fixture")
@@ -362,8 +407,8 @@ pub fn bench_passport_fragmented_age_check_prepare() {
     ));
 }
 
-#[benchmark(setup = setup_fragmented_age_check_prepared, per_iteration)]
-pub fn bench_passport_fragmented_age_check_prove(prepared: PreparedFragmentedAgeCheckFixture) {
+#[benchmark(setup = setup_fragmented_age_check_provers, per_iteration)]
+pub fn bench_passport_fragmented_age_check_prove(prepared: PreparedFragmentedAgeCheckProvers) {
     let proofs = profile_phase("prove", || {
         prove_fragmented_age_check_fixture_proof_only(prepared)
             .expect("prove fragmented age_check fixture")
@@ -385,8 +430,8 @@ pub fn bench_oprf_prepare() {
     ));
 }
 
-#[benchmark(setup = setup_oprf_prepared, per_iteration)]
-pub fn bench_oprf_prove(prepared: PreparedCircuitFixture) {
+#[benchmark(setup = setup_oprf_prover, per_iteration)]
+pub fn bench_oprf_prove(prepared: PreparedProverFixture) {
     let proof = profile_phase("prove", || {
         examples::prove_fixture_proof_only(prepared).expect("prove oprf fixture")
     });
@@ -432,13 +477,13 @@ pub fn bench_p256_bigcurve_prepare() {
     ));
 }
 
-#[benchmark(setup = setup_p256_bigcurve_prepared, per_iteration)]
-pub fn bench_p256_bigcurve_prove(prepared: PreparedCircuitFixture) {
-    let verified = profile_phase("prove", || {
-        examples::prove_fixture(prepared).expect("prove p256_bigcurve fixture")
+#[benchmark(setup = setup_p256_bigcurve_prover, per_iteration)]
+pub fn bench_p256_bigcurve_prove(prepared: PreparedProverFixture) {
+    let proof = profile_phase("prove", || {
+        examples::prove_fixture_proof_only(prepared).expect("prove p256_bigcurve fixture")
     });
 
-    black_box(verified);
+    black_box(proof);
 }
 
 #[benchmark(setup = setup_p256_bigcurve_verified)]

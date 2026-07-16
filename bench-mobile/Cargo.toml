@@ -10,6 +10,10 @@ repository.workspace = true
 publish = false
 description = "Mobile benchmarks for ProveKit Noir passport proving"
 
+[features]
+default = []
+fixture-tests = []
+
 [package.metadata.cargo-machete]
 ignored = ["inventory"]
 

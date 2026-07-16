@@ -18,8 +18,8 @@ pub fn main(
     rp_id: pub Field,
     action: pub Field,
     oprf_pk: pub PublicKey,
-    nonce: pub Field,
-    signal_hash: pub Field,
+    nonce: Field,
+    signal_hash: Field,
     inputs: OprfNullifierInputs<MAX_DEPTH, NUM_KEYS>,
 ) -> pub OprfNullifierOutputs {
     oprf_nullifier(

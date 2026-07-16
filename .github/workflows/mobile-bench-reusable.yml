@@ -101,20 +101,69 @@ on:
 
 permissions:
   actions: read
-  contents: write
-  pull-requests: write
-  issues: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
   RUST_TOOLCHAIN: nightly-2026-03-04
 
 jobs:
+  validate_revision:
+    name: Validate benchmark revision
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      trusted: ${{ steps.validate.outputs.trusted }}
+    steps:
+      - name: Require an internal branch revision
+        id: validate
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ inputs.head_sha }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          revision="${HEAD_SHA:-${GITHUB_SHA}}"
+          trusted=false
+
+          if [ -n "${PR_NUMBER}" ]; then
+            pr_json=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")
+            pr_head_sha=$(jq -r '.head.sha' <<<"${pr_json}")
+            pr_head_repository=$(jq -r '.head.repo.full_name // ""' <<<"${pr_json}")
+            if [ "${pr_head_repository}" = "${REPO}" ] && [ "${pr_head_sha}" = "${revision}" ]; then
+              trusted=true
+            fi
+          elif [ -z "${HEAD_SHA}" ]; then
+            trusted=true
+          else
+            branch_count=$(gh api "repos/${REPO}/commits/${revision}/branches-where-head" --jq 'length')
+            if [ "${branch_count}" -gt 0 ]; then
+              trusted=true
+            fi
+          fi
+
+          if [ "${trusted}" != "true" ]; then
+            echo "::error::Revision ${revision} is not the current head of an internal PR or branch."
+            exit 1
+          fi
+
+          echo "trusted=true" >> "$GITHUB_OUTPUT"
+
   ios:
     name: iOS BrowserStack benchmark
-    if: inputs.platform == 'ios' || inputs.platform == 'both'
+    needs: validate_revision
+    if: >-
+      needs.validate_revision.outputs.trusted == 'true' &&
+      (inputs.platform == 'ios' || inputs.platform == 'both')
     runs-on: macos-15
     environment: Browserstack
+    permissions:
+      actions: read
+      contents: read
     concurrency:
       group: mobench-browserstack-device-cloud
       cancel-in-progress: false
@@ -136,6 +185,7 @@ jobs:
         with:
           path: caller
           ref: ${{ inputs.head_sha || github.sha }}
+          persist-credentials: false
 
       - name: Resolve iOS device profile
         shell: bash
@@ -451,11 +501,17 @@ jobs:
 
   android:
     name: Android BrowserStack benchmark
-    needs: ios
-    if: always() && (inputs.platform == 'android' || inputs.platform == 'both')
+    needs: [validate_revision, ios]
+    if: >-
+      always() &&
+      needs.validate_revision.outputs.trusted == 'true' &&
+      (inputs.platform == 'android' || inputs.platform == 'both')
     runs-on: macos-14
     timeout-minutes: 360
     environment: Browserstack
+    permissions:
+      actions: read
+      contents: read
     env:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
@@ -465,6 +521,7 @@ jobs:
         with:
           path: caller
           ref: ${{ inputs.head_sha || github.sha }}
+          persist-credentials: false
 
       - name: Resolve Android device profile
         shell: bash
@@ -1085,16 +1142,15 @@ jobs:
 
   summarize:
     name: Summarize benchmark results
-    needs: [ios, android]
-    if: always()
+    needs: [validate_revision, ios, android]
+    if: always() && needs.validate_revision.outputs.trusted == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+      issues: write
     steps:
-      - name: Checkout caller repo
-        uses: actions/checkout@v4
-        with:
-          path: caller
-          ref: ${{ inputs.head_sha || github.sha }}
-
       - name: Setup Rust
         shell: bash
         run: |
@@ -1165,47 +1221,17 @@ jobs:
               return 0
             fi
 
-            local summary_json
-            summary_json=$(find "${results_dir}" -type f -name summary.json | head -1)
-            if [ -z "${summary_json}" ]; then
+            if ! find "${results_dir}" -type f -name summary.json -print -quit | grep -q .; then
               echo "::warning::No ${platform} summary.json found under ${results_dir}"
               return 0
             fi
 
-            local results_csv
-            results_csv=$(find "${results_dir}" -type f -name results.csv | head -1)
-            if [ -z "${results_csv}" ]; then
+            if ! find "${results_dir}" -type f -name results.csv -print -quit | grep -q .; then
               echo "::warning::No ${platform} results.csv found under ${results_dir}"
               return 0
             fi
 
-            if ! jq -e '
-              [
-                ((.device_summaries // []) | length),
-                ((.summary?.device_summaries // []) | length)
-              ] | max > 0
-            ' "${summary_json}" >/dev/null; then
-              echo "::warning::Skipping ${platform} summary render because device_summaries is empty."
-              return 0
-            fi
-
-            local csv_line_count
-            csv_line_count=$(wc -l < "${results_csv}" | tr -d ' ')
-            if [ "${csv_line_count}" -le 1 ]; then
-              echo "::warning::Skipping ${platform} summary render because results.csv has no data rows."
-              return 0
-            fi
-
             mkdir -p "rendered/${platform}"
-
-            if cargo-mobench report summarize \
-              --summary "${summary_json}" \
-              --output "rendered/${platform}/summary.md" \
-              --plots auto; then
-              return 0
-            fi
-
-            echo "::warning::Falling back to markdown-only ${platform} summary."
             cargo-mobench ci summarize \
               --results-dir "${results_dir}" \
               --output-format markdown \

@@ -1,5 +1,8 @@
 use {
-    crate::in_process::{prepare_noir_program_from_json, PreparedNoirProgram, VerifiedNoirProgram},
+    crate::in_process::{
+        prepare_noir_program_from_json, PreparedNoirProgram, PreparedNoirProver,
+        VerifiedNoirProgram,
+    },
     anyhow::{Context, Result},
     provekit_common::NoirProof,
 };
@@ -51,6 +54,7 @@ impl MobileBenchFixture {
 }
 
 pub type PreparedCircuitFixture = PreparedNoirProgram;
+pub type PreparedProverFixture = PreparedNoirProver;
 pub type VerifiedCircuitFixture = VerifiedNoirProgram;
 
 pub fn prepare_fixture(fixture: MobileBenchFixture) -> Result<PreparedCircuitFixture> {
@@ -66,8 +70,8 @@ pub fn prove_fixture(prepared: PreparedCircuitFixture) -> Result<VerifiedCircuit
     prepared.prove()
 }
 
-pub fn prove_fixture_proof_only(prepared: PreparedCircuitFixture) -> Result<NoirProof> {
-    prepared.prove_only()
+pub fn prove_fixture_proof_only(prepared: PreparedProverFixture) -> Result<NoirProof> {
+    prepared.prove()
 }
 
 pub fn verify_fixture(verified: VerifiedCircuitFixture) -> Result<VerifiedCircuitFixture> {

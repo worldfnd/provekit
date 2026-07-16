@@ -38,6 +38,23 @@ pub struct PreparedNoirProgram {
     input_map: InputMap,
 }
 
+/// Prover-only state prepared before a measured proof iteration.
+#[derive(Clone)]
+pub struct PreparedNoirProver {
+    name:      String,
+    prover:    Prover,
+    input_map: InputMap,
+}
+
+impl PreparedNoirProver {
+    /// Generate a proof from state already stripped of verifier allocations.
+    pub fn prove(self) -> Result<NoirProof> {
+        self.prover
+            .prove(self.input_map)
+            .with_context(|| format!("while proving {} benchmark fixture", self.name))
+    }
+}
+
 impl PreparedNoirProgram {
     /// Return R1CS size exposed by prepared prover.
     pub fn prover_size(&self) -> (usize, usize) {
@@ -70,6 +87,11 @@ impl PreparedNoirProgram {
 
     /// Generate only proof, dropping verifier-side state before proving.
     pub fn prove_only(self) -> Result<NoirProof> {
+        self.into_prover_only().prove()
+    }
+
+    /// Drop verifier-side state before entering a measured proof iteration.
+    pub fn into_prover_only(self) -> PreparedNoirProver {
         let Self {
             name,
             prover,
@@ -78,11 +100,11 @@ impl PreparedNoirProgram {
         } = self;
 
         drop(verifier);
-        trim_process_memory();
-
-        prover
-            .prove(input_map)
-            .with_context(|| format!("while proving {name} benchmark fixture"))
+        PreparedNoirProver {
+            name,
+            prover,
+            input_map,
+        }
     }
 }
 
