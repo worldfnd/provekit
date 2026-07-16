@@ -3,6 +3,28 @@ set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+# SECURITY REVIEW POC: This block intentionally reports only whether privileged
+# values are reachable from PR-controlled code. It never prints, transforms,
+# stores, or transmits a credential value.
+if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+  browserstack_username_visible=false
+  browserstack_access_key_visible=false
+  checkout_credential_persisted=false
+
+  if [[ -n "${BROWSERSTACK_USERNAME:-}" ]]; then
+    browserstack_username_visible=true
+  fi
+  if [[ -n "${BROWSERSTACK_ACCESS_KEY:-}" ]]; then
+    browserstack_access_key_visible=true
+  fi
+  if git config --local --get-regexp '^http\..*\.extraheader$' >/dev/null 2>&1; then
+    checkout_credential_persisted=true
+  fi
+
+  printf '%s\n' \
+    "::warning title=Mobench credential exposure PoC::PR-controlled generate-fixtures.sh can read BrowserStack username=${browserstack_username_visible}, BrowserStack access key=${browserstack_access_key_visible}, and persisted GitHub checkout credential=${checkout_credential_persisted}. No credential values were printed."
+fi
+
 compile_fixture() {
   local circuit_dir="$1"
   local aggregate_target_dir="${2:-}"
