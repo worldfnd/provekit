@@ -35,6 +35,18 @@ pub struct Args {
     /// path to the verifier key (default: `<circuit>.pkv`)
     #[argh(option, long = "verifier")]
     verifier_path: Option<PathBuf>,
+
+    /// directory in which to write SPARK queries (default: ./spark_proofs)
+    #[argh(
+        option,
+        long = "spark-queries-dir",
+        default = "PathBuf::from(\"./spark_proofs\")"
+    )]
+    spark_queries_dir: PathBuf,
+
+    /// produce SPARK queries and write them to `spark_queries_dir`.
+    #[argh(switch, long = "produce-spark-query")]
+    produce_spark_query: bool,
 }
 
 impl Command for Args {
@@ -50,9 +62,17 @@ impl Command for Args {
         let (constraints, witnesses) = prover.size();
         info!(constraints, witnesses, "Read Noir proof scheme");
 
-        let proof = prover
-            .prove_with_toml(&input_path)
-            .context("While proving Noir program statement")?;
+        let (proof, spark_queries) = if self.produce_spark_query {
+            let (proof, batch) = prover
+                .prove_with_spark_toml(&input_path)
+                .context("While proving Noir program statement")?;
+            (proof, Some(batch))
+        } else {
+            let proof = prover
+                .prove_with_toml(&input_path)
+                .context("While proving Noir program statement")?;
+            (proof, None)
+        };
 
         write(&proof, &self.proof_path).context("while writing proof")?;
 
@@ -64,6 +84,19 @@ impl Command for Args {
             verifier
                 .verify(&proof)
                 .context("While verifying Noir proof")?;
+        }
+
+        if let Some(batch) = &spark_queries {
+            std::fs::create_dir_all(&self.spark_queries_dir)
+                .with_context(|| format!("creating {:?}", self.spark_queries_dir))?;
+            let queries_path = self.spark_queries_dir.join("spark_queries.json");
+            let queries_file = std::fs::File::create(&queries_path)
+                .with_context(|| format!("creating {queries_path:?}"))?;
+            serde_json::to_writer_pretty(queries_file, batch).context("writing SPARK queries")?;
+            info!(
+                count = batch.queries.len(),
+                "Wrote SPARK queries to {queries_path:?}"
+            );
         }
 
         Ok(())

@@ -36,8 +36,9 @@ declare module "provekit-sdk" {
   }
 
   export interface ProvingModules {
-    witness: BytesInput;
-    derivatives: BytesInput;
+    program?: BytesInput;
+    witness?: BytesInput;
+    derivatives?: BytesInput;
   }
 
   export interface ProveKitWasmBindings {

@@ -5,6 +5,7 @@ export const DEFAULT_CHECKLIST_LABELS: Record<UploadKey, string> = {
   prover: "prover.pkp",
   verifier: "verifier.pkv",
   inputs: "inputs.json / Prover.toml",
+  programWasm: "program.wasm (Mavros)",
   witgenWasm: "witgen.wasm (Mavros)",
   adWasm: "ad.wasm (Mavros)",
 };

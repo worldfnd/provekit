@@ -34,5 +34,8 @@ tracing.workspace = true
 bincode.workspace = true
 mavros-artifacts.workspace = true
 
+[dev-dependencies]
+provekit-backend-goldilocks.workspace = true
+
 [lints]
 workspace = true

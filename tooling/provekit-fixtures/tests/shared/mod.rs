@@ -48,7 +48,7 @@ pub fn oracle_accepts_satisfying_and_rejects_broken<P: FieldHash>() {
 pub fn two_public_inputs_roundtrip<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     let (r1cs, w) = two_public_inputs::<Base<P>>(6, 7);
     let public_inputs = PublicInputs::from_vec(vec![w[1], w[2]]);
@@ -62,7 +62,7 @@ where
 pub fn squaring_chain_size_sweep_roundtrip<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     const WITNESS_FLOOR: usize = 8192; // 2^13
 
@@ -90,7 +90,7 @@ where
 pub fn random_satisfiable_proves_and_perturbation_rejects<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     for seed in 0..8u64 {
         let (r1cs, w) = random_satisfiable::<Base<P>>(seed, 4, 8);
@@ -118,7 +118,7 @@ fn logup_roundtrip<P>(
 ) -> anyhow::Result<()>
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
     P::Embedding: Embedding<Target = Base<P>>,
 {
     let LogUpInstance {
@@ -138,7 +138,7 @@ where
 pub fn logup_lookup_size_sweep_roundtrip<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
     P::Embedding: Embedding<Target = Base<P>>,
 {
     for seed in 0..6u64 {
@@ -154,7 +154,7 @@ where
 pub fn multi_challenge_binding_roundtrip<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
     P::Embedding: Embedding<Target = Base<P>>,
 {
     let (r1cs, w1, offsets) = multi_challenge_inverses::<Base<P>>(4);
@@ -174,7 +174,7 @@ where
 pub fn dual_commit_with_public_roundtrip<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
     P::Embedding: Embedding<Target = Base<P>>,
 {
     let (r1cs, w1, offsets) = challenge_with_public_input::<Base<P>>(7);
@@ -200,7 +200,7 @@ where
 pub fn corrupted_witness_is_rejected<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     let (r1cs, mut w) = squaring_chain::<Base<P>>(3, 8);
     let last = w.len() - 1;
@@ -218,7 +218,7 @@ where
 pub fn wrong_r1cs_is_rejected<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     let (r1cs_a, w) = squaring_chain::<Base<P>>(3, 8);
     let public_inputs = PublicInputs::from_vec(vec![w[1]]);
@@ -240,7 +240,7 @@ where
 pub fn public_input_binding_mismatch_is_rejected<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     // N = 1: prove and verify with the same wrong public input.
     let (r1cs, w) = squaring_chain::<Base<P>>(3, 8);
@@ -274,7 +274,7 @@ where
 pub fn tampered_public_input_is_rejected<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     // N = 1.
     let (r1cs, w) = squaring_chain::<Base<P>>(3, 8);
@@ -304,7 +304,7 @@ where
 pub fn tampered_challenge_is_rejected<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
     P::Embedding: Embedding<Target = Base<P>>,
 {
     let LogUpInstance {
@@ -334,7 +334,7 @@ fn logup_corrupted_verify<P>(
 ) -> anyhow::Result<()>
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
     P::Embedding: Embedding<Target = Base<P>>,
 {
     let LogUpInstance {
@@ -359,7 +359,7 @@ where
 pub fn logup_corruption_is_rejected<P>()
 where
     P: FieldHash,
-    Standard: Distribution<Ext<P>>,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
     P::Embedding: Embedding<Target = Base<P>>,
 {
     // First lookup sits at w1[1 + table_len]; set it outside `0..table_len`.
@@ -404,6 +404,17 @@ macro_rules! roundtrip_suite {
             $register();
             $crate::shared::random_satisfiable_proves_and_perturbation_rejects::<$field>();
         }
+    };
+}
+
+/// Challenge-bearing roundtrip suite (LogUp + multi-challenge). The witness
+/// holds challenge-derived (ext) values, so this requires an `Identity` field
+/// where the base and extension fields coincide.
+// TODO: support fields whose base and extension differ by drawing the LogUp
+// challenges in the base field.
+#[macro_export]
+macro_rules! challenge_roundtrip_suite {
+    ($field:ty, $register:path) => {
         #[test]
         fn logup_lookup_size_sweep_roundtrip() {
             $register();
@@ -446,6 +457,14 @@ macro_rules! soundness_suite {
             $register();
             $crate::shared::tampered_public_input_is_rejected::<$field>();
         }
+    };
+}
+
+/// Challenge-bearing soundness suite (see [`challenge_roundtrip_suite!`]):
+/// requires an `Identity` field where the base and extension fields coincide.
+#[macro_export]
+macro_rules! challenge_soundness_suite {
+    ($field:ty, $register:path) => {
         #[test]
         fn tampered_challenge_is_rejected() {
             $register();

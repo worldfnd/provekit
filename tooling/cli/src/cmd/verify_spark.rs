@@ -1,0 +1,75 @@
+use {
+    super::Command,
+    anyhow::{Context, Result},
+    argh::FromArgs,
+    provekit_backend_bn254::{spark::SparkQueryBatch, Verifier},
+    provekit_common::file::read,
+    provekit_spark::{SparkProof, SparkVerifierScheme},
+    std::{fs::File, io::BufReader, path::PathBuf},
+    tracing::instrument,
+};
+
+/// Verify a standalone SPARK proof against the saved SparkQueryBatch.
+#[derive(FromArgs, PartialEq, Eq, Debug)]
+#[argh(subcommand, name = "verify-spark")]
+pub struct Args {
+    /// path to the SPARK proof file (.sp or .json)
+    #[argh(positional)]
+    proof_path: PathBuf,
+
+    /// path to the ProveKit Verifier key (.pkv) produced by `prepare --spark`
+    #[argh(positional)]
+    pkv_path: PathBuf,
+
+    /// path to the SPARK queries JSON file (`spark_queries.json`) written by
+    /// `prove`
+    #[argh(positional)]
+    queries_path: PathBuf,
+}
+
+impl Command for Args {
+    #[instrument(skip_all)]
+    fn run(&self) -> Result<()> {
+        provekit_backend_bn254::register();
+
+        let (proof, (verifier, queries)) = rayon::join(
+            || read::<SparkProof>(&self.proof_path).context("while reading SPARK proof"),
+            || {
+                rayon::join(
+                    || read::<Verifier>(&self.pkv_path).context("while reading Provekit Verifier"),
+                    || {
+                        read_queries(&self.queries_path)
+                            .with_context(|| format!("while reading {:?}", self.queries_path))
+                    },
+                )
+            },
+        );
+        let proof = proof?;
+        let verifier = verifier?;
+        let batch = queries?;
+
+        let setup = verifier.spark_setup.as_ref().with_context(|| {
+            format!(
+                "PKV {:?} does not contain a SPARK setup; re-run `prepare --spark`",
+                self.pkv_path
+            )
+        })?;
+
+        anyhow::ensure!(
+            !batch.queries.is_empty(),
+            "SPARK queries file {:?} is empty",
+            self.queries_path
+        );
+
+        SparkVerifierScheme
+            .verify(proof, setup, &batch)
+            .context("while verifying SPARK proof")?;
+
+        Ok(())
+    }
+}
+
+fn read_queries(path: &PathBuf) -> Result<SparkQueryBatch> {
+    let file = File::open(path).with_context(|| format!("opening {path:?}"))?;
+    serde_json::from_reader(BufReader::new(file)).context("parsing SPARK queries JSON")
+}

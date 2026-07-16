@@ -15,7 +15,7 @@ interface RunControllerDeps {
   loadSchemes(
     proverBytes: Uint8Array,
     verifierBytes: Uint8Array,
-    provingModules?: { witnessBytes?: Uint8Array; derivativesBytes?: Uint8Array },
+    provingModules?: { programBytes?: Uint8Array; witnessBytes?: Uint8Array; derivativesBytes?: Uint8Array },
   ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }>;
   waitForUi(): Promise<void>;
   disposeActiveVerifier(): void;
@@ -39,12 +39,13 @@ export class RunController {
 
     try {
       this.deps.steps.setStatus(2, stepStatus.running("Loading artifacts..."));
-      const { proverBytes, verifierBytes, witgenWasmBytes, adWasmBytes, metadata } = await this.deps.artifacts.loadArtifacts(
+      const { proverBytes, verifierBytes, programWasmBytes, witgenWasmBytes, adWasmBytes, metadata } = await this.deps.artifacts.loadArtifacts(
         this.deps.state.activeCircuit,
         this.deps.state.customFiles,
       );
 
       ({ prover, verifier } = await this.deps.loadSchemes(proverBytes, verifierBytes, {
+        programBytes: programWasmBytes,
         witnessBytes: witgenWasmBytes,
         derivativesBytes: adWasmBytes,
       }));

@@ -209,7 +209,7 @@ class DemoApp {
   private async loadSchemes(
     proverBytes: Uint8Array,
     verifierBytes: Uint8Array,
-    provingModules?: { witnessBytes?: Uint8Array; derivativesBytes?: Uint8Array },
+    provingModules?: { programBytes?: Uint8Array; witnessBytes?: Uint8Array; derivativesBytes?: Uint8Array },
   ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }> {
     if (!this.state.wasmReady || !this.provekit) {
       throw new Error("Proof runtime is not initialized yet.");
@@ -218,19 +218,21 @@ class DemoApp {
     this.logs.log("Loading prover and verifier...");
     const loadStart = performance.now();
 
-    const hasProvingModules = Boolean(provingModules?.witnessBytes || provingModules?.derivativesBytes);
-    if (hasProvingModules && (!provingModules?.witnessBytes || !provingModules.derivativesBytes)) {
-      throw new Error("Custom proving modules require both witness and derivatives WASM artifacts.");
+    const hasProgram = Boolean(provingModules?.programBytes);
+    const hasLegacyModules = Boolean(provingModules?.witnessBytes || provingModules?.derivativesBytes);
+    if (!hasProgram && hasLegacyModules && (!provingModules?.witnessBytes || !provingModules.derivativesBytes)) {
+      throw new Error("Legacy proving modules require both witness and derivatives WASM artifacts.");
     }
 
     const scheme = await this.provekit.loadArtifacts({
       prover: proverBytes,
       verifier: verifierBytes,
       witnessProvider: this.witnessProvider,
-      provingModules: hasProvingModules
+      provingModules: hasProgram || hasLegacyModules
         ? {
-            witness: provingModules!.witnessBytes!,
-            derivatives: provingModules!.derivativesBytes!,
+            program: provingModules?.programBytes,
+            witness: provingModules?.witnessBytes,
+            derivatives: provingModules?.derivativesBytes,
           }
         : undefined,
     });

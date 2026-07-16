@@ -16,6 +16,7 @@ mod prove;
 mod scheme;
 mod skyscraper;
 mod solver;
+pub mod spark;
 mod transcript_sponge;
 mod verify;
 #[cfg(target_arch = "wasm32")]
@@ -24,13 +25,14 @@ pub mod witness;
 
 #[cfg(target_arch = "wasm32")]
 pub use wasm_mavros_prove::{
-    prove_mavros_with_wasm_driver, MavrosPhase1Result, MavrosTableInfo, MavrosWasmDriver,
+    prove_mavros_with_wasm_driver, MavrosPhase1Result, MavrosTableInfo, MavrosTableKind,
+    MavrosWasmDriver,
 };
 pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
     compress::CompressedLayers,
-    field::{Bn254Field, WhirConfig, WhirZkConfig},
+    field::{Bn254Field, WhirConfig},
     frontend::{noir_to_native, NoirWitnessGenerator, PrintAbi},
     ntt::RSFr,
     prove::Prove,
@@ -41,6 +43,7 @@ pub use {
     },
     skyscraper::SkyscraperPoW,
     solver::solve_witness_vec,
+    spark::{MatrixDimensions, SparkSetup, SparkWhirConfigs},
     transcript_sponge::TranscriptSponge,
     verify::Verify,
 };

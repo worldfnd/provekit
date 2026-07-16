@@ -135,12 +135,14 @@ export class CircuitController {
   private handleUploadedFiles(files: File[]): void {
     const { logs, checklist, state } = this.deps;
     const classified = files.map((file) => ({ file, key: classifyUpload(file.name) }));
-    const hasMavrosWasm = classified.some(({ key }) => key === "witgenWasm" || key === "adWasm");
+    const hasMavrosWasm = classified.some(
+      ({ key }) => key === "programWasm" || key === "witgenWasm" || key === "adWasm",
+    );
     let allowMavrosWasm = this.acceptedCustomMavrosWasmRisk;
 
     if (hasMavrosWasm && !allowMavrosWasm) {
       allowMavrosWasm = globalThis.confirm(
-        "Uploaded Mavros witgen/ad WASM modules will be executed in this page while proving. Only continue with artifacts you trust."
+        "Uploaded Mavros program WASM modules will be executed in this page while proving. Only continue with artifacts you trust."
       );
       this.acceptedCustomMavrosWasmRisk = allowMavrosWasm;
       if (!allowMavrosWasm) {
@@ -154,7 +156,7 @@ export class CircuitController {
         logs.log(`Unrecognized file: ${file.name}`, "error");
         continue;
       }
-      if ((key === "witgenWasm" || key === "adWasm") && !allowMavrosWasm) {
+      if ((key === "programWasm" || key === "witgenWasm" || key === "adWasm") && !allowMavrosWasm) {
         continue;
       }
 

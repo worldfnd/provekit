@@ -6,6 +6,7 @@ import { classifyUpload, isCustomReady } from "../src/app/upload-rules";
 describe("upload rules", () => {
   it("classifies only the accepted custom upload files", () => {
     expect(classifyUpload("prover.pkp")).toBe("prover");
+    expect(classifyUpload("program.wasm")).toBe("programWasm");
     expect(classifyUpload("verifier.pkv")).toBe("verifier");
     expect(classifyUpload("inputs.json")).toBe("inputs");
     expect(classifyUpload("Prover.toml")).toBe("inputs");

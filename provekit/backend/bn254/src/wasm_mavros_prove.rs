@@ -13,16 +13,42 @@ use {
         prove_from_alphas, run_zk_sumcheck_prover, WhirR1CSCommitment, WhirR1CSProver,
     },
     tracing::instrument,
-    whir::transcript::{ProverState, VerifierMessage},
+    whir::{
+        algebra::embedding::Identity,
+        transcript::{ProverState, VerifierMessage},
+    },
 };
+
+/// Lookup-table allocation strategy emitted by Mavros.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MavrosTableKind {
+    RangeCheck,
+    Array,
+    Spread,
+}
+
+impl TryFrom<u32> for MavrosTableKind {
+    type Error = anyhow::Error;
+
+    fn try_from(value: u32) -> Result<Self> {
+        match value {
+            0 => Ok(Self::RangeCheck),
+            1 => Ok(Self::Array),
+            2 => Ok(Self::Spread),
+            other => anyhow::bail!("invalid Mavros table kind {other}"),
+        }
+    }
+}
 
 /// Table metadata returned by a browser-side Mavros witness generator.
 #[derive(Clone, Debug)]
 pub struct MavrosTableInfo {
     /// Offset of this table's multiplicity slots in the pre-commitment witness.
     pub multiplicities_wit_offset: usize,
-    /// Number of values carried by each lookup key beyond the index column.
-    pub num_values: usize,
+    /// Number of index columns in the table.
+    pub num_indices: usize,
+    /// Allocation strategy used for table entries.
+    pub kind: MavrosTableKind,
     /// Number of rows in the table.
     pub length: usize,
     /// Offset of element inverse witnesses in the post-commitment witness.
@@ -209,18 +235,16 @@ where
     let blinding = commitments[0]
         .blinding
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("c1 must carry blinding state"))?;
+        .ok_or_else(|| anyhow::anyhow!("first commitment must carry blinding state"))?;
 
     let [a, b, c] = [witgen.out_a, witgen.out_b, witgen.out_c];
     let (alpha, blinding_eval) = run_zk_sumcheck_prover(
-        a,
-        b,
-        c,
+        &Identity::new(),
+        [a, b, c],
         &mut merlin,
         scheme.m_0,
         &blinding.polynomial,
-        &commitments[0].polynomial,
-        blinding.offset,
+        &blinding.vector,
     );
 
     let eq_alpha = calculate_evaluations_over_boolean_hypercube_for_eq(&alpha, 1 << alpha.len());
@@ -231,7 +255,6 @@ where
         merlin,
         alphas,
         blinding_eval,
-        blinding.offset,
         expand_powers::<4, _>(&alpha),
         commitments,
         public_inputs,
@@ -302,15 +325,22 @@ fn validate_mavros_table(
     constraints_layout: ConstraintsLayout,
 ) -> Result<()> {
     anyhow::ensure!(
-        table.num_values <= 1,
-        "Mavros table {index} has unsupported num_values={}",
-        table.num_values
+        table.num_indices == 1,
+        "Mavros table {index} has unsupported num_indices={}",
+        table.num_indices
     );
+    let entry_stride = match table.kind {
+        MavrosTableKind::RangeCheck | MavrosTableKind::Spread => 1,
+        MavrosTableKind::Array => 2,
+    };
+    let required_challenges = match table.kind {
+        MavrosTableKind::RangeCheck => 1,
+        MavrosTableKind::Array | MavrosTableKind::Spread => 2,
+    };
     anyhow::ensure!(
-        phase1.out_wit_post_comm.len() > table.num_values,
-        "Mavros table {index} requires {} Fiat-Shamir challenge slots, but post-commitment \
-         witness has {}",
-        table.num_values + 1,
+        phase1.out_wit_post_comm.len() >= required_challenges,
+        "Mavros table {index} requires {required_challenges} Fiat-Shamir challenge slots, but \
+         post-commitment witness has {}",
         phase1.out_wit_post_comm.len()
     );
 
@@ -325,15 +355,11 @@ fn validate_mavros_table(
         "multiplicity",
     )?;
 
-    let inverse_constraint_len = if table.num_values == 0 {
-        table.length.checked_add(1)
-    } else {
-        table
-            .length
-            .checked_mul(2)
-            .and_then(|len| len.checked_add(1))
-    }
-    .ok_or_else(|| anyhow::anyhow!("Mavros table {index} inverse constraint range overflow"))?;
+    let inverse_constraint_len = table
+        .length
+        .checked_mul(entry_stride)
+        .and_then(|len| len.checked_add(1))
+        .ok_or_else(|| anyhow::anyhow!("Mavros table {index} inverse constraint range overflow"))?;
     let inverse_constraint_end = checked_end(
         table.elem_inverses_constraint_section_offset,
         inverse_constraint_len,
@@ -348,14 +374,10 @@ fn validate_mavros_table(
         "inverse constraint layout",
     )?;
 
-    let inverse_witness_len = if table.num_values == 0 {
-        table.length
-    } else {
-        table
-            .length
-            .checked_mul(2)
-            .ok_or_else(|| anyhow::anyhow!("Mavros table {index} inverse witness range overflow"))?
-    };
+    let inverse_witness_len = table
+        .length
+        .checked_mul(entry_stride)
+        .ok_or_else(|| anyhow::anyhow!("Mavros table {index} inverse witness range overflow"))?;
     let inverse_witness_end = checked_end(
         table.elem_inverses_witness_section_offset,
         inverse_witness_len,
@@ -373,6 +395,15 @@ fn validate_mavros_table(
     )?;
 
     Ok(())
+}
+
+fn spread_bits(value: u32) -> u64 {
+    let mut value = u64::from(value);
+    value = (value | (value << 16)) & 0x0000_ffff_0000_ffff;
+    value = (value | (value << 8)) & 0x00ff_00ff_00ff_00ff;
+    value = (value | (value << 4)) & 0x0f0f_0f0f_0f0f_0f0f;
+    value = (value | (value << 2)) & 0x3333_3333_3333_3333;
+    (value | (value << 1)) & 0x5555_5555_5555_5555
 }
 
 fn run_mavros_phase2(
@@ -402,38 +433,50 @@ fn run_mavros_phase2(
         let alpha = phase1.out_wit_post_comm[0];
         let base = tbl.elem_inverses_constraint_section_offset;
 
-        if tbl.num_values == 0 {
-            for i in 0..tbl.length {
-                let multiplicity = phase1.out_wit_pre_comm[tbl.multiplicities_wit_offset + i];
-                let denom = alpha - FieldElement::from(i as u64);
-                phase1.out_b[base + i] = denom;
-                phase1.out_c[base + i] = multiplicity;
-                if !multiplicity.is_zero() {
-                    phase1.out_a[base + i] = running_prod;
-                    running_prod *= denom;
+        match tbl.kind {
+            MavrosTableKind::RangeCheck => {
+                for i in 0..tbl.length {
+                    let multiplicity = phase1.out_wit_pre_comm[tbl.multiplicities_wit_offset + i];
+                    let denom = alpha - FieldElement::from(i as u64);
+                    phase1.out_b[base + i] = denom;
+                    phase1.out_c[base + i] = multiplicity;
+                    if !multiplicity.is_zero() {
+                        phase1.out_a[base + i] = running_prod;
+                        running_prod *= denom;
+                    }
                 }
             }
-        } else {
-            anyhow::ensure!(
-                tbl.num_values == 1,
-                "expected width-2 table, got num_values={}",
-                tbl.num_values
-            );
-            let beta = phase1.out_wit_post_comm[1];
-            for i in 0..tbl.length {
-                let multiplicity = phase1.out_wit_pre_comm[tbl.multiplicities_wit_offset + i];
-                let v_i = phase1.out_a[base + 2 * i];
-                let x_i = -beta * v_i;
-                phase1.out_a[base + 2 * i] = beta;
-                phase1.out_b[base + 2 * i] = v_i;
-                phase1.out_c[base + 2 * i] = -x_i;
+            MavrosTableKind::Spread => {
+                let beta = phase1.out_wit_post_comm[1];
+                for i in 0..tbl.length {
+                    let multiplicity = phase1.out_wit_pre_comm[tbl.multiplicities_wit_offset + i];
+                    let spread_i = FieldElement::from(spread_bits(i as u32));
+                    let denom = alpha - FieldElement::from(i as u64) + beta * spread_i;
+                    phase1.out_b[base + i] = denom;
+                    phase1.out_c[base + i] = multiplicity;
+                    if !multiplicity.is_zero() {
+                        phase1.out_a[base + i] = running_prod;
+                        running_prod *= denom;
+                    }
+                }
+            }
+            MavrosTableKind::Array => {
+                let beta = phase1.out_wit_post_comm[1];
+                for i in 0..tbl.length {
+                    let multiplicity = phase1.out_wit_pre_comm[tbl.multiplicities_wit_offset + i];
+                    let v_i = phase1.out_a[base + 2 * i];
+                    let x_i = -beta * v_i;
+                    phase1.out_a[base + 2 * i] = beta;
+                    phase1.out_b[base + 2 * i] = v_i;
+                    phase1.out_c[base + 2 * i] = -x_i;
 
-                let denom = alpha - FieldElement::from(i as u64) - x_i;
-                phase1.out_b[base + 2 * i + 1] = denom;
-                phase1.out_c[base + 2 * i + 1] = multiplicity;
-                if !multiplicity.is_zero() {
-                    phase1.out_a[base + 2 * i + 1] = running_prod;
-                    running_prod *= denom;
+                    let denom = alpha - FieldElement::from(i as u64) - x_i;
+                    phase1.out_b[base + 2 * i + 1] = denom;
+                    phase1.out_c[base + 2 * i + 1] = multiplicity;
+                    if !multiplicity.is_zero() {
+                        phase1.out_a[base + 2 * i + 1] = running_prod;
+                        running_prod *= denom;
+                    }
                 }
             }
         }
@@ -446,7 +489,10 @@ fn run_mavros_phase2(
     for tbl in phase1.tables.iter().rev() {
         let base = tbl.elem_inverses_constraint_section_offset;
 
-        if tbl.num_values == 0 {
+        if matches!(
+            tbl.kind,
+            MavrosTableKind::RangeCheck | MavrosTableKind::Spread
+        ) {
             for i in (0..tbl.length).rev() {
                 let multiplicity = phase1.out_c[base + i];
                 let denom = phase1.out_b[base + i];
@@ -489,7 +535,7 @@ fn run_mavros_phase2(
         })?;
         let alpha = phase1.out_wit_post_comm[0];
 
-        if table.num_values == 0 {
+        if table.kind == MavrosTableKind::RangeCheck {
             let flag_u64 = phase1.out_c[cnst_off].0 .0[0];
             if flag_u64 == 0 {
                 let key = phase1.out_b[cnst_off];
@@ -522,6 +568,11 @@ fn run_mavros_phase2(
                 wit_off + 1
             );
             let beta = phase1.out_wit_post_comm[1];
+            let entry_stride = match table.kind {
+                MavrosTableKind::Spread => 1,
+                MavrosTableKind::Array => 2,
+                MavrosTableKind::RangeCheck => unreachable!(),
+            };
             let result_value = phase1.out_b[cnst_off];
             let flag_u64 = phase1.out_c[cnst_off + 1].0 .0[0];
             let x = -beta * result_value;
@@ -546,12 +597,15 @@ fn run_mavros_phase2(
                      length {}",
                     table.length
                 );
-                let src = table.elem_inverses_constraint_section_offset + 2 * ix_in_table + 1;
+                let src = table.elem_inverses_constraint_section_offset
+                    + entry_stride * ix_in_table
+                    + (entry_stride - 1);
                 phase1.out_a[y_cnst_off] = phase1.out_a[src];
                 phase1.out_b[y_cnst_off] = phase1.out_b[src];
                 phase1.out_c[y_cnst_off] = FieldElement::from(flag_u64);
                 phase1.out_wit_post_comm[y_wit_off] = phase1.out_a[y_cnst_off];
-                let sum = table.elem_inverses_constraint_section_offset + 2 * table.length;
+                let sum =
+                    table.elem_inverses_constraint_section_offset + entry_stride * table.length;
                 phase1.out_c[sum] += phase1.out_a[y_cnst_off];
             }
             current_lookup_off += 2;
@@ -562,7 +616,10 @@ fn run_mavros_phase2(
         let base = tbl.elem_inverses_constraint_section_offset;
         let wit_base = tbl.elem_inverses_witness_section_offset;
 
-        if tbl.num_values == 0 {
+        if matches!(
+            tbl.kind,
+            MavrosTableKind::RangeCheck | MavrosTableKind::Spread
+        ) {
             for i in 0..tbl.length {
                 let multiplicity = phase1.out_c[base + i];
                 if !multiplicity.is_zero() {

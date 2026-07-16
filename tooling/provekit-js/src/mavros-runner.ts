@@ -1,4 +1,4 @@
-// Mavros Buffer ABI v1 — the struct offsets and field encoding below mirror
+// Mavros Buffer ABI v2 — the struct offsets and field encoding below mirror
 // the Rust-side contract documented in tooling/provekit-wasm/src/prover.rs
 // (look for `MAVROS_BUFFER_ABI_VERSION` and `prove_mavros_bytes`). Bump
 // `MAVROS_BUFFER_ABI_VERSION` here and on the Rust side together when the
@@ -21,14 +21,15 @@ interface ConstraintsLayout {
 
 interface MavrosTableInfo {
   multiplicitiesWitOffset: number;
-  numValues: number;
+  numIndices: number;
+  kind: number;
   length: number;
   elemInversesWitnessSectionOffset: number;
   elemInversesConstraintSectionOffset: number;
 }
 
 export interface CompiledModuleRunner {
-  readonly mavrosBufferAbiVersion: 1;
+  readonly mavrosBufferAbiVersion: 2;
   runWitgen(
     inputFields: Uint8Array,
     witnessLayout: WitnessLayout,
@@ -73,7 +74,7 @@ export interface CompiledModuleRunner {
 }
 
 const FIELD_SIZE = 32;
-const MAVROS_BUFFER_ABI_VERSION = 1 as const;
+const MAVROS_BUFFER_ABI_VERSION = 2 as const;
 const WASM_STACK_SIZE_BYTES = 256 * 1024;
 const WASM_STATIC_DATA_BYTES = 4096;
 
@@ -81,7 +82,8 @@ const TABLE_INFO_SLOT_SIZE = 24;
 const TABLE_INFO_MULTS_BASE_PTR_OFFSET = 0;
 const TABLE_INFO_INV_CNST_OFF_OFFSET = 4;
 const TABLE_INFO_INV_WIT_OFF_OFFSET = 8;
-const TABLE_INFO_NUM_VALUES_OFFSET = 16;
+const TABLE_INFO_NUM_INDICES_OFFSET = 12;
+const TABLE_INFO_KIND_OFFSET = 16;
 const TABLE_INFO_LENGTH_OFFSET = 20;
 
 const WITGEN_WITNESS_PTR_OFFSET = 0;
@@ -182,13 +184,14 @@ async function compileModule(bytes: Uint8Array): Promise<WebAssembly.Module> {
 }
 
 export async function createMavrosRunner(
-  witgenWasm: Uint8Array,
-  adWasm: Uint8Array,
+  programWasm: Uint8Array,
+  legacyAdWasm?: Uint8Array,
 ): Promise<CompiledModuleRunner> {
-  const [witgenModule, adModule] = await Promise.all([
-    compileModule(witgenWasm),
-    compileModule(adWasm),
-  ]);
+  const programModule = await compileModule(programWasm);
+  const adModule = legacyAdWasm ? await compileModule(legacyAdWasm) : programModule;
+  const adEntryPoint = WebAssembly.Module.exports(adModule).some(
+    ({ name, kind }) => name === "mavros_ad_main" && kind === "function",
+  ) ? "mavros_ad_main" : "mavros_main";
 
   const runner: CompiledModuleRunner = {
     mavrosBufferAbiVersion: MAVROS_BUFFER_ABI_VERSION,
@@ -246,7 +249,7 @@ export async function createMavrosRunner(
       const hostBytes =
         WITGEN_VM_STRUCT_SIZE + witnessBytes + 3 * constraintBytes + inputBytes + tableInfoBytes;
       const pages = pagesFor(WASM_STACK_SIZE_BYTES + WASM_STATIC_DATA_BYTES + hostBytes);
-      const { exports, memory } = instantiateWithMemorySync(witgenModule, pages);
+      const { exports, memory } = instantiateWithMemorySync(programModule, pages, "mavros_main");
 
       const dataEnd = getDataEnd(exports);
       const dataOffset = (dataEnd + 15) & ~15;
@@ -284,7 +287,7 @@ export async function createMavrosRunner(
       writeU32(view, vmStructPtr + WITGEN_CURRENT_WIT_TABLES_OFF_OFFSET, currentWitTablesOff);
       new Uint8Array(memory.buffer, inputsPtr, inputBytes).set(inputFields);
 
-      callMavrosMain(exports, vmStructPtr);
+      callMavrosEntryPoint(exports, "mavros_main", vmStructPtr);
       const tablesLen = readU32(new DataView(memory.buffer), vmStructPtr + WITGEN_TABLES_LEN_OFFSET);
       if (tablesLen > constraintsLayout.tables_data_size) {
         throw new Error(`Mavros table registry overflow: ${tablesLen} > ${constraintsLayout.tables_data_size}`);
@@ -296,9 +299,10 @@ export async function createMavrosRunner(
         const multsBase = readU32(tableView, slot + TABLE_INFO_MULTS_BASE_PTR_OFFSET);
         return {
           multiplicitiesWitOffset: (multsBase - witnessPtr) / FIELD_SIZE,
+          numIndices: readU32(tableView, slot + TABLE_INFO_NUM_INDICES_OFFSET),
+          kind: readU32(tableView, slot + TABLE_INFO_KIND_OFFSET),
           elemInversesConstraintSectionOffset: readU32(tableView, slot + TABLE_INFO_INV_CNST_OFF_OFFSET),
           elemInversesWitnessSectionOffset: readU32(tableView, slot + TABLE_INFO_INV_WIT_OFF_OFFSET),
-          numValues: readU32(tableView, slot + TABLE_INFO_NUM_VALUES_OFFSET),
           length: readU32(tableView, slot + TABLE_INFO_LENGTH_OFFSET),
         };
       });
@@ -338,7 +342,7 @@ export async function createMavrosRunner(
       const coeffBytes = coeffs.byteLength;
       const hostBytes = AD_VM_STRUCT_SIZE + 3 * witnessBytes + coeffBytes;
       const pages = pagesFor(WASM_STACK_SIZE_BYTES + WASM_STATIC_DATA_BYTES + hostBytes);
-      const { exports, memory } = instantiateWithMemorySync(adModule, pages);
+      const { exports, memory } = instantiateWithMemorySync(adModule, pages, adEntryPoint);
 
       const dataEnd = getDataEnd(exports);
       const dataOffset = (dataEnd + 15) & ~15;
@@ -364,7 +368,7 @@ export async function createMavrosRunner(
       writeU32(view, vmStructPtr + AD_CURRENT_WIT_TABLES_OFF_OFFSET, witnessTablesDataStart(witnessLayout));
       writeU32(view, vmStructPtr + AD_CURRENT_WIT_MULTIPLICITIES_OFF_OFFSET, witnessLayout.algebraic_size);
 
-      callMavrosMain(exports, vmStructPtr);
+      callMavrosEntryPoint(exports, adEntryPoint, vmStructPtr);
       copyFieldRange(memory, daPtr, witnessCount, outDa, "outDa");
       copyFieldRange(memory, dbPtr, witnessCount, outDb, "outDb");
       copyFieldRange(memory, dcPtr, witnessCount, outDc, "outDc");
@@ -376,6 +380,7 @@ export async function createMavrosRunner(
 function instantiateWithMemorySync(
   module: WebAssembly.Module,
   pages: number,
+  entryPoint: string,
 ): {
   exports: MavrosExports;
   memory: WebAssembly.Memory;
@@ -383,8 +388,8 @@ function instantiateWithMemorySync(
   const memory = new WebAssembly.Memory({ initial: pages });
   const instance = new WebAssembly.Instance(module, { env: { memory } });
   const exports = instance.exports as MavrosExports;
-  if (typeof exports["mavros_main"] !== "function") {
-    throw new Error("Mavros WASM artifact does not export mavros_main");
+  if (typeof exports[entryPoint] !== "function") {
+    throw new Error(`Mavros WASM artifact does not export ${entryPoint}`);
   }
   if (!(exports["__data_end"] instanceof WebAssembly.Global)) {
     throw new Error("Mavros WASM artifact does not export __data_end");
@@ -396,8 +401,12 @@ function getDataEnd(exports: MavrosExports): number {
   return Number((exports["__data_end"] as WebAssembly.Global).value);
 }
 
-function callMavrosMain(exports: MavrosExports, vmStructPtr: number): void {
-  (exports["mavros_main"] as (vmPtr: number) => void)(vmStructPtr);
+function callMavrosEntryPoint(
+  exports: MavrosExports,
+  entryPoint: string,
+  vmStructPtr: number,
+): void {
+  (exports[entryPoint] as (vmPtr: number) => void)(vmStructPtr);
 }
 
 function ensureMemory(memory: WebAssembly.Memory, byteLength: number): void {

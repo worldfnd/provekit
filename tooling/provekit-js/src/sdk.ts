@@ -91,7 +91,7 @@ export class ProveKit {
         ? await this.loadProvingModules(kind, provingModules)
         : undefined;
       if (kind === "mavros" && !runner) {
-        throw new Error("This prover requires provingModules.witness and provingModules.derivatives.");
+        throw new Error("This prover requires provingModules.program (or legacy witness and derivatives modules).");
       }
       if (kind === "noir" && !options.witnessProvider) {
         throw new Error("This prover requires a witnessProvider.");
@@ -121,6 +121,18 @@ export class ProveKit {
     }
     if (!modules) {
       throw new Error("This prover requires compiled proving modules. Provide a standard artifact directory or provingModules.");
+    }
+    if (modules.program) {
+      try {
+        return createMavrosRunner(await fetchBytes(modules.program));
+      } catch (error) {
+        if (!modules.witness || !modules.derivatives) {
+          throw error;
+        }
+      }
+    }
+    if (!modules.witness || !modules.derivatives) {
+      throw new Error("Mavros proving modules require program, or both witness and derivatives.");
     }
     const [witgenWasm, adWasm] = await Promise.all([
       fetchBytes(modules.witness),
@@ -266,6 +278,7 @@ function provingModulesFromBaseUrl(baseUrl: string | URL | undefined): ProvingMo
     return undefined;
   }
   return {
+    program: joinBaseUrl(baseUrl, "program.wasm"),
     witness: joinBaseUrl(baseUrl, "witgen.wasm"),
     derivatives: joinBaseUrl(baseUrl, "ad.wasm"),
   };

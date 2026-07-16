@@ -10,10 +10,12 @@ repository.workspace = true
 
 [dependencies]
 # Workspace crates
+mavros-artifacts.workspace = true
 provekit-common.workspace = true
 provekit-backend-bn254 = { workspace = true, features = ["witness-generation", "parallel"] }
 provekit-gnark.workspace = true
 provekit-r1cs-compiler.workspace = true
+provekit-spark.workspace = true
 
 # Noir language
 acir.workspace = true
@@ -28,6 +30,7 @@ ark-ff.workspace = true
 
 # 3rd party
 anyhow.workspace = true
+bincode.workspace = true
 argh.workspace = true
 base64.workspace = true
 hex.workspace = true

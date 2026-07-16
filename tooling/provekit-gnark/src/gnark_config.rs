@@ -4,12 +4,15 @@ use {
     provekit_common::{PublicInputs, WhirR1CSProof, WhirR1CSScheme},
     serde::{Deserialize, Serialize},
     std::{fs::File, io::Write},
-    tracing::instrument,
+    tracing::{instrument, warn},
 };
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct GnarkConfig {
+    /// WHIR config for the non-hiding witness commitment. `blinded_` is the
+    /// historical (format-1.x zkWHIR) wire name, kept for Go compatibility.
     pub blinded_commitment_whir_config: WHIRConfigGnark,
+    /// WHIR config for the Spartan blinding polynomial `g` commitment.
     pub blinding_commitment_whir_config: WHIRConfigGnark,
     pub log_num_constraints: usize,
     pub log_num_variables: usize,
@@ -64,8 +67,7 @@ pub struct WHIRConfigGnark {
     pub domain_generator: String,
     /// Batch size (number of polynomials committed together).
     pub batch_size: usize,
-    /// Initial committer in-domain samples (query count for zkWHIR in-domain
-    /// verification).
+    /// Initial committer in-domain samples (WHIR in-domain query count).
     pub initial_in_domain_samples: usize,
 }
 
@@ -212,6 +214,12 @@ pub fn write_gnark_parameters_to_file(
     public_inputs: &PublicInputs<FieldElement>,
     file_path: &str,
 ) {
+    warn!(
+        "Writing gnark parameters in the proof-format-2.0 split witness/blinding commitment \
+         layout. The Go recursive-verifier still expects the old fused zkWHIR commitment layout, \
+         so it deserializes these parameters without error but fails verification silently. These \
+         files will not verify on the Go side until the paired recursive-verifier update lands."
+    );
     let gnark_config = gnark_parameters(
         scheme,
         blinded_commitment,

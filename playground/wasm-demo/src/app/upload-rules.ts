@@ -1,4 +1,4 @@
-export type UploadKey = "prover" | "verifier" | "inputs" | "witgenWasm" | "adWasm";
+export type UploadKey = "prover" | "verifier" | "inputs" | "programWasm" | "witgenWasm" | "adWasm";
 
 const INPUT_FILE_NAME = "inputs.json";
 
@@ -14,6 +14,9 @@ export function classifyUpload(fileName: string): UploadKey | null {
   if (normalized === INPUT_FILE_NAME || normalized.endsWith(".toml")) {
     return "inputs";
   }
+  if (normalized === "program.wasm" || normalized.endsWith(".program.wasm")) {
+    return "programWasm";
+  }
   if (normalized === "witgen.wasm" || normalized.endsWith(".witgen.wasm")) {
     return "witgenWasm";
   }
@@ -27,6 +30,7 @@ export interface UploadState {
   prover?: File;
   verifier?: File;
   inputs?: File;
+  programWasm?: File;
   witgenWasm?: File;
   adWasm?: File;
 }

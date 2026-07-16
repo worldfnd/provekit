@@ -730,7 +730,7 @@
         <div class="dropzone" id="dropzone">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
           <h3>Drag & drop circuit files</h3>
-          <p>Required: prover.pkp, verifier.pkv, inputs.json; add witgen.wasm + ad.wasm for Mavros</p>
+          <p>Required: prover.pkp, verifier.pkv, inputs.json; add program.wasm for Mavros</p>
           <button class="btn-select" id="btnSelectFiles">Select Files</button>
           <input type="file" id="fileInput" multiple accept=".json,.pkp,.pkv,.toml,.wasm" style="display:none">
         </div>
@@ -761,6 +761,14 @@
             <span class="item-name">inputs.json / Prover.toml</span>
           </div>
           <div class="item-right" style="font-style: italic;">Waiting...</div>
+        </div>
+
+        <div class="checklist-item pending" id="check-programWasm">
+          <div class="item-left">
+            <div class="item-icon">-</div>
+            <span class="item-name">program.wasm (Mavros)</span>
+          </div>
+          <div class="item-right" style="font-style: italic;">Optional</div>
         </div>
 
         <div class="checklist-item pending" id="check-witgenWasm">

@@ -72,7 +72,7 @@ function stageSdk() {
 function main() {
   if (!commandExists("wasm-bindgen")) {
     throw new Error(
-      "wasm-bindgen not found. Install it with: cargo install wasm-bindgen-cli --version 0.2.100"
+      "wasm-bindgen not found. Install it with: cargo install wasm-bindgen-cli --version 0.2.113"
     );
   }
 

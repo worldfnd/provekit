@@ -16,8 +16,12 @@ export interface ArtifactBytes {
 }
 
 export interface ProvingModules {
-  witness: BytesInput;
-  derivatives: BytesInput;
+  /** Current Mavros artifact containing `mavros_main` and `mavros_ad_main`. */
+  program?: BytesInput;
+  /** Legacy split witness module. Must be paired with `derivatives`. */
+  witness?: BytesInput;
+  /** Legacy split derivatives module. Must be paired with `witness`. */
+  derivatives?: BytesInput;
 }
 
 export type WasmModuleInput =

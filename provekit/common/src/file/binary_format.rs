@@ -12,16 +12,25 @@ pub const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
 
 // ---------------------------------------------------------------------------
 // Per-format identifiers and versions
+//
+// Major must match exactly on read (an incompatible layout is rejected); a
+// reader accepts any file whose minor is >= its own.
 // ---------------------------------------------------------------------------
 
 pub const PROVER_FORMAT: [u8; 8] = *b"PrvKitPr";
-pub const PROVER_VERSION: (u16, u16) = (1, 3);
+pub const PROVER_VERSION: (u16, u16) = (2, 0);
 
 pub const VERIFIER_FORMAT: [u8; 8] = *b"PrvKitVr";
-pub const VERIFIER_VERSION: (u16, u16) = (1, 3);
+pub const VERIFIER_VERSION: (u16, u16) = (2, 1);
 
 pub const NOIR_PROOF_SCHEME_FORMAT: [u8; 8] = *b"NrProScm";
-pub const NOIR_PROOF_SCHEME_VERSION: (u16, u16) = (1, 3);
+pub const NOIR_PROOF_SCHEME_VERSION: (u16, u16) = (2, 0);
 
 pub const NOIR_PROOF_FORMAT: [u8; 8] = *b"NPSProof";
-pub const NOIR_PROOF_VERSION: (u16, u16) = (1, 1);
+pub const NOIR_PROOF_VERSION: (u16, u16) = (2, 0);
+
+pub const SPARK_PROOF_FORMAT: [u8; 8] = *b"SparkPrf";
+pub const SPARK_PROOF_VERSION: (u16, u16) = (1, 0);
+
+pub const SPARK_CONTEXT_FORMAT: [u8; 8] = *b"SparkCtx";
+pub const SPARK_CONTEXT_VERSION: (u16, u16) = (1, 0);

@@ -14,7 +14,7 @@ npm install provekit-sdk
 
 ## Quick start (Mavros prover)
 
-A Mavros prover ships with two extra artifacts (`witgen.wasm`, `ad.wasm`) and does not need a host-side witness generator.
+A Mavros prover ships with an extra `program.wasm` artifact and does not need a host-side witness generator.
 
 ```ts
 import initWasm, * as provekitWasm from "./pkg/provekit_wasm.js";
@@ -27,7 +27,7 @@ const provekit = await createProveKit({
   threads: navigator.hardwareConcurrency,
 });
 
-// Loads prover.pkp, verifier.pkv, witgen.wasm, ad.wasm from /artifacts/.
+// Loads prover.pkp, verifier.pkv, and program.wasm from /artifacts/.
 const scheme = await provekit.loadArtifacts("/artifacts/");
 
 const proof = await scheme.prove({ input: "42" });
@@ -71,8 +71,7 @@ scheme.dispose();
 | -------------- | ------------------ | --------------------------------- |
 | `prover.pkp`   | always             | serialized prover key             |
 | `verifier.pkv` | unless `skipVerifier: true` | serialized verifier key  |
-| `witgen.wasm`  | Mavros provers     | witness generation module         |
-| `ad.wasm`      | Mavros provers     | algorithmic derivatives module    |
+| `program.wasm` | Mavros provers     | witness generation and derivatives module |
 
 Pass `BytesInput` (URL, fetch input, or raw bytes) to override any of them:
 
@@ -80,9 +79,11 @@ Pass `BytesInput` (URL, fetch input, or raw bytes) to override any of them:
 await provekit.loadArtifacts({
   prover: myProverBytes,
   verifier: myVerifierBytes,
-  provingModules: { witness: witgenBytes, derivatives: adBytes },
+  provingModules: { program: programBytes },
 });
 ```
+
+Legacy split `witgen.wasm` and `ad.wasm` modules remain supported.
 
 ## API surface
 

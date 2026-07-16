@@ -19,14 +19,14 @@ use {
     noirc_abi::{AbiType, MAIN_RETURN_NAME},
     provekit_backend_bn254::{
         prove_mavros_with_wasm_driver, ConstraintsLayout, FieldElement as NativeFieldElement,
-        MavrosPhase1Result, MavrosTableInfo, MavrosWasmDriver, WitnessLayout,
+        MavrosPhase1Result, MavrosTableInfo, MavrosTableKind, MavrosWasmDriver, WitnessLayout,
     },
     serde::Deserialize,
     serde_json::Value,
 };
 
 #[cfg(target_arch = "wasm32")]
-const MAVROS_BUFFER_ABI_VERSION: u32 = 1;
+const MAVROS_BUFFER_ABI_VERSION: u32 = 2;
 
 #[cfg(target_arch = "wasm32")]
 const _: [(); MAX_FIELD_ELEMENT_BYTES] = [(); std::mem::size_of::<NativeFieldElement>()];
@@ -79,10 +79,10 @@ impl Prover {
     ///
     /// `inputs` is the regular ABI-shaped input object. `runner` must expose:
     ///
-    /// - `mavrosBufferAbiVersion = 1`
+    /// - `mavrosBufferAbiVersion = 2`
     /// - synchronous `runWitgenInto(...)` and `runAdInto(...)` methods
     ///
-    /// Buffer ABI v1 uses 32-byte little-endian BN254 Montgomery-form field
+    /// Buffer ABI v2 uses 32-byte little-endian BN254 Montgomery-form field
     /// elements for all field buffers. The witgen multiplicity section is the
     /// only exception: each slot is a canonical `u64` in limb 0 and zero in
     /// limbs 1..3.
@@ -260,16 +260,19 @@ impl MavrosWasmDriver for JsMavrosDriver {
             out_c,
             tables: tables
                 .into_iter()
-                .map(|table| MavrosTableInfo {
-                    multiplicities_wit_offset: table.multiplicities_wit_offset,
-                    num_values: table.num_values,
-                    length: table.length,
-                    elem_inverses_witness_section_offset: table
-                        .elem_inverses_witness_section_offset,
-                    elem_inverses_constraint_section_offset: table
-                        .elem_inverses_constraint_section_offset,
+                .map(|table| {
+                    Ok(MavrosTableInfo {
+                        multiplicities_wit_offset: table.multiplicities_wit_offset,
+                        num_indices: table.num_indices,
+                        kind: MavrosTableKind::try_from(table.kind)?,
+                        length: table.length,
+                        elem_inverses_witness_section_offset: table
+                            .elem_inverses_witness_section_offset,
+                        elem_inverses_constraint_section_offset: table
+                            .elem_inverses_constraint_section_offset,
+                    })
                 })
-                .collect(),
+                .collect::<anyhow::Result<_>>()?,
         })
     }
 
@@ -317,7 +320,8 @@ impl MavrosWasmDriver for JsMavrosDriver {
 #[serde(rename_all = "camelCase")]
 struct JsTableInfo {
     multiplicities_wit_offset: usize,
-    num_values: usize,
+    num_indices: usize,
+    kind: u32,
     length: usize,
     elem_inverses_witness_section_offset: usize,
     elem_inverses_constraint_section_offset: usize,
