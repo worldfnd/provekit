@@ -62,8 +62,7 @@ fn main() {
         PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR")).join("bench_mobile_fixtures");
     let artifact_dir = env::var_os("PROVEKIT_MOBILE_BENCH_ARTIFACT_DIR").map(PathBuf::from);
     let require_artifacts = env::var_os("PROVEKIT_REQUIRE_MOBILE_BENCH_ARTIFACTS")
-        .is_some_and(|value| value != "0" && value != "false")
-        || env::var_os("CARGO_FEATURE_FIXTURE_TESTS").is_some();
+        .is_some_and(|value| value != "0" && value != "false");
 
     fs::create_dir_all(&out_dir).expect("create generated fixture output dir");
 
