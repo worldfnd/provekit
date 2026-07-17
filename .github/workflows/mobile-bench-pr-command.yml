@@ -5,10 +5,10 @@ on:
     types: [created]
 
 permissions:
-  contents: read
   actions: read
-  pull-requests: read
-  issues: read
+  checks: write
+  contents: read
+  pull-requests: write
 
 jobs:
   resolve:
@@ -109,26 +109,61 @@ jobs:
             echo "trusted_head=false" >> "$GITHUB_OUTPUT"
           fi
 
+  resolve-device-matrices:
+    name: Resolve BrowserStack device matrices
+    needs: resolve
+    if: needs.resolve.outputs.trusted == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      ios_devices: ${{ steps.resolve.outputs.ios_devices }}
+      android_devices: ${{ steps.resolve.outputs.android_devices }}
+    steps:
+      - id: resolve
+        shell: bash
+        env:
+          DEVICE_PROFILE: ${{ needs.resolve.outputs.device_profile }}
+        run: |
+          set -euo pipefail
+          case "$DEVICE_PROFILE" in
+            smoke|worst) ios_devices='[{"device":"iPhone SE 2022","os_version":"15"}]' ;;
+            triad) ios_devices='[{"device":"iPhone SE 2022","os_version":"15"},{"device":"iPhone 14","os_version":"16"},{"device":"iPhone 16 Pro Max","os_version":"18"}]' ;;
+            *) echo "::error::Unsupported iOS device profile '$DEVICE_PROFILE'."; exit 1 ;;
+          esac
+          case "$DEVICE_PROFILE" in
+            smoke|worst) android_devices='[{"device":"Samsung Galaxy M32","os_version":"11.0"}]' ;;
+            triad) android_devices='[{"device":"Samsung Galaxy S24","os_version":"14.0"},{"device":"Google Pixel 7","os_version":"13.0"},{"device":"Samsung Galaxy M32","os_version":"11.0"}]' ;;
+            *) echo "::error::Unsupported Android device profile '$DEVICE_PROFILE'."; exit 1 ;;
+          esac
+          echo "ios_devices=$ios_devices" >> "$GITHUB_OUTPUT"
+          echo "android_devices=$android_devices" >> "$GITHUB_OUTPUT"
+
   browserstack:
     name: Run BrowserStack benchmarks
-    needs: resolve
+    needs: [resolve, resolve-device-matrices]
     if: >-
       needs.resolve.outputs.trusted == 'true' &&
       needs.resolve.outputs.trusted_head == 'true'
     permissions:
       actions: read
-      contents: write
+      checks: write
+      contents: read
       pull-requests: write
-      issues: write
-    uses: ./.github/workflows/mobile-bench-reusable.yml
-    secrets: inherit
+    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@434da93dfda39db996be90e9e0bca625f10efb25
+    secrets:
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
     with:
       crate_path: ./bench-mobile
       functions: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
       functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
       functions_android: '["bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove","bench_mobile::bench_passport_complete_age_check_prove"]'
       platform: ${{ needs.resolve.outputs.platform }}
-      device_profile: ${{ needs.resolve.outputs.device_profile }}
+      prepare_script: bench-mobile/scripts/generate-fixtures.sh
+      device_profile: custom
+      ios_devices: ${{ needs.resolve-device-matrices.outputs.ios_devices }}
+      android_devices: ${{ needs.resolve-device-matrices.outputs.android_devices }}
       iterations: ${{ needs.resolve.outputs.iterations }}
       warmup: ${{ needs.resolve.outputs.warmup }}
       pr_number: ${{ needs.resolve.outputs.pr_number }}

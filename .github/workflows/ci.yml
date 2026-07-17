@@ -45,6 +45,8 @@ jobs:
           toolchain: v1.0.0-beta.11
       - name: Generate mobile benchmark Noir artifacts
         run: bench-mobile/scripts/generate-fixtures.sh
+        env:
+          MOBENCH_CI_PREPARE: "1"
       - run: cargo build --all-targets --all-features
       - run: cargo test --no-fail-fast --all-features --lib --tests --bins -- --nocapture
         env:
