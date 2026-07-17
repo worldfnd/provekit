@@ -33,6 +33,8 @@ jobs:
         with:
           toolchain: v1.0.0-beta.19
       - name: Generate mobile benchmark Noir artifacts
+        env:
+          MOBENCH_CI_PREPARE: "1"
         run: bench-mobile/scripts/generate-fixtures.sh
       - name: Build
         run: cargo build --all-targets --all-features --verbose

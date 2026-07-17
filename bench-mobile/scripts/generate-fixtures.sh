@@ -1,6 +1,19 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+if [[ "${MOBENCH_CI_PREPARE:-}" != "1" ]]; then
+  echo "MOBENCH_CI_PREPARE=1 is required to generate mobile benchmark fixtures" >&2
+  exit 1
+fi
+
+if ! command -v noirup >/dev/null 2>&1; then
+  curl --fail --location --silent --show-error https://raw.githubusercontent.com/noir-lang/noirup/dedc07043b6ae9a680a19c7394847a58e404cbba/install | bash
+fi
+
+export PATH="${HOME}/.nargo/bin:${PATH}"
+noirup --version v1.0.0-beta.19
+nargo --version
+
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
 compile_fixture() {
