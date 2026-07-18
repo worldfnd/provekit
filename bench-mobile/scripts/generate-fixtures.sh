@@ -6,6 +6,13 @@ if [[ "${MOBENCH_CI_PREPARE:-}" != "1" ]]; then
   exit 1
 fi
 
+# The reusable workflow installs targets for stable before this repository's
+# pinned nightly toolchain becomes active in the caller checkout.
+case "${MOBENCH_PLATFORM:-}" in
+  ios) rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios ;;
+  android) rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android ;;
+esac
+
 noir_version="v1.0.0-beta.11"
 if ! command -v noirup >/dev/null 2>&1; then
   curl --fail --location --proto '=https' --tlsv1.2 \
