@@ -68,6 +68,8 @@ jobs:
   resolve_devices:
     name: Resolve device profiles
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       ios_devices: ${{ steps.resolve.outputs.ios_devices }}
       android_devices: ${{ steps.resolve.outputs.android_devices }}
@@ -95,6 +97,11 @@ jobs:
   browserstack:
     name: BrowserStack benchmarks
     needs: resolve_devices
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: write
     uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@434da93dfda39db996be90e9e0bca625f10efb25
     secrets:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}

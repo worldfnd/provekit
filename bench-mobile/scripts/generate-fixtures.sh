@@ -11,7 +11,7 @@ if ! command -v noirup >/dev/null 2>&1; then
 fi
 
 export PATH="${HOME}/.nargo/bin:${PATH}"
-noirup --version v1.0.0-beta.19
+noirup --version v1.0.0-beta.20
 nargo --version
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
