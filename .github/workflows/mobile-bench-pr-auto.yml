@@ -1,0 +1,49 @@
+name: Mobench 0.1.45 E2E Dispatcher
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "ProveKit PR number"
+        required: true
+        type: string
+      head_sha:
+        description: "Exact 40-character PR head SHA"
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  browserstack:
+    name: BrowserStack triad benchmarks
+    permissions:
+      actions: read
+      contents: read
+      checks: write
+      pull-requests: write
+    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@434da93dfda39db996be90e9e0bca625f10efb25
+    secrets:
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+    with:
+      crate_path: ./bench-mobile
+      functions: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      functions_android: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      prepare_script: bench-mobile/scripts/generate-fixtures.sh
+      platform: both
+      device_profile: custom
+      ios_devices: '[{"device":"iPhone SE 2022","os_version":"15"},{"device":"iPhone 14","os_version":"16"},{"device":"iPhone 16 Pro Max","os_version":"18"}]'
+      android_devices: '[{"device":"Samsung Galaxy S24","os_version":"14.0"},{"device":"Google Pixel 7","os_version":"13.0"},{"device":"Samsung Galaxy M32","os_version":"11.0"}]'
+      iterations: "2"
+      warmup: "1"
+      mobench_version: "0.1.45"
+      pr_number: ${{ inputs.pr_number }}
+      allow_non_pr: false
+      requested_by: ${{ github.actor }}
+      head_sha: ${{ inputs.head_sha }}
