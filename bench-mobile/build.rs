@@ -51,6 +51,10 @@ fn copy_if_present(from: &Path, to: &Path) -> io::Result<bool> {
     }
 }
 
+fn env_flag_enabled(name: &str) -> bool {
+    env::var_os(name).is_some_and(|value| value != "0" && value != "false")
+}
+
 fn main() {
     let manifest_dir =
         PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
@@ -61,8 +65,11 @@ fn main() {
     let out_dir =
         PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR")).join("bench_mobile_fixtures");
     let artifact_dir = env::var_os("PROVEKIT_MOBILE_BENCH_ARTIFACT_DIR").map(PathBuf::from);
-    let require_artifacts = env::var_os("PROVEKIT_REQUIRE_MOBILE_BENCH_ARTIFACTS")
-        .is_some_and(|value| value != "0" && value != "false");
+    let require_artifacts = env_flag_enabled("PROVEKIT_REQUIRE_MOBILE_BENCH_ARTIFACTS")
+        || env_flag_enabled("MOBENCH_CI_PREPARE");
+
+    println!("cargo:rerun-if-env-changed=PROVEKIT_REQUIRE_MOBILE_BENCH_ARTIFACTS");
+    println!("cargo:rerun-if-env-changed=MOBENCH_CI_PREPARE");
 
     fs::create_dir_all(&out_dir).expect("create generated fixture output dir");
 
