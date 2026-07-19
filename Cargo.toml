@@ -127,7 +127,7 @@ hex = "0.4.3"
 inferno = { version = "0.12", default-features = false }
 itertools = "0.14.0"
 inventory = "0.3"
-mobench-sdk = { version = "=0.1.45", default-features = false, features = ["registry"] }
+mobench-sdk = { version = "=0.1.46", default-features = false, features = ["registry"] }
 num-bigint = "0.4"
 paste = "1.0.15"
 postcard = { version = "1.1.1", features = ["use-std"] }
