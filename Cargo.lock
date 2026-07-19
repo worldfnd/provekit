@@ -3145,7 +3145,7 @@ dependencies = [
 [[package]]
 name = "mobench-macros"
 version = "0.1.46"
-source = "git+https://github.com/worldcoin/mobile-bench-rs?branch=pr-450-451#027df50151bbe39d6173ee44222825a4cf5e0b8c"
+source = "git+https://github.com/worldcoin/mobile-bench-rs?branch=pr-450-451#bff3c7b49fb1a36c3fb1b81cc75208612e9aa973"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3155,7 +3155,7 @@ dependencies = [
 [[package]]
 name = "mobench-sdk"
 version = "0.1.46"
-source = "git+https://github.com/worldcoin/mobile-bench-rs?branch=pr-450-451#027df50151bbe39d6173ee44222825a4cf5e0b8c"
+source = "git+https://github.com/worldcoin/mobile-bench-rs?branch=pr-450-451#bff3c7b49fb1a36c3fb1b81cc75208612e9aa973"
 dependencies = [
  "inventory",
  "libc",
