@@ -1,4 +1,4 @@
-name: Mobench 0.1.46 E2E Dispatcher
+name: Mobench PR 450/451 E2E Dispatcher
 
 on:
   workflow_dispatch:
@@ -26,7 +26,7 @@ jobs:
       contents: read
       checks: write
       pull-requests: write
-    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@1ac54adaf2bd97c6ca303705e1e0471257716f48
+    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@pr-450-451
     secrets:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
@@ -42,7 +42,8 @@ jobs:
       android_devices: '[{"device":"Samsung Galaxy S24","os_version":"14.0"},{"device":"Google Pixel 7","os_version":"13.0"},{"device":"Samsung Galaxy M32","os_version":"11.0"}]'
       iterations: "2"
       warmup: "1"
-      mobench_version: "0.1.46"
+      mobench_ref: pr-450-451
+      max_completion_timeout_secs: 7200
       rust_toolchain: nightly-2026-03-04
       ffi_backend: native-c-abi
       pr_number: ${{ inputs.pr_number }}
