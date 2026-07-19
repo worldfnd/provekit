@@ -127,7 +127,7 @@ jobs:
     name: BrowserStack benchmarks
     needs: [browserstack-preflight, resolve-device-matrices]
     if: ${{ needs.browserstack-preflight.outputs.available == 'true' }}
-    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@1ac54adaf2bd97c6ca303705e1e0471257716f48
+    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@pr-450-451
     secrets:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
@@ -143,7 +143,8 @@ jobs:
       android_devices: ${{ needs.resolve-device-matrices.outputs.android_devices }}
       iterations: ${{ inputs.iterations }}
       warmup: ${{ inputs.warmup }}
-      mobench_version: "0.1.46"
+      mobench_ref: pr-450-451
+      max_completion_timeout_secs: 7200
       rust_toolchain: nightly-2026-03-04
       ffi_backend: native-c-abi
       pr_number: ${{ inputs.pr_number }}
