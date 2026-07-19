@@ -11,6 +11,35 @@ on:
         description: "Exact 40-character PR head SHA"
         required: true
         type: string
+      platform:
+        description: "android | ios | both"
+        required: false
+        default: both
+        type: choice
+        options:
+          - android
+          - ios
+          - both
+      functions_ios:
+        description: "iOS benchmark functions"
+        required: false
+        default: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+        type: string
+      functions_android:
+        description: "Android benchmark functions"
+        required: false
+        default: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+        type: string
+      ios_devices:
+        description: "iOS device matrix JSON"
+        required: false
+        default: '[{"device":"iPhone SE 2022","os_version":"15"},{"device":"iPhone 14","os_version":"16"},{"device":"iPhone 16 Pro Max","os_version":"18"}]'
+        type: string
+      android_devices:
+        description: "Android device matrix JSON"
+        required: false
+        default: '[{"device":"Samsung Galaxy S24","os_version":"14.0"},{"device":"Google Pixel 7","os_version":"13.0"},{"device":"Samsung Galaxy M32","os_version":"11.0"}]'
+        type: string
 
 permissions:
   actions: read
@@ -33,13 +62,13 @@ jobs:
     with:
       crate_path: ./bench-mobile
       functions: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
-      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
-      functions_android: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      functions_ios: ${{ inputs.functions_ios }}
+      functions_android: ${{ inputs.functions_android }}
       prepare_script: bench-mobile/scripts/generate-fixtures.sh
-      platform: both
+      platform: ${{ inputs.platform }}
       device_profile: custom
-      ios_devices: '[{"device":"iPhone SE 2022","os_version":"15"},{"device":"iPhone 14","os_version":"16"},{"device":"iPhone 16 Pro Max","os_version":"18"}]'
-      android_devices: '[{"device":"Samsung Galaxy S24","os_version":"14.0"},{"device":"Google Pixel 7","os_version":"13.0"},{"device":"Samsung Galaxy M32","os_version":"11.0"}]'
+      ios_devices: ${{ inputs.ios_devices }}
+      android_devices: ${{ inputs.android_devices }}
       iterations: "2"
       warmup: "1"
       mobench_ref: pr-450-451
