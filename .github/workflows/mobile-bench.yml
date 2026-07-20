@@ -1,0 +1,127 @@
+name: Mobile Benchmarks
+
+on:
+  workflow_dispatch:
+    inputs:
+      functions_ios:
+        description: "Optional iOS-specific benchmark functions"
+        required: false
+        type: string
+        default: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      functions_android:
+        description: "Optional Android-specific benchmark functions"
+        required: false
+        type: string
+        default: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      platform:
+        description: "android | ios | both"
+        required: false
+        type: choice
+        default: both
+        options: [android, ios, both]
+      device_profile:
+        description: "Device profile to run"
+        required: false
+        type: choice
+        default: triad
+        options: [smoke, triad, worst]
+      device_profile_ios:
+        description: "Optional iOS-specific device profile"
+        required: false
+        type: string
+        default: ""
+      device_profile_android:
+        description: "Optional Android-specific device profile"
+        required: false
+        type: string
+        default: ""
+      iterations:
+        description: "Number of benchmark iterations"
+        required: false
+        type: string
+        default: "2"
+      warmup:
+        description: "Number of warmup iterations"
+        required: false
+        type: string
+        default: "1"
+      pr_number:
+        description: "PR number for reporting"
+        required: true
+        type: string
+      head_sha:
+        description: "Exact commit SHA to benchmark"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: mobench-${{ inputs.pr_number }}
+  cancel-in-progress: false
+
+jobs:
+  resolve_devices:
+    name: Resolve device profiles
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      ios_devices: ${{ steps.resolve.outputs.ios_devices }}
+      android_devices: ${{ steps.resolve.outputs.android_devices }}
+    steps:
+      - id: resolve
+        shell: bash
+        env:
+          IOS_PROFILE: ${{ inputs.device_profile_ios != '' && inputs.device_profile_ios || inputs.device_profile }}
+          ANDROID_PROFILE: ${{ inputs.device_profile_android != '' && inputs.device_profile_android || inputs.device_profile }}
+        run: |
+          set -euo pipefail
+          case "$IOS_PROFILE" in
+            smoke|worst) ios_devices='[{"device":"iPhone SE 2022","os_version":"15"}]' ;;
+            triad) ios_devices='[{"device":"iPhone SE 2022","os_version":"15"},{"device":"iPhone 14","os_version":"16"},{"device":"iPhone 16 Pro Max","os_version":"18"}]' ;;
+            *) echo "::error::Unsupported iOS device profile: $IOS_PROFILE"; exit 1 ;;
+          esac
+          case "$ANDROID_PROFILE" in
+            smoke|worst) android_devices='[{"device":"Samsung Galaxy M32","os_version":"11.0"}]' ;;
+            triad) android_devices='[{"device":"Samsung Galaxy S24","os_version":"14.0"},{"device":"Google Pixel 7","os_version":"13.0"},{"device":"Samsung Galaxy M32","os_version":"11.0"}]' ;;
+            *) echo "::error::Unsupported Android device profile: $ANDROID_PROFILE"; exit 1 ;;
+          esac
+          echo "ios_devices=$ios_devices" >> "$GITHUB_OUTPUT"
+          echo "android_devices=$android_devices" >> "$GITHUB_OUTPUT"
+
+  browserstack:
+    name: BrowserStack benchmarks
+    needs: resolve_devices
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: write
+    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@8a2dfbb2ba941aa6a6582bf49dae482cc87779df
+    secrets:
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+    with:
+      crate_path: ./bench-mobile
+      functions: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      functions_ios: ${{ inputs.functions_ios }}
+      functions_android: ${{ inputs.functions_android }}
+      prepare_script: bench-mobile/scripts/generate-fixtures.sh
+      platform: ${{ inputs.platform }}
+      ios_devices: ${{ needs.resolve_devices.outputs.ios_devices }}
+      android_devices: ${{ needs.resolve_devices.outputs.android_devices }}
+      iterations: ${{ inputs.iterations }}
+      warmup: ${{ inputs.warmup }}
+      mobench_version: "0.1.47"
+      max_completion_timeout_secs: 7200
+      rust_toolchain: nightly-2026-03-04
+      ffi_backend: native-c-abi
+      pr_number: ${{ inputs.pr_number }}
+      allow_non_pr: false
+      head_sha: ${{ inputs.head_sha }}
+      requested_by: ${{ github.actor }}

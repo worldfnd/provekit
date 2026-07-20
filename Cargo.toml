@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+  "bench-mobile",
   "skyscraper/fp-rounding",
   "skyscraper/hla",
   "skyscraper/bn254-multiplier",
@@ -127,6 +128,8 @@ divan = "0.1.21"
 hex = "0.4.3"
 inferno = { version = "0.12", default-features = false }
 itertools = "0.14.0"
+inventory = "0.3"
+mobench-sdk = { version = "0.1.47", default-features = false, features = ["registry"] }
 num-bigint = "0.4"
 paste = "1.0.15"
 postcard = { version = "1.1.1", features = ["use-std"] }
@@ -161,6 +164,7 @@ tracing-subscriber = { version = "0.3.18", features = ["env-filter", "ansi"] }
 tracing-tracy = "=0.11.4"
 tracy-client = "=0.18.0"
 tracy-client-sys = "=0.24.3"
+uniffi = "0.28"
 parking_lot = "0.12"
 keccak = "0.2.0"
 xz2 = "0.1.7"

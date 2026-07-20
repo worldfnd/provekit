@@ -1,0 +1,166 @@
+name: Mobile Bench PR Command
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  resolve:
+    name: Parse /mobench and resolve context
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.action == 'created' &&
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/mobench')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      trusted: ${{ steps.trust.outputs.trusted }}
+      platform: ${{ steps.parse.outputs.platform }}
+      device_profile: ${{ steps.parse.outputs.device_profile }}
+      iterations: ${{ steps.parse.outputs.iterations }}
+      warmup: ${{ steps.parse.outputs.warmup }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      pr_number: ${{ github.event.issue.number }}
+      requested_by: ${{ github.event.comment.user.login }}
+    steps:
+      - name: Check trust
+        id: trust
+        env:
+          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+        run: |
+          if echo "OWNER,MEMBER,COLLABORATOR" | tr ',' '\n' | grep -qx "$AUTHOR_ASSOCIATION"; then
+            echo "trusted=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Untrusted author association: $AUTHOR_ASSOCIATION"
+            echo "trusted=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Parse command
+        if: steps.trust.outputs.trusted == 'true'
+        id: parse
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+          line=$(echo "$COMMENT_BODY" | head -1)
+
+          extract_val() {
+            echo "$line" | sed -n "s/.*${1}=\([^ ]*\).*/\1/p"
+          }
+
+          platform=$(extract_val platform)
+          device_profile=$(extract_val device_profile)
+          iterations=$(extract_val iterations)
+          warmup=$(extract_val warmup)
+
+          case "${platform:-both}" in
+            android|ios|both) platform="${platform:-both}" ;;
+            *) echo "::warning::Invalid platform '${platform}', defaulting to 'both'"; platform="both" ;;
+          esac
+
+          case "${device_profile:-triad}" in
+            smoke|triad|worst) device_profile="${device_profile:-triad}" ;;
+            *) echo "::warning::Invalid device_profile '${device_profile}', defaulting to 'triad'"; device_profile="triad" ;;
+          esac
+
+          if ! [[ "${iterations:-2}" =~ ^[0-9]+$ ]]; then
+            echo "::warning::Invalid iterations '${iterations}', defaulting to '2'"
+            iterations="2"
+          else
+            iterations="${iterations:-2}"
+          fi
+
+          if ! [[ "${warmup:-1}" =~ ^[0-9]+$ ]]; then
+            echo "::warning::Invalid warmup '${warmup}', defaulting to '1'"
+            warmup="1"
+          else
+            warmup="${warmup:-1}"
+          fi
+
+          echo "platform=${platform}" >> "$GITHUB_OUTPUT"
+          echo "device_profile=${device_profile}" >> "$GITHUB_OUTPUT"
+          echo "iterations=${iterations}" >> "$GITHUB_OUTPUT"
+          echo "warmup=${warmup}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve PR refs
+        if: steps.trust.outputs.trusted == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.issue.pull_request.url }}
+        run: |
+          set -euo pipefail
+          head_sha=$(gh api "$PR_URL" --jq '.head.sha')
+          [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Expected a full PR head SHA"; exit 1; }
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+
+  resolve_devices:
+    needs: resolve
+    if: needs.resolve.outputs.trusted == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      ios_devices: ${{ steps.resolve.outputs.ios_devices }}
+      android_devices: ${{ steps.resolve.outputs.android_devices }}
+    steps:
+      - id: resolve
+        shell: bash
+        env:
+          DEVICE_PROFILE: ${{ needs.resolve.outputs.device_profile }}
+        run: |
+          set -euo pipefail
+          case "$DEVICE_PROFILE" in
+            smoke|worst)
+              ios_devices='[{"device":"iPhone SE 2022","os_version":"15"}]'
+              android_devices='[{"device":"Samsung Galaxy M32","os_version":"11.0"}]'
+              ;;
+            triad)
+              ios_devices='[{"device":"iPhone SE 2022","os_version":"15"},{"device":"iPhone 14","os_version":"16"},{"device":"iPhone 16 Pro Max","os_version":"18"}]'
+              android_devices='[{"device":"Samsung Galaxy S24","os_version":"14.0"},{"device":"Google Pixel 7","os_version":"13.0"},{"device":"Samsung Galaxy M32","os_version":"11.0"}]'
+              ;;
+            *) echo "::error::Unsupported device profile: $DEVICE_PROFILE"; exit 1 ;;
+          esac
+          echo "ios_devices=$ios_devices" >> "$GITHUB_OUTPUT"
+          echo "android_devices=$android_devices" >> "$GITHUB_OUTPUT"
+
+  browserstack:
+    name: Run BrowserStack benchmarks
+    needs: [resolve, resolve_devices]
+    if: needs.resolve.outputs.trusted == 'true'
+    permissions:
+      actions: read
+      checks: write
+      contents: read
+      pull-requests: write
+    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@8a2dfbb2ba941aa6a6582bf49dae482cc87779df
+    secrets:
+      BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
+      BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
+    with:
+      crate_path: ./bench-mobile
+      functions: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      functions_android: '["bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove","bench_mobile::bench_passport_complete_age_check_prove"]'
+      prepare_script: bench-mobile/scripts/generate-fixtures.sh
+      platform: ${{ needs.resolve.outputs.platform }}
+      ios_devices: ${{ needs.resolve_devices.outputs.ios_devices }}
+      android_devices: ${{ needs.resolve_devices.outputs.android_devices }}
+      iterations: ${{ needs.resolve.outputs.iterations }}
+      warmup: ${{ needs.resolve.outputs.warmup }}
+      mobench_version: "0.1.47"
+      max_completion_timeout_secs: 7200
+      rust_toolchain: nightly-2026-03-04
+      ffi_backend: native-c-abi
+      pr_number: ${{ needs.resolve.outputs.pr_number }}
+      requested_by: ${{ needs.resolve.outputs.requested_by }}
+      head_sha: ${{ needs.resolve.outputs.head_sha }}
