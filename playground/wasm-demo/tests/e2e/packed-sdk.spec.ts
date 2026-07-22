@@ -42,7 +42,7 @@ for (const threads of [false, "auto"] as const) {
 
     await page.goto("/e2e.html");
     const result = await page.evaluate(async (threadSetting): Promise<AcceptanceResult> => {
-      const sdk = await import("provekit-sdk");
+      const sdk = await import("@worldcoin/provekit");
       const started = performance.now();
       const runtime = await sdk.initProveKit({ threads: threadSetting });
       const initializationMs = performance.now() - started;

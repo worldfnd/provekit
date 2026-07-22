@@ -1,4 +1,4 @@
-import type { Proof, ProveKitRuntime, Verifier } from "provekit-sdk";
+import type { Proof, ProveKitRuntime, Verifier } from "@worldcoin/provekit";
 
 export type CircuitName = "sha256" | "poseidon" | "custom";
 export type LogType = "info" | "success" | "warn" | "error";

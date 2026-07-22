@@ -32,7 +32,7 @@ let proof = prover.prove_with_toml("Prover.toml")?;
 </TabItem>
 <TabItem label="JS / TS">
 ```ts
-import { initProveKit } from "provekit-sdk";
+import { initProveKit } from "@worldcoin/provekit";
 
 const runtime = await initProveKit({ threads: "auto" });
 const prover = await runtime.loadProver(pkpBytes);

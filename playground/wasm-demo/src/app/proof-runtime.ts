@@ -1,4 +1,4 @@
-import { initProveKit, type ProveKitRuntime } from "provekit-sdk";
+import { initProveKit, type ProveKitRuntime } from "@worldcoin/provekit";
 
 import type { LogWriter } from "./types.js";
 

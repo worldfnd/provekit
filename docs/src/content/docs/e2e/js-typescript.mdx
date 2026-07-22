@@ -5,7 +5,7 @@ description: Generate a Noir witness and prove and verify locally with ProveKit'
 
 import { Aside } from '@astrojs/starlight/components';
 
-ProveKit's first-party JavaScript SDK lives in `tooling/provekit-js`, is packaged as `provekit-sdk`, and wraps the repository's `provekit-wasm` bindings. It accepts high-level values matching a Noir ABI, generates the witness locally with Noir/ACVM, and proves and verifies without sending private inputs to an application server.
+ProveKit's first-party JavaScript SDK lives in `tooling/provekit-js`, is published as `@worldcoin/provekit`, and wraps the repository's `provekit-wasm` bindings. It accepts high-level values matching a Noir ABI, generates the witness locally with Noir/ACVM, and proves and verifies without sending private inputs to an application server.
 
 <Aside type="caution" title="Artifacts are versioned inputs">
 The current SDK accepts the artifact family produced by this `main` branch: **PKP 2.0** and **PKV 2.1**, compiled with the repository-pinned Noir **1.0.0-beta.20** frontend. It deliberately rejects older major versions. In particular, a PKP 1.1 or PKV 1.2 from ProveKit v1 must be regenerated; changing only its header is unsafe.
@@ -16,7 +16,7 @@ The current SDK accepts the artifact family produced by this `main` branch: **PK
 Use the package produced by this repository's SDK build. Until the package has a published release, consume a packed tarball from the same reviewed ProveKit commit as the artifacts:
 
 ```sh
-npm install ./provekit-sdk-<version>.tgz
+npm install ./worldcoin-provekit-<version>.tgz
 ```
 
 Do not install an unpublished name from the public registry. The release process must publish the JavaScript glue, WebAssembly module, worker/snippet assets, and TypeScript declarations as one versioned unit.
@@ -24,7 +24,7 @@ Do not install an unpublished name from the public registry. The release process
 ## Minimal browser flow
 
 ```ts
-import { initProveKit } from "provekit-sdk";
+import { initProveKit } from "@worldcoin/provekit";
 
 const runtime = await initProveKit({ threads: "auto" });
 

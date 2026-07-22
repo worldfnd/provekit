@@ -1,7 +1,7 @@
 import { parseSimpleToml } from "../../shared/toml-parser.mjs";
-import { DEFAULT_ARTIFACT_LIMITS } from "provekit-sdk";
+import { DEFAULT_ARTIFACT_LIMITS } from "@worldcoin/provekit";
 
-import type { ArtifactLimits } from "provekit-sdk";
+import type { ArtifactLimits } from "@worldcoin/provekit";
 import type { CircuitMetadata, CircuitName, CustomFiles, DiagnosticsWriter } from "./types.js";
 
 const MAX_CUSTOM_INPUT_BYTES = 4 * 1024 * 1024;

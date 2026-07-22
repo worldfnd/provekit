@@ -1,8 +1,24 @@
 {
-  "name": "provekit-sdk",
+  "name": "@worldcoin/provekit",
   "version": "0.1.0",
   "description": "First-party ProveKit browser SDK",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/worldfnd/provekit.git",
+    "directory": "tooling/provekit-js"
+  },
+  "homepage": "https://github.com/worldfnd/provekit#readme",
+  "bugs": "https://github.com/worldfnd/provekit/issues",
+  "keywords": [
+    "zero-knowledge",
+    "noir",
+    "wasm",
+    "browser"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",

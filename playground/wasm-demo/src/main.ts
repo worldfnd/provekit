@@ -1,4 +1,4 @@
-import type { Prover, Verifier } from "provekit-sdk";
+import type { Prover, Verifier } from "@worldcoin/provekit";
 
 import { ArtifactLoader } from "./app/artifact-loader.js";
 import { ChecklistPresenter } from "./app/checklist.js";

@@ -1,4 +1,4 @@
-import type { Proof } from "provekit-sdk";
+import type { Proof } from "@worldcoin/provekit";
 
 import type { CircuitMetadata, LogWriter } from "./types.js";
 

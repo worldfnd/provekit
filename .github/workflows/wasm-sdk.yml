@@ -88,6 +88,7 @@ jobs:
         working-directory: playground/wasm-demo
         run: |
           npm install --legacy-peer-deps
+          node scripts/install-packed-sdk.mjs
           npm run typecheck
           npm test
           npm run build

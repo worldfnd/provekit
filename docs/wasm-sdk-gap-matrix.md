@@ -84,12 +84,12 @@ No passkey-sized browser measurement is recorded. Required evidence includes bro
 
 ## Packed-package browser acceptance
 
-On 2026-07-22, the packed `provekit-sdk` package passed its current-format SHA-256 example in headless Chromium 149.0.7827.55 on macOS 26.5.1 arm64. Each run loaded PKP 2.0/PKV 2.1, proved twice with one logical prover, reused one verifier, and rejected a public-input-tampered proof. After entering the sensitive witness/proving phase, the test observed exactly the two expected same-origin lazy Noir/ACVM WASM fetches, with no query strings, request bodies, custom headers, unexpected paths, or WebSockets.
+On 2026-07-22, the packed `@worldcoin/provekit` package passed its current-format SHA-256 example in headless Chromium 149.0.7827.55 on macOS 26.5.1 arm64. Each run loaded PKP 2.0/PKV 2.1, proved twice with one logical prover, reused one verifier, and rejected a public-input-tampered proof. After entering the sensitive witness/proving phase, the test observed exactly the two expected same-origin lazy Noir/ACVM WASM fetches, with no query strings, request bodies, custom headers, unexpected paths, or WebSockets.
 
 | Requested mode | Actual mode | Initialization | First proof | Second proof | Two verifications | Proof size |
 | :--- | :--- | ---: | ---: | ---: | ---: | ---: |
-| `false` | single, 1 thread | 10.21 ms | 2,550.34 ms | 2,392.04 ms | 475.63 ms | 507,047 bytes |
-| `"auto"` | threaded, 8 threads | 41.17 ms | 885.65 ms | 767.50 ms | 127.85 ms | 511,911 bytes |
+| `false` | single, 1 thread | 12.65 ms | 2,513.31 ms | 2,410.56 ms | 470.02 ms | 512,251 bytes |
+| `"auto"` | threaded, 8 threads | 48.96 ms | 854.70 ms | 761.79 ms | 125.58 ms | 509,819 bytes |
 
 These are local acceptance measurements, not benchmarks. Playwright did not expose a reliable peak process-memory measurement in this run, and the blocked legacy passkey fixture was not executed. Passkey-sized peak memory, witness time, and proof time remain explicitly unmeasured until the beta.20 circuit migration and licensing gates above are resolved.
 

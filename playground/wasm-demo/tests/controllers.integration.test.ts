@@ -1,4 +1,4 @@
-import type { Proof, Verifier } from "provekit-sdk";
+import type { Proof, Verifier } from "@worldcoin/provekit";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ChecklistPresenter } from "../src/app/checklist.js";

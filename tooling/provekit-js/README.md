@@ -1,10 +1,10 @@
-# provekit-sdk
+# @worldcoin/provekit
 
 First-party browser API for loading ProveKit artifacts, executing Noir inputs
 locally, and proving and verifying with ProveKit WebAssembly.
 
 ```ts
-import { initProveKit } from "provekit-sdk";
+import { initProveKit } from "@worldcoin/provekit";
 
 const runtime = await initProveKit({ threads: "auto" });
 const prover = await runtime.loadProver(pkpBytes);

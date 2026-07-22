@@ -132,8 +132,11 @@ async function buildShared() {
   if (!run("npm install --legacy-peer-deps", { cwd: DEMO_DIR })) {
     process.exit(1);
   }
+  if (!run("node scripts/install-packed-sdk.mjs", { cwd: DEMO_DIR })) {
+    process.exit(1);
+  }
 
-  // provekit-sdk loads @noir-lang/* from node_modules directly; the old demo-local
+  // @worldcoin/provekit loads @noir-lang/* from node_modules directly; the old demo-local
   // vendor/pkg staging directories are no longer needed.
   for (const dir of ["vendor", "pkg", "pkg-web"]) {
     const fullPath = join(DEMO_DIR, dir);
