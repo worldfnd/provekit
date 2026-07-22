@@ -1,20 +1,43 @@
 use {
+    crate::error::{ErrorCode, WasmError, WasmResult},
     provekit_backend_bn254::{Prover, Verifier},
-    provekit_common::binary_format::{
-        HEADER_SIZE, MAGIC_BYTES, PROVER_FORMAT, PROVER_VERSION, VERIFIER_FORMAT, VERIFIER_VERSION,
-        XZ_MAGIC, ZSTD_MAGIC,
+    provekit_common::{
+        binary_format::{
+            HEADER_SIZE, MAGIC_BYTES, PROVER_FORMAT, PROVER_VERSION, VERIFIER_FORMAT,
+            VERIFIER_VERSION, XZ_MAGIC, ZSTD_MAGIC,
+        },
+        HashConfig,
     },
-    wasm_bindgen::prelude::*,
+    std::io::{Cursor, Read, Write},
 };
 
-pub(crate) fn parse_binary_header<'a>(
-    data: &'a [u8],
-    expected_format: &[u8; 8],
-    (expected_major, min_minor): (u16, u16),
-    label: &str,
-) -> Result<&'a [u8], JsError> {
-    parse_binary_header_impl(data, expected_format, (expected_major, min_minor), label)
-        .map_err(|msg| JsError::new(&msg))
+/// Maximum compressed payload accepted from JavaScript (64 MiB).
+pub(crate) const MAX_COMPRESSED_ARTIFACT_BYTES: usize = 64 * 1024 * 1024;
+
+/// Maximum uncompressed postcard payload accepted from JavaScript (256 MiB).
+pub(crate) const MAX_DECOMPRESSED_ARTIFACT_BYTES: usize = 256 * 1024 * 1024;
+
+pub(crate) fn looks_like_json(data: &[u8]) -> bool {
+    matches!(
+        data.iter()
+            .copied()
+            .find(|byte| !byte.is_ascii_whitespace()),
+        Some(b'{')
+    )
+}
+
+pub(crate) fn ensure_json_artifact_size(data: &[u8], label: &str) -> WasmResult<()> {
+    if data.len() > MAX_DECOMPRESSED_ARTIFACT_BYTES {
+        return Err(WasmError::new(
+            ErrorCode::ArtifactTooLarge,
+            format!(
+                "JSON {label} artifact is {} bytes, limit is {} bytes",
+                data.len(),
+                MAX_DECOMPRESSED_ARTIFACT_BYTES
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn parse_binary_header_impl<'a>(
@@ -22,73 +45,198 @@ fn parse_binary_header_impl<'a>(
     expected_format: &[u8; 8],
     (expected_major, min_minor): (u16, u16),
     label: &str,
-) -> Result<&'a [u8], String> {
+) -> WasmResult<&'a [u8]> {
+    parse_binary_header_with_limit(
+        data,
+        expected_format,
+        (expected_major, min_minor),
+        label,
+        MAX_COMPRESSED_ARTIFACT_BYTES,
+    )
+}
+
+fn parse_binary_header_with_limit<'a>(
+    data: &'a [u8],
+    expected_format: &[u8; 8],
+    (expected_major, min_minor): (u16, u16),
+    label: &str,
+    compressed_limit: usize,
+) -> WasmResult<&'a [u8]> {
     if data.len() < HEADER_SIZE {
-        return Err(format!("{label} data too short for binary format"));
+        return Err(WasmError::new(
+            ErrorCode::ArtifactTooShort,
+            format!("{label} data too short for binary format"),
+        ));
+    }
+    if data.len() - HEADER_SIZE > compressed_limit {
+        return Err(WasmError::new(
+            ErrorCode::ArtifactTooLarge,
+            format!(
+                "Compressed {label} payload is {} bytes, limit is {} bytes",
+                data.len() - HEADER_SIZE,
+                compressed_limit
+            ),
+        ));
     }
     if &data[..8] != MAGIC_BYTES {
-        return Err(format!("Invalid magic bytes in {label} data"));
+        return Err(WasmError::new(
+            ErrorCode::ArtifactInvalidMagic,
+            format!("Invalid magic bytes in {label} data"),
+        ));
     }
     if &data[8..16] != expected_format {
-        return Err(format!("Invalid format identifier in {label} data"));
+        return Err(WasmError::new(
+            ErrorCode::ArtifactInvalidFormat,
+            format!("Invalid format identifier in {label} data"),
+        ));
     }
 
     let major = u16::from_le_bytes([data[16], data[17]]);
     let minor = u16::from_le_bytes([data[18], data[19]]);
     if major != expected_major {
-        return Err(format!(
-            "Incompatible {label} format: major version {major}, expected {expected_major}"
+        return Err(WasmError::new(
+            ErrorCode::ArtifactIncompatibleVersion,
+            format!(
+                "Incompatible {label} format: major version {major}, expected {expected_major}"
+            ),
         ));
     }
     if minor < min_minor {
-        return Err(format!(
-            "Incompatible {label} format: minor version {minor}, expected >= {min_minor}"
+        return Err(WasmError::new(
+            ErrorCode::ArtifactIncompatibleVersion,
+            format!("Incompatible {label} format: minor version {minor}, expected >= {min_minor}"),
+        ));
+    }
+
+    let hash_config = data[20];
+    if hash_config != 0xff && HashConfig::from_byte(hash_config).is_none() {
+        return Err(WasmError::new(
+            ErrorCode::ArtifactInvalidFormat,
+            format!("Invalid hash config byte in {label} data: 0x{hash_config:02X}"),
         ));
     }
 
     Ok(&data[HEADER_SIZE..])
 }
 
-pub(crate) fn decompress(data: &[u8]) -> Result<Vec<u8>, JsError> {
-    decompress_impl(data).map_err(|msg| JsError::new(&msg))
-}
-
-fn decompress_impl(data: &[u8]) -> Result<Vec<u8>, String> {
+fn decompress_with_limit(data: &[u8], limit: usize) -> WasmResult<Vec<u8>> {
     if data.len() >= 4 && data[..4] == ZSTD_MAGIC {
-        let mut decoder = ruzstd::decoding::StreamingDecoder::new(std::io::Cursor::new(data))
-            .map_err(|e| format!("Failed to init Zstd decoder: {e}"))?;
-        let hint = usize::try_from(decoder.decoder.content_size()).unwrap_or(0);
-        let mut out = Vec::with_capacity(hint);
-        std::io::Read::read_to_end(&mut decoder, &mut out)
-            .map_err(|e| format!("Failed to decompress Zstd data: {e}"))?;
+        let decoder = ruzstd::decoding::StreamingDecoder::new(Cursor::new(data)).map_err(|e| {
+            WasmError::new(
+                ErrorCode::ArtifactDecompressionFailed,
+                format!("Failed to initialize Zstd decoder: {e}"),
+            )
+        })?;
+        let content_size = decoder.decoder.content_size();
+        if content_size > limit as u64 {
+            return Err(WasmError::new(
+                ErrorCode::ArtifactDecompressedTooLarge,
+                format!("Decompressed artifact exceeds {limit} byte limit"),
+            ));
+        }
+
+        let initial_capacity = usize::try_from(content_size)
+            .unwrap_or(0)
+            .min(limit)
+            .min(16 * 1024 * 1024);
+        let mut out = Vec::with_capacity(initial_capacity);
+        decoder
+            .take((limit as u64).saturating_add(1))
+            .read_to_end(&mut out)
+            .map_err(|e| {
+                WasmError::new(
+                    ErrorCode::ArtifactDecompressionFailed,
+                    format!("Failed to decompress Zstd data: {e}"),
+                )
+            })?;
+        if out.len() > limit {
+            return Err(WasmError::new(
+                ErrorCode::ArtifactDecompressedTooLarge,
+                format!("Decompressed artifact exceeds {limit} byte limit"),
+            ));
+        }
         Ok(out)
     } else if data.len() >= 6 && data[..6] == XZ_MAGIC {
-        let mut out = Vec::new();
-        lzma_rs::xz_decompress(&mut std::io::Cursor::new(data), &mut out)
-            .map_err(|e| format!("Failed to decompress XZ data: {e}"))?;
-        Ok(out)
+        let mut writer = BoundedWriter::new(limit);
+        if let Err(error) = lzma_rs::xz_decompress(&mut Cursor::new(data), &mut writer) {
+            if writer.exceeded_limit {
+                return Err(WasmError::new(
+                    ErrorCode::ArtifactDecompressedTooLarge,
+                    format!("Decompressed artifact exceeds {limit} byte limit"),
+                ));
+            }
+            return Err(WasmError::new(
+                ErrorCode::ArtifactDecompressionFailed,
+                format!("Failed to decompress XZ data: {error}"),
+            ));
+        }
+        Ok(writer.output)
     } else {
-        Err(format!(
-            "Unknown compression format (first bytes: {:02X?})",
-            &data[..data.len().min(6)]
+        Err(WasmError::new(
+            ErrorCode::ArtifactUnknownCompression,
+            format!(
+                "Unknown compression format (first bytes: {:02X?})",
+                &data[..data.len().min(6)]
+            ),
         ))
     }
 }
 
-/// Parses a binary prover artifact (.pkp format).
-pub fn parse_binary_prover(data: &[u8]) -> Result<Prover, JsError> {
-    let payload = parse_binary_header(data, &PROVER_FORMAT, PROVER_VERSION, "prover")?;
-    let decompressed = decompress(payload)?;
-    postcard::from_bytes(&decompressed)
-        .map_err(|err| JsError::new(&format!("Failed to deserialize prover data: {err}")))
+struct BoundedWriter {
+    output:         Vec<u8>,
+    limit:          usize,
+    exceeded_limit: bool,
 }
 
-/// Parses a binary verifier artifact (.pkv format).
-pub fn parse_binary_verifier(data: &[u8]) -> Result<Verifier, JsError> {
-    let payload = parse_binary_header(data, &VERIFIER_FORMAT, VERIFIER_VERSION, "verifier")?;
-    let decompressed = decompress(payload)?;
-    postcard::from_bytes(&decompressed)
-        .map_err(|err| JsError::new(&format!("Failed to deserialize verifier data: {err}")))
+impl BoundedWriter {
+    fn new(limit: usize) -> Self {
+        Self {
+            output: Vec::new(),
+            limit,
+            exceeded_limit: false,
+        }
+    }
+}
+
+impl Write for BoundedWriter {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        if buffer.len() > self.limit.saturating_sub(self.output.len()) {
+            self.exceeded_limit = true;
+            return Err(std::io::Error::other(
+                "decompressed artifact limit exceeded",
+            ));
+        }
+        self.output.extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Parses a binary prover artifact (`.pkp` format).
+pub(crate) fn parse_binary_prover(data: &[u8]) -> WasmResult<Prover> {
+    let payload = parse_binary_header_impl(data, &PROVER_FORMAT, PROVER_VERSION, "prover")?;
+    let decompressed = decompress_with_limit(payload, MAX_DECOMPRESSED_ARTIFACT_BYTES)?;
+    postcard::from_bytes(&decompressed).map_err(|error| {
+        WasmError::new(
+            ErrorCode::ArtifactDeserializationFailed,
+            format!("Failed to deserialize prover data: {error}"),
+        )
+    })
+}
+
+/// Parses a binary verifier artifact (`.pkv` format).
+pub(crate) fn parse_binary_verifier(data: &[u8]) -> WasmResult<Verifier> {
+    let payload = parse_binary_header_impl(data, &VERIFIER_FORMAT, VERIFIER_VERSION, "verifier")?;
+    let decompressed = decompress_with_limit(payload, MAX_DECOMPRESSED_ARTIFACT_BYTES)?;
+    postcard::from_bytes(&decompressed).map_err(|error| {
+        WasmError::new(
+            ErrorCode::ArtifactDeserializationFailed,
+            format!("Failed to deserialize verifier data: {error}"),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -118,9 +266,8 @@ mod tests {
     fn parse_binary_header_accepts_valid_header() {
         let payload = b"payload-bytes";
         let data = build_header(PROVER_FORMAT, PROVER_VERSION, 0xff, payload);
-
-        let parsed = parse_binary_header(&data, &PROVER_FORMAT, PROVER_VERSION, "prover").unwrap();
-
+        let parsed =
+            parse_binary_header_impl(&data, &PROVER_FORMAT, PROVER_VERSION, "prover").unwrap();
         assert_eq!(parsed, payload);
     }
 
@@ -128,81 +275,121 @@ mod tests {
     fn parse_binary_header_rejects_magic_mismatch() {
         let mut data = build_header(PROVER_FORMAT, PROVER_VERSION, 0xff, b"x");
         data[0] ^= 0x01;
-
         let err =
             parse_binary_header_impl(&data, &PROVER_FORMAT, PROVER_VERSION, "prover").unwrap_err();
-        assert!(err.contains("Invalid magic bytes in prover data"));
+        assert_eq!(err.code(), ErrorCode::ArtifactInvalidMagic);
+        assert!(err.message().contains("Invalid magic bytes in prover data"));
     }
 
     #[test]
     fn parse_binary_header_rejects_format_mismatch() {
         let data = build_header(VERIFIER_FORMAT, PROVER_VERSION, 0xff, b"x");
-
         let err =
             parse_binary_header_impl(&data, &PROVER_FORMAT, PROVER_VERSION, "prover").unwrap_err();
-        assert!(err.contains("Invalid format identifier in prover data"));
+        assert_eq!(err.code(), ErrorCode::ArtifactInvalidFormat);
     }
 
     #[test]
     fn parse_binary_header_rejects_major_version_mismatch() {
-        let bad_major = (PROVER_VERSION.0 + 1, PROVER_VERSION.1);
-        let data = build_header(PROVER_FORMAT, bad_major, 0xff, b"x");
-
+        let data = build_header(
+            PROVER_FORMAT,
+            (PROVER_VERSION.0 + 1, PROVER_VERSION.1),
+            0xff,
+            b"x",
+        );
         let err =
             parse_binary_header_impl(&data, &PROVER_FORMAT, PROVER_VERSION, "prover").unwrap_err();
-        assert!(err.contains("Incompatible prover format: major version"));
+        assert_eq!(err.code(), ErrorCode::ArtifactIncompatibleVersion);
     }
 
     #[test]
     fn parse_binary_header_rejects_minor_version_too_low() {
-        let min_minor = PROVER_VERSION.1 + 1;
         let data = build_header(PROVER_FORMAT, PROVER_VERSION, 0xff, b"x");
-
         let err = parse_binary_header_impl(
             &data,
             &PROVER_FORMAT,
-            (PROVER_VERSION.0, min_minor),
+            (PROVER_VERSION.0, PROVER_VERSION.1 + 1),
             "prover",
         )
         .unwrap_err();
-        assert!(err.contains("Incompatible prover format: minor version"));
+        assert_eq!(err.code(), ErrorCode::ArtifactIncompatibleVersion);
     }
 
     #[test]
     fn parse_binary_header_rejects_data_too_short() {
-        let too_short = vec![0_u8; HEADER_SIZE - 1];
+        let err = parse_binary_header_impl(
+            &[0_u8; HEADER_SIZE - 1],
+            &PROVER_FORMAT,
+            PROVER_VERSION,
+            "prover",
+        )
+        .unwrap_err();
+        assert_eq!(err.code(), ErrorCode::ArtifactTooShort);
+    }
 
-        let err = parse_binary_header_impl(&too_short, &PROVER_FORMAT, PROVER_VERSION, "prover")
-            .unwrap_err();
-        assert!(err.contains("prover data too short for binary format"));
+    #[test]
+    fn parse_binary_header_rejects_compressed_payload_over_limit() {
+        let data = build_header(PROVER_FORMAT, PROVER_VERSION, 0xff, b"oversized");
+        let err =
+            parse_binary_header_with_limit(&data, &PROVER_FORMAT, PROVER_VERSION, "prover", 3)
+                .unwrap_err();
+        assert_eq!(err.code(), ErrorCode::ArtifactTooLarge);
+    }
+
+    #[test]
+    fn parse_binary_header_rejects_invalid_hash_config() {
+        let data = build_header(PROVER_FORMAT, PROVER_VERSION, 0xfe, b"x");
+        let err =
+            parse_binary_header_impl(&data, &PROVER_FORMAT, PROVER_VERSION, "prover").unwrap_err();
+        assert_eq!(err.code(), ErrorCode::ArtifactInvalidFormat);
     }
 
     #[test]
     fn decompress_rejects_unknown_magic() {
-        let err = decompress_impl(b"\x01\x02\x03\x04").unwrap_err();
-        assert!(err.contains("Unknown compression format"));
+        let err = decompress_with_limit(b"\x01\x02\x03\x04", 1024).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::ArtifactUnknownCompression);
     }
 
     #[test]
     fn decompress_roundtrips_zstd_data() {
         let payload = b"provekit-zstd-roundtrip";
         let compressed = compress_to_vec(payload.as_slice(), CompressionLevel::Fastest);
+        assert_eq!(
+            decompress_with_limit(&compressed, payload.len()).unwrap(),
+            payload
+        );
+    }
 
-        assert_eq!(&compressed[..4], ZSTD_MAGIC.as_slice());
-
-        let decompressed = decompress_impl(&compressed).unwrap();
-        assert_eq!(decompressed, payload);
+    #[test]
+    fn decompress_rejects_zstd_output_over_limit() {
+        let compressed = compress_to_vec(b"too-large".as_slice(), CompressionLevel::Fastest);
+        let err = decompress_with_limit(&compressed, 3).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::ArtifactDecompressedTooLarge);
     }
 
     #[test]
     fn decompress_roundtrips_xz_data() {
         let payload = b"provekit-xz-roundtrip";
         let mut compressed = Vec::new();
-        lzma_rs::xz_compress(&mut std::io::Cursor::new(payload), &mut compressed).unwrap();
+        lzma_rs::xz_compress(&mut Cursor::new(payload), &mut compressed).unwrap();
+        assert_eq!(
+            decompress_with_limit(&compressed, payload.len()).unwrap(),
+            payload
+        );
+    }
 
-        assert_eq!(&compressed[..6], XZ_MAGIC.as_slice());
+    #[test]
+    fn decompress_rejects_xz_output_over_limit() {
+        let mut compressed = Vec::new();
+        lzma_rs::xz_compress(&mut Cursor::new(b"too-large"), &mut compressed).unwrap();
+        let err = decompress_with_limit(&compressed, 3).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::ArtifactDecompressedTooLarge);
+    }
 
-        let decompressed = decompress_impl(&compressed).unwrap();
-        assert_eq!(decompressed, payload);
+    #[test]
+    fn json_detection_requires_an_object() {
+        assert!(looks_like_json(b" \n {\"key\":1}"));
+        assert!(!looks_like_json(MAGIC_BYTES));
+        assert!(!looks_like_json(b"not-json"));
     }
 }

@@ -1,0 +1,45 @@
+{
+  "name": "provekit-sdk",
+  "version": "0.1.0",
+  "description": "First-party ProveKit browser SDK",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build": "npm run clean && tsup --config tsup.config.ts && node scripts/copy-wasm.mjs",
+    "pack:check": "node scripts/pack-smoke.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@noir-lang/acvm_js": "1.0.0-beta.20",
+    "@noir-lang/noir_js": "1.0.0-beta.20"
+  },
+  "devDependencies": {
+    "@types/node": "^24.9.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

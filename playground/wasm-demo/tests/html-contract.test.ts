@@ -17,7 +17,7 @@ describe("index.html runtime contract", () => {
   });
 
   it("retains the browser import map required by the static-serve TypeScript path", () => {
-    expect(indexHtml).toContain('"@atheonxyz/verity"');
-    expect(indexHtml).toContain('"provekit-inspector"');
+    expect(indexHtml).toContain('"provekit-sdk"');
+    expect(indexHtml).toContain('"@noir-lang/noir_js"');
   });
 });

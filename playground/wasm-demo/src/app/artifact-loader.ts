@@ -1,6 +1,10 @@
 import { parseSimpleToml } from "../../shared/toml-parser.mjs";
+import { DEFAULT_ARTIFACT_LIMITS } from "provekit-sdk";
 
+import type { ArtifactLimits } from "provekit-sdk";
 import type { CircuitMetadata, CircuitName, CustomFiles, DiagnosticsWriter } from "./types.js";
+
+const MAX_CUSTOM_INPUT_BYTES = 4 * 1024 * 1024;
 
 export interface ArtifactBundle {
   proverBytes: Uint8Array;
@@ -32,10 +36,17 @@ function logBinarySize(logs: DiagnosticsWriter, label: string, bytes: Uint8Array
   logs.log(`${label}: ${(bytes.byteLength / 1024 / 1024).toFixed(2)} MB`);
 }
 
+function ensureFileSize(file: File, label: string, maxBytes: number): void {
+  if (file.size > maxBytes) {
+    throw new Error(`${label} is ${file.size} bytes; maximum is ${maxBytes} bytes`);
+  }
+}
+
 export class ArtifactLoader {
   constructor(
     private readonly logs: DiagnosticsWriter,
     private readonly readCircuitStats: (proverBytes: Uint8Array) => Promise<{ constraints: number; witnesses: number }>,
+    private readonly limits: ArtifactLimits = DEFAULT_ARTIFACT_LIMITS,
   ) {}
 
   async loadArtifacts(circuit: CircuitName, customFiles: CustomFiles): Promise<ArtifactBundle> {
@@ -77,6 +88,7 @@ export class ArtifactLoader {
     if (!inputsFile) {
       throw new Error("Upload inputs.json or Prover.toml before running the custom circuit.");
     }
+    ensureFileSize(inputsFile, "Input file", MAX_CUSTOM_INPUT_BYTES);
 
     if (inputsFile.name.toLowerCase().endsWith(".toml")) {
       this.logs.log("Parsing Prover.toml...");
@@ -118,6 +130,8 @@ export class ArtifactLoader {
 
     this.logs.log("Loading uploaded prover and verifier artifacts...");
     this.logs.logMemory("Before loading artifacts");
+    ensureFileSize(prover, "Prover artifact", this.limits.maxProverBytes);
+    ensureFileSize(verifier, "Verifier artifact", this.limits.maxVerifierBytes);
 
     return {
       proverBytes: new Uint8Array(await prover.arrayBuffer()),

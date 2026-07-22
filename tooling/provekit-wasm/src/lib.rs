@@ -20,10 +20,12 @@
 //! const proof = prover.proveBytes(decompressWitness(witness)[0].witness);
 //! ```
 
+mod error;
 mod format;
 mod prover;
 mod verifier;
 
+#[cfg(feature = "threads")]
 pub use wasm_bindgen_rayon::init_thread_pool;
 
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = initPanicHook)]

@@ -1,5 +1,8 @@
 use {
-    crate::format::parse_binary_prover,
+    crate::{
+        error::{ErrorCode, WasmError, WasmResult},
+        format::{ensure_json_artifact_size, looks_like_json, parse_binary_prover},
+    },
     acir::{
         circuit::Program,
         native_types::{Witness, WitnessMap},
@@ -8,12 +11,18 @@ use {
     anyhow::Context,
     base64::{engine::general_purpose::STANDARD as BASE64, Engine as _},
     provekit_backend_bn254::{Bn254Field, NoirElement, Prove, ProvekitProof, Prover as ProverCore},
-    provekit_common::binary_format::{HEADER_SIZE, MAGIC_BYTES},
-    std::{cell::RefCell, collections::BTreeMap},
+    std::{
+        cell::RefCell,
+        collections::{BTreeMap, BTreeSet},
+    },
     wasm_bindgen::prelude::*,
 };
 
 /// WASM bindings for proof generation. Consumed after `proveBytes`/`proveJs`.
+///
+/// JavaScript owners must call the generated `free()` method exactly once when
+/// the handle is no longer needed. Calling `free()` releases native WASM state;
+/// it does not zero copies of the artifact retained by JavaScript.
 #[wasm_bindgen]
 pub struct Prover {
     inner: Option<ProverCore>,
@@ -22,19 +31,18 @@ pub struct Prover {
 #[wasm_bindgen]
 impl Prover {
     #[wasm_bindgen(constructor)]
-    pub fn new(prover_data: &[u8]) -> Result<Prover, JsError> {
-        let is_binary = prover_data.len() >= HEADER_SIZE && &prover_data[..8] == MAGIC_BYTES;
-
-        let inner = if is_binary {
-            parse_binary_prover(prover_data)?
-        } else {
-            serde_json::from_slice(prover_data).map_err(|err| {
-                JsError::new(&format!(
-                    "Failed to parse prover JSON: {err}. Data length: {}, first bytes: {:02X?}",
-                    prover_data.len(),
-                    &prover_data[..prover_data.len().min(20)]
-                ))
+    pub fn new(prover_data: &[u8]) -> Result<Prover, JsValue> {
+        let inner = if looks_like_json(prover_data) {
+            ensure_json_artifact_size(prover_data, "prover").map_err(WasmError::into_js_value)?;
+            serde_json::from_slice(prover_data).map_err(|error| {
+                WasmError::new(
+                    ErrorCode::ArtifactJsonInvalid,
+                    format!("Failed to parse prover JSON: {error}"),
+                )
+                .into_js_value()
             })?
+        } else {
+            parse_binary_prover(prover_data).map_err(WasmError::into_js_value)?
         };
         Ok(Self { inner: Some(inner) })
     }
@@ -42,18 +50,33 @@ impl Prover {
     /// `witness_map`: JS `Map<number, string>` or plain object `{ "0": "0xhex…"
     /// }`.
     #[wasm_bindgen(js_name = proveBytes)]
-    pub fn prove_bytes(&mut self, witness_map: JsValue) -> Result<Box<[u8]>, JsError> {
-        let proof = self.prove_inner(witness_map)?;
+    pub fn prove_bytes(&mut self, witness_map: JsValue) -> Result<Box<[u8]>, JsValue> {
+        let proof = self
+            .prove_inner(witness_map)
+            .map_err(WasmError::into_js_value)?;
         serde_json::to_vec(&proof)
             .map(|bytes| bytes.into_boxed_slice())
-            .map_err(|err| JsError::new(&format!("Failed to serialize proof to JSON: {err}")))
+            .map_err(|error| {
+                WasmError::new(
+                    ErrorCode::ProofSerializationFailed,
+                    format!("Failed to serialize proof to JSON: {error}"),
+                )
+                .into_js_value()
+            })
     }
 
     #[wasm_bindgen(js_name = proveJs)]
-    pub fn prove_js(&mut self, witness_map: JsValue) -> Result<JsValue, JsError> {
-        let proof = self.prove_inner(witness_map)?;
-        serde_wasm_bindgen::to_value(&proof)
-            .map_err(|err| JsError::new(&format!("Failed to convert proof to JsValue: {err}")))
+    pub fn prove_js(&mut self, witness_map: JsValue) -> Result<JsValue, JsValue> {
+        let proof = self
+            .prove_inner(witness_map)
+            .map_err(WasmError::into_js_value)?;
+        serde_wasm_bindgen::to_value(&proof).map_err(|error| {
+            WasmError::new(
+                ErrorCode::ProofSerializationFailed,
+                format!("Failed to convert proof to JsValue: {error}"),
+            )
+            .into_js_value()
+        })
     }
 
     /// Returns circuit JSON for `@noir-lang/noir_js`.
@@ -64,19 +87,29 @@ impl Prover {
     /// const noir = new Noir(circuitJson);
     /// ```
     #[wasm_bindgen(js_name = getCircuit)]
-    pub fn get_circuit(&self) -> Result<Box<[u8]>, JsError> {
-        let noir_prover = match self.inner_ref()? {
+    pub fn get_circuit(&self) -> Result<Box<[u8]>, JsValue> {
+        let noir_prover = match self.inner_ref().map_err(WasmError::into_js_value)? {
             ProverCore::Noir(p) => p,
             ProverCore::Mavros(_) => {
-                return Err(JsError::new("Only Noir provers are supported in WASM"))
+                return Err(WasmError::new(
+                    ErrorCode::UnsupportedProver,
+                    "Only Noir provers are supported in WASM",
+                )
+                .into_js_value())
             }
         };
 
         let program_bytes = Program::<NoirElement>::serialize_program(&noir_prover.program);
         let bytecode_b64 = BASE64.encode(&program_bytes);
 
-        let abi_json = serde_json::to_value(&noir_prover.witness_generator.abi)
-            .map_err(|e| JsError::new(&format!("Failed to serialize ABI: {e}")))?;
+        let abi_json =
+            serde_json::to_value(&noir_prover.witness_generator.abi).map_err(|error| {
+                WasmError::new(
+                    ErrorCode::ProofSerializationFailed,
+                    format!("Failed to serialize ABI: {error}"),
+                )
+                .into_js_value()
+            })?;
 
         let circuit = serde_json::json!({
             "abi": abi_json,
@@ -85,37 +118,48 @@ impl Prover {
 
         serde_json::to_vec(&circuit)
             .map(|b| b.into_boxed_slice())
-            .map_err(|e| JsError::new(&format!("Failed to serialize circuit JSON: {e}")))
+            .map_err(|error| {
+                WasmError::new(
+                    ErrorCode::ProofSerializationFailed,
+                    format!("Failed to serialize circuit JSON: {error}"),
+                )
+                .into_js_value()
+            })
     }
 
     #[wasm_bindgen(js_name = getNumConstraints)]
-    pub fn get_num_constraints(&self) -> Result<usize, JsError> {
-        Ok(self.inner_ref()?.size().0)
+    pub fn get_num_constraints(&self) -> Result<usize, JsValue> {
+        Ok(self.inner_ref().map_err(WasmError::into_js_value)?.size().0)
     }
 
     #[wasm_bindgen(js_name = getNumWitnesses)]
-    pub fn get_num_witnesses(&self) -> Result<usize, JsError> {
-        Ok(self.inner_ref()?.size().1)
+    pub fn get_num_witnesses(&self) -> Result<usize, JsValue> {
+        Ok(self.inner_ref().map_err(WasmError::into_js_value)?.size().1)
     }
 }
 
 impl Prover {
-    fn inner_ref(&self) -> Result<&ProverCore, JsError> {
-        self.inner
-            .as_ref()
-            .ok_or_else(|| JsError::new("Prover has been consumed by a previous prove() call"))
+    fn inner_ref(&self) -> WasmResult<&ProverCore> {
+        self.inner.as_ref().ok_or_else(|| {
+            WasmError::new(
+                ErrorCode::ProverConsumed,
+                "Prover has been consumed by a previous prove() call",
+            )
+        })
     }
 
-    fn prove_inner(&mut self, witness_map: JsValue) -> Result<ProvekitProof<Bn254Field>, JsError> {
+    fn prove_inner(&mut self, witness_map: JsValue) -> WasmResult<ProvekitProof<Bn254Field>> {
         let witness = parse_witness_map(witness_map)?;
-        let inner = self
-            .inner
-            .take()
-            .ok_or_else(|| JsError::new("Prover has been consumed by a previous prove() call"))?;
+        let inner = self.inner.take().ok_or_else(|| {
+            WasmError::new(
+                ErrorCode::ProverConsumed,
+                "Prover has been consumed by a previous prove() call",
+            )
+        })?;
         inner
             .prove_with_witness(witness)
             .context("Failed to generate proof")
-            .map_err(|err| JsError::new(&format!("{err:#}")))
+            .map_err(|error| WasmError::new(ErrorCode::ProvingFailed, format!("{error:#}")))
     }
 }
 
@@ -124,14 +168,18 @@ pub(crate) const MAX_FIELD_ELEMENT_BYTES: usize = 32;
 
 /// Accepts a JS `Map<number|string, string>` or a plain object `{ "idx":
 /// "0xhex…" }`.
-pub(crate) fn parse_witness_map(js_value: JsValue) -> Result<WitnessMap<FieldElement>, JsError> {
+pub(crate) fn parse_witness_map(js_value: JsValue) -> WasmResult<WitnessMap<FieldElement>> {
     let map: BTreeMap<String, String> = if js_value.is_instance_of::<js_sys::Map>() {
         js_map_to_btree(&js_sys::Map::from(js_value))?
     } else {
-        serde_wasm_bindgen::from_value(js_value).map_err(|err| {
-            JsError::new(&format!(
-                "Expected a Map or plain object mapping witness indices to hex strings: {err}"
-            ))
+        serde_wasm_bindgen::from_value(js_value).map_err(|error| {
+            WasmError::new(
+                ErrorCode::WitnessInvalid,
+                format!(
+                    "Expected a Map or plain object mapping witness indices to hex strings: \
+                     {error}"
+                ),
+            )
         })?
     };
 
@@ -140,37 +188,69 @@ pub(crate) fn parse_witness_map(js_value: JsValue) -> Result<WitnessMap<FieldEle
 
 fn parse_witness_map_entries(
     map: BTreeMap<String, String>,
-) -> Result<WitnessMap<FieldElement>, JsError> {
-    parse_witness_map_entries_impl(map).map_err(|msg| JsError::new(&msg))
+) -> WasmResult<WitnessMap<FieldElement>> {
+    parse_witness_map_entries_impl(map)
 }
 
 fn parse_witness_map_entries_impl(
     map: BTreeMap<String, String>,
-) -> Result<WitnessMap<FieldElement>, String> {
+) -> WasmResult<WitnessMap<FieldElement>> {
     if map.is_empty() {
-        return Err("Witness map is empty".to_owned());
+        return Err(WasmError::new(
+            ErrorCode::WitnessInvalid,
+            "Witness map is empty",
+        ));
     }
 
     let mut witness_map = WitnessMap::new();
+    let mut witness_indices = BTreeSet::new();
 
     for (index_str, hex_value) in map {
-        let index: u32 = index_str
-            .parse()
-            .map_err(|err| format!("Failed to parse witness index '{index_str}': {err}"))?;
-
-        let hex_str = hex_value.trim_start_matches("0x");
-
-        let bytes = hex::decode(hex_str)
-            .map_err(|err| format!("Failed to parse hex string at index {index}: {err}"))?;
-
-        if bytes.len() > MAX_FIELD_ELEMENT_BYTES {
-            return Err(format!(
-                "Hex value at index {index} is {} bytes, exceeds BN254 field element size (32 \
-                 bytes)",
-                bytes.len()
+        let index: u32 = index_str.parse().map_err(|error| {
+            WasmError::new(
+                ErrorCode::WitnessInvalid,
+                format!("Failed to parse witness index '{index_str}': {error}"),
+            )
+        })?;
+        if !witness_indices.insert(index) {
+            return Err(WasmError::new(
+                ErrorCode::WitnessInvalid,
+                format!("Duplicate witness index after normalization: {index}"),
             ));
         }
 
+        let hex_str = hex_value.strip_prefix("0x").unwrap_or(&hex_value);
+        if hex_str.is_empty() {
+            return Err(WasmError::new(
+                ErrorCode::WitnessInvalid,
+                format!("Hex value at index {index} is empty"),
+            ));
+        }
+
+        let bytes = hex::decode(hex_str).map_err(|error| {
+            WasmError::new(
+                ErrorCode::WitnessInvalid,
+                format!("Failed to parse hex string at index {index}: {error}"),
+            )
+        })?;
+
+        if bytes.len() > MAX_FIELD_ELEMENT_BYTES {
+            return Err(WasmError::new(
+                ErrorCode::WitnessInvalid,
+                format!(
+                    "Hex value at index {index} is {} bytes, exceeds BN254 field element size (32 \
+                     bytes)",
+                    bytes.len()
+                ),
+            ));
+        }
+
+        if !is_canonical_field_bytes(&bytes) {
+            return Err(WasmError::new(
+                ErrorCode::WitnessInvalid,
+                format!("Hex value at index {index} is not a canonical BN254 field element"),
+            ));
+        }
         let field_element = FieldElement::from_be_bytes_reduce(&bytes);
         witness_map.insert(Witness(index), field_element);
     }
@@ -178,9 +258,19 @@ fn parse_witness_map_entries_impl(
     Ok(witness_map)
 }
 
+fn is_canonical_field_bytes(bytes: &[u8]) -> bool {
+    let first_nonzero = bytes
+        .iter()
+        .position(|byte| *byte != 0)
+        .unwrap_or(bytes.len());
+    let value = &bytes[first_nonzero..];
+    let modulus = FieldElement::modulus().to_bytes_be();
+    value.len() < modulus.len() || (value.len() == modulus.len() && value < modulus.as_slice())
+}
+
 /// Converts a JS `Map` to `BTreeMap<String, String>`, handling numeric and
 /// string keys and Witness objects with an `inner` property.
-fn js_map_to_btree(map: &js_sys::Map) -> Result<BTreeMap<String, String>, JsError> {
+fn js_map_to_btree(map: &js_sys::Map) -> WasmResult<BTreeMap<String, String>> {
     let mut result = BTreeMap::new();
     let err: RefCell<Option<String>> = RefCell::new(None);
 
@@ -190,18 +280,30 @@ fn js_map_to_btree(map: &js_sys::Map) -> Result<BTreeMap<String, String>, JsErro
         }
 
         let key_str = if let Some(n) = key.as_f64() {
-            (n as u32).to_string()
+            match numeric_witness_index(n) {
+                Ok(index) => index.to_string(),
+                Err(message) => {
+                    *err.borrow_mut() = Some(message);
+                    return;
+                }
+            }
         } else if let Some(s) = key.as_string() {
             s
         } else if let Ok(inner) = js_sys::Reflect::get(&key, &"inner".into()) {
             if let Some(n) = inner.as_f64() {
-                (n as u32).to_string()
+                match numeric_witness_index(n) {
+                    Ok(index) => index.to_string(),
+                    Err(message) => {
+                        *err.borrow_mut() = Some(message);
+                        return;
+                    }
+                }
             } else {
-                *err.borrow_mut() = Some(format!("Map key has non-numeric .inner property"));
+                *err.borrow_mut() = Some("Map key has non-numeric .inner property".to_owned());
                 return;
             }
         } else {
-            *err.borrow_mut() = Some(format!("Unsupported Map key type"));
+            *err.borrow_mut() = Some("Unsupported Map key type".to_owned());
             return;
         };
 
@@ -213,13 +315,27 @@ fn js_map_to_btree(map: &js_sys::Map) -> Result<BTreeMap<String, String>, JsErro
             }
         };
 
-        result.insert(key_str, val_str);
+        if result.insert(key_str.clone(), val_str).is_some() {
+            *err.borrow_mut() = Some(format!(
+                "Duplicate witness index after normalization: {key_str}"
+            ));
+        }
     });
 
     if let Some(msg) = err.into_inner() {
-        return Err(JsError::new(&msg));
+        return Err(WasmError::new(ErrorCode::WitnessInvalid, msg));
     }
     Ok(result)
+}
+
+fn numeric_witness_index(value: f64) -> Result<u32, String> {
+    if !value.is_finite() || value.fract() != 0.0 || value < 0.0 || value > f64::from(u32::MAX) {
+        return Err(format!(
+            "Witness index must be an integer between 0 and {}",
+            u32::MAX
+        ));
+    }
+    Ok(value as u32)
 }
 
 #[cfg(test)]
@@ -251,7 +367,8 @@ mod tests {
     #[test]
     fn parse_witness_map_entries_rejects_empty_map() {
         let err = parse_witness_map_entries_impl(BTreeMap::new()).unwrap_err();
-        assert!(err.contains("Witness map is empty"));
+        assert_eq!(err.code(), ErrorCode::WitnessInvalid);
+        assert!(err.message().contains("Witness map is empty"));
     }
 
     #[test]
@@ -259,7 +376,9 @@ mod tests {
         let input = witness_map_from_pairs(&[("abc", "0x01")]);
 
         let err = parse_witness_map_entries_impl(input).unwrap_err();
-        assert!(err.contains("Failed to parse witness index 'abc'"));
+        assert!(err
+            .message()
+            .contains("Failed to parse witness index 'abc'"));
     }
 
     #[test]
@@ -267,7 +386,9 @@ mod tests {
         let input = witness_map_from_pairs(&[("1", "0xzz")]);
 
         let err = parse_witness_map_entries_impl(input).unwrap_err();
-        assert!(err.contains("Failed to parse hex string at index 1"));
+        assert!(err
+            .message()
+            .contains("Failed to parse hex string at index 1"));
     }
 
     #[test]
@@ -277,6 +398,38 @@ mod tests {
         input.insert("5".to_owned(), too_long_hex);
 
         let err = parse_witness_map_entries_impl(input).unwrap_err();
-        assert!(err.contains("exceeds BN254 field element size (32 bytes)"));
+        assert!(err
+            .message()
+            .contains("exceeds BN254 field element size (32 bytes)"));
+    }
+
+    #[test]
+    fn parse_witness_map_entries_rejects_noncanonical_field_element() {
+        let modulus = hex::encode(FieldElement::modulus().to_bytes_be());
+        let input = witness_map_from_pairs(&[("1", &modulus)]);
+
+        let err = parse_witness_map_entries_impl(input).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::WitnessInvalid);
+        assert!(err
+            .message()
+            .contains("not a canonical BN254 field element"));
+    }
+
+    #[test]
+    fn parse_witness_map_entries_rejects_duplicate_normalized_index() {
+        let input = witness_map_from_pairs(&[("1", "0x01"), ("01", "0x02")]);
+
+        let err = parse_witness_map_entries_impl(input).unwrap_err();
+        assert_eq!(err.code(), ErrorCode::WitnessInvalid);
+        assert!(err.message().contains("Duplicate witness index"));
+    }
+
+    #[test]
+    fn numeric_witness_indices_must_be_exact_u32_values() {
+        assert_eq!(numeric_witness_index(42.0), Ok(42));
+        assert!(numeric_witness_index(-1.0).is_err());
+        assert!(numeric_witness_index(1.5).is_err());
+        assert!(numeric_witness_index(f64::NAN).is_err());
+        assert!(numeric_witness_index(f64::from(u32::MAX) + 1.0).is_err());
     }
 }

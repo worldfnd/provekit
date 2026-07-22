@@ -1,0 +1,105 @@
+name: Browser WASM SDK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/wasm-sdk.yml"
+      - ".cargo/config.toml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "provekit/**"
+      - "tooling/provekit-wasm/**"
+      - "tooling/provekit-js/**"
+      - "playground/wasm-demo/**"
+  pull_request:
+    paths:
+      - ".github/workflows/wasm-sdk.yml"
+      - ".cargo/config.toml"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "rust-toolchain.toml"
+      - "provekit/**"
+      - "tooling/provekit-wasm/**"
+      - "tooling/provekit-js/**"
+      - "playground/wasm-demo/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wasm-sdk-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  BINARYEN_VERSION: "131"
+
+jobs:
+  build-test-pack:
+    name: Build, test, and pack
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          components: clippy
+          targets: wasm32-unknown-unknown
+          cache-base: wasm-sdk
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tooling/provekit-js/package-lock.json
+      - name: Install pinned Binaryen
+        shell: bash
+        run: |
+          archive="binaryen-version_${BINARYEN_VERSION}-aarch64-linux.tar.gz"
+          curl --fail --location --silent --show-error \
+            --output "$archive" \
+            "https://github.com/WebAssembly/binaryen/releases/download/version_${BINARYEN_VERSION}/${archive}"
+          echo "ba991f677edd9a21d2bc96c0144bc8ac5b112d4d98a3eb266e075e22e557df2a  $archive" | sha256sum --check
+          tar --extract --gzip --file "$archive"
+          echo "$PWD/binaryen-version_${BINARYEN_VERSION}/bin" >> "$GITHUB_PATH"
+      - name: Test Rust WASM boundary
+        run: |
+          cargo test -p provekit-wasm
+          cargo test -p provekit-wasm --no-default-features
+          cargo clippy -p provekit-wasm --all-targets --all-features --no-deps -- -D warnings
+          cargo clippy -p provekit-wasm --all-targets --no-default-features --no-deps -- -D warnings
+      - name: Install SDK dependencies
+        working-directory: tooling/provekit-js
+        run: npm ci
+      - name: Typecheck and unit test SDK
+        working-directory: tooling/provekit-js
+        run: |
+          npm run typecheck
+          npm test
+      - name: Build both WASM variants and package
+        working-directory: tooling/provekit-js
+        run: |
+          npm run build:wasm
+          npm run build
+          npm run pack:check
+          npm pack --dry-run
+      - name: Test migrated playground
+        working-directory: playground/wasm-demo
+        run: |
+          npm install --legacy-peer-deps
+          npm run typecheck
+          npm test
+          npm run build
+      - name: Run packed-package browser acceptance
+        working-directory: playground/wasm-demo
+        run: |
+          node scripts/setup.mjs
+          npx playwright install --with-deps chromium
+          npm run test:e2e
+
+  publish-policy:
+    name: Publication remains manual
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "This workflow validates npm contents but never publishes them."

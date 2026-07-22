@@ -1,4 +1,4 @@
-import type { Proof, VerifierScheme } from "@atheonxyz/verity";
+import type { Proof, Verifier } from "provekit-sdk";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ChecklistPresenter } from "../src/app/checklist.js";
@@ -154,9 +154,9 @@ describe("VerifyController", () => {
     state.lastProof = {} as Proof;
     state.activeVerifier = {
       verify: async () => false,
-      serialize: async () => new Uint8Array(),
+      serialize: () => new Uint8Array(),
       dispose() {},
-    } satisfies VerifierScheme;
+    } satisfies Verifier;
 
     const controller = new VerifyController({
       dom,

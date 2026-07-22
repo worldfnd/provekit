@@ -1,62 +1,143 @@
 ---
 title: JS / TypeScript end-to-end
-description: Drive ProveKit's WASM backend from JavaScript or TypeScript in Node.js and browser applications via the Verity SDK.
+description: Generate a Noir witness and prove and verify locally with ProveKit's first-party browser SDK.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-This guide uses the [Verity](https://github.com/atheonxyz/verity) JS / TypeScript SDK, which wraps ProveKit's WASM backend for browser and Node.js environments.
+ProveKit's first-party JavaScript SDK lives in `tooling/provekit-js`, is packaged as `provekit-sdk`, and wraps the repository's `provekit-wasm` bindings. It accepts high-level values matching a Noir ABI, generates the witness locally with Noir/ACVM, and proves and verifies without sending private inputs to an application server.
 
-<Aside type="note" title="Witness generation runs in JavaScript">
-The Verity SDK uses **`@noir-lang/noir_js`** and **`@noir-lang/acvm_js`** to generate the witness in JS from your inputs and the Noir circuit JSON embedded in the `.pkp`. Only the WHIR proof generation itself runs in WASM. This is why the Noir peer dependencies below are required, not optional, for proving.
+<Aside type="caution" title="Artifacts are versioned inputs">
+The current SDK accepts the artifact family produced by this `main` branch: **PKP 2.0** and **PKV 2.1**, compiled with the repository-pinned Noir **1.0.0-beta.20** frontend. It deliberately rejects older major versions. In particular, a PKP 1.1 or PKV 1.2 from ProveKit v1 must be regenerated; changing only its header is unsafe.
 </Aside>
 
 ## Install
 
-```sh
-npm i @atheonxyz/verity
+Use the package produced by this repository's SDK build. Until the package has a published release, consume a packed tarball from the same reviewed ProveKit commit as the artifacts:
 
-# Noir peer deps for in-JS witness generation. Required for proving.
-# Pin 1.0.0-beta.11 to match the audited v1 ProveKit branch.
-npm i @noir-lang/noir_js@1.0.0-beta.11 \
-      @noir-lang/acvm_js@1.0.0-beta.11 \
-      @noir-lang/noirc_abi@1.0.0-beta.11 \
-      @noir-lang/types@1.0.0-beta.11
+```sh
+npm install ./provekit-sdk-<version>.tgz
 ```
 
-Your application never imports these packages; Verity does internally. They're declared as peer dependencies, so npm won't pull them in transitively when you install `@atheonxyz/verity`.
+Do not install an unpublished name from the public registry. The release process must publish the JavaScript glue, WebAssembly module, worker/snippet assets, and TypeScript declarations as one versioned unit.
 
-## Minimal flow
+## Minimal browser flow
 
 ```ts
-import { Backend, Verity } from "@atheonxyz/verity";
+import { initProveKit } from "provekit-sdk";
 
-const verity = await Verity.create(Backend.ProveKit);
+const runtime = await initProveKit({ threads: "auto" });
 
-const prover   = await verity.loadProver(proverBytes);     // Uint8Array of .pkp
-const verifier = await verity.loadVerifier(verifierBytes); // Uint8Array of .pkv
+const [pkpBytes, pkvBytes] = await Promise.all([
+  fetch("/artifacts/app.pkp").then(readBytes),
+  fetch("/artifacts/app.pkv").then(readBytes),
+]);
 
-const proof = await prover.prove({ age: "25", threshold: "18" });
-const valid = await verifier.verify(proof);
+const prover = await runtime.loadProver(pkpBytes);
+const verifier = await runtime.loadVerifier(pkvBytes);
 
-if (!valid) {
-  throw new Error("proof did not verify");
+try {
+  const proof = await prover.prove({
+    age: "25",
+    threshold: "18",
+  });
+
+  const valid = await verifier.verify(proof);
+  if (!valid) throw new Error("proof is mathematically invalid");
+} finally {
+  prover.dispose();
+  verifier.dispose();
 }
 
-prover.dispose();
-verifier.dispose();
+async function readBytes(response: Response): Promise<Uint8Array> {
+  if (!response.ok) throw new Error(`artifact request failed: ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
 ```
 
-`prove` accepts either a plain object whose keys match the circuit's input ABI, or a JSON string with the same shape. For arrays and nested types, keep the object layout aligned with the circuit ABI and validate it in application tests. If your inputs live in a `Prover.toml` file, parse the TOML in JS first and pass the resulting object; Verity does not parse TOML for you (see the working example below).
+`prove()` accepts an object, or JSON with the same shape, whose keys and nested values match the circuit ABI embedded in the PKP. Noir/ACVM executes in the browser, and only the resulting witness map crosses into ProveKit WASM. The SDK does not upload inputs or witnesses.
 
-## Working example
+The logical prover is reusable: the SDK reconstructs the consumed low-level WASM prover handle for each call. The verifier is reusable as well. `dispose()` is idempotent; calls after disposal fail explicitly instead of reusing freed state.
 
-[`playground/wasm-demo/`](https://github.com/worldfnd/provekit/tree/main/playground/wasm-demo) in the ProveKit repo is a complete browser proof flow: artifact fetching, optional `Prover.toml` parsing, thread-pool setup with iOS/Android-aware fallbacks via `Verity.create(Backend.ProveKit, { threads })`, and progress logging. Use it as a reference when building your own integration.
+## Thread policy
 
-## Build and packaging notes
+Choose threading deliberately:
 
-- Browser threading depends on `SharedArrayBuffer`. The Verity ProveKit binding falls back to a non-threaded path when worker/thread-pool initialization is unavailable. iOS WebKit is particularly unreliable for WASM threading; the wasm-demo runs single-threaded there by default.
-- `proverBytes` and `verifierBytes` are assumed to be `Uint8Array` values already loaded by the application. Fetching, caching, integrity checks, and lifecycle cleanup are the host's responsibility.
+| Setting | Behavior |
+| :--- | :--- |
+| `threads: false` | Always use the single-threaded runtime. This is the predictable compatibility mode. |
+| `threads: number` | Request an explicit worker count. Initialization reports an unavailable-thread error when the environment cannot satisfy it. |
+| `threads: "auto"` | Use a bounded worker count when `SharedArrayBuffer` and cross-origin isolation are available; otherwise fall back to one thread. |
+
+Threaded browser WASM requires both response headers:
+
+```text
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
+
+Every script, worker, WASM module, and fetched asset must also be same-origin or carry compatible cross-origin resource policy headers. Check `globalThis.crossOriginIsolated` and `typeof SharedArrayBuffer !== "undefined"` in deployment diagnostics.
+
+<Aside type="note" title="iPhone and iPad">
+Treat iOS and iPadOS WebKit as single-threaded unless the exact deployed browser and header configuration pass a real prove/verify test. `threads: "auto"` must fall back safely; do not infer thread support from user-agent strings or from successful SDK initialization alone.
+</Aside>
+
+Initialization is singleton and race-safe. Concurrent calls share one successful initialization, while a failed initialization can be retried after correcting the module URL, headers, or worker configuration.
+
+## Handle failures without exposing inputs
+
+SDK failures use `ProveKitError` and carry a stable `ProveKitErrorCode`. Handle at least these classes separately:
+
+- malformed, oversized, or unsupported artifacts (`ARTIFACT_FORMAT`, `ARTIFACT_TOO_LARGE`, `ARTIFACT_VERSION`);
+- invalid high-level input or witness conversion (`INVALID_ARGUMENT`, `WITNESS_FORMAT`);
+- witness-generation failure (`WITNESS_GENERATION`);
+- proving failure or browser memory exhaustion (`PROVING_FAILED`, `OUT_OF_MEMORY`);
+- malformed proof bytes (`MALFORMED_PROOF`);
+- mathematically invalid proof, which returns `false` rather than throwing;
+- unavailable WASM or worker/thread runtime (`WASM_UNAVAILABLE`, `THREADS_UNAVAILABLE`);
+- initialization failure or conflicting options (`INITIALIZATION_FAILED`, `INITIALIZATION_CONFLICT`);
+- disposed resource (`DISPOSED`).
+
+Do not log input objects, witness maps, passkey assertions, complete proof bytes, or decompressed artifact contents. User-facing diagnostics should retain the error category and safe context such as artifact version, byte length, thread mode, and browser—not private values.
+
+## Artifact and memory safety
+
+- Fetch artifacts from authenticated locations and verify a release checksum before loading them.
+- Enforce application-level compressed-size limits before passing bytes to WASM. The SDK also bounds parsing/decompression where possible, but the host owns its download policy.
+- Defaults are 64 MiB per prover/verifier artifact and 16 MiB per proof; Rust independently caps expanded artifact data at 256 MiB. Prefer smaller application limits for known circuits.
+- Keep PKP and PKV from the same generation run and hash configuration.
+- Release prover and verifier handles in `finally` blocks. Drop application references to input and proof buffers when they are no longer needed.
+- Browser JavaScript cannot guarantee physical zeroization of copied or garbage-collected memory. Avoid unnecessary copies and do not promise stronger cleanup than the platform provides.
+- Treat an out-of-memory error as a failed proof. Do not silently retry with private inputs on a remote server.
+
+## Artifact migration
+
+Regenerate artifacts from source when moving to current `main`:
+
+```sh
+cargo run --release --bin provekit-cli -- prepare \
+  /absolute/path/to/noir-package \
+  --force \
+  --pkp /absolute/path/to/artifacts/app.pkp \
+  --pkv /absolute/path/to/artifacts/app.pkv
+```
+
+Record the ProveKit commit, `Cargo.lock`, `rust-toolchain.toml`, Noir revision, complete dependency lock/provenance, hash choice, command, output checksums, and ABI/constraint statistics. Re-run positive and negative proof tests before replacing downstream artifacts.
+
+The known World ID passkey demo cannot currently take this step without a source/dependency migration. Its beta.20 compile fails in Taceo Poseidon `v0.5.0-beta.0`, `noir-lang/poseidon v0.2.6`, and vendored BigCurve (`u1` was removed). Those failures must be resolved and reviewed for constraint and ABI equivalence; they are not permission to rewrite the circuit's meaning.
+
+## Release and acceptance boundary
+
+A source-tree unit test or successful WASM build is not browser acceptance. Before calling an SDK/artifact pair production-ready, require:
+
+- a packed-package consumer test, not a source-relative import;
+- real single-threaded browser prove/verify and tampered-proof rejection;
+- threaded prove/verify under deployed COOP/COEP headers where supported;
+- repeated proving and verification with one logical handle each;
+- network inspection showing that no request contains witness values;
+- measured initialization, witness, proof, and verification time, peak memory, proof size, browser version, and thread count for a representative production-sized circuit.
+
+No performance or passkey-sized browser acceptance result is claimed by this guide.
 
 ## Related pages
 

@@ -8,6 +8,10 @@
 !**/csca_registry/**/*.json
 # Allow package.json files
 !**/package.json
+# Reproducible first-party browser SDK and playground installs
+!tooling/provekit-js/package-lock.json
+!tooling/provekit-js/tsconfig.json
+!playground/wasm-demo/package-lock.json
 *.gz
 *.bin
 *.nps

@@ -7,8 +7,8 @@ import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
 
 ProveKit ships one proof pipeline and several runtimes that drive it. Pick by where verification needs to live and what host language you're shipping in.
 
-<Aside type="note" title="Rust is native; the rest goes through Verity">
-ProveKit is written in Rust, so Rust integrates with the published crates directly. The user-facing **JS/TS, Swift, and Kotlin SDKs** are maintained by **[Verity](https://github.com/atheonxyz/verity)**, a unified backend dispatcher that wraps ProveKit's WASM and C FFI bindings (`provekit-wasm` and `provekit-ffi`). When the platform guides reference `@atheonxyz/verity`, `import Verity`, or `xyz.atheon.verity.*`, that's the Verity layer talking to ProveKit underneath.
+<Aside type="note" title="First-party browser SDK">
+ProveKit's JavaScript/TypeScript integration is a first-party layer over `provekit-wasm`. It owns Noir/ACVM witness generation, runtime initialization, worker fallback, typed errors, and handle lifecycle. Swift and Kotlin continue to use their documented native wrappers. The browser SDK does not require Verity at application runtime.
 </Aside>
 
 ## Proving across hosts
@@ -32,10 +32,10 @@ let proof = prover.prove_with_toml("Prover.toml")?;
 </TabItem>
 <TabItem label="JS / TS">
 ```ts
-import { Backend, Verity } from "@atheonxyz/verity";
+import { initProveKit } from "provekit-sdk";
 
-const verity = await Verity.create(Backend.ProveKit);
-const prover = await verity.loadProver(pkpBytes);
+const runtime = await initProveKit({ threads: "auto" });
+const prover = await runtime.loadProver(pkpBytes);
 const proof  = await prover.prove({ /* keys match your circuit ABI */ });
 ```
 </TabItem>
@@ -109,7 +109,7 @@ Then run the Go CLI or server from [`recursive-verifier/`](https://github.com/wo
 The platform pages cover the supported API paths, default artifact flow, and build constraints for each host.
 
 - **[Rust](/e2e/rust/)**: direct crate integration for services, tools, and tests.
-- **[JS / TypeScript](/e2e/js-typescript/)**: browser and Node.js usage via the Verity SDK.
+- **[JS / TypeScript](/e2e/js-typescript/)**: first-party local witness generation and browser WASM proving/verification.
 - **[Swift](/e2e/swift/)**: iOS integration via Swift Package Manager.
 - **[Kotlin](/e2e/kotlin/)**: Android integration via the Verity Kotlin AAR.
 

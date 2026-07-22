@@ -1,4 +1,4 @@
-import type { ProverScheme, VerifierScheme } from "@atheonxyz/verity";
+import type { Prover, Verifier } from "provekit-sdk";
 
 import { ArtifactLoader } from "./artifact-loader.js";
 import type { DemoDom } from "./dom.js";
@@ -14,8 +14,8 @@ interface RunControllerDeps {
   proofOutput: ProofOutputPresenter;
   artifacts: ArtifactLoader;
   loadSchemes(proverBytes: Uint8Array, verifierBytes: Uint8Array): Promise<{
-    prover: ProverScheme;
-    verifier: VerifierScheme;
+    prover: Prover;
+    verifier: Verifier;
   }>;
   waitForUi(): Promise<void>;
   disposeActiveVerifier(): void;
@@ -33,8 +33,8 @@ export class RunController {
 
     this.resetRunState();
 
-    let prover: ProverScheme | null = null;
-    let verifier: VerifierScheme | null = null;
+    let prover: Prover | null = null;
+    let verifier: Verifier | null = null;
     let failingStep = 2;
 
     try {
@@ -64,7 +64,7 @@ export class RunController {
       const proof = await prover.prove(inputs);
       const proofTime = performance.now() - proofStart;
 
-      this.deps.logs.logMemory("After prove()", { proof: proof.data });
+      this.deps.logs.logMemory("After prove()", { proof: proof.bytes });
       this.deps.logs.log(`Proof size: ${(proof.size / 1024).toFixed(1)} KB`);
       this.deps.logs.log(`Proving time: ${(proofTime / 1000).toFixed(2)}s`);
       this.deps.proofOutput.renderProof(proof);
@@ -96,7 +96,7 @@ export class RunController {
     dom.verifyButton.disabled = true;
     logs.clear();
     // Reset steps 2–5 only; step 1 ("Load Proof Runtime") has already
-    // completed and is tied to the long-lived Verity runtime, not per-run.
+    // completed and is tied to the long-lived ProveKit runtime, not per-run.
     steps.reset(2);
     proofOutput.reset();
     state.lastProof = null;

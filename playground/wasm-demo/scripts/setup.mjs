@@ -26,6 +26,7 @@ import { parseSimpleToml } from "../shared/toml-parser.mjs";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, "../../..");
 const DEMO_DIR = resolve(__dirname, "..");
+const SDK_DIR = join(ROOT_DIR, "tooling/provekit-js");
 const CIRCUITS = [
   { name: "sha256",   path: join(ROOT_DIR, "noir-examples/noir_sha256") },
   { name: "poseidon", path: join(ROOT_DIR, "noir-examples/poseidon-rounds") },
@@ -119,11 +120,20 @@ async function buildShared() {
   logSuccess("cargo found");
 
   logStep("2/4", "Installing browser dependencies...");
+  if (!run("npm ci", { cwd: SDK_DIR })) {
+    process.exit(1);
+  }
+  if (!run("npm run build:wasm", { cwd: SDK_DIR })) {
+    process.exit(1);
+  }
+  if (!run("npm run build", { cwd: SDK_DIR })) {
+    process.exit(1);
+  }
   if (!run("npm install --legacy-peer-deps", { cwd: DEMO_DIR })) {
     process.exit(1);
   }
 
-  // Verity loads @noir-lang/* from node_modules directly; the old demo-local
+  // provekit-sdk loads @noir-lang/* from node_modules directly; the old demo-local
   // vendor/pkg staging directories are no longer needed.
   for (const dir of ["vendor", "pkg", "pkg-web"]) {
     const fullPath = join(DEMO_DIR, dir);
@@ -182,7 +192,7 @@ async function prepareCircuit({ name, path: circuitDir }) {
 
   if (
     !run(
-      `${cliPath} prepare ${circuitDest} --pkp ${proverBinPath} --pkv ${verifierBinPath} --hash blake3`,
+      `${cliPath} prepare ${circuitDir} --force --pkp ${proverBinPath} --pkv ${verifierBinPath} --hash blake3`,
       { cwd: artifactsDir }
     )
   ) {

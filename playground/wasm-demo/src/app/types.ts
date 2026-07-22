@@ -1,4 +1,4 @@
-import type { Proof, VerifierScheme, Verity } from "@atheonxyz/verity";
+import type { Proof, ProveKitRuntime, Verifier } from "provekit-sdk";
 
 export type CircuitName = "sha256" | "poseidon" | "custom";
 export type LogType = "info" | "success" | "warn" | "error";
@@ -21,9 +21,9 @@ export interface AppState {
   activeCircuit: CircuitName;
   customFiles: CustomFiles;
   wasmReady: boolean;
-  runtime: Verity | null;
+  runtime: ProveKitRuntime | null;
   lastProof: Proof | null;
-  activeVerifier: VerifierScheme | null;
+  activeVerifier: Verifier | null;
 }
 
 export interface CircuitMetadata {

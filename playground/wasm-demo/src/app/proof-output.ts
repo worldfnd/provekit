@@ -1,4 +1,4 @@
-import type { Proof } from "@atheonxyz/verity";
+import type { Proof } from "provekit-sdk";
 
 import type { CircuitMetadata, LogWriter } from "./types.js";
 
@@ -49,7 +49,7 @@ export class ProofOutputPresenter {
   }
 
   renderProof(proof: Proof): void {
-    const proofText = new TextDecoder().decode(proof.data);
+    const proofText = new TextDecoder().decode(proof.bytes);
     this.dom.proofOutput.textContent = proofText.length > 2000 ? `${proofText.slice(0, 2000)}...` : proofText;
     this.dom.proofCard.style.display = "block";
 

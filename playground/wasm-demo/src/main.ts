@@ -1,4 +1,4 @@
-import type { ProverScheme, VerifierScheme } from "@atheonxyz/verity";
+import type { Prover, Verifier } from "provekit-sdk";
 
 import { ArtifactLoader } from "./app/artifact-loader.js";
 import { ChecklistPresenter } from "./app/checklist.js";
@@ -115,7 +115,7 @@ class DemoApp {
       } else if (value instanceof Uint8Array) {
         message += ` | ${name}: ${(value.byteLength / 1024 / 1024).toFixed(2)} MB`;
       } else if (typeof value === "object" && value !== null) {
-        message += ` | ${name}: ~${(JSON.stringify(value).length / 1024).toFixed(0)} KB`;
+        message += ` | ${name}: object (contents not inspected)`;
       }
     }
 
@@ -132,8 +132,8 @@ class DemoApp {
   }
 
   private async loadSchemes(proverBytes: Uint8Array, verifierBytes: Uint8Array): Promise<{
-    prover: ProverScheme;
-    verifier: VerifierScheme;
+    prover: Prover;
+    verifier: Verifier;
   }> {
     if (!this.state.runtime) {
       throw new Error("Proof runtime is not initialized yet.");
