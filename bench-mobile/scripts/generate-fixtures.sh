@@ -7,14 +7,19 @@ if [[ "${MOBENCH_CI_PREPARE:-}" != "1" ]]; then
 fi
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+"${repo_root}/benchmarks/v1/scripts/bootstrap-webauthn-source.sh"
 nargo_bin="$("${repo_root}/benchmarks/v1/scripts/bootstrap-nargo.sh")"
 
 compile_fixture() {
   local circuit_dir="$1"
   local aggregate_target_dir="${2:-}"
+  local nargo_home="${3:-}"
   echo "Generating Noir artifact in ${circuit_dir}"
   (
     cd "${repo_root}/${circuit_dir}"
+    if [[ -n "${nargo_home}" ]]; then
+      export HOME="${nargo_home}"
+    fi
     "${nargo_bin}" compile --skip-brillig-constraints-check --force
   )
 
@@ -74,4 +79,5 @@ else
   done
   echo "Bun unavailable; using checked-in deterministic WebAuthn input fixture"
 fi
-compile_fixture "benchmarks/v1/noir/webauthn_assertion"
+compile_fixture "benchmarks/v1/noir/webauthn_assertion" "" \
+  "${V1_BENCHMARK_NARGO_HOME:-${repo_root}/target/v1-benchmarks/nargo-home}"

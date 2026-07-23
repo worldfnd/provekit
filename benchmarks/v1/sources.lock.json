@@ -18,6 +18,33 @@
       "purpose": "Pure WebAuthn Noir source and production OPRF Circom circuits"
     },
     {
+      "name": "noir-base64",
+      "url": "https://github.com/noir-lang/noir_base64.git",
+      "revision": "4200d5ffb1d4416f336c392ed7f3f729facbc2ad",
+      "tag": "v0.5.0",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Transitive dependency of the vendored WebAuthn Noir library"
+    },
+    {
+      "name": "noir-poseidon",
+      "url": "https://github.com/noir-lang/poseidon.git",
+      "revision": "00f879180a56720169cff92a56778d40678d8e26",
+      "tag": "v0.2.6",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Transitive dependency of the vendored WebAuthn Noir library"
+    },
+    {
+      "name": "noir-sha256",
+      "url": "https://github.com/noir-lang/sha256.git",
+      "revision": "9442e5b6856f98b2ec029882d7e90199ecff91ba",
+      "tag": "v0.3.0",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Transitive dependency of the vendored WebAuthn Noir library"
+    },
+    {
       "name": "oprf-nr",
       "url": "https://github.com/TaceoLabs/oprf-nr.git",
       "revision": "808f3c795b57963dd58ef282ccd61022ef39c285",
