@@ -150,7 +150,7 @@ jobs:
       crate_path: ./bench-mobile
       functions: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
       functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
-      functions_android: '["bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove","bench_mobile::bench_passport_complete_age_check_prove"]'
+      functions_android: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
       platform: ${{ needs.resolve.outputs.platform }}
       prepare_script: bench-mobile/scripts/generate-fixtures.sh
       device_profile: custom

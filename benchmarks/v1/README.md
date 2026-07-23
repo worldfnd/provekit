@@ -24,6 +24,13 @@ The intended native comparison is:
 Browser/WASM runs are a separate execution surface. Native and WASM results
 must never be merged into one device row.
 
+Native Android and iOS proving use Rayon's normal platform-default worker
+count through Mobench's `native-c-abi` runner. The benchmark does not impose an
+Android-specific thread cap; the effective `rayon_threads` value is recorded
+in the `MOBENCH_LIFECYCLE` start event as the normal global pool is lazily
+initialized. The portable browser/WASM lane remains single-threaded for mobile
+Safari compatibility and must be reported separately.
+
 ## Reproducibility contract
 
 1. Use the exact commits in `sources.lock.json`.

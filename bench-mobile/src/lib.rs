@@ -68,48 +68,6 @@ pub enum BenchError {
     ExecutionFailed { reason: String },
 }
 
-#[cfg(target_os = "android")]
-fn configure_android_complete_age_check_threads(function: &str) {
-    use std::sync::Once;
-
-    static INIT: Once = Once::new();
-
-    if function != "bench_mobile::bench_passport_complete_age_check_prove" {
-        return;
-    }
-
-    INIT.call_once(|| {
-        let threads = std::env::var("PROVEKIT_ANDROID_COMPLETE_AGE_RAYON_THREADS")
-            .ok()
-            .and_then(|value| value.parse::<usize>().ok())
-            .filter(|threads| *threads > 0)
-            .unwrap_or(1);
-
-        match rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build_global()
-        {
-            Ok(()) => log_benchmark_lifecycle(
-                "rayon_configured",
-                function,
-                0,
-                0,
-                json!({ "threads": threads }),
-            ),
-            Err(error) => log_benchmark_lifecycle(
-                "rayon_config_skipped",
-                function,
-                0,
-                0,
-                json!({ "threads": threads, "error": error.to_string() }),
-            ),
-        }
-    });
-}
-
-#[cfg(not(target_os = "android"))]
-fn configure_android_complete_age_check_threads(_function: &str) {}
-
 impl From<mobench_sdk::BenchSpec> for BenchSpec {
     fn from(spec: mobench_sdk::BenchSpec) -> Self {
         Self {
@@ -211,19 +169,25 @@ fn log_benchmark_lifecycle(
     }
 }
 
+fn benchmark_start_metadata(function: &str) -> serde_json::Value {
+    // Querying outside a Rayon worker lazily initializes the normal global
+    // pool when needed; it does not configure or constrain the worker count.
+    json!({
+        "resolved_function": function,
+        "rayon_threads": rayon::current_num_threads(),
+    })
+}
+
 pub fn run_benchmark(spec: BenchSpec) -> Result<BenchReport, BenchError> {
     let function = spec.name.clone();
     let iterations = spec.iterations;
     let warmup = spec.warmup;
-    configure_android_complete_age_check_threads(&function);
     log_benchmark_lifecycle(
         "start",
         &function,
         iterations,
         warmup,
-        json!({
-            "resolved_function": function,
-        }),
+        benchmark_start_metadata(&function),
     );
 
     let sdk_spec: mobench_sdk::BenchSpec = spec.into();
@@ -583,7 +547,22 @@ pub fn bench_webauthn_assertion_e2e() {
 
 #[cfg(test)]
 mod tests {
-    use super::BenchReport;
+    use super::{benchmark_start_metadata, BenchReport};
+
+    #[test]
+    fn lifecycle_metadata_records_observed_rayon_threads() {
+        let metadata =
+            benchmark_start_metadata("bench_mobile::bench_passport_complete_age_check_prove");
+
+        assert_eq!(
+            metadata["resolved_function"],
+            "bench_mobile::bench_passport_complete_age_check_prove"
+        );
+        assert_eq!(metadata["rayon_threads"], rayon::current_num_threads());
+        assert!(metadata["rayon_threads"]
+            .as_u64()
+            .is_some_and(|threads| threads > 0));
+    }
 
     #[test]
     fn report_conversion_preserves_sample_resource_metrics() {
