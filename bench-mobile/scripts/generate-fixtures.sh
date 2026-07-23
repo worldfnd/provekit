@@ -59,9 +59,19 @@ compile_fixture "noir-examples/noir-passport/merkle_age_check/t_attest" \
   "noir-examples/noir-passport/merkle_age_check/target"
 compile_oprf_benchmark_fixture
 compile_fixture "noir-examples/p256_bigcurve"
-(
-  cd "${repo_root}/benchmarks/v1/noir/webauthn_assertion"
-  bun install --frozen-lockfile
-  bun run fixture
-)
+if [[ "${PROVEKIT_REUSE_WEBAUTHN_FIXTURE:-}" != "1" ]] && command -v bun >/dev/null 2>&1; then
+  (
+    cd "${repo_root}/benchmarks/v1/noir/webauthn_assertion"
+    bun install --frozen-lockfile
+    bun run fixture
+  )
+else
+  for fixture in Prover.toml inputs.json; do
+    if [[ ! -s "${repo_root}/benchmarks/v1/noir/webauthn_assertion/${fixture}" ]]; then
+      echo "error: Bun is unavailable and checked-in WebAuthn ${fixture} is missing" >&2
+      exit 1
+    fi
+  done
+  echo "Bun unavailable; using checked-in deterministic WebAuthn input fixture"
+fi
 compile_fixture "benchmarks/v1/noir/webauthn_assertion"
