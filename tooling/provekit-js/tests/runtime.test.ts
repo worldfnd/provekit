@@ -31,6 +31,14 @@ describe("runtime initialization", () => {
     await expect(initProveKit({ threads: false, wasmModule: succeeding })).resolves.toBeDefined();
   });
 
+  it("passes a custom WASM binary override to the selected glue module", async () => {
+    const initialize = vi.fn().mockResolvedValue(undefined);
+    const { module } = fakeModule({ default: initialize });
+    const wasmUrl = new URL("https://assets.example/provekit_wasm_bg.wasm");
+    await initProveKit({ threads: false, wasmModule: module, wasmUrl });
+    expect(initialize).toHaveBeenCalledWith({ module_or_path: wasmUrl });
+  });
+
   it("auto mode explains its single-thread fallback without browser isolation", async () => {
     const { module, counters } = fakeModule();
     const runtime = await initProveKit({ threads: "auto", wasmModule: module });

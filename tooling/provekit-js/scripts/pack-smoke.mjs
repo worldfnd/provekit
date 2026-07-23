@@ -17,6 +17,7 @@ for (const required of [
   "dist/wasm/single/provekit_wasm_bg.wasm",
   "dist/wasm/threaded/provekit_wasm.js",
   "dist/wasm/threaded/provekit_wasm_bg.wasm",
+  "dist/wasm/threaded/provekit_wasm_worker.js",
 ]) {
   if (!paths.has(required)) throw new Error(`Packed package is missing ${required}`);
 }

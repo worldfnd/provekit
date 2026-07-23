@@ -204,8 +204,9 @@ class Runtime implements ProveKitRuntime {
 async function initialize(options: NormalizedOptions): Promise<ProveKitRuntime> {
   try {
     const plan = planThreads(options.threads);
-    let module = await resolveWasmModule(options.wasmModule, plan.variant);
-    await initializeModule(module, options.wasmUrl);
+    let resolved = await resolveWasmModule(options.wasmModule, plan.variant);
+    let module = resolved.module;
+    await initializeModule(module, options.wasmUrl ?? resolved.wasmUrl);
 
     if (plan.variant === "single") {
       const threading: ThreadingStatus = { mode: "single", threads: 1 };
@@ -229,8 +230,9 @@ async function initialize(options: NormalizedOptions): Promise<ProveKitRuntime> 
             { cause: error },
           );
         }
-        module = await resolveWasmModule(undefined, "single");
-        await initializeModule(module);
+        resolved = await resolveWasmModule(undefined, "single");
+        module = resolved.module;
+        await initializeModule(module, resolved.wasmUrl);
         return new Runtime(
           module,
           {

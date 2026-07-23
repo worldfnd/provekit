@@ -8,6 +8,32 @@ const BN254_MODULUS = BigInt("21888242871839275222246405745257275088548364400416
 const DECIMAL_INDEX = /^(?:Witness\()?([0-9]+)\)?$/;
 const FIELD_HEX = /^(?:0x)?([0-9a-fA-F]+)$/;
 
+let noirRuntimeInitialization: Promise<void> | undefined;
+
+async function ensureBrowserNoirRuntime(): Promise<void> {
+  if (typeof window === "undefined") return;
+  noirRuntimeInitialization ??= (async () => {
+    const [acvm, abi, acvmWasm, abiWasm] = await Promise.all([
+      import("@noir-lang/acvm_js"),
+      import("@noir-lang/noirc_abi"),
+      // @ts-expect-error Browser asset URL resolved by the consumer bundler.
+      import("@noir-lang/acvm_js/web/acvm_js_bg.wasm?url"),
+      // @ts-expect-error Browser asset URL resolved by the consumer bundler.
+      import("@noir-lang/noirc_abi/web/noirc_abi_wasm_bg.wasm?url"),
+    ]);
+    const initAcvm = acvm.default as unknown as (url: string) => Promise<unknown>;
+    const initAbi = abi.default as unknown as (url: string) => Promise<unknown>;
+    await Promise.all([
+      initAcvm(acvmWasm.default as string),
+      initAbi(abiWasm.default as string),
+    ]);
+  })().catch((error: unknown) => {
+    noirRuntimeInitialization = undefined;
+    throw error;
+  });
+  return noirRuntimeInitialization;
+}
+
 function checkedIndex(value: unknown): number | null {
   let candidate: unknown = value;
 
@@ -111,6 +137,7 @@ export async function executeNoirWitness(
   let compressed: Uint8Array | undefined;
   let witnessMap: Map<unknown, unknown> | undefined;
   try {
+    await ensureBrowserNoirRuntime();
     const noir = new Noir(circuit as ConstructorParameters<typeof Noir>[0]);
     // Public input validation happens before this boundary. Noir's InputMap is
     // intentionally more specific than the SDK's ABI-agnostic object type.

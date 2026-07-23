@@ -97,6 +97,7 @@ jobs:
         run: |
           node scripts/setup.mjs
           npx playwright install --with-deps chromium
+          npm --prefix ../../tooling/provekit-js run test:vite
           npm run test:e2e
 
   publish-policy:

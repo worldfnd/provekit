@@ -23,6 +23,7 @@ export interface ProveKitWasmModule {
   default(input?: { module_or_path?: WasmInitInput } | WasmInitInput): Promise<unknown>;
   initPanicHook?(): void;
   initThreadPool?(threads: number): Promise<unknown>;
+  setWorkerUrl?(url: string): void;
   Prover: new (artifact: Uint8Array) => WasmProverHandle;
   Verifier: new (artifact: Uint8Array) => WasmVerifierHandle;
 }
