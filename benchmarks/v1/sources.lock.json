@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "name": "self",
+      "url": "https://github.com/selfxyz/self.git",
+      "revision": "15b167e3543a9dff1dbb16fcf71a45fe4625cf9e",
+      "license": "MIT (circuits/LICENSE)",
+      "sparse_paths": [
+        "circuits"
+      ],
+      "purpose": "Circom passport registration and disclosure circuits"
+    },
+    {
+      "name": "world-id-protocol",
+      "url": "https://github.com/worldcoin/world-id-protocol.git",
+      "revision": "85aeeef539961cae5a63de794997b507a5975717",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Pure WebAuthn Noir source and production OPRF Circom circuits"
+    },
+    {
+      "name": "oprf-nr",
+      "url": "https://github.com/TaceoLabs/oprf-nr.git",
+      "revision": "808f3c795b57963dd58ef282ccd61022ef39c285",
+      "tag": "v0.1.0-beta.1",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Noir beta.11-compatible OPRF example circuit source"
+    },
+    {
+      "name": "circom",
+      "url": "https://github.com/iden3/circom.git",
+      "revision": "6f782d7313793b3dc18cc3b38d2335eead9f5d50",
+      "license": "GPL-3.0",
+      "sparse_paths": [],
+      "purpose": "Circom 2.2.2-era compiler used to generate circom-witness-rs graphs"
+    },
+    {
+      "name": "circom-witness-rs",
+      "url": "https://github.com/philsippl/circom-witness-rs.git",
+      "revision": "38553d2e71059c8635651a81a397603c75fb9d8a",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Generated native Rust Circom witness calculation"
+    },
+    {
+      "name": "circom-compat",
+      "url": "https://github.com/arkworks-rs/circom-compat.git",
+      "revision": "d677f28b216fcc39ee8440d152cc9217850f5d4c",
+      "tag": "v0.6.0",
+      "license": "Apache-2.0",
+      "sparse_paths": [],
+      "purpose": "Arkworks Circom R1CS and witness compatibility"
+    },
+    {
+      "name": "rapidsnark",
+      "url": "https://github.com/iden3/rapidsnark.git",
+      "revision": "81eddf1a536d26497b237c0b8a04fe90baf7e439",
+      "license": "LGPL-3.0",
+      "sparse_paths": [],
+      "submodules": true,
+      "purpose": "Native Groth16 prover"
+    }
+  ]
+}

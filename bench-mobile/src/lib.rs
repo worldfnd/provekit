@@ -344,6 +344,28 @@ fn setup_p256_bigcurve_prover() -> PreparedProverFixture {
     prover
 }
 
+fn setup_webauthn_assertion_prepared() -> PreparedCircuitFixture {
+    let prepared = examples::prepare_fixture(MobileBenchFixture::WebauthnAssertion)
+        .expect("prepare webauthn_assertion fixture");
+    in_process::trim_process_memory();
+    prepared
+}
+
+fn setup_webauthn_assertion_verified() -> VerifiedCircuitFixture {
+    let prepared = setup_webauthn_assertion_prepared();
+    let verified = examples::prove_fixture(prepared).expect("prove webauthn_assertion fixture");
+    in_process::trim_process_memory();
+    verified
+}
+
+fn setup_webauthn_assertion_prover() -> PreparedProverFixture {
+    let prover = examples::prepare_fixture(MobileBenchFixture::WebauthnAssertion)
+        .expect("prepare webauthn_assertion fixture")
+        .into_prover_only();
+    in_process::trim_process_memory();
+    prover
+}
+
 #[benchmark]
 pub fn bench_passport_complete_age_check_prepare() {
     let prepared = profile_phase("prepare", || {
@@ -506,6 +528,54 @@ pub fn bench_p256_bigcurve_e2e() {
     });
     let verified = profile_phase("verify", || {
         examples::verify_fixture(verified).expect("verify p256_bigcurve fixture")
+    });
+
+    black_box(verified);
+}
+
+#[benchmark]
+pub fn bench_webauthn_assertion_prepare() {
+    let prepared = profile_phase("prepare", || {
+        examples::prepare_fixture(MobileBenchFixture::WebauthnAssertion)
+            .expect("prepare webauthn_assertion fixture")
+    });
+
+    black_box((
+        prepared.prover_size(),
+        prepared.constraint_count(),
+        prepared.input_count(),
+    ));
+}
+
+#[benchmark(setup = setup_webauthn_assertion_prover, per_iteration)]
+pub fn bench_webauthn_assertion_prove(prepared: PreparedProverFixture) {
+    let proof = profile_phase("prove", || {
+        examples::prove_fixture_proof_only(prepared).expect("prove webauthn_assertion fixture")
+    });
+
+    black_box(proof);
+}
+
+#[benchmark(setup = setup_webauthn_assertion_verified)]
+pub fn bench_webauthn_assertion_verify(verified: &VerifiedCircuitFixture) {
+    let verified = profile_phase("verify", || {
+        examples::verify_fixture(verified.clone()).expect("verify webauthn_assertion fixture")
+    });
+
+    black_box(verified);
+}
+
+#[benchmark]
+pub fn bench_webauthn_assertion_e2e() {
+    let prepared = profile_phase("prepare", || {
+        examples::prepare_fixture(MobileBenchFixture::WebauthnAssertion)
+            .expect("prepare webauthn_assertion fixture")
+    });
+    let verified = profile_phase("prove", || {
+        examples::prove_fixture(prepared).expect("prove webauthn_assertion fixture")
+    });
+    let verified = profile_phase("verify", || {
+        examples::verify_fixture(verified).expect("verify webauthn_assertion fixture")
     });
 
     black_box(verified);

@@ -1,0 +1,18 @@
+{
+  "name": "provekit-v1-browser-benchmarks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "browserstack": "bun run scripts/browserstack.ts",
+    "build": "bash scripts/build.sh",
+    "serve": "bun run scripts/server.ts",
+    "smoke": "bun run scripts/smoke.ts"
+  },
+  "dependencies": {
+    "@noir-lang/acvm_js": "1.0.0-beta.11",
+    "@noir-lang/noir_js": "1.0.0-beta.11"
+  },
+  "devDependencies": {
+    "playwright-core": "1.59.1"
+  }
+}

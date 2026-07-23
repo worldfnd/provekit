@@ -1,0 +1,4 @@
+# scope	kind	path
+prover-download	provekit-pkp	target/v1-benchmarks/artifacts/webauthn_assertion/webauthn_assertion.pkp
+verifier-download	provekit-pkv	target/v1-benchmarks/artifacts/webauthn_assertion/webauthn_assertion.pkv
+result	provekit-proof	target/v1-benchmarks/artifacts/webauthn_assertion/webauthn_assertion.np

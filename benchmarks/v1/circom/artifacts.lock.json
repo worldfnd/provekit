@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "artifacts": [
+    {
+      "workload": "world_id_oprf_query",
+      "kind": "witness_graph",
+      "source": "world-id-protocol/circom/OPRFQueryGraph.bin",
+      "size": 563886,
+      "sha256": "6b0cb90304c510f9142a555fe2b7cf31b9f68f6f37286f4471fd5d03e91da311"
+    },
+    {
+      "workload": "world_id_oprf_query",
+      "kind": "arkworks_proving_key",
+      "source": "world-id-protocol/circom/OPRFQuery.arks.zkey",
+      "size": 11399104,
+      "sha256": "616c98c6ba024b5a4015d3ebfd20f6cab12e1e33486080c5167a4bcfac111798"
+    },
+    {
+      "workload": "world_id_oprf_nullifier",
+      "kind": "witness_graph",
+      "source": "world-id-protocol/circom/OPRFNullifierGraph.bin",
+      "size": 1338703,
+      "sha256": "c1d951716e3b74b72e4ea0429986849cadc43cccc630a7ee44a56a6199a66b9a"
+    },
+    {
+      "workload": "world_id_oprf_nullifier",
+      "kind": "arkworks_proving_key",
+      "source": "world-id-protocol/circom/OPRFNullifier.arks.zkey",
+      "size": 26645680,
+      "sha256": "4247e6bfe1af211e72d3657346802e1af00e6071fb32429a200f9fc0a25a36f9"
+    }
+  ]
+}

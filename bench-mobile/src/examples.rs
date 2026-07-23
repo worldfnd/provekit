@@ -19,12 +19,19 @@ const OPRF_TOML: &str = include_str!("../../noir-examples/oprf/Prover.toml");
 const P256_BIGCURVE_PROGRAM: &str =
     include_str!(concat!(env!("OUT_DIR"), "/bench_mobile_fixtures/p256.json"));
 const P256_BIGCURVE_TOML: &str = include_str!("../../noir-examples/p256_bigcurve/Prover.toml");
+const WEBAUTHN_ASSERTION_PROGRAM: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/bench_mobile_fixtures/webauthn_assertion.json"
+));
+const WEBAUTHN_ASSERTION_TOML: &str =
+    include_str!("../../benchmarks/v1/noir/webauthn_assertion/Prover.toml");
 
 #[derive(Clone, Copy)]
 pub enum MobileBenchFixture {
     CompleteAgeCheck,
     Oprf,
     P256Bigcurve,
+    WebauthnAssertion,
 }
 
 impl MobileBenchFixture {
@@ -33,6 +40,7 @@ impl MobileBenchFixture {
             Self::CompleteAgeCheck => "complete_age_check",
             Self::Oprf => "oprf",
             Self::P256Bigcurve => "p256_bigcurve",
+            Self::WebauthnAssertion => "webauthn_assertion",
         }
     }
 
@@ -41,6 +49,7 @@ impl MobileBenchFixture {
             Self::CompleteAgeCheck => COMPLETE_AGE_CHECK_PROGRAM,
             Self::Oprf => OPRF_PROGRAM,
             Self::P256Bigcurve => P256_BIGCURVE_PROGRAM,
+            Self::WebauthnAssertion => WEBAUTHN_ASSERTION_PROGRAM,
         }
     }
 
@@ -49,6 +58,7 @@ impl MobileBenchFixture {
             Self::CompleteAgeCheck => COMPLETE_AGE_CHECK_TOML,
             Self::Oprf => OPRF_TOML,
             Self::P256Bigcurve => P256_BIGCURVE_TOML,
+            Self::WebauthnAssertion => WEBAUTHN_ASSERTION_TOML,
         }
     }
 }

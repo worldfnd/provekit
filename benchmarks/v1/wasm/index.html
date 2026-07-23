@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ProveKit V1 browser benchmark</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      body {
+        margin: 0 auto;
+        max-width: 58rem;
+        padding: 2rem;
+      }
+      form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        align-items: end;
+      }
+      label {
+        display: grid;
+        gap: 0.35rem;
+      }
+      input {
+        width: 7rem;
+      }
+      button,
+      input {
+        font: inherit;
+        padding: 0.55rem 0.7rem;
+      }
+      pre {
+        border: 1px solid currentColor;
+        min-height: 16rem;
+        overflow: auto;
+        padding: 1rem;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>ProveKit V1 browser benchmark</h1>
+    <p>Single-thread WebAssembly · deterministic WebAuthn assertion fixture</p>
+    <form id="controls">
+      <label>Warmups <input id="warmup" type="number" min="0" max="10" value="0" /></label>
+      <label>Samples <input id="iterations" type="number" min="1" max="20" value="1" /></label>
+      <button id="run" type="submit">Run benchmark</button>
+    </form>
+    <p id="status">Ready.</p>
+    <pre id="output" aria-live="polite"></pre>
+    <script type="module" src="./runner.js"></script>
+  </body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "provekit-v1-browser-benchmarks",
+      "dependencies": {
+        "@noir-lang/acvm_js": "1.0.0-beta.11",
+        "@noir-lang/noir_js": "1.0.0-beta.11",
+      },
+      "devDependencies": {
+        "playwright-core": "1.59.1",
+      },
+    },
+  },
+  "packages": {
+    "@noir-lang/acvm_js": ["@noir-lang/acvm_js@1.0.0-beta.11", "", {}, "sha512-g1CeqJlWNyJx1j+1t9sm3MxnDChbWSHa9UOOIQYBskxczhUHuUVfYve3xbe0DwSEiIBQ3gmTIKDmRPs+QboPvA=="],
+
+    "@noir-lang/noir_js": ["@noir-lang/noir_js@1.0.0-beta.11", "", { "dependencies": { "@noir-lang/acvm_js": "1.0.0-beta.11", "@noir-lang/noirc_abi": "1.0.0-beta.11", "@noir-lang/types": "1.0.0-beta.11", "pako": "^2.1.0" } }, "sha512-pZlz5/mGooHBUnucUULmbdU3gicxbaCg7t+wNoBN45JuFMU4vV32As4C1aTNNJDpDFaGupV7yXKVRcsJNTZ49w=="],
+
+    "@noir-lang/noirc_abi": ["@noir-lang/noirc_abi@1.0.0-beta.11", "", { "dependencies": { "@noir-lang/types": "1.0.0-beta.11" } }, "sha512-D8nBgDGYe8uu4meu9ctGo52KIa0NeE/u2GBQi4DHJzE7/q5dVEqSyVVPImOyZWpvjPvb6thySxcDWbqY6JxOiw=="],
+
+    "@noir-lang/types": ["@noir-lang/types@1.0.0-beta.11", "", {}, "sha512-b9zeK/uxecsOKxsgqRszNYtj7Z3A9k//GF4uQIzvYbDWyrPGgnfi297ysXZ8lqKV4xBSQ93qNp+VzW4XaTBGjQ=="],
+
+    "pako": ["pako@2.2.0", "", {}, "sha512-zJq6RP/5q+TO2OpFV3FHzlPnFjmkb7Nc99a5SNjJE+uu/PkpChs+NIZSSzbBoD+6kjiISXjfYdwj1ZRQ81dz/w=="],
+
+    "playwright-core": ["playwright-core@1.59.1", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-HBV/RJg81z5BiiZ9yPzIiClYV/QMsDCKUyogwH9p3MCP6IYjUFu/MActgYAvK0oWyV9NlwM3GLBjADyWgydVyg=="],
+  }
+}

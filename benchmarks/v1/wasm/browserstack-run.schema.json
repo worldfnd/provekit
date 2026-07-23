@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://provekit.dev/schemas/v1-browserstack-run.schema.json",
+  "title": "ProveKit V1 BrowserStack browser benchmark run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_revision",
+    "session_id",
+    "requested_environment",
+    "resolved_environment",
+    "static_bundle",
+    "benchmark_result"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "source_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "requested_environment": {
+      "type": "object"
+    },
+    "resolved_environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "browser_name",
+        "device_name",
+        "os_version",
+        "real_mobile"
+      ],
+      "properties": {
+        "browser_name": {
+          "type": "string"
+        },
+        "browser_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "device_name": {
+          "type": "string"
+        },
+        "os_version": {
+          "type": "string"
+        },
+        "real_mobile": {
+          "type": "boolean"
+        }
+      }
+    },
+    "static_bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_sha256",
+        "total_bytes",
+        "artifact_count"
+      ],
+      "properties": {
+        "manifest_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "total_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "artifact_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "benchmark_result": {
+      "type": "object"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "provekit-v1-barretenberg-benchmarks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "bun run smoke.ts"
+  },
+  "dependencies": {
+    "@aztec/bb.js": "0.87.0",
+    "@noir-lang/noir_js": "1.0.0-beta.11"
+  }
+}

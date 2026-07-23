@@ -1,0 +1,95 @@
+{
+  "schema_version": 1,
+  "publication_iterations": 5,
+  "warmup_iterations": 1,
+  "primary_device": {
+    "provider": "browserstack",
+    "device": "iPhone SE 2022",
+    "os_version": "resolve-from-current-device-catalog",
+    "platform": "ios",
+    "requires_device_catalog_resolution": true
+  },
+  "measurements": [
+    "initialization_time_ns",
+    "witness_time_ns",
+    "prove_time_ns",
+    "verify_time_ns",
+    "peak_memory_growth_bytes",
+    "process_peak_memory_bytes",
+    "proof_size_bytes",
+    "cold_download_bytes",
+    "incremental_circuit_bytes"
+  ],
+  "workloads": {
+    "passport": {
+      "headline": true,
+      "statement": "Prove a valid passport-derived credential and the configured age predicate without revealing private document data.",
+      "noir_fixture": "noir-examples/noir-passport-monolithic/complete_age_check",
+      "circom_source": "selfxyz/self",
+      "circom_flow": [
+        "signature-specific registration",
+        "vc_and_disclose"
+      ],
+      "equivalence": "not-equivalent-two-proof-product-flow"
+    },
+    "webauthn_assertion": {
+      "headline": false,
+      "statement": "Verify one ES256 WebAuthn assertion bound to the configured challenge, ceremony type, origin, RP ID hash, required flags, and public key.",
+      "excluded": [
+        "key registration",
+        "registry inclusion",
+        "Merkle membership",
+        "World ID uniqueness"
+      ],
+      "noir_fixture": "benchmarks/v1/noir/webauthn_assertion",
+      "circom_source": "pending-equivalent-circuit",
+      "equivalence": "blocked-no-licensed-equivalent-circuit"
+    },
+    "oprf": {
+      "headline": false,
+      "statement": "Benchmark the OPRF core and World ID application query/nullifier circuits as separately labeled workloads.",
+      "noir_source": "TaceoLabs/oprf-nr v0.1.0-beta.1 oprf_example",
+      "circom_source": "worldcoin/world-id-protocol query and nullifier",
+      "equivalence": "not-equivalent-report-separately"
+    }
+  },
+  "backends": {
+    "provekit_v1_native": {
+      "frontend": "noir",
+      "proof_system": "spartan-whir",
+      "execution": "native"
+    },
+    "barretenberg_native": {
+      "frontend": "noir",
+      "proof_system": "ultrahonk",
+      "execution": "native",
+      "bundle_includes": [
+        "required-crs"
+      ]
+    },
+    "circom_rapidsnark_native": {
+      "frontend": "circom",
+      "proof_system": "groth16",
+      "execution": "native",
+      "bundle_includes": [
+        "witness-generator",
+        "r1cs",
+        "zkey"
+      ]
+    },
+    "circom_arkworks_native": {
+      "frontend": "circom",
+      "proof_system": "groth16",
+      "execution": "native",
+      "bundle_includes": [
+        "generated-rust-witness",
+        "proving-key"
+      ]
+    },
+    "provekit_v1_wasm": {
+      "frontend": "noir",
+      "proof_system": "spartan-whir",
+      "execution": "browser-wasm"
+    }
+  }
+}

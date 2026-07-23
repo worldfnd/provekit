@@ -40,6 +40,10 @@ const FIXTURE_ARTIFACTS: &[FixtureArtifact] = &[
         output_file:       "p256.json",
         source_target_rel: "noir-examples/p256_bigcurve/target/p256.json",
     },
+    FixtureArtifact {
+        output_file:       "webauthn_assertion.json",
+        source_target_rel: "benchmarks/v1/noir/webauthn_assertion/target/webauthn_assertion.json",
+    },
 ];
 
 fn copy_if_present(from: &Path, to: &Path) -> io::Result<bool> {

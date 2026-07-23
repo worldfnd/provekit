@@ -6,19 +6,8 @@ if [[ "${MOBENCH_CI_PREPARE:-}" != "1" ]]; then
   exit 1
 fi
 
-noir_version="v1.0.0-beta.11"
-if ! command -v noirup >/dev/null 2>&1; then
-  curl --fail --location --proto '=https' --tlsv1.2 \
-    https://raw.githubusercontent.com/noir-lang/noirup/dedc07043b6ae9a680a19c7394847a58e404cbba/install | bash
-  export PATH="$HOME/.nargo/bin:$PATH"
-fi
-noirup --version "$noir_version"
-command -v nargo >/dev/null 2>&1 || {
-  echo "nargo was not installed by noirup $noir_version" >&2
-  exit 1
-}
-
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+nargo_bin="$("${repo_root}/benchmarks/v1/scripts/bootstrap-nargo.sh")"
 
 compile_fixture() {
   local circuit_dir="$1"
@@ -26,7 +15,7 @@ compile_fixture() {
   echo "Generating Noir artifact in ${circuit_dir}"
   (
     cd "${repo_root}/${circuit_dir}"
-    nargo compile --skip-brillig-constraints-check --force
+    "${nargo_bin}" compile --skip-brillig-constraints-check --force
   )
 
   if [[ -n "${aggregate_target_dir}" ]]; then
@@ -52,7 +41,7 @@ compile_oprf_benchmark_fixture() (
 
   (
     cd "${fixture_dir}"
-    nargo compile --skip-brillig-constraints-check --force
+    "${nargo_bin}" compile --skip-brillig-constraints-check --force
   )
 
   mkdir -p "${source_dir}/target"
@@ -70,3 +59,9 @@ compile_fixture "noir-examples/noir-passport/merkle_age_check/t_attest" \
   "noir-examples/noir-passport/merkle_age_check/target"
 compile_oprf_benchmark_fixture
 compile_fixture "noir-examples/p256_bigcurve"
+(
+  cd "${repo_root}/benchmarks/v1/noir/webauthn_assertion"
+  bun install --frozen-lockfile
+  bun run fixture
+)
+compile_fixture "benchmarks/v1/noir/webauthn_assertion"

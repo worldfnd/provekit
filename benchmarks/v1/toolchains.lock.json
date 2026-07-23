@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "noir": {
+    "version": "1.0.0-beta.11",
+    "base_url": "https://github.com/noir-lang/noir/releases/download/v1.0.0-beta.11",
+    "assets": {
+      "aarch64-apple-darwin": {
+        "name": "nargo-aarch64-apple-darwin.tar.gz",
+        "sha256": "5c0613290be728fcb314a480578a60e0a11cd192d249d08ded44bee7c5eea142"
+      },
+      "x86_64-apple-darwin": {
+        "name": "nargo-x86_64-apple-darwin.tar.gz",
+        "sha256": "abfa9dfa1a58b10a1006dd2eabfdb19eba5697df5ca26e1707eaa1b0adfa8ff7"
+      },
+      "aarch64-unknown-linux-gnu": {
+        "name": "nargo-aarch64-unknown-linux-gnu.tar.gz",
+        "sha256": "bf6e44a9cd1da8c9c445d21c698b40678a3d6ef79d6b7b718c249d669d070966"
+      },
+      "x86_64-unknown-linux-gnu": {
+        "name": "nargo-x86_64-unknown-linux-gnu.tar.gz",
+        "sha256": "89a014fd3058a059d1bfaf99cd9891eb948a093ec31314a9cf0473488f547795"
+      }
+    }
+  },
+  "barretenberg": {
+    "version": "0.87.0",
+    "release_url": "https://github.com/AztecProtocol/aztec-packages/releases/tag/v0.87.0",
+    "bb_js_package": "@aztec/bb.js@0.87.0",
+    "bb_js_integrity": "sha512-1tGxrJc/or9p4zwP7yvSLHU0z0N/DQGLfIeTYRdlQQPBMcnKX51rMI0PJ07/zZj0XxwHVFlqtV+PqvFBszIPwA==",
+    "status": "bb-js-webauthn-proof-smoke-passed",
+    "reason": "Noir beta.11 pins Barretenberg 0.87.0; passport and OPRF proof compatibility must still pass before publication."
+  },
+  "wasm_bindgen_cli": {
+    "version": "0.2.100",
+    "reason": "Must exactly match the wasm-bindgen crate version in the V1 Cargo.lock."
+  }
+}

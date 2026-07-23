@@ -1,0 +1,11 @@
+{
+  "name": "provekit-v1-webauthn-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fixture": "bun run generate-fixture.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "2.2.0"
+  }
+}
