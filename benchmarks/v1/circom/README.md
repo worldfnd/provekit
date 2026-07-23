@@ -54,6 +54,16 @@ That is not equivalent to ProveKit's monolithic `complete_age_check`. Report
 both Self stages separately until a matching Circom statement exists. Never
 present either stage alone as a direct passport comparison.
 
+The portable Circom WASM and `--no_asm` C++ witness generators agree
+byte-for-byte with their reference WTNS files. The current
+`circom-witness-rs` graph generator does not support these Self circuits:
+graph generation reaches `Fr_isTrue` with a runtime-dependent node. This is a
+dynamic-control-flow compatibility boundary, not an optimization-level flag.
+Supporting an Arkworks Self passport lane requires either refactoring those
+branches into named `bbf*` Circom functions with matching Rust blackboxes, or
+adding symbolic branch/select support to the witness graph engine. The World
+ID OPRF graphs remain the working Arkworks mobile lane.
+
 ## Passkey
 
 No licensed Circom circuit was found that matches the benchmark's ES256

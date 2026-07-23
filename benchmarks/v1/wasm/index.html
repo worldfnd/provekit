@@ -24,11 +24,13 @@
         display: grid;
         gap: 0.35rem;
       }
-      input {
+      input,
+      select {
         width: 7rem;
       }
       button,
-      input {
+      input,
+      select {
         font: inherit;
         padding: 0.55rem 0.7rem;
       }
@@ -43,8 +45,16 @@
   </head>
   <body>
     <h1>ProveKit V1 browser benchmark</h1>
-    <p>Single-thread WebAssembly · deterministic WebAuthn assertion fixture</p>
+    <p>Single-thread WebAssembly · pinned deterministic fixtures</p>
     <form id="controls">
+      <label
+        >Workload
+        <select id="workload">
+          <option value="passport_complete_age_check">Passport complete age check</option>
+          <option value="webauthn_assertion" selected>WebAuthn assertion</option>
+          <option value="oprf_taceo">Taceo OPRF example</option>
+        </select>
+      </label>
       <label>Warmups <input id="warmup" type="number" min="0" max="10" value="0" /></label>
       <label>Samples <input id="iterations" type="number" min="1" max="20" value="1" /></label>
       <button id="run" type="submit">Run benchmark</button>

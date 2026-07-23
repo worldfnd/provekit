@@ -12,15 +12,21 @@ rapidsnark="${repo_root}/target/v1-benchmarks/sources/rapidsnark"
 case "$(uname -m)-$(uname -s)" in
   arm64-Darwin)
     gmp_target="macos_arm64"
+    gmp_package="package_macos_arm64"
     make_target="macos_arm64"
+    prover_package="package_macos_arm64"
     ;;
   x86_64-Darwin | x86_64-Linux)
     gmp_target="host"
+    gmp_package="package"
     make_target="host"
+    prover_package="package"
     ;;
   aarch64-Linux | arm64-Linux)
     gmp_target="aarch64"
+    gmp_package="package_aarch64"
     make_target="host_arm64"
+    prover_package="package_arm64"
     ;;
   *)
     echo "error: unsupported Rapidsnark host $(uname -m)-$(uname -s)" >&2
@@ -42,10 +48,18 @@ for library in gmp libsodium; do
   fi
 done
 
+prover="${rapidsnark}/${prover_package}/bin/prover"
+if [[ -x "${prover}" ]]; then
+  echo "Pinned Rapidsnark host prover is ready at ${prover}"
+  exit 0
+fi
+
 (
   cd "${rapidsnark}"
-  ./build_gmp.sh "${gmp_target}"
+  if [[ ! -d "depends/gmp/${gmp_package}" ]]; then
+    ./build_gmp.sh "${gmp_target}"
+  fi
   make "${make_target}"
 )
 
-echo "Built pinned Rapidsnark host prover under ${rapidsnark}"
+echo "Built pinned Rapidsnark host prover at ${prover}"

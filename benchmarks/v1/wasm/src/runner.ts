@@ -18,8 +18,17 @@ const output = document.querySelector<HTMLElement>("#output");
 const runButton = document.querySelector<HTMLButtonElement>("#run");
 const warmupInput = document.querySelector<HTMLInputElement>("#warmup");
 const iterationsInput = document.querySelector<HTMLInputElement>("#iterations");
+const workloadInput = document.querySelector<HTMLSelectElement>("#workload");
 
-if (!form || !status || !output || !runButton || !warmupInput || !iterationsInput) {
+if (
+  !form ||
+  !status ||
+  !output ||
+  !runButton ||
+  !warmupInput ||
+  !iterationsInput ||
+  !workloadInput
+) {
   throw new Error("benchmark controls are missing");
 }
 
@@ -55,7 +64,7 @@ function run(): void {
     const warmup = boundedInteger(warmupInput, 0, 10);
     const iterations = boundedInteger(iterationsInput, 1, 20);
     setState({ status: "running" });
-    worker.postMessage({ type: "run", warmup, iterations });
+    worker.postMessage({ type: "run", workload: workloadInput.value, warmup, iterations });
   } catch (error) {
     setState({ status: "error", error: error instanceof Error ? error.message : String(error) });
   }
@@ -81,6 +90,7 @@ form.addEventListener("submit", (event) => {
 
 const query = new URLSearchParams(location.search);
 if (query.get("autorun") === "1") {
+  workloadInput.value = query.get("workload") ?? "webauthn_assertion";
   warmupInput.value = query.get("warmup") ?? "0";
   iterationsInput.value = query.get("iterations") ?? "1";
   run();

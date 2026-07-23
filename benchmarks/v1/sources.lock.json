@@ -6,9 +6,7 @@
       "url": "https://github.com/selfxyz/self.git",
       "revision": "15b167e3543a9dff1dbb16fcf71a45fe4625cf9e",
       "license": "MIT (circuits/LICENSE)",
-      "sparse_paths": [
-        "circuits"
-      ],
+      "sparse_paths": [],
       "purpose": "Circom passport registration and disclosure circuits"
     },
     {

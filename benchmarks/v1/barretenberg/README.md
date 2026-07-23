@@ -9,14 +9,16 @@ Install the browser dependency without changing the lock:
 ```bash
 cd benchmarks/v1/barretenberg
 bun install --frozen-lockfile
-bun run smoke
+bun run smoke:webauthn
+bun run smoke:passport
+bun run smoke:oprf
 ```
 
-The smoke runs the WebAuthn assertion circuit from `../noir/webauthn_assertion`
-with the single-thread backend. Passport and OPRF are the next fixtures. Record the
-Barretenberg CRS as part of the cold-download bundle. Do not publish
-Barretenberg comparisons until a `0.87.0` proof and verification pass against
-each frozen beta.11 artifact.
+The smokes run WebAuthn, passport complete-age-check, and Taceo OPRF with the
+single-thread backend. Each generates and verifies a proof and rejects a
+tampered proof. Record the Barretenberg CRS as part of the cold-download
+bundle. Do not publish comparisons until a `0.87.0` proof and verification
+pass against each frozen beta.11 artifact.
 
 The package tarball integrity and release URL are pinned in
 `../toolchains.lock.json`.

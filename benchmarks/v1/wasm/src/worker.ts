@@ -9,9 +9,15 @@ import initProveKit, {
 
 interface RunCommand {
   type: "run";
+  workload: WorkloadName;
   warmup: number;
   iterations: number;
 }
+
+type WorkloadName =
+  | "webauthn_assertion"
+  | "passport_complete_age_check"
+  | "oprf_taceo";
 
 interface PhaseSample {
   iteration: number;
@@ -30,6 +36,10 @@ interface PerformanceWithMemory extends Performance {
   memory?: {
     usedJSHeapSize?: number;
   };
+}
+
+interface BundleManifest {
+  totals: Record<string, number>;
 }
 
 function elapsed(start: number): number {
@@ -60,10 +70,10 @@ async function fetchBytes(path: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
-async function fetchJson(path: string): Promise<Record<string, unknown>> {
+async function fetchJson<T extends object = Record<string, unknown>>(path: string): Promise<T> {
   const response = await fetch(path, { cache: "no-store" });
   if (!response.ok) throw new Error(`failed to fetch ${path}: HTTP ${response.status}`);
-  return (await response.json()) as Record<string, unknown>;
+  return (await response.json()) as T;
 }
 
 function currentHeapBytes(): number | undefined {
@@ -71,13 +81,23 @@ function currentHeapBytes(): number | undefined {
 }
 
 async function runBenchmark(command: RunCommand): Promise<unknown> {
+  const assetRoot = `./assets/${command.workload}`;
   const downloadStart = performance.now();
-  const [pkp, pkv, inputs] = await Promise.all([
-    fetchBytes("./assets/webauthn_assertion.pkp"),
-    fetchBytes("./assets/webauthn_assertion.pkv"),
-    fetchJson("./assets/inputs.json"),
+  const [pkp, pkv, inputs, manifest] = await Promise.all([
+    fetchBytes(`${assetRoot}/${command.workload}.pkp`),
+    fetchBytes(`${assetRoot}/${command.workload}.pkv`),
+    fetchJson(`${assetRoot}/inputs.json`),
+    fetchJson<BundleManifest>("./manifest.json"),
   ]);
   const downloadTimeMs = elapsed(downloadStart);
+  const sharedRuntimeBytes = manifest.totals["shared-runtime"];
+  const incrementalCircuitBytes = manifest.totals[command.workload];
+  if (
+    !Number.isSafeInteger(sharedRuntimeBytes) ||
+    !Number.isSafeInteger(incrementalCircuitBytes)
+  ) {
+    throw new Error(`bundle manifest has no totals for ${command.workload}`);
+  }
 
   const initStart = performance.now();
   await initProveKit();
@@ -127,7 +147,7 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
       tamperedProofRejected = true;
     }
     if (!tamperedProofRejected) {
-      throw new Error("ProveKit accepted a tampered WebAuthn proof");
+      throw new Error(`ProveKit accepted a tampered ${command.workload} proof`);
     }
 
     samples.push({
@@ -150,13 +170,18 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
 
   return {
     schema_version: 1,
-    benchmark: "webauthn_assertion",
+    benchmark: command.workload,
     backend: "provekit_v1_wasm_single",
     download_time_ms: downloadTimeMs,
     initialization_time_ms: initTimeMs,
     artifacts: {
       prover_bytes: pkp.byteLength,
       verifier_bytes: pkv.byteLength,
+    },
+    bundle: {
+      shared_runtime_bytes: sharedRuntimeBytes,
+      incremental_circuit_bytes: incrementalCircuitBytes,
+      cold_download_bytes: sharedRuntimeBytes + incrementalCircuitBytes,
     },
     circuit: {
       constraints,

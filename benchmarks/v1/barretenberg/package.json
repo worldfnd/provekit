@@ -3,10 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "smoke": "bun run smoke.ts"
+    "inputs": "bun run convert-inputs.ts",
+    "smoke": "bun run smoke.ts",
+    "smoke:webauthn": "bun run smoke.ts webauthn_assertion",
+    "smoke:oprf": "bun run smoke.ts oprf_taceo",
+    "smoke:passport": "bun run smoke.ts passport_complete_age_check"
   },
   "dependencies": {
     "@aztec/bb.js": "0.87.0",
+    "@iarna/toml": "2.2.5",
     "@noir-lang/noir_js": "1.0.0-beta.11"
   }
 }

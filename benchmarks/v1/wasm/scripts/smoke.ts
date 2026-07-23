@@ -8,7 +8,10 @@ const browser = await chromium.launch({ executablePath, headless: true });
 
 try {
   const page = await browser.newPage();
-  await page.goto(`${server.url}?autorun=1&warmup=0&iterations=1`);
+  const workload = process.env.MOBENCH_WORKLOAD ?? "webauthn_assertion";
+  await page.goto(
+    `${server.url}?autorun=1&workload=${encodeURIComponent(workload)}&warmup=0&iterations=1`,
+  );
   await page.waitForFunction(
     () => ["complete", "error"].includes(window.__MOBENCH_STATE__?.status),
     undefined,

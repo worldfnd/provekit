@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { lstat, readFile, realpath } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { lstat, readFile, readdir, realpath } from "node:fs/promises";
+import { relative, resolve, sep } from "node:path";
 import matrix from "../browser-matrix.json";
 import { startServer } from "./server";
 
@@ -55,6 +55,22 @@ function expectedMimeType(path: string): string {
   return "application/octet-stream";
 }
 
+async function listStaticFiles(directory: string): Promise<string[]> {
+  const files: string[] = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = resolve(directory, entry.name);
+    if (entry.isSymbolicLink()) throw new Error(`static bundle contains symlink: ${path}`);
+    if (entry.isDirectory()) {
+      files.push(...(await listStaticFiles(path)));
+    } else if (entry.isFile()) {
+      files.push(relative(repositoryRoot, path));
+    } else {
+      throw new Error(`static bundle contains unsupported filesystem entry: ${path}`);
+    }
+  }
+  return files;
+}
+
 async function verifyStaticBundle() {
   const manifestPath = resolve(distRoot, "manifest.json");
   const manifestBytes = new Uint8Array(await readFile(manifestPath));
@@ -90,6 +106,17 @@ async function verifyStaticBundle() {
   const declaredTotal = Object.values(manifest.totals).reduce((sum, value) => sum + value, 0);
   if (totalBytes !== declaredTotal) {
     throw new Error(`manifest total mismatch: measured ${totalBytes}, declared ${declaredTotal}`);
+  }
+  const declaredPaths = new Set(manifest.artifacts.map((artifact) => artifact.path));
+  const actualPaths = (await listStaticFiles(distRoot)).filter(
+    (path) => path !== "benchmarks/v1/wasm/dist/manifest.json",
+  );
+  const unexpected = actualPaths.filter((path) => !declaredPaths.has(path));
+  const missing = [...declaredPaths].filter((path) => !actualPaths.includes(path));
+  if (unexpected.length > 0 || missing.length > 0) {
+    throw new Error(
+      `static bundle file set mismatch; unexpected=${unexpected.join(",")}; missing=${missing.join(",")}`,
+    );
   }
 
   return {
@@ -182,6 +209,12 @@ if (!osVersion) {
 
 const warmup = Number.parseInt(process.env.MOBENCH_WARMUP ?? "1", 10);
 const iterations = Number.parseInt(process.env.MOBENCH_ITERATIONS ?? "5", 10);
+const workload = process.env.MOBENCH_WORKLOAD ?? "passport_complete_age_check";
+if (
+  !["webauthn_assertion", "passport_complete_age_check", "oprf_taceo"].includes(workload)
+) {
+  throw new Error(`unsupported MOBENCH_WORKLOAD: ${workload}`);
+}
 if (!Number.isInteger(warmup) || warmup < 0 || warmup > 10) {
   throw new Error("MOBENCH_WARMUP must be an integer from 0 to 10");
 }
@@ -213,7 +246,7 @@ try {
           localIdentifier,
           projectName: "ProveKit V1 benchmarks",
           buildName: `provekit-v1-${sourceRevision().slice(0, 12)}`,
-          sessionName: `${requested.id} WebAuthn assertion`,
+          sessionName: `${requested.id} ${workload}`,
         },
       },
     },
@@ -223,7 +256,9 @@ try {
 
   const capabilities = created.value?.capabilities ?? {};
   await webdriver(`/session/${sessionId}/url`, authorization, "POST", {
-    url: `http://localhost:${new URL(server.url).port}/?autorun=1&warmup=${warmup}&iterations=${iterations}`,
+    url:
+      `http://localhost:${new URL(server.url).port}/?autorun=1` +
+      `&workload=${encodeURIComponent(workload)}&warmup=${warmup}&iterations=${iterations}`,
   });
 
   const deadline = Date.now() + 15 * 60 * 1000;

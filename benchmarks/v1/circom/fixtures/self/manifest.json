@@ -1,0 +1,38 @@
+{
+  "artifacts": [
+    {
+      "name": "self_passport_registration",
+      "file": "register_sha256_sha256_sha256_rsa_65537_4096.json",
+      "size": 30368,
+      "sha256": "2d9ccff0b1a94c500d722cea20fbeb68ff9c6c48f21391b7f5b441752dfa5030"
+    },
+    {
+      "name": "self_passport_disclosure",
+      "file": "vc_and_disclose.json",
+      "size": 9358,
+      "sha256": "f88d57881fdf0569ab5896a7bbbb96c6fb463962bafa58c20f11b1b44061a011"
+    }
+  ],
+  "fixture": {
+    "random_seed": "0x5e1f2026",
+    "secret": "170141183460469231731687303715884105727",
+    "user_uuid": "00000000-0000-4000-8000-000000000001",
+    "endpoint": "https://benchmark.self.xyz",
+    "scope": "provekit-v1",
+    "current_date_yymmdd": "260723",
+    "passport": {
+      "dg_hash": "sha256",
+      "econtent_hash": "sha256",
+      "signature": "rsa_sha256_65537_4096",
+      "nationality": "FRA",
+      "birth_date_yymmdd": "000101",
+      "expiry_date_yymmdd": "300101"
+    },
+    "commitment": "5178193076813207391481865702066036085249350902832070775814587531768982041518"
+  },
+  "schema_version": 1,
+  "source": {
+    "repository": "https://github.com/selfxyz/self.git",
+    "revision": "15b167e3543a9dff1dbb16fcf71a45fe4625cf9e"
+  }
+}

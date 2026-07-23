@@ -72,9 +72,19 @@
       "proof_system": "groth16",
       "execution": "native",
       "bundle_includes": [
-        "witness-generator",
-        "r1cs",
-        "zkey"
+        "native-witness-generator",
+        "zkey",
+        "verification-key"
+      ],
+      "harness_only_excludes_from_circuit_size": [
+        "reference-wtns",
+        "benchmark-input"
+      ],
+      "timing": [
+        "mmap-and-integrity-check-before-samples",
+        "witness-generation-separate",
+        "proof-generation-with-prepared-witness",
+        "verification-separate"
       ]
     },
     "circom_arkworks_native": {
