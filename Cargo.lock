@@ -611,10 +611,12 @@ dependencies = [
  "inventory",
  "libc",
  "mobench-sdk",
+ "postcard",
  "provekit-common",
  "provekit-prover",
  "provekit-r1cs-compiler",
  "provekit-verifier",
+ "provekit_acir",
  "provekit_noirc_abi",
  "provekit_noirc_artifacts",
  "rayon",
@@ -2907,9 +2909,9 @@ dependencies = [
 
 [[package]]
 name = "mobench-macros"
-version = "0.1.47"
+version = "0.1.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a202bc64289731f6761ad9d056fa9d084808aecb17d0c1d7ac98765bcf3e92"
+checksum = "e11683a0dbfb40d9789a7ee43bcc590a3028a34823a1c427e1fec16fc8ea2d12"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2918,9 +2920,9 @@ dependencies = [
 
 [[package]]
 name = "mobench-sdk"
-version = "0.1.47"
+version = "0.1.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed6b1083cdd1e6a79ab3396a14e26a6fa472a60366bd37b9f2dce9a9eaa2d21f"
+checksum = "e2ceb68cfc37e295c4584c68174f93814b07b9f048590d266b3040ed0aaeed3f"
 dependencies = [
  "inventory",
  "libc",
@@ -2928,6 +2930,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "wasm-bindgen",
 ]
 
 [[package]]

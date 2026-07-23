@@ -72,11 +72,11 @@ jobs:
             *) echo "::warning::Invalid device_profile '${device_profile}', defaulting to 'triad'"; device_profile="triad" ;;
           esac
 
-          if ! [[ "${iterations:-2}" =~ ^[0-9]+$ ]]; then
-            echo "::warning::Invalid iterations '${iterations}', defaulting to '2'"
-            iterations="2"
+          if ! [[ "${iterations:-5}" =~ ^[0-9]+$ ]]; then
+            echo "::warning::Invalid iterations '${iterations}', defaulting to '5'"
+            iterations="5"
           else
-            iterations="${iterations:-2}"
+            iterations="${iterations:-5}"
           fi
 
           if ! [[ "${warmup:-1}" =~ ^[0-9]+$ ]]; then
@@ -86,10 +86,12 @@ jobs:
             warmup="${warmup:-1}"
           fi
 
-          echo "platform=${platform}" >> "$GITHUB_OUTPUT"
-          echo "device_profile=${device_profile}" >> "$GITHUB_OUTPUT"
-          echo "iterations=${iterations}" >> "$GITHUB_OUTPUT"
-          echo "warmup=${warmup}" >> "$GITHUB_OUTPUT"
+          {
+            echo "platform=${platform}"
+            echo "device_profile=${device_profile}"
+            echo "iterations=${iterations}"
+            echo "warmup=${warmup}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Resolve PR refs
         if: steps.trust.outputs.trusted == 'true'
@@ -142,15 +144,15 @@ jobs:
       checks: write
       contents: read
       pull-requests: write
-    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@8a2dfbb2ba941aa6a6582bf49dae482cc87779df
+    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@ec5848752760cf2edd4d7f8c7c1e329bd668cf95
     secrets:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
     with:
       crate_path: ./bench-mobile
-      functions: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
-      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
-      functions_android: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
+      functions: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e","bench_mobile::bench_passport_fragmented_age_check_prepare","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_webauthn_assertion_prepare","bench_mobile::bench_webauthn_assertion_prove","bench_mobile::bench_webauthn_assertion_verify","bench_mobile::bench_webauthn_assertion_e2e","bench_mobile::bench_oprf_prepare","bench_mobile::bench_oprf_prove","bench_mobile::bench_oprf_verify","bench_mobile::bench_oprf_e2e"]'
+      functions_ios: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e","bench_mobile::bench_passport_fragmented_age_check_prepare","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_webauthn_assertion_prepare","bench_mobile::bench_webauthn_assertion_prove","bench_mobile::bench_webauthn_assertion_verify","bench_mobile::bench_webauthn_assertion_e2e","bench_mobile::bench_oprf_prepare","bench_mobile::bench_oprf_prove","bench_mobile::bench_oprf_verify","bench_mobile::bench_oprf_e2e"]'
+      functions_android: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e","bench_mobile::bench_passport_fragmented_age_check_prepare","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_webauthn_assertion_prepare","bench_mobile::bench_webauthn_assertion_prove","bench_mobile::bench_webauthn_assertion_verify","bench_mobile::bench_webauthn_assertion_e2e","bench_mobile::bench_oprf_prepare","bench_mobile::bench_oprf_prove","bench_mobile::bench_oprf_verify","bench_mobile::bench_oprf_e2e"]'
       platform: ${{ needs.resolve.outputs.platform }}
       prepare_script: bench-mobile/scripts/generate-fixtures.sh
       device_profile: custom
@@ -158,7 +160,7 @@ jobs:
       android_devices: ${{ needs.resolve-device-matrices.outputs.android_devices }}
       iterations: ${{ needs.resolve.outputs.iterations }}
       warmup: ${{ needs.resolve.outputs.warmup }}
-      mobench_version: "0.1.47"
+      mobench_version: "0.1.48"
       max_completion_timeout_secs: 7200
       rust_toolchain: nightly-2026-03-04
       ffi_backend: native-c-abi

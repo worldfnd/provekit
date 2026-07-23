@@ -13,6 +13,14 @@ The first gate is a local macOS browser smoke using the single-thread module.
 Only after that passes should the same immutable static bundle run through
 BrowserStack Local on mobile Safari and Chrome.
 
+The publication workflow also uses Mobench 0.1.48's `build --target web` and
+`run-web` path. Its repository-owned adapter is
+`bench-mobile/src/lib_web.rs`; `bench-mobile/scripts/prepare-web-benchmarks.sh`
+generates the seven complete/fragmented/WebAuthn/OPRF witnesses outside
+measurement and selects the portable browser dependency graph. The workflow
+builds one bundle per workload and runs all four primary proof functions
+against four BrowserStack Automate environments.
+
 Build and run that gate with:
 
 ```bash

@@ -119,7 +119,7 @@ BROWSERSTACK_USERNAME=... BROWSERSTACK_ACCESS_KEY=... \
   upload ios path/to/fixture-manifest.json path/to/BenchRunner.ipa
 ```
 
-The pinned Mobench 0.1.47 `run-prebuilt` path currently uploads every app and
+The pinned Mobench 0.1.48 `run-prebuilt` path currently uploads every app and
 does not set or resolve a `custom_id`. Before paid Groth16 runs, extend Mobench
 so `run-prebuilt` accepts a verified cached `app_url` or performs the same
 lookup-before-upload operation. The XCUITest/Espresso test package may still
@@ -176,6 +176,20 @@ MOBENCH_CI_PREPARE=1 ./bench-mobile/scripts/generate-fixtures.sh
 For an announcement run, include prepare, prove, verify, and end-to-end
 functions rather than only the historical prove-only defaults.
 
+The same workflow builds four portable, single-thread Mobench 0.1.48 web
+bundles for complete passport, fragmented passport, WebAuthn assertion, and
+OPRF proving. Witnesses are generated in the secretless preparation job and
+embedded per workload; they are never generated or downloaded during a timed
+browser sample. Each workload is a separate bundle because the wasm-bindgen
+interpreter used by the release backend cannot process the combined
+multi-workload inventory module.
+
+The first setup in each browser instance proves and verifies a valid canary and
+requires a transcript-tampered copy to fail verification. That gate is outside
+the measured proof phase. Publication runs use one warmup and five samples on
+macOS Safari, Windows Chrome, iOS Safari, and Android Chrome and save a
+source/bundle/session provenance sidecar next to every raw Mobench report.
+
 ## Bundle measurement
 
 Create a tab-separated manifest with `scope`, `kind`, `path`, and an optional
@@ -211,8 +225,16 @@ artifact and totals per scope.
   Self uses separate registration and disclosure proofs.
 - Rapidsnark and the generic Circom mobile adapters are pinned but not yet
   linked into this repository's mobile benchmark crate.
-- Browser/WASM execution needs a web runner and BrowserStack Automate control
-  plane; native App Automate/XCUITest runners cannot execute that lane.
+- ProveKit V1 browser/WASM execution is wired through Mobench 0.1.48 and
+  BrowserStack Automate. Native App Automate/XCUITest results remain separate.
+- Barretenberg still has browser TypeScript smokes rather than a registered
+  Mobench native or web adapter.
+- No licensed semantically equivalent Circom WebAuthn circuit is currently
+  available, so that matrix cell must be reported as unavailable rather than
+  substituted.
+- Self passport Arkworks witness generation remains blocked by dynamic Circom
+  control flow; the existing Self Rapidsnark lane is host-only until its
+  resource-aware native adapter is linked.
 
 No workflow in this branch automatically spends BrowserStack capacity. Device
 runs remain explicit workflow dispatches.
