@@ -199,7 +199,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
     /// (≈118-bit algebraic hardness plus light per-round PoW).
     fn whir_protocol_params(hash_id: EngineId) -> ProtocolParameters {
         ProtocolParameters {
-            unique_decoding: false,
+            decoding_regime: whir::protocols::params::DecodingRegime::Johnson,
             security_level: 128,
             pow_bits: 10,
             initial_folding_factor: WHIR_INITIAL_FOLDING_FACTOR,

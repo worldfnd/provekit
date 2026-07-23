@@ -7049,7 +7049,7 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
-source = "git+https://github.com/WizardOfMenlo/whir/?rev=0aeaa7f337c743d9ddfcb9d909628d6491e3355c#0aeaa7f337c743d9ddfcb9d909628d6491e3355c"
+source = "git+https://github.com/worldfnd/whir.git?rev=33fbecf6ef883054ce8d93ad1bf1ef6f20b47e4f#33fbecf6ef883054ce8d93ad1bf1ef6f20b47e4f"
 dependencies = [
  "ark-ff",
  "ark-serialize",
@@ -7071,6 +7071,7 @@ dependencies = [
  "sha3",
  "spongefish",
  "static_assertions",
+ "thiserror 2.0.18",
  "tracing",
  "zerocopy",
 ]

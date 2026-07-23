@@ -3,7 +3,10 @@ use {
     ark_ff::{AdditiveGroup, FftField, Field},
     ntt::ntt_nr,
     tracing::instrument,
-    whir::algebra::ntt::ReedSolomon,
+    whir::{
+        algebra::ntt::{Messages, ReedSolomon},
+        buffer::{Buffer, BufferOps},
+    },
 };
 
 #[derive(Debug)]
@@ -42,26 +45,36 @@ impl ReedSolomon<Fr> for RSFr {
     }
 
     #[instrument(skip(self, messages, masks), fields(
-        num_messages = messages.len(),
-        message_len = messages.first().map(|c| c.len()),
+        num_messages = messages.vectors.len() * messages.interleaving_depth,
+        message_len = messages.message_length,
         codeword_length = codeword_length,
-        mask_len = masks.len().checked_div(messages.len())
-
+        mask_len = masks.len().checked_div(messages.vectors.len() * messages.interleaving_depth)
     ))]
     fn interleaved_encode(
         &self,
-        messages: &[&[Fr]],
-        masks: &[Fr],
+        messages: Messages<'_, Fr>,
+        masks: &Buffer<Fr>,
         codeword_length: usize,
-    ) -> Vec<Fr> {
+    ) -> Buffer<Fr> {
+        let masks = masks.to_slice();
+        let messages = messages
+            .vectors
+            .iter()
+            .flat_map(|message| {
+                message
+                    .to_slice()
+                    .chunks_exact(messages.message_length)
+                    .take(messages.interleaving_depth)
+            })
+            .collect::<Vec<_>>();
         if messages.is_empty() {
-            return vec![];
+            return Buffer::from(vec![]);
         }
 
         let num_messages = messages.len();
 
         let message_length = messages[0].len();
-        for message in messages {
+        for message in &messages {
             assert_eq!(message_length, message.len())
         }
 
@@ -96,7 +109,7 @@ impl ReedSolomon<Fr> for RSFr {
 
         ntt_nr(&mut result, codeword_length, num_cosets);
 
-        result
+        Buffer::from(result)
     }
 
     fn generator(&self, codeword_length: usize) -> Fr {
@@ -136,7 +149,8 @@ mod tests {
             let mut data = messages_flat;
             data.resize(total, Fr::ZERO);
 
-            let messages: Vec<&[Fr]> = data.chunks(message_length).collect();
+            let messages: Vec<Buffer<Fr>> = data.chunks(message_length).map(|c| Buffer::from(c)).collect();
+            let messages_refs: Vec<&Buffer<Fr>> = messages.iter().collect();
 
             // Our masks are interleaved: num_messages x mask_length in row-major order
             // i.e. [m0_c0, m1_c0, m0_c1, m1_c1, ...]
@@ -154,11 +168,16 @@ mod tests {
                 }
             }
 
+            let messages = Messages::new(&messages_refs, message_length, 1);
+            let masks = Buffer::from(masks);
+            let masks_transposed = Buffer::from(masks_transposed);
+
             let indices: Vec<usize> = (0..codeword_length).collect();
 
             let reference = NttEngine::<Fr>::new_from_fftfield();
-            let our_codeword = RSFr.interleaved_encode(&messages, &masks, codeword_length);
-            let ref_codeword = reference.interleaved_encode(&messages, &masks_transposed, codeword_length);
+            let our_codeword = RSFr.interleaved_encode(messages.clone(), &masks, codeword_length);
+            let ref_codeword =
+                reference.interleaved_encode(messages, &masks_transposed, codeword_length);
 
             let our_points = RSFr.evaluation_points(message_length, codeword_length, &indices);
             let ref_points = reference.evaluation_points(message_length, codeword_length, &indices);
@@ -166,12 +185,12 @@ mod tests {
             // Pair each evaluation point with its num_messages-wide slice, then sort
             // by point so that ordering differences between implementations don't matter.
             let mut our_rows: Vec<_> = our_points.iter().enumerate()
-                .map(|(i, pt)| (pt.into_bigint(), &our_codeword[i * num_messages..(i + 1) * num_messages]))
+                .map(|(i, pt)| (pt.into_bigint(), &our_codeword.to_slice()[i * num_messages..(i + 1) * num_messages]))
                 .collect();
             our_rows.sort_by_key(|(k, _)| *k);
 
             let mut ref_rows: Vec<_> = ref_points.iter().enumerate()
-                .map(|(i, pt)| (pt.into_bigint(), &ref_codeword[i * num_messages..(i + 1) * num_messages]))
+                .map(|(i, pt)| (pt.into_bigint(), &ref_codeword.to_slice()[i * num_messages..(i + 1) * num_messages]))
                 .collect();
             ref_rows.sort_by_key(|(k, _)| *k);
 

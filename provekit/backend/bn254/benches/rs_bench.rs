@@ -3,7 +3,10 @@ use {
     ark_ff::UniformRand,
     divan::{black_box, Bencher},
     provekit_backend_bn254::RSFr,
-    whir::algebra::ntt::{NttEngine, ReedSolomon},
+    whir::{
+        algebra::ntt::{Messages, NttEngine, ReedSolomon},
+        buffer::{Buffer, BufferOps},
+    },
 };
 
 // (exp, expansion, coset_sz): matches whir's expand_from_coeff bench cases.
@@ -19,21 +22,29 @@ const TEST_CASES: &[(usize, usize, usize)] = &[
     (22, 4, 4),
 ];
 
-fn make_messages(exp: usize, coset_sz: usize) -> Vec<Vec<Fr>> {
+fn make_messages(exp: usize, coset_sz: usize) -> Vec<Buffer<Fr>> {
     let message_length = 1 << (exp - coset_sz);
     let num_messages = 1 << coset_sz;
     let mut rng = ark_std::rand::thread_rng();
     (0..num_messages)
-        .map(|_| (0..message_length).map(|_| Fr::rand(&mut rng)).collect())
+        .map(|_| {
+            Buffer::from(
+                (0..message_length)
+                    .map(|_| Fr::rand(&mut rng))
+                    .collect::<Vec<_>>(),
+            )
+        })
         .collect()
 }
 
-fn make_mask(num_messages: usize) -> Vec<Fr> {
+fn make_mask(num_messages: usize) -> Buffer<Fr> {
     let mask_length = 1 << 10;
     let mut rng = ark_std::rand::thread_rng();
-    (0..num_messages * mask_length)
-        .map(|_| Fr::rand(&mut rng))
-        .collect()
+    Buffer::from(
+        (0..num_messages * mask_length)
+            .map(|_| Fr::rand(&mut rng))
+            .collect::<Vec<_>>(),
+    )
 }
 
 #[divan::bench(args = TEST_CASES)]
@@ -43,9 +54,11 @@ fn rs_fr(bencher: Bencher, case: &(usize, usize, usize)) {
     bencher
         .with_inputs(|| make_messages(exp, coset_sz))
         .bench_values(|coeffs| {
-            let refs: Vec<&[Fr]> = coeffs.iter().map(Vec::as_slice).collect();
-            let codeword_length = refs[0].len() * expansion;
-            black_box(RSFr.interleaved_encode(&refs, &mask, codeword_length))
+            let vector_refs: Vec<&Buffer<Fr>> = coeffs.iter().collect();
+            let message_length = coeffs[0].len();
+            let rs_messages = Messages::new(&vector_refs, message_length, 1);
+            let codeword_length = message_length * expansion;
+            black_box(RSFr.interleaved_encode(rs_messages, &mask, codeword_length))
         });
 }
 
@@ -57,9 +70,11 @@ fn whir_ntt_engine(bencher: Bencher, case: &(usize, usize, usize)) {
     bencher
         .with_inputs(|| make_messages(exp, coset_sz))
         .bench_values(|coeffs| {
-            let refs: Vec<&[Fr]> = coeffs.iter().map(Vec::as_slice).collect();
-            let codeword_length = refs[0].len() * expansion;
-            black_box(reference.interleaved_encode(&refs, &mask, codeword_length))
+            let vector_refs: Vec<&Buffer<Fr>> = coeffs.iter().collect();
+            let message_length = coeffs[0].len();
+            let rs_messages = Messages::new(&vector_refs, message_length, 1);
+            let codeword_length = message_length * expansion;
+            black_box(reference.interleaved_encode(rs_messages, &mask, codeword_length))
         });
 }
 
