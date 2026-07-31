@@ -1,6 +1,6 @@
 {
   "name": "@worldcoin/provekit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "First-party ProveKit browser SDK",
   "license": "MIT",
   "repository": {
