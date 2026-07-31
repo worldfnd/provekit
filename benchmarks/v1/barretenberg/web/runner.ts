@@ -4,7 +4,8 @@ import { Noir } from "@noir-lang/noir_js";
 type WorkloadName =
   | "passport_complete_age_check"
   | "webauthn_assertion"
-  | "oprf_taceo";
+  | "oprf_taceo"
+  | "oprf_world_id_nullifier";
 type PhaseName = "witness" | "prove" | "verify" | "e2e";
 
 interface BenchSpec {
@@ -33,6 +34,7 @@ const workloadNames = new Set<WorkloadName>([
   "passport_complete_age_check",
   "webauthn_assertion",
   "oprf_taceo",
+  "oprf_world_id_nullifier",
 ]);
 const phaseNames = new Set<PhaseName>(["witness", "prove", "verify", "e2e"]);
 const status = document.querySelector<HTMLElement>("#status");

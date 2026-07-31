@@ -1,0 +1,216 @@
+{
+  "schema_version": 1,
+  "campaign_id": "provekit-v1-semantic-parity",
+  "generated_at_utc": "2026-07-31T19:47:54.995Z",
+  "sampling": {
+    "warmup": 1,
+    "measured": 5,
+    "sequential": true
+  },
+  "device": {
+    "manufacturer": "motorola",
+    "model": "moto e15",
+    "os": "14",
+    "abi": "armeabi-v7a",
+    "abilist": "armeabi-v7a,armeabi",
+    "abilist64": "",
+    "zygote": "zygote32"
+  },
+  "apk": {
+    "path": "/Users/dcbuilder/Code/world/.worktrees/provekit-v1-semantic-parity-rerun/target/v1-semantic-parity/e15-build-v1rerun/android/app/build/outputs/apk/debug/app-debug.apk",
+    "sha256": "756c0cfedb3abd559b3d4b50f4a0f86916a008a84368e0806089efdee571121c",
+    "bytes": 60920715
+  },
+  "results": [
+    {
+      "workload": "webauthn",
+      "function": "bench_mobile::bench_webauthn_assertion_prove",
+      "status": "ok",
+      "report": {
+        "custom_metrics": {
+          "run_u64": {
+            "input_size_bytes": 49220,
+            "prover_size_bytes": 2327836,
+            "proving_payload_size_bytes": 2377056
+          },
+          "sample_u64": {
+            "proof_size_bytes": [
+              717283,
+              716688,
+              716454,
+              717130,
+              715934,
+              716186
+            ],
+            "prove_time_ns": [
+              27767810771,
+              27859356617,
+              27747266540,
+              27839157617,
+              27794375079,
+              27931619694
+            ]
+          }
+        },
+        "phases": [
+          {
+            "duration_ns": 139171743393,
+            "name": "prove"
+          }
+        ],
+        "samples": [
+          {
+            "cpu_time_ms": 129283,
+            "duration_ns": 27871475309,
+            "peak_memory_kb": 255148,
+            "process_peak_memory_kb": 510540
+          },
+          {
+            "cpu_time_ms": 129428,
+            "duration_ns": 27760853848,
+            "peak_memory_kb": 259408,
+            "process_peak_memory_kb": 510400
+          },
+          {
+            "cpu_time_ms": 129271,
+            "duration_ns": 27852851079,
+            "peak_memory_kb": 257256,
+            "process_peak_memory_kb": 509696
+          },
+          {
+            "cpu_time_ms": 128797,
+            "duration_ns": 27808839079,
+            "peak_memory_kb": 257664,
+            "process_peak_memory_kb": 511140
+          },
+          {
+            "cpu_time_ms": 129443,
+            "duration_ns": 27945088233,
+            "peak_memory_kb": 240208,
+            "process_peak_memory_kb": 503824
+          }
+        ],
+        "spec": {
+          "iterations": 5,
+          "name": "bench_mobile::bench_webauthn_assertion_prove",
+          "warmup": 1
+        },
+        "timeline": [
+          {
+            "end_offset_ns": 147990069240,
+            "iteration": 0,
+            "phase": "fixture-setup",
+            "start_offset_ns": 308
+          },
+          {
+            "end_offset_ns": 175780208088,
+            "iteration": 0,
+            "phase": "warmup-benchmark",
+            "start_offset_ns": 147990075778
+          },
+          {
+            "end_offset_ns": 251137795477,
+            "iteration": 0,
+            "phase": "fixture-setup",
+            "start_offset_ns": 175780212703
+          },
+          {
+            "end_offset_ns": 279010618786,
+            "iteration": 0,
+            "phase": "measured-benchmark",
+            "start_offset_ns": 251139143477
+          },
+          {
+            "end_offset_ns": 353970364944,
+            "iteration": 1,
+            "phase": "fixture-setup",
+            "start_offset_ns": 279010921940
+          },
+          {
+            "end_offset_ns": 381731740408,
+            "iteration": 1,
+            "phase": "measured-benchmark",
+            "start_offset_ns": 353970886560
+          },
+          {
+            "end_offset_ns": 456578901566,
+            "iteration": 2,
+            "phase": "fixture-setup",
+            "start_offset_ns": 381732354869
+          },
+          {
+            "end_offset_ns": 484432590491,
+            "iteration": 2,
+            "phase": "measured-benchmark",
+            "start_offset_ns": 456579739412
+          },
+          {
+            "end_offset_ns": 559490162495,
+            "iteration": 3,
+            "phase": "fixture-setup",
+            "start_offset_ns": 484432891491
+          },
+          {
+            "end_offset_ns": 587299539728,
+            "iteration": 3,
+            "phase": "measured-benchmark",
+            "start_offset_ns": 559490700649
+          },
+          {
+            "end_offset_ns": 662276457655,
+            "iteration": 4,
+            "phase": "fixture-setup",
+            "start_offset_ns": 587300241343
+          },
+          {
+            "end_offset_ns": 690222372657,
+            "iteration": 4,
+            "phase": "measured-benchmark",
+            "start_offset_ns": 662277284424
+          }
+        ],
+        "function": "bench_mobile::bench_webauthn_assertion_prove",
+        "samples_ns": [
+          27871475309,
+          27760853848,
+          27852851079,
+          27808839079,
+          27945088233
+        ],
+        "stats": {
+          "min_ns": 27760853848,
+          "max_ns": 27945088233,
+          "avg_ns": 27847821509.6,
+          "mean_ns": 27847821509,
+          "median_ns": 27852851079
+        },
+        "resources": {
+          "platform": "android",
+          "timestamp_ms": 1785527200302,
+          "memory_process": "isolated_worker",
+          "cpu_total_ms": 646222,
+          "cpu_median_ms": 129283,
+          "elapsed_cpu_ms": 646222,
+          "peak_memory_kb": 259408,
+          "peak_memory_growth_kb": 259408,
+          "process_peak_memory_kb": 511140
+        }
+      },
+      "evidence_path": "/Users/dcbuilder/Code/world/.worktrees/provekit-v1-semantic-parity-rerun/target/v1-semantic-parity/e15-v1-final/webauthn.logcat.txt"
+    },
+    {
+      "workload": "passport",
+      "function": "bench_mobile::bench_passport_complete_age_check_prove_single_thread",
+      "status": "runtime_failed",
+      "failure": {
+        "schema_version": 1,
+        "kind": "exception",
+        "message": "Failed to run benchmark worker: Unable to start service Intent { act=dev.world.benchmobile.RUN_BENCHMARK cmp=dev.world.benchmobile/.BenchmarkWorkerService (has extras) }: Unable to launch app dev.world.benchmobile/10318 for service Intent { act=dev.world.benchmobile.RUN_BENCHMARK cmp=dev.world.benchmobile/.BenchmarkWorkerService }: process is bad",
+        "elapsed_ms": 8,
+        "pid": null,
+        "process_name": "dev.world.benchmobile:v1rerun"
+      },
+      "evidence_path": "/Users/dcbuilder/Code/world/.worktrees/provekit-v1-semantic-parity-rerun/target/v1-semantic-parity/e15-v1-final/passport.logcat.txt"
+    }
+  ]
+}

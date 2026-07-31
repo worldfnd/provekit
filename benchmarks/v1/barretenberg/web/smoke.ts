@@ -9,6 +9,7 @@ const workloads = [
   "passport_complete_age_check",
   "webauthn_assertion",
   "oprf_taceo",
+  "oprf_world_id_nullifier",
 ] as const;
 type Workload = (typeof workloads)[number];
 

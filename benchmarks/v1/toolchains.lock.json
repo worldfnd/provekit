@@ -49,6 +49,33 @@
     "version": "0.3.7",
     "source_revision": "10871f02e365c478cb4b61016e4034f7e74f076b"
   },
+  "provekit_v1": {
+    "core_commit": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
+    "campaign_harness_commit": "7de99e9e001d06797c9770684afea20f096d1ac3",
+    "noir_version": "1.0.0-beta.11",
+    "wasm_crate": "tooling/provekit-wasm",
+    "wasm_features": "no-default-features (single-thread)",
+    "wasm_bindgen_cli_version": "0.2.100",
+    "browser_frontend": "@noir-lang/noir_js@1.0.0-beta.11 plus @noir-lang/acvm_js@1.0.0-beta.11",
+    "browser_sdk_package": {
+      "name": "@worldcoin/provekit",
+      "version": "0.1.0",
+      "status": "not used for publication measurements; its beta.20/PKV 2.1 contract is incompatible with V1 PKV 1.2"
+    },
+    "evidence": {
+      "mac": {
+        "passport": {"sha256": "46a2b3655f41a5b94e8565e39baa16adece1d904106db4436837d2ebf9239ecd", "payload_bytes": 2313739},
+        "webauthn": {"sha256": "183f9f4b0176c1e03f1c63c8f800e01159aef9b6c1a7b8db60b03ae8d6f97dc2", "payload_bytes": 2286515},
+        "oprf": {"sha256": "33bd92614f10ca8dd2c8033d74fda19ba0429d7dd5604e83896321f6268a7b14", "payload_bytes": 1644635}
+      },
+      "iphone_summary_sha256": "942eb49b9faa546669836a28a96b0e85ab56e11479232ac09abe1ce0ca8d07fa",
+      "e15": {
+        "passport_sha256": "42024ba37ff2f339864b6b6390a11ee5a54f2dc9d2a5758ac3775f94699ea484",
+        "webauthn_sha256": "c09f8e98f64646e38e241caf41a95f7d5052d1082242fb80b138585bb901446f",
+        "oprf_sha256": "bcd52f8091121664d3538bfec853d421b49be1d0dd80e069c1a5f520780948d0"
+      }
+    }
+  },
   "mobench": {
     "package_version": "0.1.48",
     "repository": "https://github.com/worldcoin/mobile-bench-rs.git",

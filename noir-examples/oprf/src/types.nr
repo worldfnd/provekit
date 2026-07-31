@@ -22,8 +22,10 @@ pub struct OprfQueryInputs<let MAX_DEPTH: u32, let NUM_KEYS: u32> {
     // Credential Signature
     pub cred_type_id: Field,
     pub cred_hashes: CredentialHashes,
-    pub cred_genesis_issued_at: Field,
+    pub cred_genesis_issued_at: u64,
     pub cred_expires_at: u64,
+    pub cred_user_id_r: Field,
+    pub cred_id: Field,
     pub cred_s: Field,
     pub cred_r: [Field; 2],
 
@@ -49,6 +51,9 @@ pub struct OprfNullifierInputs<let MAX_DEPTH: u32, let NUM_KEYS: u32> {
 }
 
 pub struct OprfNullifierOutputs {
-    pub id_commitment: Field,
     pub nullifier: Field,
+    // Redundant public bindings corresponding to Circom's dummy-square
+    // signals. ProveKit requires every public ACIR input to have a builder.
+    pub nonce_squared: Field,
+    pub signal_hash_squared: Field,
 }

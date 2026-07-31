@@ -8,8 +8,10 @@ use super::{
 use babyjubjub::BabyJubJubPoint;
 
 pub fn oprf_nullifier<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
+    issuer_schema_id: Field,
     cred_pk: PublicKey,
     current_time_stamp: u64,
+    cred_genesis_issued_at_min: u64,
     root: Field,
     depth: Field,
     rp_id: Field,
@@ -17,8 +19,14 @@ pub fn oprf_nullifier<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     oprf_pk: PublicKey,
     nonce: Field,
     signal_hash: Field,
+    id_commitment: Field,
     inputs: OprfNullifierInputs<MAX_DEPTH, NUM_KEYS>,
 ) -> OprfNullifierOutputs {
+    assert(
+        issuer_schema_id == inputs.query_inputs.cred_type_id,
+        "Issuer schema id mismatch",
+    );
+
     // Derive the query using Poseidon4
     let query = generate_query(inputs.query_inputs, rp_id, action);
 
@@ -32,10 +40,10 @@ pub fn oprf_nullifier<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
         root,
         cred_pk,
         current_time_stamp,
+        cred_genesis_issued_at_min,
         inputs.query_inputs,
         beta_bits,
     );
-
     // 4. Check the dlog equality proof
     verify_dlog_equality(
         inputs.dlog_e,
@@ -59,5 +67,8 @@ pub fn oprf_nullifier<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
         inputs.oprf_response,
         inputs.query_inputs.merkle_proof.mt_index,
         inputs.id_commitment_r,
+        id_commitment,
+        nonce,
+        signal_hash,
     )
 }

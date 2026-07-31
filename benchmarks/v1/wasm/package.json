@@ -9,7 +9,8 @@
     "smoke": "bun run scripts/smoke.ts"
   },
   "dependencies": {
-    "@worldcoin/provekit": "0.1.0"
+    "@noir-lang/acvm_js": "1.0.0-beta.11",
+    "@noir-lang/noir_js": "1.0.0-beta.11"
   },
   "devDependencies": {
     "playwright-core": "1.59.1",

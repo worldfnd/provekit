@@ -1,0 +1,835 @@
+{
+  "ci": {
+    "metadata": {
+      "mobench_version": "0.1.48",
+      "request_command": "cargo mobench ci run-prebuilt",
+      "source_sha": "cd2d3e826f5ead1f5593032434112d9c5da6cb86"
+    },
+    "outputs": {
+      "results_csv": "results.csv",
+      "summary_json": "summary.json",
+      "summary_md": "summary.md"
+    }
+  },
+  "functions": {
+    "bench_mobile::bench_oprf_prove": {
+      "artifacts": null,
+      "benchmark_results": {
+        "iPhone SE 2022-15": [
+          {
+            "custom_metrics": {
+              "run_u64": {
+                "input_size_bytes": 5853,
+                "prover_size_bytes": 1638340,
+                "proving_payload_size_bytes": 1644193
+              },
+              "sample_u64": {
+                "proof_size_bytes": [
+                  630996,
+                  634068,
+                  635444,
+                  632724,
+                  630453,
+                  635188
+                ],
+                "prove_time_ns": [
+                  919344292,
+                  1112275291,
+                  1218798000,
+                  1223253625,
+                  1212871458,
+                  1217698208
+                ]
+              }
+            },
+            "function": "bench_mobile::bench_oprf_prove",
+            "max_ns": 1223628875,
+            "mean_ns": 1197416916,
+            "median_ns": 1218066500,
+            "min_ns": 1112638500,
+            "p95_ns": 1223628875,
+            "phases": [
+              {
+                "duration_ns": 5984893501,
+                "name": "prove"
+              }
+            ],
+            "resources": {
+              "cpu_median_ms": 2056,
+              "cpu_total_ms": 10206,
+              "elapsed_cpu_ms": 10206,
+              "memory_process": "benchmark_app",
+              "peak_memory_growth_kb": 10960,
+              "peak_memory_kb": 10960,
+              "platform": "ios",
+              "process_peak_memory_kb": 148688,
+              "timestamp_ms": 1785520237277
+            },
+            "samples": [
+              {
+                "cpu_time_ms": 1942,
+                "duration_ns": 1112638500,
+                "peak_memory_kb": 10352,
+                "process_peak_memory_kb": 147072
+              },
+              {
+                "cpu_time_ms": 2031,
+                "duration_ns": 1219184833,
+                "peak_memory_kb": 10352,
+                "process_peak_memory_kb": 147296
+              },
+              {
+                "cpu_time_ms": 2056,
+                "duration_ns": 1223628875,
+                "peak_memory_kb": 10960,
+                "process_peak_memory_kb": 148688
+              },
+              {
+                "cpu_time_ms": 2094,
+                "duration_ns": 1213565875,
+                "peak_memory_kb": 10336,
+                "process_peak_memory_kb": 148080
+              },
+              {
+                "cpu_time_ms": 2083,
+                "duration_ns": 1218066500,
+                "peak_memory_kb": 10320,
+                "process_peak_memory_kb": 148112
+              }
+            ],
+            "samples_ns": [
+              1112638500,
+              1219184833,
+              1223628875,
+              1213565875,
+              1218066500
+            ],
+            "spec": {
+              "iterations": 5,
+              "name": "bench_mobile::bench_oprf_prove",
+              "warmup": 1
+            },
+            "stats": {
+              "avg_ns": 1197416916.6,
+              "max_ns": 1223628875,
+              "mean_ns": 1197416916,
+              "median_ns": 1218066500,
+              "min_ns": 1112638500
+            },
+            "timeline": [
+              {
+                "end_offset_ns": 4766256167,
+                "iteration": 0,
+                "phase": "fixture-setup",
+                "start_offset_ns": 42
+              },
+              {
+                "end_offset_ns": 5687525708,
+                "iteration": 0,
+                "phase": "warmup-benchmark",
+                "start_offset_ns": 4766262708
+              },
+              {
+                "end_offset_ns": 8996357292,
+                "iteration": 0,
+                "phase": "fixture-setup",
+                "start_offset_ns": 5687525833
+              },
+              {
+                "end_offset_ns": 10109076917,
+                "iteration": 0,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 8996438417
+              },
+              {
+                "end_offset_ns": 13406173000,
+                "iteration": 1,
+                "phase": "fixture-setup",
+                "start_offset_ns": 10109086875
+              },
+              {
+                "end_offset_ns": 14625378958,
+                "iteration": 1,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 13406194125
+              },
+              {
+                "end_offset_ns": 17951083833,
+                "iteration": 2,
+                "phase": "fixture-setup",
+                "start_offset_ns": 14625397042
+              },
+              {
+                "end_offset_ns": 19174730875,
+                "iteration": 2,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 17951102000
+              },
+              {
+                "end_offset_ns": 22538545958,
+                "iteration": 3,
+                "phase": "fixture-setup",
+                "start_offset_ns": 19174741667
+              },
+              {
+                "end_offset_ns": 23752128958,
+                "iteration": 3,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 22538563083
+              },
+              {
+                "end_offset_ns": 27181040750,
+                "iteration": 4,
+                "phase": "fixture-setup",
+                "start_offset_ns": 23752137625
+              },
+              {
+                "end_offset_ns": 28399124625,
+                "iteration": 4,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 27181058125
+              }
+            ]
+          }
+        ]
+      },
+      "local_report": {
+        "reason": "prebuilt BrowserStack run",
+        "skipped": true
+      },
+      "performance_metrics": {
+        "iPhone SE 2022-15": {
+          "cpu": {
+            "average_percent": 22.14,
+            "min_percent": 22.14,
+            "peak_percent": 181.64
+          },
+          "memory": {
+            "average_mb": 100.46,
+            "min_mb": 100.46,
+            "peak_mb": 192.48
+          },
+          "sample_count": 1
+        }
+      },
+      "remote_run": {
+        "app_url": "bs://56dbdd4feaa5a702e976bb6395fdf88dec405aef",
+        "build_id": "6eca64c91564a0b36a0edc10d78e76dfde9780e0",
+        "platform": "ios",
+        "test_suite_url": "bs://89b7b72934c4aa268a875ec538e3f0394d98d7ca"
+      },
+      "spec": {
+        "devices": [
+          "iPhone SE 2022-15"
+        ],
+        "function": "bench_mobile::bench_oprf_prove",
+        "ios_completion_timeout_secs": 7200,
+        "iterations": 5,
+        "target": "ios",
+        "warmup": 1
+      },
+      "summary": {
+        "device_summaries": [
+          {
+            "benchmarks": [
+              {
+                "function": "bench_mobile::bench_oprf_prove",
+                "max_ns": 1223628875,
+                "mean_ns": 1197416916,
+                "median_ns": 1218066500,
+                "min_ns": 1112638500,
+                "p95_ns": 1223628875,
+                "resource_usage": {
+                  "cpu_median_ms": 2056,
+                  "cpu_total_ms": 10206,
+                  "peak_memory_growth_kb": 10960,
+                  "peak_memory_kb": 10960,
+                  "process_peak_memory_kb": 148688
+                },
+                "samples": 5
+              }
+            ],
+            "device": "iPhone SE 2022-15"
+          }
+        ],
+        "devices": [
+          "iPhone SE 2022-15"
+        ],
+        "function": "bench_mobile::bench_oprf_prove",
+        "generated_at": "2026-07-31T17:50:55.556956Z",
+        "generated_at_unix": 1785520255,
+        "iterations": 5,
+        "target": "ios",
+        "warmup": 1
+      }
+    },
+    "bench_mobile::bench_passport_complete_age_check_prove": {
+      "artifacts": null,
+      "benchmark_results": {
+        "iPhone SE 2022-15": [
+          {
+            "custom_metrics": {
+              "run_u64": {
+                "input_size_bytes": 247039,
+                "prover_size_bytes": 2307676,
+                "proving_payload_size_bytes": 2554715
+              },
+              "sample_u64": {
+                "proof_size_bytes": [
+                  713876,
+                  715446,
+                  719255,
+                  712832,
+                  715102,
+                  714697
+                ],
+                "prove_time_ns": [
+                  2195551959,
+                  2261197250,
+                  3101507500,
+                  2474173625,
+                  2279506833,
+                  2384363916
+                ]
+              }
+            },
+            "function": "bench_mobile::bench_passport_complete_age_check_prove",
+            "max_ns": 3102353000,
+            "mean_ns": 2501031991,
+            "median_ns": 2385298625,
+            "min_ns": 2262063083,
+            "p95_ns": 3102353000,
+            "phases": [
+              {
+                "duration_ns": 12500745875,
+                "name": "prove"
+              }
+            ],
+            "resources": {
+              "cpu_median_ms": 9054,
+              "cpu_total_ms": 44583,
+              "elapsed_cpu_ms": 44583,
+              "memory_process": "benchmark_app",
+              "peak_memory_growth_kb": 277792,
+              "peak_memory_kb": 277792,
+              "platform": "ios",
+              "process_peak_memory_kb": 572768,
+              "timestamp_ms": 1785519826747
+            },
+            "samples": [
+              {
+                "cpu_time_ms": 9027,
+                "duration_ns": 2262063083,
+                "peak_memory_kb": 275792,
+                "process_peak_memory_kb": 548160
+              },
+              {
+                "cpu_time_ms": 7574,
+                "duration_ns": 3102353000,
+                "peak_memory_kb": 276176,
+                "process_peak_memory_kb": 555408
+              },
+              {
+                "cpu_time_ms": 9054,
+                "duration_ns": 2475108292,
+                "peak_memory_kb": 277792,
+                "process_peak_memory_kb": 561968
+              },
+              {
+                "cpu_time_ms": 9287,
+                "duration_ns": 2280336958,
+                "peak_memory_kb": 276784,
+                "process_peak_memory_kb": 563232
+              },
+              {
+                "cpu_time_ms": 9641,
+                "duration_ns": 2385298625,
+                "peak_memory_kb": 277792,
+                "process_peak_memory_kb": 572768
+              }
+            ],
+            "samples_ns": [
+              2262063083,
+              3102353000,
+              2475108292,
+              2280336958,
+              2385298625
+            ],
+            "spec": {
+              "iterations": 5,
+              "name": "bench_mobile::bench_passport_complete_age_check_prove",
+              "warmup": 1
+            },
+            "stats": {
+              "avg_ns": 2501031991.6,
+              "max_ns": 3102353000,
+              "mean_ns": 2501031991,
+              "median_ns": 2385298625,
+              "min_ns": 2262063083
+            },
+            "timeline": [
+              {
+                "end_offset_ns": 15059296708,
+                "iteration": 0,
+                "phase": "fixture-setup",
+                "start_offset_ns": 42
+              },
+              {
+                "end_offset_ns": 17257279167,
+                "iteration": 0,
+                "phase": "warmup-benchmark",
+                "start_offset_ns": 15059297292
+              },
+              {
+                "end_offset_ns": 27129155625,
+                "iteration": 0,
+                "phase": "fixture-setup",
+                "start_offset_ns": 17257279833
+              },
+              {
+                "end_offset_ns": 29391295625,
+                "iteration": 0,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 27129232542
+              },
+              {
+                "end_offset_ns": 39550904375,
+                "iteration": 1,
+                "phase": "fixture-setup",
+                "start_offset_ns": 29391306208
+              },
+              {
+                "end_offset_ns": 42653283708,
+                "iteration": 1,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 39550930708
+              },
+              {
+                "end_offset_ns": 53050084000,
+                "iteration": 2,
+                "phase": "fixture-setup",
+                "start_offset_ns": 42653295833
+              },
+              {
+                "end_offset_ns": 55525215167,
+                "iteration": 2,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 53050106875
+              },
+              {
+                "end_offset_ns": 66010061417,
+                "iteration": 3,
+                "phase": "fixture-setup",
+                "start_offset_ns": 55525228708
+              },
+              {
+                "end_offset_ns": 68290420500,
+                "iteration": 3,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 66010083542
+              },
+              {
+                "end_offset_ns": 78848981417,
+                "iteration": 4,
+                "phase": "fixture-setup",
+                "start_offset_ns": 68290431208
+              },
+              {
+                "end_offset_ns": 81234304042,
+                "iteration": 4,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 78849005417
+              }
+            ]
+          }
+        ]
+      },
+      "local_report": {
+        "reason": "prebuilt BrowserStack run",
+        "skipped": true
+      },
+      "performance_metrics": {
+        "iPhone SE 2022-15": {
+          "cpu": {
+            "average_percent": 29.42,
+            "min_percent": 29.42,
+            "peak_percent": 361.97
+          },
+          "memory": {
+            "average_mb": 219.7,
+            "min_mb": 219.7,
+            "peak_mb": 471.29
+          },
+          "sample_count": 1
+        }
+      },
+      "remote_run": {
+        "app_url": "bs://2bf71f732867cc5b42e539ce064625971f5038d9",
+        "build_id": "5d9449e718692b36c4efa7c6609a6ba6d6a38eec",
+        "platform": "ios",
+        "test_suite_url": "bs://1fab01830df71c1e4c8efaba0e47296920a2b22e"
+      },
+      "spec": {
+        "devices": [
+          "iPhone SE 2022-15"
+        ],
+        "function": "bench_mobile::bench_passport_complete_age_check_prove",
+        "ios_completion_timeout_secs": 7200,
+        "iterations": 5,
+        "target": "ios",
+        "warmup": 1
+      },
+      "summary": {
+        "device_summaries": [
+          {
+            "benchmarks": [
+              {
+                "function": "bench_mobile::bench_passport_complete_age_check_prove",
+                "max_ns": 3102353000,
+                "mean_ns": 2501031991,
+                "median_ns": 2385298625,
+                "min_ns": 2262063083,
+                "p95_ns": 3102353000,
+                "resource_usage": {
+                  "cpu_median_ms": 9054,
+                  "cpu_total_ms": 44583,
+                  "peak_memory_growth_kb": 277792,
+                  "peak_memory_kb": 277792,
+                  "process_peak_memory_kb": 572768
+                },
+                "samples": 5
+              }
+            ],
+            "device": "iPhone SE 2022-15"
+          }
+        ],
+        "devices": [
+          "iPhone SE 2022-15"
+        ],
+        "function": "bench_mobile::bench_passport_complete_age_check_prove",
+        "generated_at": "2026-07-31T17:44:09.980697Z",
+        "generated_at_unix": 1785519849,
+        "iterations": 5,
+        "target": "ios",
+        "warmup": 1
+      }
+    },
+    "bench_mobile::bench_webauthn_assertion_prove": {
+      "artifacts": null,
+      "benchmark_results": {
+        "iPhone SE 2022-15": [
+          {
+            "custom_metrics": {
+              "run_u64": {
+                "input_size_bytes": 49220,
+                "prover_size_bytes": 2361340,
+                "proving_payload_size_bytes": 2410560
+              },
+              "sample_u64": {
+                "proof_size_bytes": [
+                  715067,
+                  714467,
+                  715888,
+                  714756,
+                  715336,
+                  712911
+                ],
+                "prove_time_ns": [
+                  2902747792,
+                  2973014000,
+                  3031699041,
+                  3182688209,
+                  3183604625,
+                  3228687125
+                ]
+              }
+            },
+            "function": "bench_mobile::bench_webauthn_assertion_prove",
+            "max_ns": 3229705459,
+            "mean_ns": 3120877616,
+            "median_ns": 3183651250,
+            "min_ns": 2973894333,
+            "p95_ns": 3229705459,
+            "phases": [
+              {
+                "duration_ns": 15599689751,
+                "name": "prove"
+              }
+            ],
+            "resources": {
+              "cpu_median_ms": 10132,
+              "cpu_total_ms": 51575,
+              "elapsed_cpu_ms": 51575,
+              "memory_process": "benchmark_app",
+              "peak_memory_growth_kb": 265984,
+              "peak_memory_kb": 265984,
+              "platform": "ios",
+              "process_peak_memory_kb": 597968,
+              "timestamp_ms": 1785520128510
+            },
+            "samples": [
+              {
+                "cpu_time_ms": 9902,
+                "duration_ns": 2973894333,
+                "peak_memory_kb": 264816,
+                "process_peak_memory_kb": 578816
+              },
+              {
+                "cpu_time_ms": 10132,
+                "duration_ns": 3032569667,
+                "peak_memory_kb": 265904,
+                "process_peak_memory_kb": 585072
+              },
+              {
+                "cpu_time_ms": 10131,
+                "duration_ns": 3183651250,
+                "peak_memory_kb": 265984,
+                "process_peak_memory_kb": 591376
+              },
+              {
+                "cpu_time_ms": 10702,
+                "duration_ns": 3184567375,
+                "peak_memory_kb": 265840,
+                "process_peak_memory_kb": 597968
+              },
+              {
+                "cpu_time_ms": 10708,
+                "duration_ns": 3229705459,
+                "peak_memory_kb": 265568,
+                "process_peak_memory_kb": 597056
+              }
+            ],
+            "samples_ns": [
+              2973894333,
+              3032569667,
+              3183651250,
+              3184567375,
+              3229705459
+            ],
+            "spec": {
+              "iterations": 5,
+              "name": "bench_mobile::bench_webauthn_assertion_prove",
+              "warmup": 1
+            },
+            "stats": {
+              "avg_ns": 3120877616.8,
+              "max_ns": 3229705459,
+              "mean_ns": 3120877616,
+              "median_ns": 3183651250,
+              "min_ns": 2973894333
+            },
+            "timeline": [
+              {
+                "end_offset_ns": 18832275708,
+                "iteration": 0,
+                "phase": "fixture-setup",
+                "start_offset_ns": 83
+              },
+              {
+                "end_offset_ns": 21737724833,
+                "iteration": 0,
+                "phase": "warmup-benchmark",
+                "start_offset_ns": 18832276083
+              },
+              {
+                "end_offset_ns": 34223902333,
+                "iteration": 0,
+                "phase": "fixture-setup",
+                "start_offset_ns": 21737725458
+              },
+              {
+                "end_offset_ns": 37197865333,
+                "iteration": 0,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 34223971000
+              },
+              {
+                "end_offset_ns": 50207679541,
+                "iteration": 1,
+                "phase": "fixture-setup",
+                "start_offset_ns": 37197876958
+              },
+              {
+                "end_offset_ns": 53240276000,
+                "iteration": 1,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 50207706333
+              },
+              {
+                "end_offset_ns": 66490582791,
+                "iteration": 2,
+                "phase": "fixture-setup",
+                "start_offset_ns": 53240289375
+              },
+              {
+                "end_offset_ns": 69674254666,
+                "iteration": 2,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 66490603416
+              },
+              {
+                "end_offset_ns": 83105852583,
+                "iteration": 3,
+                "phase": "fixture-setup",
+                "start_offset_ns": 69674273041
+              },
+              {
+                "end_offset_ns": 86290443250,
+                "iteration": 3,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 83105875875
+              },
+              {
+                "end_offset_ns": 100007088833,
+                "iteration": 4,
+                "phase": "fixture-setup",
+                "start_offset_ns": 86290456250
+              },
+              {
+                "end_offset_ns": 103236814750,
+                "iteration": 4,
+                "phase": "measured-benchmark",
+                "start_offset_ns": 100007109291
+              }
+            ]
+          }
+        ]
+      },
+      "local_report": {
+        "reason": "prebuilt BrowserStack run",
+        "skipped": true
+      },
+      "performance_metrics": {
+        "iPhone SE 2022-15": {
+          "cpu": {
+            "average_percent": 30.6,
+            "min_percent": 30.6,
+            "peak_percent": 405.01
+          },
+          "memory": {
+            "average_mb": 255.71,
+            "min_mb": 255.71,
+            "peak_mb": 446.53
+          },
+          "sample_count": 1
+        }
+      },
+      "remote_run": {
+        "app_url": "bs://ae43cc0cdb828d7271c0367e7b4ee14980edd1ae",
+        "build_id": "9e03602c537f1b3e84d3672fc3a36bbeb8cbca41",
+        "platform": "ios",
+        "test_suite_url": "bs://1155e9bbcc379992ad9319ad38ecd885e6e017de"
+      },
+      "spec": {
+        "devices": [
+          "iPhone SE 2022-15"
+        ],
+        "function": "bench_mobile::bench_webauthn_assertion_prove",
+        "ios_completion_timeout_secs": 7200,
+        "iterations": 5,
+        "target": "ios",
+        "warmup": 1
+      },
+      "summary": {
+        "device_summaries": [
+          {
+            "benchmarks": [
+              {
+                "function": "bench_mobile::bench_webauthn_assertion_prove",
+                "max_ns": 3229705459,
+                "mean_ns": 3120877616,
+                "median_ns": 3183651250,
+                "min_ns": 2973894333,
+                "p95_ns": 3229705459,
+                "resource_usage": {
+                  "cpu_median_ms": 10132,
+                  "cpu_total_ms": 51575,
+                  "peak_memory_growth_kb": 265984,
+                  "peak_memory_kb": 265984,
+                  "process_peak_memory_kb": 597968
+                },
+                "samples": 5
+              }
+            ],
+            "device": "iPhone SE 2022-15"
+          }
+        ],
+        "devices": [
+          "iPhone SE 2022-15"
+        ],
+        "function": "bench_mobile::bench_webauthn_assertion_prove",
+        "generated_at": "2026-07-31T17:49:11.144854Z",
+        "generated_at_unix": 1785520151,
+        "iterations": 5,
+        "target": "ios",
+        "warmup": 1
+      }
+    }
+  },
+  "summary": {
+    "device_summaries": [
+      {
+        "benchmarks": [
+          {
+            "function": "bench_mobile::bench_oprf_prove",
+            "max_ns": 1223628875,
+            "mean_ns": 1197416916,
+            "median_ns": 1218066500,
+            "min_ns": 1112638500,
+            "p95_ns": 1223628875,
+            "resource_usage": {
+              "cpu_median_ms": 2056,
+              "cpu_total_ms": 10206,
+              "peak_memory_growth_kb": 10960,
+              "peak_memory_kb": 10960,
+              "process_peak_memory_kb": 148688
+            },
+            "samples": 5
+          },
+          {
+            "function": "bench_mobile::bench_passport_complete_age_check_prove",
+            "max_ns": 3102353000,
+            "mean_ns": 2501031991,
+            "median_ns": 2385298625,
+            "min_ns": 2262063083,
+            "p95_ns": 3102353000,
+            "resource_usage": {
+              "cpu_median_ms": 9054,
+              "cpu_total_ms": 44583,
+              "peak_memory_growth_kb": 277792,
+              "peak_memory_kb": 277792,
+              "process_peak_memory_kb": 572768
+            },
+            "samples": 5
+          },
+          {
+            "function": "bench_mobile::bench_webauthn_assertion_prove",
+            "max_ns": 3229705459,
+            "mean_ns": 3120877616,
+            "median_ns": 3183651250,
+            "min_ns": 2973894333,
+            "p95_ns": 3229705459,
+            "resource_usage": {
+              "cpu_median_ms": 10132,
+              "cpu_total_ms": 51575,
+              "peak_memory_growth_kb": 265984,
+              "peak_memory_kb": 265984,
+              "process_peak_memory_kb": 597968
+            },
+            "samples": 5
+          }
+        ],
+        "device": "iPhone SE 2022-15"
+      }
+    ],
+    "devices": [
+      "iPhone SE 2022-15"
+    ],
+    "function": "multiple",
+    "generated_at": "2026-07-31T17:50:55.556956Z",
+    "generated_at_unix": 1785520255,
+    "iterations": 5,
+    "target": "ios",
+    "warmup": 1
+  }
+}

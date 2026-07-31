@@ -36,7 +36,7 @@ Locked highlights:
 | Android SDK/NDK | platform `android-34`; NDK `26.1.10909125` |
 | Native Noir | `nargo 1.0.0-beta.19` |
 | Native Barretenberg | `barretenberg-rs 4.2.0-aztecnr-rc.2` |
-| Browser ProveKit | `@worldcoin/provekit@0.1.0` |
+| Browser ProveKit | pinned V1 `tooling/provekit-wasm` at `9b2a6f37`, single-thread WASM |
 | Browser Circom | `snarkjs@0.7.6` |
 | Rapidsnark witness adapter | `witnesscalc-adapter@0.1.7` |
 | Rapidsnark prover | `rust-rapidsnark@0.1.4` |
@@ -55,9 +55,11 @@ rejection. If a different `bb.js` is required, update its exact version and
 integrity in `toolchains.lock.json`, regenerate the Bun lockfile, and create a
 new campaign manifest before collecting samples.
 
-`@worldcoin/provekit@0.1.0` embeds Noir beta.20 JavaScript dependencies. That
-does not change the native Noir/Barretenberg comparison's beta.19 contract;
-each row records its actual frontend/runtime versions.
+`@worldcoin/provekit@0.1.0` is retained as a compatibility/reference package,
+but it is not used for the V1 publication measurements. The measured browser
+lane builds `tooling/provekit-wasm` from the immutable V1 core commit with
+single-thread WASM and the frozen beta.11 inputs. This distinction prevents a
+current npm SDK artifact from being reported as a V1-branch result.
 
 ## 2. Circuit identity and non-equivalence
 
@@ -218,8 +220,8 @@ replace or mix with it.
 
 ### ProveKit V1
 
-Native iOS and Android use the ProveKit C ABI through Mobench. Chrome uses
-`@worldcoin/provekit@0.1.0`. ProveKit must deliver all nine
+Native iOS and Android use the ProveKit C ABI through Mobench. Chrome uses the
+pinned single-thread V1 `tooling/provekit-wasm` build. ProveKit must deliver all nine
 workload/target cells; an incomplete ProveKit matrix is not publication-ready.
 
 The publication iPhone ProveKit prebuilt contains one isolated proof-only
@@ -276,20 +278,14 @@ measured samples. Export it under the distinct
 `rayon_threads: 1`; never present it as the same execution policy as the
 unconstrained iPhone or browser lane.
 
-The 2026-07-30 physical-E15 campaign retained each recovery attempt. A
-single-thread prover completed in isolation, but rebuilding a verifier from
-the Noir artifact did not match the exact expanded verifier used by the
-prover. Retaining both expanded objects exceeded memory. The successful
-recovery freezes the beta.11 circuit and matching four-overflow-bit input,
-serializes the exact verifier during setup, releases its expanded state,
-proves with one Rayon thread, and deserializes that matching verifier only
-after proving. The final worker completed the correctness canary, one warmup,
-and five sequential measured samples. The observed 151,946.340 ms proof was
-the warmup; measured prove-only times range from 148,852.166 to 149,502.020 ms
-with a 149,291.295 ms median. The exact proving payload is 4,169,425 bytes,
-measured proofs range from 736,219 to 740,149 bytes, and measured process peaks
-range from 783.129 to 825.086 MiB. Earlier low-memory kills and Android
-bad-process quarantine attempts remain recovery evidence, not measurements.
+The committed E15 V1 evidence records the actual `armeabi-v7a`/`zygote32`
+identity and uses the constrained single-thread Passport fallback where
+required. It completed the valid-proof/tamper gates and one warmup plus five
+sequential samples for all three workloads. The resulting medians are
+71,595.260 ms (Passport), 27,839.158 ms (WebAuthn), and 12,564.926 ms (OPRF);
+the sample-level payload, proof, and RSS values are in the canonical CSV.
+Earlier low-memory kills and Android quarantine attempts remain recovery
+evidence, not measurements.
 
 ### Circom + Groth16
 
@@ -411,7 +407,8 @@ a publication backend.
 
 ### Analysis environment
 
-The Marimo notebook reads only `data/benchmark-samples.csv`. Its Python 3.12
+The Marimo notebook reads only `semantic-parity-data/semantic-parity-samples.csv`.
+Its Python 3.12
 environment is locked by `analysis/pyproject.toml` and `analysis/uv.lock`:
 Marimo 0.23.15, Pandas 2.3.3, Matplotlib 3.10.8, and Seaborn 0.13.2.
 
@@ -501,8 +498,8 @@ benchmarks/v1/scripts/run-reproducibility.sh --stage export \
   --campaign provekit-v1-cross-device
 ```
 
-Export combines raw attempts into the canonical sample-level CSV and retains
-secret-free provenance. It must fail on:
+Export regenerates the canonical sample-level CSV from the committed,
+hash-locked V1 evidence and retains secret-free provenance. It must fail on:
 
 - a missing required column;
 - a duplicate campaign/target/stack/workload/circuit/sample key;
@@ -514,13 +511,12 @@ secret-free provenance. It must fail on:
 - an expected Noir/Circom cell which has neither samples nor an explicit
   failure row.
 
-The default export path normalizes
-`native-ios/summary.json` with the immutable prebuilt manifest, merges it with
-the retained Mac attempt array and the physical-E15 attempt array, then runs
-the full 27-cell validator. `V1_MAC_ATTEMPTS_JSON`,
-`V1_E15_ATTEMPTS_JSON`, and `V1_IOS_PREBUILT_MANIFEST` may point at other
-immutable campaign evidence. `V1_NORMALIZED_ATTEMPTS_JSON` bypasses only the
-normalization/merge step, not schema or coverage validation.
+The publication export path is
+`semantic-parity-data/export-v1.ts`. It verifies every committed V1 evidence
+hash, replaces the nine stale ProveKit rows, and runs the full 27-cell legacy
+CSV validator. Raw `measure` outputs remain in the campaign directory and are
+never substituted into the publication file without an explicit evidence and
+manifest update.
 
 When BrowserStack rejects an immutable iOS artifact before a session can
 start, set `V1_IOS_GAPS_JSON` to an array of structured, evidence-backed gap
@@ -534,20 +530,14 @@ coverage and units, derives median and dispersion from measured (non-warmup)
 rows, and renders missing cells distinctly. Titles, captions, and legends must
 state that circuit counterparts are non-equivalent.
 
-At the final evidence freeze, all **27 logical cells** have the four requested
-publication fields: prove-only time, deduplicated proving payload size,
-serialized proof size, and peak process memory. Compound Circom counterparts
-remain separate variants inside their logical cells, producing **33 successful
-variant series**, **165 measured rows**, and **33 attested warmups**—**198 CSV
-records** total.
-
-Five iPhone Circom variants were measured before the structured
-`proving_payload_size_bytes` metric was available. At the user's explicit
-request, their CSV payload values are labelled asset-size estimates: the
-hash-pinned zkey plus frozen SnarkJS-validated WTNS witness. They exclude IPA,
-XCUITest, and upload transport sizes. They are suitable for a clearly footnoted
-publication comparison, but are not Mobench-emitted telemetry. Every other
-published payload value is captured by its adapter.
+At the final V1 evidence freeze, all **27 logical cells** have the four
+requested publication fields: prove-only time, deduplicated proving payload
+size, serialized proof size, and peak process memory. The canonical file has
+**162 records**: **135 measured rows** and **27 attested warmups**. The
+historical WebAuthn iPhone Circom closest-analogue row retains its explicit
+asset-size estimate note (hash-pinned zkey plus frozen WTNS); it excludes IPA,
+XCUITest, and upload transport sizes. Every ProveKit V1 payload and every
+matched P1/O2 native payload is exact committed evidence, not an estimate.
 
 ## 10. Evidence and publication rules
 
@@ -568,4 +558,6 @@ only if all of the following match this campaign:
 
 Unsupported and failed cells are findings, not values. Never estimate a timing,
 copy another target's value, or silently omit a failure. The only estimates in
-the publication CSV are the five iPhone Circom payloads called out above.
+the older compound-variant export are the five iPhone Circom payloads called
+out in that file's estimate notes; the semantic-parity publication has only
+the historical WebAuthn estimate described above.

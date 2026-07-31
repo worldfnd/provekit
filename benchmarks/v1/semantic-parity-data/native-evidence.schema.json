@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Semantic parity native benchmark evidence",
+  "type": "object",
+  "required": ["schema_version", "campaign_id", "semantic_profile", "target", "stack", "device", "runtime", "frontend", "prover_backend", "witness_backend", "source_commits", "package_versions", "artifact_hashes", "proving_payload_size_bytes", "process_peak_memory_kib", "valid_proof_accepted", "tampered_proof_rejected", "session_id"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "campaign_id": {"const": "semantic-parity-v1-20260731"},
+    "semantic_profile": {"enum": ["passport_p1", "oprf_o2", "webauthn_closest_analogue"]},
+    "target": {"enum": ["iphone_se_2022", "motorola_e15"]},
+    "stack": {"enum": ["provekit_v1", "noir_barretenberg", "circom_groth16"]},
+    "device": {"type": "object", "required": ["model", "os_version", "abi"], "properties": {"model":{"type":"string","minLength":1},"os_version":{"type":"string","minLength":1},"abi":{"type":"string","minLength":1}}, "additionalProperties": false},
+    "runtime": {"enum": ["ios_native", "android_native"]},
+    "browser": {"type": "string"},
+    "frontend": {"enum": ["noir", "circom"]},
+    "prover_backend": {"type":"string","minLength":1},
+    "witness_backend": {"type":"string"},
+    "source_commits": {"type":"object","additionalProperties":{"type":"string","minLength":1}},
+    "package_versions": {"type":"object","additionalProperties":{"type":"string","minLength":1}},
+    "artifact_hashes": {"type":"object","additionalProperties":{"type":"string","pattern":"^[0-9a-f]{64}$"}},
+    "proving_payload_size_bytes": {"type":["integer","null"],"minimum":1},
+    "process_peak_memory_kib": {"type":["integer","null"],"minimum":1},
+    "constraint_count": {"type":["integer","null"],"minimum":1},
+    "valid_proof_accepted": {"type":["boolean","null"]},
+    "tampered_proof_rejected": {"type":["boolean","null"]},
+    "session_id": {"type":"string"},
+    "samples": {"type":"array","minItems":6,"maxItems":6,"items":{"type":"object","required":["warmup","sample_index","status","prove_time_ms","proof_size_bytes"],"properties":{"warmup":{"type":"boolean"},"sample_index":{"type":"integer","minimum":0,"maximum":4},"status":{"const":"ok"},"prove_time_ms":{"type":["number","null"],"exclusiveMinimum":0},"proof_size_bytes":{"type":"integer","minimum":1}},"additionalProperties":false}},
+    "gap": {"type":"object","required":["status","failure_code","failure_detail","prove_time_ms","proof_size_bytes"],"properties":{"status":{"enum":["unsupported","build_failed","crashed","timed_out","zero_samples"]},"failure_code":{"type":"string","minLength":1},"failure_detail":{"type":"string","minLength":1},"prove_time_ms":{"type":"null"},"proof_size_bytes":{"type":"null"}},"additionalProperties":false}
+  },
+  "oneOf": [
+    {
+      "required": ["samples"],
+      "not": {"required": ["gap"]},
+      "properties": {
+        "proving_payload_size_bytes": {"type":"integer","minimum":1},
+        "process_peak_memory_kib": {"type":"integer","minimum":1},
+        "valid_proof_accepted": {"const":true},
+        "tampered_proof_rejected": {"const":true}
+      }
+    },
+    {
+      "required": ["gap"],
+      "not": {"required": ["samples"]},
+      "properties": {
+        "proving_payload_size_bytes": {"type":"null"},
+        "process_peak_memory_kib": {"type":"null"},
+        "valid_proof_accepted": {"type":"null"},
+        "tampered_proof_rejected": {"type":"null"}
+      }
+    }
+  ],
+  "additionalProperties": false
+}

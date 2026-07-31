@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "profile": "P1",
+  "canonical_record": {
+    "path": "benchmarks/v1/passport_p1/canonical-record.json",
+    "sha256": "e0501fb0551860cf3f5a34d1c86b4b2af53014bc4bec7cde4f1f285d3c54d0bf"
+  },
+  "source": {
+    "self_revision": "15b167e3543a9dff1dbb16fcf71a45fe4625cf9e",
+    "registration_fixture": {
+      "path": "benchmarks/v1/circom/fixtures/self/register_sha256_sha256_sha256_rsa_65537_4096.json",
+      "sha256": "2d9ccff0b1a94c500d722cea20fbeb68ff9c6c48f21391b7f5b441752dfa5030"
+    }
+  },
+  "public_statement": {
+    "merkle_root": [
+      "8048950770293257795621184348033164133320434623462496804361333333092676277328"
+    ],
+    "current_date_yymmdd": "260723",
+    "minimum_age": "18",
+    "fixture_id": "self-pack-bytes-and-poseidon-dg1"
+  },
+  "artifact": {
+    "file": "input.json",
+    "sha256": "8c90e1b2392e013df6a6bdd1f22c1bb2bae9bca457c8b937e43a0e10e3618758",
+    "size": 30424
+  }
+}

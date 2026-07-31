@@ -26,7 +26,7 @@ class BenchmarkAnalysisTest(unittest.TestCase):
         self.assertEqual(notebook_median, 5)
 
     def test_canonical_csv_has_27_cells_and_complete_successful_variants(self):
-        csv_path = Path(__file__).resolve().parents[1] / "data" / "benchmark-samples.csv"
+        csv_path = Path(__file__).resolve().parents[1] / "semantic-parity-data" / "semantic-parity-samples.csv"
         samples = pd.read_csv(csv_path, keep_default_na=False)
         cells = samples[["hardware", "circuit", "prover"]].drop_duplicates()
         self.assertEqual(len(cells), 27)
@@ -41,7 +41,7 @@ class BenchmarkAnalysisTest(unittest.TestCase):
                 self.assertEqual((records["sample_kind"] == "measured").sum(), 5)
 
     def test_successful_measured_rows_have_all_four_publication_metrics(self):
-        csv_path = Path(__file__).resolve().parents[1] / "data" / "benchmark-samples.csv"
+        csv_path = Path(__file__).resolve().parents[1] / "semantic-parity-data" / "semantic-parity-samples.csv"
         samples = pd.read_csv(csv_path, keep_default_na=False)
         measured = samples[
             (samples["status"] == "ok") & (samples["sample_kind"] == "measured")

@@ -28,37 +28,12 @@ if grep -q 'BROWSERSTACK_ACCESS_KEY' "${measure_log}"; then
   exit 1
 fi
 
-native_manifest="${temporary}/e15-native-backends.manifest.json"
-touch "${native_manifest}"
-V1_CAMPAIGN_ROOT="${temporary}/native-backends" \
-  V1_E15_NATIVE_BACKEND_MANIFEST="${native_manifest}" \
-  "${runner}" measure --campaign test --dry-run \
-  >"${temporary}/native-backends.out"
-grep -q 'normalize-e15-native-backend.ts' \
-  "${temporary}/native-backends/commands.log"
-if grep -q 'generate-e15-native-gaps.ts' \
-  "${temporary}/native-backends/commands.log"; then
-  echo "error: successful E15 native backend manifest was replaced with gaps" >&2
+grep -q 'semantic-parity-data/export-v1.ts' "${temporary}/export/commands.log"
+grep -q 'semantic-parity-samples.csv' "${temporary}/export/commands.log"
+if grep -q 'BROWSERSTACK_ACCESS_KEY' "${temporary}/export/commands.log"; then
+  echo "error: credential name leaked to export command log" >&2
   exit 1
 fi
-
-native_attempts="${temporary}/e15-native-backends.json"
-V1_CAMPAIGN_ROOT="${temporary}/native-export" \
-  V1_E15_NATIVE_BACKEND_ATTEMPTS_JSON="${native_attempts}" \
-  "${runner}" export --campaign test --dry-run \
-  >"${temporary}/native-export.out"
-grep -q "${native_attempts}" "${temporary}/native-export/commands.log"
-if grep -q 'e15-native-gaps.json' \
-  "${temporary}/native-export/commands.log"; then
-  echo "error: export merged stale E15 gaps with successful native backend rows" >&2
-  exit 1
-fi
-
-grep -q 'normalize-ios-prebuilt.ts' "${temporary}/export/commands.log"
-grep -q 'CAMPAIGN_ID=test' "${temporary}/export/commands.log"
-grep -q 'iOS\\ 15.4' "${temporary}/export/commands.log"
-grep -q 'merge-attempts.ts' "${temporary}/export/commands.log"
-grep -q 'export-benchmark-csv.ts' "${temporary}/export/commands.log"
 
 if V1_CAMPAIGN_ROOT="${temporary}/bad" \
   "${runner}" obsolete --campaign test --dry-run >/dev/null 2>&1; then

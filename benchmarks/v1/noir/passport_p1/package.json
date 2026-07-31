@@ -1,0 +1,10 @@
+{
+  "name": "provekit-v1-passport-p1-noir",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fixture": "bun run generate-fixture.ts",
+    "test:mutations": "bun run test-mutations.ts",
+    "smoke:barretenberg-chrome": "bun run web/smoke.ts"
+  }
+}

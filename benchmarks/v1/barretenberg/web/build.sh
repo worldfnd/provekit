@@ -69,7 +69,7 @@ copy_workload() {
 
 selected_workload="${MOBENCH_WORKLOAD:-all}"
 case "${selected_workload}" in
-  all | webauthn_assertion | passport_complete_age_check | oprf_taceo) ;;
+  all | webauthn_assertion | passport_complete_age_check | oprf_taceo | oprf_world_id_nullifier) ;;
   *)
     echo "error: unsupported MOBENCH_WORKLOAD ${selected_workload}" >&2
     exit 1
@@ -97,6 +97,13 @@ if [[ "${selected_workload}" == "all" || "${selected_workload}" == "oprf_taceo" 
     "${repo_root}/target/v1-benchmarks/sources/oprf-nr/oprf_example/target/oprf_example.json" \
     "${repo_root}/target/v1-benchmarks/sources/oprf-nr/oprf_example/Prover.toml"
   workloads+=(oprf_taceo)
+fi
+if [[ "${selected_workload}" == "all" || "${selected_workload}" == "oprf_world_id_nullifier" ]]; then
+  copy_workload \
+    oprf_world_id_nullifier \
+    "${repo_root}/noir-examples/oprf/target/oprf.json" \
+    "${repo_root}/noir-examples/oprf/Prover.toml"
+  workloads+=(oprf_world_id_nullifier)
 fi
 
 for workload in "${workloads[@]}"; do

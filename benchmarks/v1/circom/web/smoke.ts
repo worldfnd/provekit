@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright-core";
 
-const root = resolve(import.meta.dir, "dist");
+const root = resolve(process.env.CIRCOM_WEB_DIST ?? resolve(import.meta.dir, "dist"));
 const workload = process.env.MOBENCH_WORKLOAD ?? "webauthn";
 const warmup = Number.parseInt(process.env.MOBENCH_WARMUP ?? "1", 10);
 const iterations = Number.parseInt(process.env.MOBENCH_ITERATIONS ?? "5", 10);

@@ -22,11 +22,11 @@ pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: P
     // Compute r1 = G*s - a*e and r2 = b*s - c*e
     let generator = BabyJubJubPoint::generator();
     let gs = BabyJubJubPoint::generator_scalar_mul(s);
-    let ae = a_point.scalar_mul(e);
+    let ae = a_point.scalar_mul_base_field(e);
     let r1 = gs.subtract(ae);
 
     let bs = b_point.scalar_mul(s);
-    let ce = c_point.scalar_mul(e);
+    let ce = c_point.scalar_mul_base_field(e);
     let r2 = bs.subtract(ce);
 
     // Batch check that r1 and r2 are not identity

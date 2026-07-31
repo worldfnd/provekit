@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [[ "$#" -ne 1 ]]; then
-  echo "usage: $0 <webauthn_assertion|passport_complete_age_check|oprf_taceo>" >&2
+  echo "usage: $0 <webauthn_assertion|passport_complete_age_check|oprf_taceo|oprf_world_id_nullifier>" >&2
   exit 2
 fi
 
@@ -23,6 +23,10 @@ case "${workload}" in
     ;;
   oprf_taceo)
     circuit_dir="${repo_root}/target/v1-benchmarks/sources/oprf-nr-v2/oprf_example"
+    input="${circuit_dir}/Prover.toml"
+    ;;
+  oprf_world_id_nullifier)
+    circuit_dir="${repo_root}/noir-examples/oprf"
     input="${circuit_dir}/Prover.toml"
     ;;
   *)

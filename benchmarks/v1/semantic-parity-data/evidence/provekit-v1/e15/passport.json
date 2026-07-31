@@ -1,0 +1,246 @@
+{
+  "schema_version": 1,
+  "campaign_id": "provekit-v1-semantic-parity",
+  "generated_at_utc": "2026-07-31T20:00:04.924Z",
+  "sampling": {
+    "warmup": 1,
+    "measured": 5,
+    "sequential": true
+  },
+  "device": {
+    "manufacturer": "motorola",
+    "model": "moto e15",
+    "os": "14",
+    "abi": "armeabi-v7a",
+    "abilist": "armeabi-v7a,armeabi",
+    "abilist64": "",
+    "zygote": "zygote32"
+  },
+  "apk": {
+    "path": "/Users/dcbuilder/Code/world/.worktrees/provekit-v1-semantic-parity-rerun/target/v1-semantic-parity/e15-build-v1pass/android/app/build/outputs/apk/debug/app-debug.apk",
+    "sha256": "70568c48b91fbf7e2c24b788c583dcca1589511844d2c26c1e381695981ccd35",
+    "bytes": 60920719
+  },
+  "results": [
+    {
+      "workload": "passport",
+      "function": "bench_mobile::bench_passport_complete_age_check_prove_single_thread",
+      "status": "ok",
+      "report": {
+        "custom_metrics": {
+          "run_u64": {
+            "input_size_bytes": 247039,
+            "passport_setup_rss_kb": 188092,
+            "passport_setup_swap_kb": 45060,
+            "prover_size_bytes": 2299488,
+            "proving_payload_size_bytes": 2546527
+          },
+          "sample_u64": {
+            "proof_size_bytes": [
+              717332,
+              715014,
+              716879,
+              715470,
+              714255,
+              714761
+            ],
+            "prove_time_ns": [
+              71589926158,
+              71595260005,
+              71563777927,
+              71543562389,
+              71627108927,
+              71639365235
+            ],
+            "rss_after_prove_kb": [
+              88756,
+              80160,
+              84436,
+              88132,
+              84916,
+              81216
+            ],
+            "rss_after_verify_kb": [
+              98060,
+              84864,
+              91404,
+              79572,
+              89144,
+              88160
+            ],
+            "rss_before_verify_kb": [
+              88756,
+              80160,
+              84436,
+              88132,
+              84916,
+              81216
+            ],
+            "swap_after_prove_kb": [
+              37812,
+              51128,
+              43756,
+              43888,
+              45128,
+              45032
+            ],
+            "swap_after_verify_kb": [
+              37812,
+              47312,
+              43756,
+              43888,
+              45128,
+              45032
+            ],
+            "swap_before_verify_kb": [
+              37812,
+              51128,
+              43756,
+              43888,
+              45128,
+              45032
+            ]
+          }
+        },
+        "samples": [
+          {
+            "cpu_time_ms": 84584,
+            "duration_ns": 74067280543,
+            "peak_memory_kb": 289424,
+            "process_peak_memory_kb": 485984
+          },
+          {
+            "cpu_time_ms": 84543,
+            "duration_ns": 74024937543,
+            "peak_memory_kb": 295128,
+            "process_peak_memory_kb": 485476
+          },
+          {
+            "cpu_time_ms": 84520,
+            "duration_ns": 74012293543,
+            "peak_memory_kb": 296356,
+            "process_peak_memory_kb": 486436
+          },
+          {
+            "cpu_time_ms": 84551,
+            "duration_ns": 74086977466,
+            "peak_memory_kb": 295584,
+            "process_peak_memory_kb": 485380
+          },
+          {
+            "cpu_time_ms": 84589,
+            "duration_ns": 74090311081,
+            "peak_memory_kb": 296280,
+            "process_peak_memory_kb": 484372
+          }
+        ],
+        "spec": {
+          "iterations": 5,
+          "name": "bench_mobile::bench_passport_complete_age_check_prove_single_thread",
+          "warmup": 1
+        },
+        "timeline": [
+          {
+            "end_offset_ns": 88067667005,
+            "iteration": 0,
+            "phase": "fixture-setup",
+            "start_offset_ns": 615
+          },
+          {
+            "end_offset_ns": 162137753240,
+            "iteration": 0,
+            "phase": "warmup-benchmark",
+            "start_offset_ns": 88067670389
+          },
+          {
+            "end_offset_ns": 164225030394,
+            "iteration": 0,
+            "phase": "fixture-setup",
+            "start_offset_ns": 162137767702
+          },
+          {
+            "end_offset_ns": 238294530398,
+            "iteration": 0,
+            "phase": "measured-benchmark",
+            "start_offset_ns": 164227249855
+          },
+          {
+            "end_offset_ns": 240402059629,
+            "iteration": 1,
+            "phase": "fixture-setup",
+            "start_offset_ns": 238294916014
+          },
+          {
+            "end_offset_ns": 314427707326,
+            "iteration": 1,
+            "phase": "measured-benchmark",
+            "start_offset_ns": 240402769783
+          },
+          {
+            "end_offset_ns": 316513712018,
+            "iteration": 2,
+            "phase": "fixture-setup",
+            "start_offset_ns": 314428126172
+          },
+          {
+            "end_offset_ns": 390526466715,
+            "iteration": 2,
+            "phase": "measured-benchmark",
+            "start_offset_ns": 316514173172
+          },
+          {
+            "end_offset_ns": 392603204869,
+            "iteration": 3,
+            "phase": "fixture-setup",
+            "start_offset_ns": 390526754715
+          },
+          {
+            "end_offset_ns": 466690776874,
+            "iteration": 3,
+            "phase": "measured-benchmark",
+            "start_offset_ns": 392603799408
+          },
+          {
+            "end_offset_ns": 468774384874,
+            "iteration": 4,
+            "phase": "fixture-setup",
+            "start_offset_ns": 466691117489
+          },
+          {
+            "end_offset_ns": 542865434493,
+            "iteration": 4,
+            "phase": "measured-benchmark",
+            "start_offset_ns": 468775123412
+          }
+        ],
+        "function": "bench_mobile::bench_passport_complete_age_check_prove_single_thread",
+        "samples_ns": [
+          74067280543,
+          74024937543,
+          74012293543,
+          74086977466,
+          74090311081
+        ],
+        "stats": {
+          "min_ns": 74012293543,
+          "max_ns": 74090311081,
+          "avg_ns": 74056360035.2,
+          "mean_ns": 74056360035,
+          "median_ns": 74067280543
+        },
+        "resources": {
+          "platform": "android",
+          "timestamp_ms": 1785528002806,
+          "memory_process": "isolated_worker",
+          "cpu_total_ms": 422787,
+          "cpu_median_ms": 84551,
+          "elapsed_cpu_ms": 422787,
+          "peak_memory_kb": 296356,
+          "peak_memory_growth_kb": 296356,
+          "process_peak_memory_kb": 486436
+        }
+      },
+      "evidence_path": "/Users/dcbuilder/Code/world/.worktrees/provekit-v1-semantic-parity-rerun/target/v1-semantic-parity/e15-v1-passport-final-reboot/passport.logcat.txt"
+    }
+  ]
+}

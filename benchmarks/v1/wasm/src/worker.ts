@@ -1,4 +1,10 @@
-import { initProveKit, Proof } from "@worldcoin/provekit";
+import { decompressWitness } from "@noir-lang/acvm_js";
+import { Noir } from "@noir-lang/noir_js";
+import initProveKitV1, {
+  initPanicHook,
+  Prover,
+  Verifier,
+} from "../v1-wasm-pkg/provekit_wasm.js";
 
 interface RunCommand {
   type: "run";
@@ -7,16 +13,13 @@ interface RunCommand {
   iterations: number;
 }
 
-type WorkloadName =
-  | "webauthn_assertion"
-  | "passport_complete_age_check"
-  | "oprf_taceo";
+type WorkloadName = "webauthn_assertion" | "passport_complete_age_check" | "oprf_taceo";
 
 interface PhaseSample {
   iteration: number;
   warmup: boolean;
   prepare_time_ms: number;
-  witness_time_ms?: number;
+  witness_time_ms: number;
   prove_time_ms: number;
   verify_time_ms: number;
   end_to_end_time_ms: number;
@@ -26,9 +29,7 @@ interface PhaseSample {
 }
 
 interface PerformanceWithMemory extends Performance {
-  memory?: {
-    usedJSHeapSize?: number;
-  };
+  memory?: { usedJSHeapSize?: number };
 }
 
 interface BundleManifest {
@@ -67,102 +68,86 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
   const downloadTimeMs = elapsed(downloadStart);
   const sharedRuntimeBytes = manifest.totals["shared-runtime"];
   const incrementalCircuitBytes = manifest.totals[command.workload];
-  if (
-    !Number.isSafeInteger(sharedRuntimeBytes) ||
-    !Number.isSafeInteger(incrementalCircuitBytes)
-  ) {
+  if (!Number.isSafeInteger(sharedRuntimeBytes) || !Number.isSafeInteger(incrementalCircuitBytes)) {
     throw new Error(`bundle manifest has no totals for ${command.workload}`);
   }
 
   const initStart = performance.now();
-  const runtime = await initProveKit({ threads: false });
-  if (runtime.threading.mode !== "single") {
-    throw new Error("browser benchmark requires the single-thread ProveKit runtime");
-  }
-  const verifier = await runtime.loadVerifier(pkv);
+  await initProveKitV1();
+  initPanicHook();
+  const verifier = new Verifier(pkv);
   const initTimeMs = elapsed(initStart);
 
-  const circuit = runtime.inspectProver(pkp);
+  const inspectionProver = new Prover(pkp);
+  const circuitJson = JSON.parse(new TextDecoder().decode(inspectionProver.getCircuit())) as Record<string, unknown>;
+  const constraints = inspectionProver.getNumConstraints();
+  const witnesses = inspectionProver.getNumWitnesses();
+  inspectionProver.free();
+  const noir = new Noir(circuitJson);
 
   const samples: PhaseSample[] = [];
-  const totalRuns = command.warmup + command.iterations;
-  for (let run = 0; run < totalRuns; run += 1) {
+  for (let run = 0; run < command.warmup + command.iterations; run += 1) {
     const endToEndStart = performance.now();
-
     const prepareStart = performance.now();
-    const prover = await runtime.loadProver(pkp);
+    const prover = new Prover(pkp);
     const prepareTimeMs = elapsed(prepareStart);
 
     const witnessStart = performance.now();
-    // The public SDK intentionally owns ACVM witness generation. It does not
-    // expose a separate witness-only API, so this campaign records the SDK
-    // prove call as end-to-end proving and leaves witness_time_ms blank.
+    const execution = await noir.execute(inputs);
+    const witnessMap = decompressWitness(execution.witness);
+    const witnessTimeMs = elapsed(witnessStart);
     const proveStart = witnessStart;
-    const proof = await prover.prove(inputs);
+    const proof = prover.proveBytes(witnessMap);
     const proveTimeMs = elapsed(proveStart);
-    const witnessTimeMs = Number.NaN;
-    prover.dispose();
+    prover.free();
 
     const verifyStart = performance.now();
-    if (!(await verifier.verify(proof))) {
-      throw new Error(`ProveKit rejected its ${command.workload} proof`);
-    }
+    verifier.verifyBytes(proof);
     const verifyTimeMs = elapsed(verifyStart);
-
-    const tamperedProof = proof.bytes;
+    const tamperedProof = proof.slice();
     tamperedProof[Math.floor(tamperedProof.byteLength / 2)] ^= 1;
     let tamperedProofRejected = false;
     try {
-      tamperedProofRejected = !(await verifier.verify(Proof.fromBytes(tamperedProof)));
+      verifier.verifyBytes(tamperedProof);
     } catch {
       tamperedProofRejected = true;
     }
-    if (!tamperedProofRejected) {
-      throw new Error(`ProveKit accepted a tampered ${command.workload} proof`);
-    }
+    if (!tamperedProofRejected) throw new Error(`ProveKit accepted a tampered ${command.workload} proof`);
 
     samples.push({
       iteration: run < command.warmup ? run : run - command.warmup,
       warmup: run < command.warmup,
       prepare_time_ms: prepareTimeMs,
-      witness_time_ms: Number.isNaN(witnessTimeMs) ? undefined : witnessTimeMs,
+      witness_time_ms: witnessTimeMs,
       prove_time_ms: proveTimeMs,
       verify_time_ms: verifyTimeMs,
       end_to_end_time_ms: elapsed(endToEndStart),
-      proof_size_bytes: proof.size,
+      proof_size_bytes: proof.byteLength,
       tampered_proof_rejected: tamperedProofRejected,
       js_heap_bytes: currentHeapBytes(),
     });
   }
-
-  verifier.dispose();
+  verifier.free();
 
   return {
     schema_version: 1,
     benchmark: command.workload,
-    backend: "provekit_v1_wasm_single",
+    backend: "provekit_v1_branch_9b2a6f_wasm_single",
     download_time_ms: downloadTimeMs,
     initialization_time_ms: initTimeMs,
-    artifacts: {
-      prover_bytes: pkp.byteLength,
-      verifier_bytes: pkv.byteLength,
-    },
+    artifacts: { prover_bytes: pkp.byteLength, verifier_bytes: pkv.byteLength },
     bundle: {
       shared_runtime_bytes: sharedRuntimeBytes,
       incremental_circuit_bytes: incrementalCircuitBytes,
       cold_download_bytes: sharedRuntimeBytes + incrementalCircuitBytes,
     },
-    circuit: {
-      constraints: circuit.constraints,
-      witnesses: circuit.witnesses,
-    },
+    circuit: { constraints, witnesses },
     environment: {
       user_agent: navigator.userAgent,
       hardware_concurrency: navigator.hardwareConcurrency,
       cross_origin_isolated: self.crossOriginIsolated,
       wasm_threads: false,
-      memory_metric:
-        currentHeapBytes() === undefined ? "unavailable" : "chromium-used-js-heap-not-process-rss",
+      memory_metric: currentHeapBytes() === undefined ? "unavailable" : "chromium-used-js-heap-not-process-rss",
     },
     warmup: command.warmup,
     iterations: command.iterations,
@@ -173,8 +158,7 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
 self.addEventListener("message", async (event: MessageEvent<RunCommand>) => {
   if (event.data.type !== "run") return;
   try {
-    const result = await runBenchmark(event.data);
-    self.postMessage({ type: "complete", result });
+    self.postMessage({ type: "complete", result: await runBenchmark(event.data) });
   } catch (error) {
     const details: string[] = [];
     let current: unknown = error;
@@ -183,9 +167,6 @@ self.addEventListener("message", async (event: MessageEvent<RunCommand>) => {
       current = current.cause;
     }
     if (current !== undefined) details.push(String(current));
-    self.postMessage({
-      type: "error",
-      error: details.length > 0 ? details.join("\nCaused by:\n") : String(error),
-    });
+    self.postMessage({ type: "error", error: details.join("\nCaused by:\n") || String(error) });
   }
 });

@@ -39,7 +39,7 @@ def _(mo):
 
 @app.cell
 def _(Path, pd):
-    csv_path = Path(__file__).resolve().parents[1] / "data" / "benchmark-samples.csv"
+    csv_path = Path(__file__).resolve().parents[1] / "semantic-parity-data" / "semantic-parity-samples.csv"
     samples = pd.read_csv(csv_path, keep_default_na=False)
 
     numeric_columns = [

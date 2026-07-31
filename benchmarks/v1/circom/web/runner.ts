@@ -1,6 +1,9 @@
 import { groth16, wtns } from "snarkjs";
 
 type Workload = "passport" | "webauthn" | "oprf";
+type SemanticEquivalence =
+  | "closest-analogue-not-equivalent"
+  | "p1-matched-monolithic";
 interface BenchSpec {
   workload: Workload;
   warmup: number;
@@ -15,7 +18,13 @@ interface Fixture {
   verification_key: string;
   input: string;
   circuit_commit: string;
-  semantic_equivalence: "closest-analogue-not-equivalent";
+  semantic_equivalence: SemanticEquivalence;
+  profile?: "P1";
+  ceremony?: {
+    production_safe: boolean;
+    final_zkey_sha256: string;
+  };
+  artifact_hashes?: Record<string, string>;
 }
 interface ProgressEvent {
   at_ms: number;

@@ -26,9 +26,6 @@ Options:
 Required environment for real device stages:
   V1_E15_MEASURE_SCRIPT          Optional physical-E15 ProveKit adapter override.
   V1_IOS_PREBUILT_MANIFEST      Immutable iPhone Mobench manifest.
-  V1_NORMALIZED_ATTEMPTS_JSON   Normalized attempt array (defaults to campaign attempts.json).
-  V1_MAC_ATTEMPTS_JSON          Mac attempt array (defaults to retained canonical Mac evidence).
-  V1_E15_ATTEMPTS_JSON          E15 attempt array (defaults to campaign e15/attempts.json).
   V1_E15_NATIVE_BACKEND_MANIFEST
                                 Successful E15 Noir/Circom raw-evidence manifest.
   V1_E15_NATIVE_BACKEND_ATTEMPTS_JSON
@@ -39,6 +36,10 @@ Required environment for real device stages:
   V1_E15_CIRCOM_EVIDENCE        Retained E15 Arkworks build/qualification evidence.
   V1_E15_NOIR_EVIDENCE          Retained beta.19 Passport witness-failure evidence.
   ANDROID_SERIAL                Optional adb serial (required if >1 device).
+
+The publication export reads the committed, hash-locked V1 evidence under
+benchmarks/v1/semantic-parity-data/evidence/provekit-v1 and does not accept
+browser or native timings from another campaign implicitly.
 
 BrowserStack credentials must be exported as BROWSERSTACK_USERNAME and
 BROWSERSTACK_ACCESS_KEY. They are never accepted as arguments or written to
@@ -335,79 +336,13 @@ run_measure() {
 }
 
 run_export() {
-  local exporter="${benchmark_root}/data/export-benchmark-csv.ts"
-  local normalizer="${benchmark_root}/data/normalize-ios-prebuilt.ts"
-  local merger="${benchmark_root}/data/merge-attempts.ts"
-  local attempts="${V1_NORMALIZED_ATTEMPTS_JSON:-}"
+  local exporter="${benchmark_root}/semantic-parity-data/export-v1.ts"
+  local output="${benchmark_root}/semantic-parity-data/semantic-parity-samples.csv"
   require_file "${exporter}"
-  if [[ -z "${attempts}" ]]; then
-    local mac_attempts="${V1_MAC_ATTEMPTS_JSON:-${repo_root}/target/v1-benchmarks/reproduction/mac-chrome-proof-metrics/attempts.json}"
-    local e15_attempts="${V1_E15_ATTEMPTS_JSON:-${campaign_root}/e15/attempts.json}"
-    local e15_supplemental
-    if [[ -n "${V1_E15_NATIVE_BACKEND_ATTEMPTS_JSON:-}" ]]; then
-      e15_supplemental="${V1_E15_NATIVE_BACKEND_ATTEMPTS_JSON}"
-    else
-      e15_supplemental="${V1_E15_GAPS_JSON:-${campaign_root}/e15-native-gaps.json}"
-    fi
-    local ios_summary="${campaign_root}/native-ios/summary.json"
-    local ios_attempts="${campaign_root}/native-ios/attempts.json"
-    local ios_manifest="${V1_IOS_PREBUILT_MANIFEST:-}"
-    local ios_gaps="${V1_IOS_GAPS_JSON:-}"
-    local ios_device="${V1_IOS_DEVICE:-iPhone SE 2022-15}"
-    local ios_os_version="${V1_IOS_OS_VERSION:-iOS 15.4}"
-    local source_commit
-    source_commit="$(git -C "${repo_root}" rev-parse HEAD)"
-    require_file "${normalizer}"
-    require_file "${merger}"
-    if ((dry_run)); then
-      [[ -n "${ios_manifest}" ]] || ios_manifest="/absolute/path/to/full-campaign-ios-prebuilt/manifest.json"
-      if [[ -n "${ios_gaps}" ]]; then
-        run_command "${repo_root}" env "CAMPAIGN_ID=${campaign}" bun "${normalizer}" \
-          "${ios_summary}" "${ios_manifest}" "${ios_attempts}" "${source_commit}" \
-          "${ios_device}" "${ios_os_version}" "${ios_gaps}"
-      else
-        run_command "${repo_root}" env "CAMPAIGN_ID=${campaign}" bun "${normalizer}" \
-          "${ios_summary}" "${ios_manifest}" "${ios_attempts}" "${source_commit}" \
-          "${ios_device}" "${ios_os_version}"
-      fi
-      attempts="${campaign_root}/attempts.json"
-      run_command "${repo_root}" bun "${merger}" \
-        "${attempts}" "${mac_attempts}" "${e15_attempts}" "${e15_supplemental}" "${ios_attempts}"
-      run_command "${repo_root}" bun "${exporter}" "${attempts}" "${campaign_root}/samples.csv"
-      return
-    fi
-    require_file "${mac_attempts}"
-    require_file "${e15_attempts}"
-    require_file "${e15_supplemental}"
-    require_file "${ios_summary}"
-    [[ -n "${ios_manifest}" ]] || {
-      echo "error: set V1_IOS_PREBUILT_MANIFEST to normalize iPhone evidence" >&2
-      exit 1
-    }
-    require_file "${ios_manifest}"
-    if [[ -n "${ios_gaps}" ]]; then
-      require_file "${ios_gaps}"
-      run_command "${repo_root}" env "CAMPAIGN_ID=${campaign}" bun "${normalizer}" \
-        "${ios_summary}" "${ios_manifest}" "${ios_attempts}" "${source_commit}" \
-        "${ios_device}" "${ios_os_version}" "${ios_gaps}"
-    else
-      run_command "${repo_root}" env "CAMPAIGN_ID=${campaign}" bun "${normalizer}" \
-        "${ios_summary}" "${ios_manifest}" "${ios_attempts}" "${source_commit}" \
-        "${ios_device}" "${ios_os_version}"
-    fi
-    attempts="${campaign_root}/attempts.json"
-    run_command "${repo_root}" bun "${merger}" \
-      "${attempts}" "${mac_attempts}" "${e15_attempts}" "${e15_supplemental}" "${ios_attempts}"
-  fi
-  if [[ ! -f "${attempts}" ]]; then
-    ((dry_run)) && {
-      printf '# required normalized attempts: %s\n' "${attempts}" | tee -a "${command_log}"
-      return
-    }
-    echo "error: missing normalized attempt array ${attempts}" >&2
-    exit 1
-  fi
-  run_command "${repo_root}" bun "${exporter}" "${attempts}" "${campaign_root}/samples.csv"
+  # Publication export is sourced only from the committed, hash-locked V1
+  # evidence. The device runs above still retain their raw reports in the
+  # campaign directory for diagnosis and audit.
+  run_command "${repo_root}" bun "${exporter}" "--output=${output}"
 }
 
 run_stage() {

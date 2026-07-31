@@ -40,7 +40,8 @@
       "id": "provekit_v1",
       "frontend": "noir",
       "native_adapter": "ProveKit C ABI through Mobench",
-      "browser_adapter": "@worldcoin/provekit@0.1.0",
+      "browser_adapter": "tooling/provekit-wasm at provekit_v1.core_commit, single-thread wasm-bindgen package",
+      "browser_sdk_compatibility": "@worldcoin/provekit@0.1.0 is retained only as an incompatibility record; it is not a measured runtime",
       "proof_system": "WHIR",
       "required_cells": 9
     },
@@ -165,5 +166,18 @@
     "bundle_size_bytes",
     "peak_memory_bytes",
     "constraint_count"
-  ]
+  ],
+  "publication": {
+    "canonical_csv": "benchmarks/v1/semantic-parity-data/semantic-parity-samples.csv",
+    "rows": 162,
+    "logical_cells": 27,
+    "samples_per_successful_cell": {"warmup": 1, "measured": 5},
+    "all_cells_status": "ok",
+    "provekit_v1_core_commit": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
+    "payload_definition": "PKP/prover plus the frozen proving input; verifier-only artifacts, APK/IPA/XCUITest packages, and transport duplication are excluded",
+    "proof_serialization": {
+      "browser": "V1 WASM proof byte serialization",
+      "native": "serialized postcard NoirProof (.np) bytes"
+    }
+  }
 }

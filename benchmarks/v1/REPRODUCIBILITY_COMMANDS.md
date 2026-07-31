@@ -5,7 +5,10 @@ It is **not** the publication procedure and some commands describe superseded
 adapters or supporting evidence. For a blog-linked reproduction path, use
 [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) and
 [`scripts/run-reproducibility.sh`](scripts/run-reproducibility.sh). The
-authoritative results are [`data/benchmark-samples.csv`](data/benchmark-samples.csv).
+authoritative V1 results are
+[`semantic-parity-data/semantic-parity-samples.csv`](semantic-parity-data/semantic-parity-samples.csv).
+The older [`data/benchmark-samples.csv`](data/benchmark-samples.csv) remains a
+historical exploratory export with compound Circom variants.
 
 The orchestration script records the actual expanded commands in
 `target/v1-benchmarks/reproduction/<campaign>/commands.log`.

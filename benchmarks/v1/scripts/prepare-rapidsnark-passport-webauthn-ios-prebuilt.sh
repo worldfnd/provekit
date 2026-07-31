@@ -12,6 +12,10 @@ passport_assets="${benchmark_root}/circom/web/dist/assets/passport"
 passport_witnesses="${repo_root}/target/v1-benchmarks/circom/passport"
 webauthn_assets="${benchmark_root}/circom/web/dist/assets/webauthn"
 remote_webauthn_zkey_url="${MOBENCH_WEBAUTHN_ZKEY_URL:-}"
+remote_passport_p1_zkey_url="${MOBENCH_PASSPORT_P1_ZKEY_URL:-}"
+passport_p1_zkey="${repo_root}/target/v1-benchmarks/groth16/passport_p1/passport_p1_final.zkey"
+passport_p1_witness="${repo_root}/target/v1-benchmarks/circom-witnesses/passport_p1/native.wtns"
+passport_p1_vkey="${repo_root}/target/v1-benchmarks/groth16/passport_p1/verification_key.json"
 selected_workloads="${V1_RAPIDSNARK_CORE_IOS_WORKLOADS:-passport-disclose,passport-register,webauthn}"
 
 workload_selected() {
@@ -23,7 +27,7 @@ workload_selected() {
 
 for workload in ${selected_workloads//,/ }; do
   case "${workload}" in
-    passport-disclose | passport-register | webauthn) ;;
+    passport-disclose | passport-register | passport-p1 | webauthn) ;;
     *)
       echo "error: unsupported V1_RAPIDSNARK_CORE_IOS_WORKLOADS entry: ${workload}" >&2
       exit 2
@@ -62,6 +66,9 @@ compute_content_sha256() {
     "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.zkey" \
     "${passport_witnesses}/register_sha256_sha256_sha256_rsa_65537_4096.wtns" \
     "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.vkey.json" \
+    "${passport_p1_zkey}" \
+    "${passport_p1_witness}" \
+    "${passport_p1_vkey}" \
     "${webauthn_assets}/webauthn_default.zkey" \
     "${repo_root}/target/v1-benchmarks/circom/webauthn/fixture.wtns" \
     "${webauthn_assets}/webauthn_default.vkey.json" |
@@ -69,6 +76,7 @@ compute_content_sha256() {
     {
       cat
       printf '%s\n' "${remote_webauthn_zkey_url}"
+      printf '%s\n' "${remote_passport_p1_zkey_url}"
       printf '%s\n' "${selected_workloads}"
     } |
     shasum -a 256 |
@@ -177,7 +185,12 @@ prepare_workload() {
 
   bun "${script_dir}/patch-ios-runner-json.ts" \
     "${project}/BenchRunner/BenchRunnerFFI.swift" >/dev/null
-  if [[ "${workload}" == "webauthn" && -n "${remote_webauthn_zkey_url}" ]]; then
+  local remote_zkey_url=""
+  case "${workload}" in
+    webauthn) remote_zkey_url="${remote_webauthn_zkey_url}" ;;
+    passport-p1) remote_zkey_url="${remote_passport_p1_zkey_url}" ;;
+  esac
+  if [[ -n "${remote_zkey_url}" ]]; then
     bun "${script_dir}/patch-ios-remote-proving-key.ts" \
       "${project}/BenchRunner/BenchRunnerFFI.swift" >/dev/null
   fi
@@ -188,9 +201,9 @@ prepare_workload() {
     -output "${xcframework}" >/dev/null
 
   mkdir -p "${resources}"
-  if [[ "${workload}" == "webauthn" && -n "${remote_webauthn_zkey_url}" ]]; then
+  if [[ -n "${remote_zkey_url}" ]]; then
     jq -n \
-      --arg url "${remote_webauthn_zkey_url}" \
+      --arg url "${remote_zkey_url}" \
       --arg sha256 "$(shasum -a 256 "${zkey}" | awk '{print $1}')" \
       --argjson bytes "$(stat -f '%z' "${zkey}")" \
       '{url:$url,bytes:$bytes,sha256:$sha256}' \
@@ -297,6 +310,21 @@ if workload_selected passport-register; then
     "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.zkey" \
     "${passport_witnesses}/register_sha256_sha256_sha256_rsa_65537_4096.wtns" \
     "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.vkey.json" \
+    prove
+fi
+if workload_selected passport-p1; then
+  [[ -n "${remote_passport_p1_zkey_url}" ]] || {
+    echo "error: MOBENCH_PASSPORT_P1_ZKEY_URL is required for passport-p1" >&2
+    exit 2
+  }
+  prepare_workload \
+    passport-p1 \
+    "${benchmark_root}/rapidsnark-mobile" \
+    provekit_v1_rapidsnark_mobile \
+    bench_passport_rapidsnark \
+    "${passport_p1_zkey}" \
+    "${passport_p1_witness}" \
+    "${passport_p1_vkey}" \
     prove
 fi
 if workload_selected webauthn; then
