@@ -1,4 +1,4 @@
-#[cfg(target_arch = "wasm32")]
+#[cfg(not(target_arch = "wasm32"))]
 use crate::b51_interleaved::ntt_nr_b51;
 use {
     crate::ark_interleaved::ntt_nr_ark,
@@ -111,9 +111,9 @@ static ENGINE: LazyLock<RwLock<NTTEngine>> = LazyLock::new(|| RwLock::new(NTTEng
 /// * `values` - A mutable reference to an NTT container holding the
 ///   coefficients to be transformed.
 pub fn ntt_nr(values: &mut [Fr], codeword_size: usize, num_groups: usize) {
-    #[cfg(not(target_arch = "wasm32"))]
-    ntt_nr_ark(values, codeword_size, num_groups);
     #[cfg(target_arch = "wasm32")]
+    ntt_nr_ark(values, codeword_size, num_groups);
+    #[cfg(not(target_arch = "wasm32"))]
     ntt_nr_b51(values, codeword_size, num_groups);
 }
 

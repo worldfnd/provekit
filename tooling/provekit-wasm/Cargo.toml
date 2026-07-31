@@ -7,8 +7,7 @@
 # workspace's threaded wasm32 RUSTFLAGS to omit atomics, shared memory, and TLS
 # exports. The JavaScript package build owns that target-specific override.
 #
-# Threaded RUSTFLAGS and linker args are in .cargo/config.toml under
-# [target.wasm32-unknown-unknown].
+# The JavaScript package build owns each variant's RUSTFLAGS and linker args.
 # The browser must serve with Cross-Origin-Opener-Policy: same-origin and
 # Cross-Origin-Embedder-Policy: require-corp headers for SharedArrayBuffer.
 

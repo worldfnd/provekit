@@ -11,6 +11,10 @@ mod aarch64;
 pub mod rtz;
 
 pub mod constants;
+// The RNE implementation uses portable SIMD and relaxed-SIMD FMA on wasm32.
+// ProveKit's browser fallback must remain parseable by Safari/WebKit builds
+// without either SIMD proposal, and its WASM hash path uses scalar_sqr.
+#[cfg(not(target_arch = "wasm32"))]
 pub mod rne;
 mod scalar;
 pub mod utils;

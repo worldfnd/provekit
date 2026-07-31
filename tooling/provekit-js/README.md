@@ -25,9 +25,11 @@ Cross-Origin-Embedder-Policy: require-corp
 ```
 
 `threads: "auto"` selects the bundled threaded build when supported and falls
-back to the separate non-shared-memory build. An explicit positive thread count
-fails with `THREADS_UNAVAILABLE` if the requested pool cannot be created. iOS
-and iPadOS use the single-threaded build in auto mode.
+back to the separate scalar, non-shared-memory build. The fallback deliberately
+does not require SIMD or relaxed SIMD, so it can initialize on Safari/WebKit.
+An explicit positive thread count fails with `THREADS_UNAVAILABLE` if the
+requested pool cannot be created. iOS and iPadOS use the single-threaded build
+in auto mode.
 
 The package accepts current binary ProveKit artifacts only: PKP 2.0+ and PKV
 2.1+ with the same major version. Legacy PKP 1.1 / PKV 1.2 artifacts must be
@@ -40,11 +42,12 @@ should configure smaller limits when their known artifacts permit it.
 
 ## Building
 
-`npm run build:wasm` builds the Rust WASM target with the repository-pinned
-toolchain, derives the exact `wasm-bindgen-cli` version from `Cargo.lock`, and
-runs `wasm-opt` with the repository's thread/SIMD flags. `npm run build` then
-bundles TypeScript and copies the generated glue, `.wasm`, declarations, and
-rayon snippets into `dist/wasm`.
+`npm run build:wasm` builds a threaded SIMD artifact and a scalar Safari-safe
+fallback with the repository-pinned toolchain, derives the exact
+`wasm-bindgen-cli` version from `Cargo.lock`, and optimizes each with its
+matching WebAssembly feature set. `npm run build` then bundles TypeScript and
+copies the generated glue, `.wasm`, declarations, and rayon snippets into
+`dist/wasm`.
 
 Consumers may override the bundled glue with `wasmModule` and the binary input
 with `wasmUrl`, which is useful for CSP-controlled hosting or tests.

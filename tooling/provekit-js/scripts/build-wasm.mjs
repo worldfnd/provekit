@@ -14,6 +14,17 @@ function run(command, args, options = {}) {
   execFileSync(command, args, { cwd: repositoryRoot, stdio: "inherit", ...options });
 }
 
+const threadedRustFlags = [
+  "-Ctarget-feature=+atomics,+bulk-memory,+mutable-globals,+simd128,+relaxed-simd,-reference-types",
+  "-Clink-arg=--shared-memory",
+  "-Clink-arg=--import-memory",
+  "-Clink-arg=--max-memory=4294967296",
+  "-Clink-arg=--export=__wasm_init_tls",
+  "-Clink-arg=--export=__tls_size",
+  "-Clink-arg=--export=__tls_align",
+  "-Clink-arg=--export=__tls_base",
+].join("\x1f");
+
 run("cargo", ["install", "wasm-bindgen-cli", "--version", version, "--locked"]);
 
 await rm(outputDir, { recursive: true, force: true });
@@ -35,14 +46,18 @@ function buildVariant(variant, threaded) {
     "build-std=panic_abort,std",
   ];
   if (!threaded) cargoArgs.push("--no-default-features");
-  const options = threaded
-    ? {}
-    : {
-        env: {
-          ...process.env,
-          RUSTFLAGS: "-C target-feature=+simd128,+relaxed-simd",
-        },
-      };
+  const options = {
+    env: {
+      ...process.env,
+      // The scalar module is Safari's fallback. Its flags must not inherit
+      // the threaded module's atomics, shared-memory, SIMD, or relaxed-SIMD
+      // requirements.
+      RUSTFLAGS: "",
+      CARGO_ENCODED_RUSTFLAGS: threaded
+        ? threadedRustFlags
+        : "-Ctarget-cpu=mvp\x1f-Ctarget-feature=-simd128,-relaxed-simd",
+    },
+  };
   run("cargo", cargoArgs, options);
   run("wasm-bindgen", [
     "--target",
@@ -55,15 +70,13 @@ function buildVariant(variant, threaded) {
   const wasm = resolve(variantOutput, "provekit_wasm_bg.wasm");
   const wasmOptArgs = [
     "-O3",
-    "--enable-simd",
     "--enable-bulk-memory",
     "--enable-mutable-globals",
     "--enable-nontrapping-float-to-int",
     "--enable-sign-ext",
-    "--fast-math",
     "--low-memory-unused",
   ];
-  if (threaded) wasmOptArgs.push("--enable-threads");
+  if (threaded) wasmOptArgs.push("--enable-simd", "--enable-threads", "--fast-math");
   wasmOptArgs.push("-o", wasm, wasm);
   run("wasm-opt", wasmOptArgs);
 }

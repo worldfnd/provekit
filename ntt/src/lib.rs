@@ -2,6 +2,7 @@
 pub mod ntt;
 pub use ntt::*;
 pub mod ark_interleaved;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod b51_interleaved;
 
 /// Generates an NTT for a given element type and butterfly
