@@ -7,11 +7,17 @@ benchmark_root="$(cd "${script_dir}/.." && pwd)"
 repo_root="$(cd "${benchmark_root}/../.." && pwd)"
 lock_file="${benchmark_root}/circom/trusted-setup.lock.json"
 setup_root="${V1_BENCHMARK_SETUP_ROOT:-${repo_root}/target/v1-benchmarks/trusted-setup}"
-name="$(jq -r '.artifacts[0].name' "${lock_file}")"
-url="$(jq -r '.artifacts[0].url' "${lock_file}")"
-expected_size="$(jq -r '.artifacts[0].size' "${lock_file}")"
-expected_sha256="$(jq -r '.artifacts[0].sha256' "${lock_file}")"
-expected_hash="$(jq -r '.artifacts[0].blake2b512' "${lock_file}")"
+power="${1:-20}"
+selector="powersOfTau28_hez_final_${power}"
+artifact="$(jq -ec --arg name "${selector}" '.artifacts[] | select(.name == $name)' "${lock_file}")" || {
+  echo "error: no trusted setup artifact is pinned for power ${power}" >&2
+  exit 1
+}
+name="$(jq -r '.name' <<<"${artifact}")"
+url="$(jq -r '.url' <<<"${artifact}")"
+expected_size="$(jq -r '.size' <<<"${artifact}")"
+expected_sha256="$(jq -r '.sha256 // empty' <<<"${artifact}")"
+expected_hash="$(jq -r '.blake2b512' <<<"${artifact}")"
 destination="${setup_root}/${name}.ptau"
 
 for command in curl jq openssl stat; do
@@ -37,12 +43,14 @@ verify() {
   if [[ "${actual_size}" != "${expected_size}" ]]; then
     return 1
   fi
-  actual_sha256="$(
-    openssl dgst -sha256 "${destination}" |
-      awk '{print tolower($NF)}'
-  )"
-  if [[ "${actual_sha256}" != "${expected_sha256}" ]]; then
-    return 1
+  if [[ -n "${expected_sha256}" ]]; then
+    actual_sha256="$(
+      openssl dgst -sha256 "${destination}" |
+        awk '{print tolower($NF)}'
+    )"
+    if [[ "${actual_sha256}" != "${expected_sha256}" ]]; then
+      return 1
+    fi
   fi
   actual_hash="$(
     openssl dgst -blake2b512 "${destination}" |

@@ -6,12 +6,9 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 wasm_root="$(cd "${script_dir}/.." && pwd)"
 benchmark_root="$(cd "${wasm_root}/.." && pwd)"
 repo_root="$(cd "${benchmark_root}/../.." && pwd)"
-generated_dir="${wasm_root}/generated/provekit"
 dist_dir="${wasm_root}/dist"
-cargo_target="${repo_root}/target/v1-benchmarks/wasm-single/cargo"
-wasm_binary="${cargo_target}/wasm32-unknown-unknown/release/provekit_wasm.wasm"
 
-for command in bun cargo; do
+for command in bun; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     echo "error: ${command} is required" >&2
     exit 1
@@ -23,7 +20,6 @@ for workload in webauthn_assertion passport_complete_age_check oprf_taceo; do
   V1_BENCHMARK_SKIP_NOIR_COMPILE=1 \
     "${benchmark_root}/scripts/build-provekit-workload.sh" "${workload}"
 done
-wasm_bindgen="$("${benchmark_root}/scripts/bootstrap-wasm-bindgen.sh")"
 (
   cd "${wasm_root}"
   bun install --frozen-lockfile
@@ -34,31 +30,7 @@ if [[ "${dist_dir}" != "${repo_root}/benchmarks/v1/wasm/dist" ]]; then
   exit 1
 fi
 rm -rf "${dist_dir}"
-mkdir -p "${generated_dir}" "${dist_dir}/assets"
-RUSTFLAGS="-C link-arg=--max-memory=4294967296" \
-  CARGO_TARGET_DIR="${cargo_target}" \
-  cargo build \
-    --release \
-    --target wasm32-unknown-unknown \
-    -p provekit-wasm \
-    --no-default-features \
-    -Z build-std=panic_abort,std
-
-"${wasm_bindgen}" \
-  --target web \
-  --out-dir "${generated_dir}" \
-  --out-name provekit_wasm \
-  "${wasm_binary}"
-
-(
-  cd "${wasm_root}"
-  bun build src/runner.ts src/worker.ts \
-    --outdir dist \
-    --target browser \
-    --format esm \
-    --minify
-)
-
+mkdir -p "${dist_dir}/assets"
 cp "${wasm_root}/index.html" "${dist_dir}/index.html"
 for workload in webauthn_assertion passport_complete_age_check oprf_taceo; do
   workload_dir="${repo_root}/target/v1-benchmarks/artifacts/${workload}"
@@ -75,19 +47,40 @@ cp "${benchmark_root}/noir/webauthn_assertion/inputs.json" \
     "${repo_root}/noir-examples/noir-passport-monolithic/complete_age_check/Prover.toml" \
     "${dist_dir}/assets/passport_complete_age_check/inputs.json"
   bun run inputs -- \
-    "${repo_root}/target/v1-benchmarks/sources/oprf-nr/oprf_example/Prover.toml" \
+    "${repo_root}/target/v1-benchmarks/sources/oprf-nr-v2/oprf_example/Prover.toml" \
     "${dist_dir}/assets/oprf_taceo/inputs.json"
 )
-cp "${generated_dir}/provekit_wasm_bg.wasm" "${dist_dir}/provekit_wasm_bg.wasm"
-cp "${wasm_root}/node_modules/@noir-lang/acvm_js/web/acvm_js_bg.wasm" \
-  "${dist_dir}/acvm_js_bg.wasm"
-cp "${wasm_root}/node_modules/@noir-lang/noirc_abi/web/noirc_abi_wasm_bg.wasm" \
-  "${dist_dir}/noirc_abi_wasm_bg.wasm"
+(
+  cd "${wasm_root}"
+  bunx vite build
+)
+
+runtime_manifest="${repo_root}/target/v1-benchmarks/provekit-sdk-browser-files.tsv"
+mkdir -p "$(dirname "${runtime_manifest}")"
+{
+  printf '# scope\tkind\tpath\tmime_type\n'
+  printf 'shared-runtime\thtml\t%s\ttext/html; charset=utf-8\n' \
+    "${dist_dir}/index.html"
+  while IFS= read -r file; do
+    case "${file}" in
+      *.wasm) mime='application/wasm' ;;
+      *.js) mime='text/javascript; charset=utf-8' ;;
+      *) continue ;;
+    esac
+    printf 'shared-runtime\tpackage-runtime\t%s\t%s\n' "${file}" "${mime}"
+  done < <(find "${dist_dir}" -maxdepth 2 -type f | LC_ALL=C sort)
+  for workload in webauthn_assertion passport_complete_age_check oprf_taceo; do
+    while IFS= read -r file; do
+      printf '%s\tworkload-asset\t%s\tapplication/octet-stream\n' \
+        "${workload}" "${file}"
+    done < <(find "${dist_dir}/assets/${workload}" -type f | LC_ALL=C sort)
+  done
+} >"${runtime_manifest}"
 
 (
   cd "${repo_root}"
   "${benchmark_root}/scripts/measure-bundle.sh" \
-    "${benchmark_root}/manifests/provekit-wasm-workloads.tsv" \
+    "${runtime_manifest}" \
     "${dist_dir}/manifest.json"
 )
 

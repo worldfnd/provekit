@@ -1,0 +1,28 @@
+[package]
+name = "provekit-v1-rapidsnark-mobile-oprf"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+build = "../rapidsnark-mobile/build.rs"
+
+[lib]
+crate-type = ["lib", "cdylib", "staticlib"]
+doctest = false
+
+[features]
+default = ["oprf-query"]
+oprf-query = []
+oprf-nullifier = []
+
+[dependencies]
+anyhow = "1"
+inventory = "0.3"
+mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs.git", rev = "e992596a786cc18047102a318d40131c953e57b8" }
+uniffi = { version = "0.31", features = ["cli"] }
+
+[build-dependencies]
+cc = "1"
+chkstk_stub = "=0.1.0"
+
+[workspace]

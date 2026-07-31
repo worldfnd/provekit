@@ -1,4 +1,8 @@
-# Adding browser/WASM execution to mobile-bench-rs
+# Historical browser/WASM design assessment
+
+This is an implementation-era design note, retained for context. It is not the
+publication methodology. The campaign's browser results and measurement rules
+are documented in [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md).
 
 ## Assessment
 

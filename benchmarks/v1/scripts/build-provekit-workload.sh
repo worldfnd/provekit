@@ -22,7 +22,7 @@ case "${workload}" in
     input="${circuit_dir}/Prover.toml"
     ;;
   oprf_taceo)
-    circuit_dir="${repo_root}/target/v1-benchmarks/sources/oprf-nr/oprf_example"
+    circuit_dir="${repo_root}/target/v1-benchmarks/sources/oprf-nr-v2/oprf_example"
     input="${circuit_dir}/Prover.toml"
     ;;
   *)

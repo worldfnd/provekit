@@ -44,6 +44,11 @@ thiserror = "1.0"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[build-dependencies]
+base64.workspace = true
+flate2 = "1.1"
+serde_json.workspace = true
+
 [lints]
 workspace = true
 

@@ -1,0 +1,333 @@
+diff --git a/src/groth16.cpp b/src/groth16.cpp
+index a4acc14..bc34ac7 100644
+--- a/src/groth16.cpp
++++ b/src/groth16.cpp
+@@ -4,9 +4,48 @@
+ #include <sstream>
+ #include <vector>
+ #include <mutex>
++#include <memory>
++#include <cstdio>
++#include <cstdint>
++
++#if defined(__APPLE__) && defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++#include <mach/mach.h>
++#include <sys/mman.h>
++#include <unistd.h>
++#endif
+ 
+ namespace Groth16 {
+ 
++#if defined(__APPLE__) && defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++static void logPhaseMemory(const char *phase) {
++    mach_task_basic_info_data_t info;
++    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
++    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO,
++                  reinterpret_cast<task_info_t>(&info), &count) == KERN_SUCCESS) {
++        std::fprintf(stderr,
++                     "RAPIDSNARK_PHASE_MEMORY phase=%s resident_bytes=%llu\n",
++                     phase,
++                     static_cast<unsigned long long>(info.resident_size));
++    }
++}
++
++static void reclaimReadOnlyPages(const void *address, size_t length) {
++    const long pageSize = sysconf(_SC_PAGESIZE);
++    if (!address || length == 0 || pageSize <= 0) return;
++
++    const uintptr_t begin = reinterpret_cast<uintptr_t>(address);
++    const uintptr_t page = static_cast<uintptr_t>(pageSize);
++    const uintptr_t alignedBegin = (begin + page - 1) & ~(page - 1);
++    const uintptr_t alignedEnd = (begin + length) & ~(page - 1);
++    if (alignedEnd > alignedBegin) {
++        munmap(reinterpret_cast<void *>(alignedBegin), alignedEnd - alignedBegin);
++    }
++}
++#else
++static void logPhaseMemory(const char *) {}
++static void reclaimReadOnlyPages(const void *, size_t) {}
++#endif
++
+ template <typename Engine>
+ std::unique_ptr<Prover<Engine>> makeProver(
+     u_int32_t nVars, 
+@@ -23,7 +62,8 @@ std::unique_ptr<Prover<Engine>> makeProver(
+     void *pointsB1, 
+     void *pointsB2, 
+     void *pointsC, 
+-    void *pointsH
++    void *pointsH,
++    bool reclaimZkeyPages
+ ) {
+     Prover<Engine> *p = new Prover<Engine>(
+         Engine::engine, 
+@@ -41,7 +81,8 @@ std::unique_ptr<Prover<Engine>> makeProver(
+         (typename Engine::G1PointAffine *)pointsB1,
+         (typename Engine::G2PointAffine *)pointsB2,
+         (typename Engine::G1PointAffine *)pointsC,
+-        (typename Engine::G1PointAffine *)pointsH
++        (typename Engine::G1PointAffine *)pointsH,
++        reclaimZkeyPages
+     );
+     return std::unique_ptr< Prover<Engine> >(p);
+ }
+@@ -50,35 +91,8 @@ template <typename Engine>
+ std::unique_ptr<Proof<Engine>> Prover<Engine>::prove(typename Engine::FrElement *wtns) {
+ 
+     ThreadPool &threadPool = ThreadPool::defaultPool();
+-
+-    LOG_TRACE("Start Multiexp A");
+     uint32_t sW = sizeof(wtns[0]);
+-    typename Engine::G1Point pi_a;
+-    E.g1.multiMulByScalarMSM(pi_a, pointsA, (uint8_t *)wtns, sW, nVars);
+-    std::ostringstream ss2;
+-    ss2 << "pi_a: " << E.g1.toString(pi_a);
+-    LOG_DEBUG(ss2);
+-
+-    LOG_TRACE("Start Multiexp B1");
+-    typename Engine::G1Point pib1;
+-    E.g1.multiMulByScalarMSM(pib1, pointsB1, (uint8_t *)wtns, sW, nVars);
+-    std::ostringstream ss3;
+-    ss3 << "pib1: " << E.g1.toString(pib1);
+-    LOG_DEBUG(ss3);
+-
+-    LOG_TRACE("Start Multiexp B2");
+-    typename Engine::G2Point pi_b;
+-    E.g2.multiMulByScalarMSM(pi_b, pointsB2, (uint8_t *)wtns, sW, nVars);
+-    std::ostringstream ss4;
+-    ss4 << "pi_b: " << E.g2.toString(pi_b);
+-    LOG_DEBUG(ss4);
+-
+-    LOG_TRACE("Start Multiexp C");
+-    typename Engine::G1Point pi_c;
+-    E.g1.multiMulByScalarMSM(pi_c, pointsC, (uint8_t *)((uint64_t)wtns + (nPublic +1)*sW), sW, nVars-nPublic-1);
+-    std::ostringstream ss5;
+-    ss5 << "pi_c: " << E.g1.toString(pi_c);
+-    LOG_DEBUG(ss5);
++    logPhaseMemory("start");
+ 
+     LOG_TRACE("Start Initializing a b c A");
+     auto a = new typename Engine::FrElement[domainSize];
+@@ -117,6 +131,12 @@ std::unique_ptr<Proof<Engine>> Prover<Engine>::prove(typename Engine::FrElement
+             );
+         }
+     });
++    if (reclaimZkeyPages) {
++        reclaimReadOnlyPages(
++            reinterpret_cast<const uint8_t *>(coefs) - sizeof(u_int32_t),
++            sizeof(u_int32_t) + nCoefs * sizeof(Coef<Engine>));
++    }
++    logPhaseMemory("qap_coefficients");
+     LOG_TRACE("Calculating c");
+     threadPool.parallelFor(0, domainSize, [&] (int64_t begin, int64_t end, uint64_t idThread) {
+         for (u_int64_t i=begin; i<end; i++) {
+@@ -129,6 +149,8 @@ std::unique_ptr<Proof<Engine>> Prover<Engine>::prove(typename Engine::FrElement
+     });
+ 
+     LOG_TRACE("Initializing fft");
++    std::unique_ptr<FFT<typename Engine::Fr>> fft(
++        new FFT<typename Engine::Fr>(domainSize*2));
+     u_int32_t domainPower = fft->log2(domainSize);
+ 
+     LOG_TRACE("Start iFFT A");
+@@ -206,10 +228,63 @@ std::unique_ptr<Proof<Engine>> Prover<Engine>::prove(typename Engine::FrElement
+ 
+     delete [] b;
+     delete [] c;
++    fft.reset();
++    logPhaseMemory("qap_fft_complete");
++
++    LOG_TRACE("Start Multiexp A");
++    typename Engine::G1Point pi_a;
++    E.g1.multiMulByScalarMSM(pi_a, pointsA, (uint8_t *)wtns, sW, nVars);
++    if (reclaimZkeyPages) {
++        reclaimReadOnlyPages(pointsA, nVars * sizeof(typename Engine::G1PointAffine));
++    }
++    logPhaseMemory("multiexp_a");
++    std::ostringstream ss2;
++    ss2 << "pi_a: " << E.g1.toString(pi_a);
++    LOG_DEBUG(ss2);
++
++    LOG_TRACE("Start Multiexp B1");
++    typename Engine::G1Point pib1;
++    E.g1.multiMulByScalarMSM(pib1, pointsB1, (uint8_t *)wtns, sW, nVars);
++    if (reclaimZkeyPages) {
++        reclaimReadOnlyPages(pointsB1, nVars * sizeof(typename Engine::G1PointAffine));
++    }
++    logPhaseMemory("multiexp_b1");
++    std::ostringstream ss3;
++    ss3 << "pib1: " << E.g1.toString(pib1);
++    LOG_DEBUG(ss3);
++
++    LOG_TRACE("Start Multiexp B2");
++    typename Engine::G2Point pi_b;
++    E.g2.multiMulByScalarMSM(pi_b, pointsB2, (uint8_t *)wtns, sW, nVars);
++    if (reclaimZkeyPages) {
++        reclaimReadOnlyPages(pointsB2, nVars * sizeof(typename Engine::G2PointAffine));
++    }
++    logPhaseMemory("multiexp_b2");
++    std::ostringstream ss4;
++    ss4 << "pi_b: " << E.g2.toString(pi_b);
++    LOG_DEBUG(ss4);
++
++    LOG_TRACE("Start Multiexp C");
++    typename Engine::G1Point pi_c;
++    E.g1.multiMulByScalarMSM(pi_c, pointsC, (uint8_t *)((uint64_t)wtns + (nPublic +1)*sW), sW, nVars-nPublic-1);
++    if (reclaimZkeyPages) {
++        reclaimReadOnlyPages(pointsC,
++                             (nVars - nPublic - 1) *
++                                 sizeof(typename Engine::G1PointAffine));
++    }
++    logPhaseMemory("multiexp_c");
++    std::ostringstream ss5;
++    ss5 << "pi_c: " << E.g1.toString(pi_c);
++    LOG_DEBUG(ss5);
+ 
+     LOG_TRACE("Start Multiexp H");
+     typename Engine::G1Point pih;
+     E.g1.multiMulByScalarMSM(pih, pointsH, (uint8_t *)a, sizeof(a[0]), domainSize);
++    if (reclaimZkeyPages) {
++        reclaimReadOnlyPages(pointsH,
++                             domainSize * sizeof(typename Engine::G1PointAffine));
++    }
++    logPhaseMemory("multiexp_h");
+     std::ostringstream ss1;
+     ss1 << "pih: " << E.g1.toString(pih);
+     LOG_DEBUG(ss1);
+@@ -259,6 +334,7 @@ std::unique_ptr<Proof<Engine>> Prover<Engine>::prove(typename Engine::FrElement
+     E.g1.copy(p->A, pi_a);
+     E.g2.copy(p->B, pi_b);
+     E.g1.copy(p->C, pi_c);
++    logPhaseMemory("proof_complete");
+ 
+     return std::unique_ptr<Proof<Engine>>(p);
+ }
+diff --git a/src/groth16.hpp b/src/groth16.hpp
+index c113491..5b39f41 100644
+--- a/src/groth16.hpp
++++ b/src/groth16.hpp
+@@ -67,8 +67,7 @@ namespace Groth16 {
+         typename Engine::G2PointAffine *pointsB2;
+         typename Engine::G1PointAffine *pointsC;
+         typename Engine::G1PointAffine *pointsH;
+-
+-        FFT<typename Engine::Fr> *fft;
++        bool reclaimZkeyPages;
+     public:
+         Prover(
+             Engine &_E, 
+@@ -86,7 +85,8 @@ namespace Groth16 {
+             typename Engine::G1PointAffine *_pointsB1,
+             typename Engine::G2PointAffine *_pointsB2,
+             typename Engine::G1PointAffine *_pointsC,
+-            typename Engine::G1PointAffine *_pointsH
++            typename Engine::G1PointAffine *_pointsH,
++            bool _reclaimZkeyPages
+         ) : 
+             E(_E), 
+             nVars(_nVars),
+@@ -103,14 +103,9 @@ namespace Groth16 {
+             pointsB1(_pointsB1),
+             pointsB2(_pointsB2),
+             pointsC(_pointsC),
+-            pointsH(_pointsH)
+-        { 
+-            fft = new FFT<typename Engine::Fr>(domainSize*2);
+-        }
+-
+-        ~Prover() {
+-            delete fft;
+-        }
++            pointsH(_pointsH),
++            reclaimZkeyPages(_reclaimZkeyPages)
++        { }
+ 
+         std::unique_ptr<Proof<Engine>> prove(typename Engine::FrElement *wtns);
+     };
+@@ -131,7 +126,8 @@ namespace Groth16 {
+         void *pointsB1,
+         void *pointsB2,
+         void *pointsC,
+-        void *pointsH
++        void *pointsH,
++        bool reclaimZkeyPages
+     );
+ 
+     template <typename Engine>
+diff --git a/src/prover.cpp b/src/prover.cpp
+index 8221cd6..2d72507 100644
+--- a/src/prover.cpp
++++ b/src/prover.cpp
+@@ -102,7 +102,8 @@ class Groth16Prover
+ 
+ public:
+     Groth16Prover(const void         *zkey_buffer,
+-                  unsigned long long  zkey_size)
++                  unsigned long long  zkey_size,
++                  bool                reclaim_zkey_pages = false)
+ 
+         : zkey(zkey_buffer, zkey_size, "zkey", 1),
+           zkeyHeader(ZKeyUtils::loadHeader(&zkey))
+@@ -126,7 +127,8 @@ public:
+             zkey.getSectionData(6),    // pointsB1
+             zkey.getSectionData(7),    // pointsB2
+             zkey.getSectionData(8),    // pointsC
+-            zkey.getSectionData(9)     // pointsH1
++            zkey.getSectionData(9),    // pointsH1
++            reclaim_zkey_pages
+         );
+     }
+ 
+@@ -431,6 +433,43 @@ groth16_prover(
+     return error;
+ }
+ 
++static int
++groth16_prover_mapped_zkey(
++    const void          *zkey_buffer,
++    unsigned long long   zkey_size,
++    const void          *wtns_buffer,
++    unsigned long long   wtns_size,
++    char                *proof_buffer,
++    unsigned long long  *proof_size,
++    char                *public_buffer,
++    unsigned long long  *public_size,
++    char                *error_msg,
++    unsigned long long   error_msg_maxsize)
++{
++    void *prover = NULL;
++
++    try {
++        prover = new Groth16Prover(zkey_buffer, zkey_size, true);
++    } catch (std::exception& e) {
++        CopyError(error_msg, error_msg_maxsize, e);
++        return PROVER_ERROR;
++    }
++
++    int error = groth16_prover_prove(
++                    prover,
++                    wtns_buffer,
++                    wtns_size,
++                    proof_buffer,
++                    proof_size,
++                    public_buffer,
++                    public_size,
++                    error_msg,
++                    error_msg_maxsize);
++
++    groth16_prover_destroy(prover);
++    return error;
++}
++
+ int
+ groth16_prover_zkey_file(
+     const char          *zkey_file_path,
+@@ -453,7 +492,7 @@ groth16_prover_zkey_file(
+         return PROVER_ERROR;
+     }
+ 
+-    return groth16_prover(
++    return groth16_prover_mapped_zkey(
+             fileLoader.dataBuffer(),
+             fileLoader.dataSize(),
+             wtns_buffer,

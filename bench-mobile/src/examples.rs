@@ -94,3 +94,20 @@ pub fn fixture_end_to_end_smoke(fixture: MobileBenchFixture) -> Result<()> {
     let _verified = verify_fixture(verified)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{prepare_fixture, MobileBenchFixture};
+
+    #[test]
+    fn embedded_campaign_artifacts_deserialize_with_provekit_noir() {
+        for fixture in [
+            MobileBenchFixture::CompleteAgeCheck,
+            MobileBenchFixture::Oprf,
+            MobileBenchFixture::WebauthnAssertion,
+        ] {
+            prepare_fixture(fixture)
+                .unwrap_or_else(|error| panic!("failed to prepare {}: {error:#}", fixture.name()));
+        }
+    }
+}

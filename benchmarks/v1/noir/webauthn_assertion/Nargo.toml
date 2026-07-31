@@ -7,4 +7,4 @@ license = "MIT"
 compiler_version = ">=1.0.0"
 
 [dependencies]
-webauthn = { path = "../../../../target/v1-benchmarks/sources/world-id-protocol/crates/proof/noir/passkey-ownership-proof/vendor/webauthn" }
+webauthn = { path = "../../../../target/v1-benchmarks/noir-beta19-compat/vendor/webauthn" }

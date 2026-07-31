@@ -3,6 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:web": "bash web/build.sh",
+    "smoke:web": "bun run web/smoke.ts",
     "inputs": "bun run convert-inputs.ts",
     "smoke": "bun run smoke.ts",
     "smoke:webauthn": "bun run smoke.ts webauthn_assertion",
@@ -10,8 +12,11 @@
     "smoke:passport": "bun run smoke.ts passport_complete_age_check"
   },
   "dependencies": {
-    "@aztec/bb.js": "0.87.0",
+    "@aztec/bb.js": "4.2.0-aztecnr-rc.2",
     "@iarna/toml": "2.2.5",
-    "@noir-lang/noir_js": "1.0.0-beta.11"
+    "@noir-lang/noir_js": "1.0.0-beta.19"
+  },
+  "devDependencies": {
+    "playwright-core": "1.59.1"
   }
 }

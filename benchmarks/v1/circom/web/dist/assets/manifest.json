@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "fixtures": {
+    "passport": [
+      {
+        "circuit": "register_sha256_sha256_sha256_rsa_65537_4096",
+        "variant": "self_passport_registration",
+        "wasm": "passport/register_sha256_sha256_sha256_rsa_65537_4096.wasm",
+        "zkey": "passport/register_sha256_sha256_sha256_rsa_65537_4096.zkey",
+        "verification_key": "passport/register_sha256_sha256_sha256_rsa_65537_4096.vkey.json",
+        "input": "passport/register_sha256_sha256_sha256_rsa_65537_4096.input.json",
+        "circuit_commit": "15b167e3543a9dff1dbb16fcf71a45fe4625cf9e",
+        "semantic_equivalence": "closest-analogue-not-equivalent"
+      },
+      {
+        "circuit": "vc_and_disclose",
+        "variant": "self_passport_disclosure",
+        "wasm": "passport/vc_and_disclose.wasm",
+        "zkey": "passport/vc_and_disclose.zkey",
+        "verification_key": "passport/vc_and_disclose.vkey.json",
+        "input": "passport/vc_and_disclose.input.json",
+        "circuit_commit": "15b167e3543a9dff1dbb16fcf71a45fe4625cf9e",
+        "semantic_equivalence": "closest-analogue-not-equivalent"
+      }
+    ],
+    "webauthn": [
+      {
+        "circuit": "webauthn_default",
+        "variant": "privacy_ethereum_webauth_circom",
+        "wasm": "webauthn/webauthn_default.wasm",
+        "zkey": "webauthn/webauthn_default.zkey",
+        "verification_key": "webauthn/webauthn_default.vkey.json",
+        "input": "webauthn/webauthn_default.input.json",
+        "circuit_commit": "0fb5b4aa1398281c2fd3dbe14db147e05b61f201",
+        "semantic_equivalence": "closest-analogue-not-equivalent"
+      }
+    ],
+    "oprf": [
+      {
+        "circuit": "OPRFQueryProof",
+        "variant": "world_id_protocol_query",
+        "wasm": "oprf/oprf_query.wasm",
+        "zkey": "oprf/oprf_query.zkey",
+        "verification_key": "oprf/oprf_query.vkey.json",
+        "input": "oprf/oprf_query.input.json",
+        "circuit_commit": "85aeeef539961cae5a63de794997b507a5975717",
+        "semantic_equivalence": "closest-analogue-not-equivalent"
+      },
+      {
+        "circuit": "OPRFNullifierProof",
+        "variant": "world_id_protocol_nullifier",
+        "wasm": "oprf/oprf_nullifier.wasm",
+        "zkey": "oprf/oprf_nullifier.zkey",
+        "verification_key": "oprf/oprf_nullifier.vkey.json",
+        "input": "oprf/oprf_nullifier.input.json",
+        "circuit_commit": "85aeeef539961cae5a63de794997b507a5975717",
+        "semantic_equivalence": "closest-analogue-not-equivalent"
+      }
+    ]
+  }
+}

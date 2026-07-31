@@ -59,13 +59,16 @@ async function listStaticFiles(directory: string): Promise<string[]> {
   const files: string[] = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
     const path = resolve(directory, entry.name);
-    if (entry.isSymbolicLink()) throw new Error(`static bundle contains symlink: ${path}`);
+    if (entry.isSymbolicLink())
+      throw new Error(`static bundle contains symlink: ${path}`);
     if (entry.isDirectory()) {
       files.push(...(await listStaticFiles(path)));
     } else if (entry.isFile()) {
       files.push(relative(repositoryRoot, path));
     } else {
-      throw new Error(`static bundle contains unsupported filesystem entry: ${path}`);
+      throw new Error(
+        `static bundle contains unsupported filesystem entry: ${path}`,
+      );
     }
   }
   return files;
@@ -74,21 +77,33 @@ async function listStaticFiles(directory: string): Promise<string[]> {
 async function verifyStaticBundle() {
   const manifestPath = resolve(distRoot, "manifest.json");
   const manifestBytes = new Uint8Array(await readFile(manifestPath));
-  const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as BundleManifest;
+  const manifest = JSON.parse(
+    new TextDecoder().decode(manifestBytes),
+  ) as BundleManifest;
   let totalBytes = 0;
 
   for (const artifact of manifest.artifacts) {
     const artifactPath = resolve(repositoryRoot, artifact.path);
-    if (artifactPath !== distRoot && !artifactPath.startsWith(`${distRoot}${sep}`)) {
+    if (
+      artifactPath !== distRoot &&
+      !artifactPath.startsWith(`${distRoot}${sep}`)
+    ) {
       throw new Error(`manifest path escapes dist: ${artifact.path}`);
     }
     const metadata = await lstat(artifactPath);
     if (!metadata.isFile() || metadata.isSymbolicLink()) {
-      throw new Error(`manifest artifact must be a regular non-symlink file: ${artifact.path}`);
+      throw new Error(
+        `manifest artifact must be a regular non-symlink file: ${artifact.path}`,
+      );
     }
     const canonicalPath = await realpath(artifactPath);
-    if (canonicalPath !== distRoot && !canonicalPath.startsWith(`${distRoot}${sep}`)) {
-      throw new Error(`manifest artifact resolves outside dist: ${artifact.path}`);
+    if (
+      canonicalPath !== distRoot &&
+      !canonicalPath.startsWith(`${distRoot}${sep}`)
+    ) {
+      throw new Error(
+        `manifest artifact resolves outside dist: ${artifact.path}`,
+      );
     }
     const bytes = new Uint8Array(await readFile(artifactPath));
     if (bytes.byteLength !== artifact.bytes) {
@@ -103,16 +118,25 @@ async function verifyStaticBundle() {
     totalBytes += bytes.byteLength;
   }
 
-  const declaredTotal = Object.values(manifest.totals).reduce((sum, value) => sum + value, 0);
+  const declaredTotal = Object.values(manifest.totals).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
   if (totalBytes !== declaredTotal) {
-    throw new Error(`manifest total mismatch: measured ${totalBytes}, declared ${declaredTotal}`);
+    throw new Error(
+      `manifest total mismatch: measured ${totalBytes}, declared ${declaredTotal}`,
+    );
   }
-  const declaredPaths = new Set(manifest.artifacts.map((artifact) => artifact.path));
+  const declaredPaths = new Set(
+    manifest.artifacts.map((artifact) => artifact.path),
+  );
   const actualPaths = (await listStaticFiles(distRoot)).filter(
     (path) => path !== "benchmarks/v1/wasm/dist/manifest.json",
   );
   const unexpected = actualPaths.filter((path) => !declaredPaths.has(path));
-  const missing = [...declaredPaths].filter((path) => !actualPaths.includes(path));
+  const missing = [...declaredPaths].filter(
+    (path) => !actualPaths.includes(path),
+  );
   if (unexpected.length > 0 || missing.length > 0) {
     throw new Error(
       `static bundle file set mismatch; unexpected=${unexpected.join(",")}; missing=${missing.join(",")}`,
@@ -150,8 +174,15 @@ async function webdriver<T>(
 }
 
 function sourceRevision(): string {
-  const result = Bun.spawnSync(["git", "-C", repositoryRoot, "rev-parse", "HEAD"]);
-  if (result.exitCode !== 0) throw new Error("could not resolve source revision");
+  const result = Bun.spawnSync([
+    "git",
+    "-C",
+    repositoryRoot,
+    "rev-parse",
+    "HEAD",
+  ]);
+  if (result.exitCode !== 0)
+    throw new Error("could not resolve source revision");
   return result.stdout.toString().trim();
 }
 
@@ -161,7 +192,9 @@ function resolvedEnvironment(
   osVersion: string,
 ) {
   const browserVersion =
-    typeof capabilities.browserVersion === "string" ? capabilities.browserVersion : null;
+    typeof capabilities.browserVersion === "string"
+      ? capabilities.browserVersion
+      : null;
   return {
     browser_name:
       typeof capabilities.browserName === "string"
@@ -171,16 +204,20 @@ function resolvedEnvironment(
     device_name:
       typeof capabilities.deviceName === "string"
         ? capabilities.deviceName
-        : requested.device ?? "unknown",
+        : (requested.device ?? "unknown"),
     os_version:
-      typeof capabilities.osVersion === "string" ? capabilities.osVersion : osVersion,
+      typeof capabilities.osVersion === "string"
+        ? capabilities.osVersion
+        : osVersion,
     real_mobile: true,
   };
 }
 
 const requestedId = Bun.argv[2];
 if (!requestedId) {
-  throw new Error("usage: bun run browserstack -- <environment-id|--verify-bundle>");
+  throw new Error(
+    "usage: bun run browserstack -- <environment-id|--verify-bundle>",
+  );
 }
 if (requestedId === "--verify-bundle") {
   console.log(JSON.stringify(await verifyStaticBundle(), null, 2));
@@ -191,8 +228,14 @@ const requested = (matrix.environments as BrowserEnvironment[]).find(
   (environment) => environment.id === requestedId,
 );
 if (!requested) throw new Error(`unknown browser environment: ${requestedId}`);
-if (!requested.real_mobile || requested.execution !== "single-thread" || !requested.device) {
-  throw new Error(`${requestedId} is not a real-mobile single-thread environment`);
+if (
+  !requested.real_mobile ||
+  requested.execution !== "single-thread" ||
+  !requested.device
+) {
+  throw new Error(
+    `${requestedId} is not a real-mobile single-thread environment`,
+  );
 }
 
 const username = requiredEnvironment("BROWSERSTACK_USERNAME");
@@ -200,7 +243,9 @@ const accessKey = requiredEnvironment("BROWSERSTACK_ACCESS_KEY");
 const localIdentifier = requiredEnvironment("BROWSERSTACK_LOCAL_IDENTIFIER");
 const osVersion =
   process.env.BROWSERSTACK_OS_VERSION ??
-  (requested.os_version.startsWith("set-via-") ? undefined : requested.os_version);
+  (requested.os_version.startsWith("set-via-")
+    ? undefined
+    : requested.os_version);
 if (!osVersion) {
   throw new Error(
     "BROWSERSTACK_OS_VERSION is required; resolve and freeze a currently available device/OS pair",
@@ -211,7 +256,9 @@ const warmup = Number.parseInt(process.env.MOBENCH_WARMUP ?? "1", 10);
 const iterations = Number.parseInt(process.env.MOBENCH_ITERATIONS ?? "5", 10);
 const workload = process.env.MOBENCH_WORKLOAD ?? "passport_complete_age_check";
 if (
-  !["webauthn_assertion", "passport_complete_age_check", "oprf_taceo"].includes(workload)
+  !["webauthn_assertion", "passport_complete_age_check", "oprf_taceo"].includes(
+    workload,
+  )
 ) {
   throw new Error(`unsupported MOBENCH_WORKLOAD: ${workload}`);
 }
@@ -238,7 +285,6 @@ try {
         "bstack:options": {
           userName: username,
           accessKey,
-          osName: requested.os,
           osVersion,
           deviceName: requested.device,
           realMobile: true,
@@ -262,7 +308,9 @@ try {
   });
 
   const deadline = Date.now() + 15 * 60 * 1000;
-  let state: { status?: string; result?: Record<string, unknown>; error?: string } | undefined;
+  let state:
+    | { status?: string; result?: Record<string, unknown>; error?: string }
+    | undefined;
   while (Date.now() < deadline) {
     const response = await webdriver<{
       status?: string;
@@ -291,7 +339,11 @@ try {
           ...requested,
           os_version: osVersion,
         },
-        resolved_environment: resolvedEnvironment(capabilities, requested, osVersion),
+        resolved_environment: resolvedEnvironment(
+          capabilities,
+          requested,
+          osVersion,
+        ),
         static_bundle: bundle,
         benchmark_result: state.result,
       },
@@ -301,7 +353,9 @@ try {
   );
 } finally {
   if (sessionId) {
-    await webdriver(`/session/${sessionId}`, authorization, "DELETE").catch(() => undefined);
+    await webdriver(`/session/${sessionId}`, authorization, "DELETE").catch(
+      () => undefined,
+    );
   }
   server.stop(true);
 }

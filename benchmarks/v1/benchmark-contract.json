@@ -1,105 +1,169 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "campaign_id": "provekit-v1-cross-device",
   "publication_iterations": 5,
   "warmup_iterations": 1,
-  "primary_device": {
-    "provider": "browserstack",
-    "device": "iPhone SE 2022",
-    "os_version": "resolve-from-current-device-catalog",
-    "platform": "ios",
-    "requires_device_catalog_resolution": true
-  },
-  "measurements": [
-    "initialization_time_ns",
-    "witness_time_ns",
-    "prove_time_ns",
-    "verify_time_ns",
-    "peak_memory_growth_bytes",
-    "process_peak_memory_bytes",
-    "proof_size_bytes",
-    "cold_download_bytes",
-    "incremental_circuit_bytes"
+  "comparison_warning": "The three stacks implement the closest available counterparts, not identical statements. Report each circuit identity and never rank stacks as if the circuits were interchangeable.",
+  "targets": [
+    {
+      "id": "iphone_se_2022_native",
+      "surface": "native",
+      "provider": "browserstack",
+      "device": "iPhone SE 2022",
+      "os_version": "resolve-and-freeze-from-device-catalog",
+      "architecture": "arm64",
+      "paid_confirmation_required": true
+    },
+    {
+      "id": "motorola_e15_native",
+      "surface": "native",
+      "provider": "physical",
+      "device": "Motorola E15",
+      "os_version": "capture-with-adb",
+      "architecture": "capture-ro.product.cpu.abilist-and-userspace-bitness",
+      "paid_confirmation_required": false
+    },
+    {
+      "id": "m4_max_chrome_wasm",
+      "surface": "browser-wasm",
+      "provider": "local",
+      "device": "MacBook Pro M4 Max",
+      "os_version": "capture-at-run-time",
+      "architecture": "arm64",
+      "browser": "Google Chrome",
+      "browser_version": "capture-at-run-time",
+      "paid_confirmation_required": false
+    }
+  ],
+  "stacks": [
+    {
+      "id": "provekit_v1",
+      "frontend": "noir",
+      "native_adapter": "ProveKit C ABI through Mobench",
+      "browser_adapter": "@worldcoin/provekit@0.1.0",
+      "proof_system": "WHIR",
+      "required_cells": 9
+    },
+    {
+      "id": "noir_barretenberg",
+      "frontend": "noir",
+      "native_adapter": "Mopro 0.3.7 Noir adapter",
+      "native_backend": "barretenberg-rs 4.2.0-aztecnr-rc.2",
+      "browser_adapter": "@noir-lang/noir_js plus smoke-validated @aztec/bb.js",
+      "proof_system": "UltraHonk",
+      "required_cells": 9
+    },
+    {
+      "id": "circom_groth16",
+      "frontend": "circom",
+      "native_adapter": "Mopro 0.3.7",
+      "native_backend_policy": "Rapidsnark preferred; Arkworks plus rust-witness is a target-specific fallback",
+      "browser_adapter": "snarkjs@0.7.6",
+      "proof_system": "Groth16",
+      "required_cells": 9
+    }
   ],
   "workloads": {
     "passport": {
       "headline": true,
-      "statement": "Prove a valid passport-derived credential and the configured age predicate without revealing private document data.",
-      "noir_fixture": "noir-examples/noir-passport-monolithic/complete_age_check",
-      "circom_source": "selfxyz/self",
-      "circom_flow": [
-        "signature-specific registration",
-        "vc_and_disclose"
-      ],
-      "equivalence": "not-equivalent-two-proof-product-flow"
+      "noir": {
+        "circuit": "complete_age_check",
+        "identity": "monolithic passport age-check statement"
+      },
+      "circom": {
+        "source": "selfxyz/self",
+        "circuits": [
+          "signature-specific registration",
+          "vc_and_disclose"
+        ],
+        "identity": "two-stage product flow"
+      },
+      "equivalence": "not-equivalent"
     },
-    "webauthn_assertion": {
+    "webauthn": {
       "headline": false,
-      "statement": "Verify one ES256 WebAuthn assertion bound to the configured challenge, ceremony type, origin, RP ID hash, required flags, and public key.",
-      "excluded": [
-        "key registration",
-        "registry inclusion",
-        "Merkle membership",
-        "World ID uniqueness"
-      ],
-      "noir_fixture": "benchmarks/v1/noir/webauthn_assertion",
-      "circom_source": "pending-equivalent-circuit",
-      "equivalence": "blocked-no-licensed-equivalent-circuit"
+      "noir": {
+        "circuit": "ES256 assertion",
+        "identity": "binds challenge, ceremony type, origin, RP-ID hash, UP/UV flags, signature, and public key"
+      },
+      "circom": {
+        "source": "privacy-ethereum/webauth-circom",
+        "circuit": "WebAuthn assertion counterpart",
+        "identity": "closest available ES256 Circom counterpart; it does not bind the complete Noir assertion statement"
+      },
+      "equivalence": "not-equivalent"
     },
     "oprf": {
       "headline": false,
-      "statement": "Benchmark the OPRF core and World ID application query/nullifier circuits as separately labeled workloads.",
-      "noir_source": "TaceoLabs/oprf-nr v0.1.0-beta.1 oprf_example",
-      "circom_source": "worldcoin/world-id-protocol query and nullifier",
-      "equivalence": "not-equivalent-report-separately"
+      "noir": {
+        "source": "TACEO oprf-nr",
+        "circuit": "core example"
+      },
+      "circom": {
+        "source": "worldcoin/world-id-protocol",
+        "circuits": [
+          "query",
+          "nullifier"
+        ],
+        "identity": "application circuits reported under distinct circuit names"
+      },
+      "equivalence": "not-equivalent"
     }
   },
-  "backends": {
-    "provekit_v1_native": {
-      "frontend": "noir",
-      "proof_system": "spartan-whir",
-      "execution": "native"
+  "circom_native_backend_gate": {
+    "arm64_pilot": {
+      "witness_adapter": "witnesscalc-adapter@0.1.7",
+      "prover": "rust-rapidsnark@0.1.4"
     },
-    "barretenberg_native": {
-      "frontend": "noir",
-      "proof_system": "ultrahonk",
-      "execution": "native",
-      "bundle_includes": [
-        "required-crs"
-      ]
-    },
-    "circom_rapidsnark_native": {
-      "frontend": "circom",
-      "proof_system": "groth16",
-      "execution": "native",
-      "bundle_includes": [
-        "native-witness-generator",
-        "zkey",
-        "verification-key"
-      ],
-      "harness_only_excludes_from_circuit_size": [
-        "reference-wtns",
-        "benchmark-input"
-      ],
-      "timing": [
-        "mmap-and-integrity-check-before-samples",
-        "witness-generation-separate",
-        "proof-generation-with-prepared-witness",
-        "verification-separate"
-      ]
-    },
-    "circom_arkworks_native": {
-      "frontend": "circom",
-      "proof_system": "groth16",
-      "execution": "native",
-      "bundle_includes": [
-        "generated-rust-witness",
-        "proving-key"
-      ]
-    },
-    "provekit_v1_wasm": {
-      "frontend": "noir",
-      "proof_system": "spartan-whir",
-      "execution": "browser-wasm"
+    "iphone_policy": "Use Rapidsnark only after every exact circuit passes build, valid-proof verification, tamper rejection, warmup, and five measured samples.",
+    "motorola_policy": "Capture ABI and userspace bitness with ADB. Try Rapidsnark only when supported; otherwise use Mopro Arkworks plus rust-witness and retain the backend difference in every row.",
+    "compatibility_fallback": {
+      "adapter": "iden3/circom-witnesscalc@0.3.0",
+      "status": "fallback-only",
+      "warning": "Known documented feature gaps include RSA-related circuits."
     }
-  }
+  },
+  "noir_native_gate": {
+    "mopro": "0.3.7",
+    "noir": "1.0.0-beta.19",
+    "barretenberg_rs": "4.2.0-aztecnr-rc.2",
+    "port_policy": "Mechanical ports are allowed only when semantic outputs remain identical.",
+    "motorola_policy": "If ADB confirms armv7 userspace and the Mopro Noir adapter cannot target it, record unsupported with the captured device evidence."
+  },
+  "correctness_gate": {
+    "before_timing": [
+      "valid-proof-accepted",
+      "tampered-proof-rejected",
+      "public-outputs-recorded",
+      "workload-and-circuit-identity-recorded"
+    ],
+    "missing_metrics": "blank",
+    "allowed_failure_statuses": [
+      "unsupported",
+      "build_failed",
+      "crashed",
+      "runtime_failed",
+      "timed_out",
+      "zero_samples"
+    ],
+    "prohibitions": [
+      "estimates",
+      "substituting-browser-timings-for-native",
+      "merging-native-and-browser-runtimes",
+      "encoding-missing-measurements-as-zero"
+    ]
+  },
+  "measurement_fields": [
+    "initialization_time_ns",
+    "witness_time_ns",
+    "prove_time_ns",
+    "verify_time_ns",
+    "end_to_end_time_ns",
+    "proof_size_bytes",
+    "circuit_size_bytes",
+    "artifact_size_bytes",
+    "bundle_size_bytes",
+    "peak_memory_bytes",
+    "constraint_count"
+  ]
 }

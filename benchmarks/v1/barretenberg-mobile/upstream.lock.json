@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "repository": "https://github.com/AztecProtocol/aztec-packages.git",
+  "tag": "v0.87.0",
+  "commit": "9081b0ed38c43c120afb7c80f8f6cd418ca5ad70",
+  "barretenberg_version": "0.87.0",
+  "noir_version": "1.0.0-beta.11",
+  "native_release_assets": [],
+  "source_build_required": true
+}

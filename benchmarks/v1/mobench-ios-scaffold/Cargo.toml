@@ -1,0 +1,12 @@
+[package]
+name = "provekit-v1-mobench-ios-scaffold"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+
+[dependencies]
+anyhow = "1"
+mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs.git", rev = "e992596a786cc18047102a318d40131c953e57b8" }
+
+[workspace]

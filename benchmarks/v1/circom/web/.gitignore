@@ -1,0 +1,4 @@
+# Generated proving keys are verified and fetched/prepared locally; GitHub Git
+# rejects the Passport and WebAuthn keys because they exceed its 100 MB limit.
+dist/assets/passport/register_sha256_sha256_sha256_rsa_65537_4096.zkey
+dist/assets/webauthn/webauthn_default.zkey

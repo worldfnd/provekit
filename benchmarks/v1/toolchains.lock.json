@@ -1,6 +1,29 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "policy": "Exact versions are immutable. Browser Noir/Barretenberg measurements are blocked until the candidate pair passes proof verification and tamper rejection for all three workloads; freeze its integrity in this file before measuring.",
   "noir": {
+    "version": "1.0.0-beta.19",
+    "base_url": "https://github.com/noir-lang/noir/releases/download/v1.0.0-beta.19",
+    "assets": {
+      "aarch64-apple-darwin": {
+        "name": "nargo-aarch64-apple-darwin.tar.gz",
+        "sha256": "3d02143efcc06a5c991f69bb6bb770e639230549d64f35ed13defb44420b7a75"
+      },
+      "x86_64-apple-darwin": {
+        "name": "nargo-x86_64-apple-darwin.tar.gz",
+        "sha256": "4154278b865786bbf3c5064944a7b8450f49da69ad22a3c971826f6b336668eb"
+      },
+      "aarch64-unknown-linux-gnu": {
+        "name": "nargo-aarch64-unknown-linux-gnu.tar.gz",
+        "sha256": "ddbaf70be2a953701962afef8ce18517b7f77d77685d070f08121733966a7bfb"
+      },
+      "x86_64-unknown-linux-gnu": {
+        "name": "nargo-x86_64-unknown-linux-gnu.tar.gz",
+        "sha256": "b7749c74e756d8e8d02de5d7e4d9a441b4c1865674b48f6e83b6214fb3b80be5"
+      }
+    }
+  },
+  "noir_provekit": {
     "version": "1.0.0-beta.11",
     "base_url": "https://github.com/noir-lang/noir/releases/download/v1.0.0-beta.11",
     "assets": {
@@ -22,16 +45,108 @@
       }
     }
   },
-  "barretenberg": {
-    "version": "0.87.0",
-    "release_url": "https://github.com/AztecProtocol/aztec-packages/releases/tag/v0.87.0",
-    "bb_js_package": "@aztec/bb.js@0.87.0",
-    "bb_js_integrity": "sha512-1tGxrJc/or9p4zwP7yvSLHU0z0N/DQGLfIeTYRdlQQPBMcnKX51rMI0PJ07/zZj0XxwHVFlqtV+PqvFBszIPwA==",
-    "status": "bb-js-webauthn-proof-smoke-passed",
-    "reason": "Noir beta.11 pins Barretenberg 0.87.0; passport and OPRF proof compatibility must still pass before publication."
+  "mopro": {
+    "version": "0.3.7",
+    "source_revision": "10871f02e365c478cb4b61016e4034f7e74f076b"
+  },
+  "mobench": {
+    "package_version": "0.1.48",
+    "repository": "https://github.com/worldcoin/mobile-bench-rs.git",
+    "branch": "codex/android-32bit-native-abi",
+    "source_revision": "e992596a786cc18047102a318d40131c953e57b8",
+    "artifact_sdk_source_revision": "e992596a786cc18047102a318d40131c953e57b8",
+    "draft_pr": "https://github.com/worldcoin/mobile-bench-rs/pull/45",
+    "reason": "Fix native C ABI size_t layout on 32-bit Android devices, preserve Rust panic diagnostics, remove the artifact-upload deadline, and force BrowserStack HTTP/1.1 for reliable large multipart uploads"
+  },
+  "android": {
+    "java": {
+      "manager": "mise",
+      "distribution": "temurin",
+      "version": "21.0.11+10.0.LTS"
+    },
+    "sdk_platform": "android-34",
+    "ndk_version": "26.1.10909125",
+    "canonical_e15_abi": "armeabi-v7a"
+  },
+  "native_noir": {
+    "nargo_version": "1.0.0-beta.19",
+    "barretenberg_rs_version": "4.2.0-aztecnr-rc.2",
+    "adapter": "Mopro 0.3.7",
+    "srs": {
+      "url": "https://crs.aztec.network/g1.dat",
+      "bytes": 268435520,
+      "points": 4194305,
+      "sha256": "3ef417367184adaf0dcdebfccc440b5bb72f9a228b278f17d1411b1340f2daa5"
+    }
+  },
+  "browser_provekit": {
+    "package": "@worldcoin/provekit",
+    "version": "0.1.0",
+    "integrity": "sha512-3Qbh2aHN6fkwQiVNbfN0GgSjXfaJ6gtbXASeYN5iP6ybAgP0AEIho9Glg7L+H/+eEJ7l5/XP3a/JKzNs1H18nQ==",
+    "node_engine": ">=20",
+    "embedded_noir_js_version": "1.0.0-beta.20"
+  },
+  "browser_noir": {
+    "noir_js_package": "@noir-lang/noir_js",
+    "noir_js_version": "1.0.0-beta.19",
+    "noir_js_integrity": "sha512-KtuO37XuBn+7PHReLGCyLVxKGBk+hSvUQs0r/rtNFTYty/KmSq/NwEXkwiA7aQTNUykrzTJGFbIForQWjIJT4g==",
+    "bb_js_package": "@aztec/bb.js",
+    "bb_js_version": "4.2.0-aztecnr-rc.2",
+    "bb_js_integrity": "sha512-ksFWHrm8QYAXP059paItEKCM/UhpHg5Dwl/eSp2BI6EAtD9+JlonkOwJ+94TYai2y5Gz0qnrgd65dsvDwJelVQ==",
+    "status": "candidate-requires-three-workload-smoke-before-freeze"
+  },
+  "browser_circom": {
+    "package": "snarkjs",
+    "version": "0.7.6",
+    "integrity": "sha512-4uH1xA5JzVU5jaaWS2fXej3+RC6L5Erhr6INTJtUA27du4Elbh4VXCeeRjB4QiwL6N6y7SNKePw5prTxyEf4Zg=="
+  },
+  "native_circom": {
+    "preferred_witness_adapter": {
+      "package": "witnesscalc-adapter",
+      "version": "0.1.7",
+      "source_revision": "e3a9b065547bbbbf69b8b0c8e25d61ec46602c94"
+    },
+    "preferred_prover": {
+      "package": "rust-rapidsnark",
+      "version": "0.1.4",
+      "source_revision": "fcf92e7454600109e4eab4a0c907e8d59649fd9c"
+    },
+    "fallback_witness_adapter": {
+      "package": "circom-witnesscalc",
+      "owner": "iden3",
+      "version": "0.3.0",
+      "source_revision": "d48eb7c97857d46b8a75c94ab96f769207263245",
+      "status": "compatibility-fallback-only"
+    },
+    "target_specific_fallback": {
+      "prover": "Mopro circom-prover (Arkworks)",
+      "witness": "rust-witness",
+      "condition": "Rapidsnark unsupported on confirmed Motorola E15 userspace ABI"
+    }
+  },
+  "circom_native_frozen_witnesses": {
+    "oprf_query": {
+      "sha256": "89844b3d8e0b0a9a58075659b694f2e0f5582a198430da6d8101a48707f7446f"
+    },
+    "oprf_nullifier": {
+      "sha256": "b5c2bf1c167f8fe77cf13bf96db143c21aa19f27f6b7cc9317b255c43d32f568"
+    },
+    "vc_and_disclose": {
+      "sha256": "53a4ce55036d040275e3cb5548ad771f67789e018098eab92656beb0e218807f"
+    },
+    "register_sha256_sha256_sha256_rsa_65537_4096": {
+      "sha256": "9a785c0e2a974ca751777bb6824ebd8e6d4be1b43224cc1a0cbe6cc02d663c6a"
+    },
+    "fixture": {
+      "sha256": "294c8091d87c2dbec8bc8997d0e892b65e81d5f95a14320081dcaefea1a5e0d8"
+    }
+  },
+  "circom_compiler": {
+    "version": "2.2.2",
+    "source_revision": "6f782d7313793b3dc18cc3b38d2335eead9f5d50"
   },
   "wasm_bindgen_cli": {
     "version": "0.2.100",
-    "reason": "Must exactly match the wasm-bindgen crate version in the V1 Cargo.lock."
+    "reason": "Must match the ProveKit V1 workspace lock when rebuilding the package."
   }
 }

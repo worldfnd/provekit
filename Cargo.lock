@@ -608,6 +608,8 @@ name = "bench-mobile"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
+ "flate2",
  "inventory",
  "libc",
  "mobench-sdk",
@@ -2910,8 +2912,7 @@ dependencies = [
 [[package]]
 name = "mobench-macros"
 version = "0.1.48"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e11683a0dbfb40d9789a7ee43bcc590a3028a34823a1c427e1fec16fc8ea2d12"
+source = "git+https://github.com/worldcoin/mobile-bench-rs.git?rev=e992596a786cc18047102a318d40131c953e57b8#e992596a786cc18047102a318d40131c953e57b8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2921,8 +2922,7 @@ dependencies = [
 [[package]]
 name = "mobench-sdk"
 version = "0.1.48"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2ceb68cfc37e295c4584c68174f93814b07b9f048590d266b3040ed0aaeed3f"
+source = "git+https://github.com/worldcoin/mobile-bench-rs.git?rev=e992596a786cc18047102a318d40131c953e57b8#e992596a786cc18047102a318d40131c953e57b8"
 dependencies = [
  "inventory",
  "libc",

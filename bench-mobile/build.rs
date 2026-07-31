@@ -1,6 +1,11 @@
-use std::{
-    env, fs, io,
-    path::{Path, PathBuf},
+use {
+    base64::Engine,
+    flate2::{write::DeflateEncoder, Compression},
+    std::{
+        env, fs,
+        io::{self, Write},
+        path::{Path, PathBuf},
+    },
 };
 
 struct FixtureArtifact {
@@ -46,6 +51,8 @@ const FIXTURE_ARTIFACTS: &[FixtureArtifact] = &[
     },
 ];
 
+const COMPLETE_AGE_CHECK_INPUT: &str = "complete_age_check.Prover.toml";
+
 fn copy_if_present(from: &Path, to: &Path) -> io::Result<bool> {
     if from.exists() {
         fs::copy(from, to)?;
@@ -59,6 +66,39 @@ fn env_flag_enabled(name: &str) -> bool {
     env::var_os(name).is_some_and(|value| value != "0" && value != "false")
 }
 
+fn strip_host_width_debug_symbols(path: &Path) {
+    let contents = fs::read_to_string(path).expect("read mobile benchmark artifact");
+    let mut artifact: serde_json::Value =
+        serde_json::from_str(&contents).expect("deserialize mobile benchmark artifact JSON");
+    let mut encoder = DeflateEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(br#"{"debug_infos":[]}"#)
+        .expect("compress empty Noir debug metadata");
+    let compressed = encoder.finish().expect("finish empty Noir debug metadata");
+    artifact["debug_symbols"] =
+        serde_json::Value::String(base64::prelude::BASE64_STANDARD.encode(compressed));
+    fs::write(
+        path,
+        serde_json::to_vec(&artifact).expect("serialize mobile benchmark artifact"),
+    )
+    .expect("write 32-bit-safe mobile benchmark artifact");
+}
+
+fn require_provekit_noir_version(path: &Path) {
+    let contents = fs::read_to_string(path).expect("read mobile benchmark artifact");
+    let artifact: serde_json::Value =
+        serde_json::from_str(&contents).expect("deserialize mobile benchmark artifact JSON");
+    let version = artifact["noir_version"]
+        .as_str()
+        .expect("mobile benchmark artifact must declare noir_version");
+    assert!(
+        version.starts_with("1.0.0-beta.11+"),
+        "{} was compiled by incompatible Noir {}; ProveKit V1 requires beta.11 artifacts",
+        path.display(),
+        version
+    );
+}
+
 fn main() {
     let manifest_dir =
         PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
@@ -68,14 +108,41 @@ fn main() {
         .to_path_buf();
     let out_dir =
         PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR")).join("bench_mobile_fixtures");
-    let artifact_dir = env::var_os("PROVEKIT_MOBILE_BENCH_ARTIFACT_DIR").map(PathBuf::from);
+    let frozen_artifact_dir = workspace_dir.join("target/v1-benchmarks/provekit-beta11-artifacts");
+    let artifact_dir = env::var_os("PROVEKIT_MOBILE_BENCH_ARTIFACT_DIR")
+        .map(PathBuf::from)
+        .or_else(|| frozen_artifact_dir.is_dir().then_some(frozen_artifact_dir));
     let require_artifacts = env_flag_enabled("PROVEKIT_REQUIRE_MOBILE_BENCH_ARTIFACTS")
         || env_flag_enabled("MOBENCH_CI_PREPARE");
+    let target_pointer_width =
+        env::var("CARGO_CFG_TARGET_POINTER_WIDTH").expect("CARGO_CFG_TARGET_POINTER_WIDTH");
 
     println!("cargo:rerun-if-env-changed=PROVEKIT_REQUIRE_MOBILE_BENCH_ARTIFACTS");
     println!("cargo:rerun-if-env-changed=MOBENCH_CI_PREPARE");
 
     fs::create_dir_all(&out_dir).expect("create generated fixture output dir");
+
+    let frozen_input = artifact_dir
+        .as_ref()
+        .map(|dir| dir.join(COMPLETE_AGE_CHECK_INPUT));
+    let source_input =
+        workspace_dir.join("noir-examples/noir-passport-monolithic/complete_age_check/Prover.toml");
+    let selected_input = frozen_input
+        .as_ref()
+        .filter(|path| path.is_file())
+        .unwrap_or(&source_input);
+    if require_artifacts && frozen_input.as_ref().is_none_or(|path| !path.is_file()) {
+        let expected = frozen_input
+            .as_ref()
+            .map_or_else(|| "<unset>".to_owned(), |path| path.display().to_string());
+        panic!(
+            "missing required frozen beta.11 complete_age_check input at {}",
+            expected
+        );
+    }
+    fs::copy(selected_input, out_dir.join(COMPLETE_AGE_CHECK_INPUT))
+        .expect("copy complete_age_check input");
+    println!("cargo:rerun-if-changed={}", selected_input.display());
 
     for artifact in FIXTURE_ARTIFACTS {
         let out_path = out_dir.join(artifact.output_file);
@@ -110,6 +177,19 @@ fn main() {
                 );
             }
             fs::write(&out_path, "{}\n").expect("write placeholder mobile benchmark artifact");
+        }
+
+        if copied && target_pointer_width == "32" {
+            // Noir debug metadata contains host-sized `usize` ranges. Nargo
+            // emits those ranges on the 64-bit preparation host, and serde
+            // rejects them when a 32-bit device decodes the artifact. Debug
+            // symbols are not consumed by proving or verification, so omit
+            // them only from 32-bit benchmark bundles while preserving the
+            // ABI, bytecode, circuit hash, and witness inputs.
+            strip_host_width_debug_symbols(&out_path);
+        }
+        if copied {
+            require_provekit_noir_version(&out_path);
         }
     }
 }

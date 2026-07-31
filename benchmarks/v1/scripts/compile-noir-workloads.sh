@@ -8,6 +8,7 @@ repo_root="$(cd "${benchmark_root}/../.." && pwd)"
 nargo_bin="$("${script_dir}/bootstrap-nargo.sh")"
 
 "${script_dir}/bootstrap-sources.sh"
+"${script_dir}/prepare-noir-beta19-compat.sh"
 
 (
   cd "${benchmark_root}/noir/webauthn_assertion"
@@ -18,6 +19,7 @@ nargo_bin="$("${script_dir}/bootstrap-nargo.sh")"
 
 (
   cd "${repo_root}/noir-examples/noir-passport-monolithic/complete_age_check"
+  bun run "${script_dir}/upgrade-passport-barrett-parameters.ts" Prover.toml
   "${nargo_bin}" compile --skip-brillig-constraints-check --force
 )
 

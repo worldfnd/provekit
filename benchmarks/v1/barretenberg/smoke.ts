@@ -1,4 +1,4 @@
-import { UltraHonkBackend } from "@aztec/bb.js";
+import { Barretenberg, UltraHonkBackend } from "@aztec/bb.js";
 import { Noir } from "@noir-lang/noir_js";
 import { loadNoirInputs } from "./load-inputs";
 
@@ -48,7 +48,8 @@ const witnessStart = performance.now();
 const execution = await noir.execute(inputs);
 const witnessTimeMs = performance.now() - witnessStart;
 
-const backend = new UltraHonkBackend(circuit.bytecode, { threads: 1 });
+const api = await Barretenberg.new({ threads: 1 });
+const backend = new UltraHonkBackend(circuit.bytecode, api);
 try {
   const proveStart = performance.now();
   const proof = await backend.generateProof(execution.witness);
@@ -79,7 +80,7 @@ try {
       {
         schema_version: 1,
         benchmark: workloadName,
-        backend: "barretenberg_0.87.0_single",
+        backend: "barretenberg_4.2.0-aztecnr-rc.2_single",
         witness_time_ms: witnessTimeMs,
         prove_time_ms: proveTimeMs,
         verify_time_ms: verifyTimeMs,
@@ -92,7 +93,7 @@ try {
     ),
   );
 } finally {
-  await backend.destroy();
+  await api.destroy();
   const destroy = (noir as Noir & { destroy?: () => Promise<void> | void }).destroy;
   if (destroy) await destroy.call(noir);
 }

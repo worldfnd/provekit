@@ -9,6 +9,15 @@
       "blake2b512": "89a66eb5590a1c94e3f1ee0e72acf49b1669e050bb5f93c73b066b564dca4e0c7556a52b323178269d64af325d8fdddb33da3a27c34409b821de82aa2bf1a27b",
       "max_constraints": 1048576,
       "checksum_source": "iden3/snarkjs README at 9a8f1c0083d18b9b5e18f526cfd729e7259423be"
+    },
+    {
+      "name": "powersOfTau28_hez_final_22",
+      "url": "https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_22.ptau",
+      "size": 4831921304,
+      "sha256": null,
+      "blake2b512": "0d64f63dba1a6f11139df765cb690da69d9b2f469a1ddd0de5e4aa628abb28f787f04c6a5fb84a235ec5ea7f41d0548746653ecab0559add658a83502d1cb21b",
+      "max_constraints": 4194304,
+      "checksum_source": "iden3/snarkjs README at 9a8f1c0083d18b9b5e18f526cfd729e7259423be"
     }
   ]
 }

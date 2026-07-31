@@ -1,0 +1,11 @@
+[package]
+name = "provekit-v1-arkworks-host-bench"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+serde_json = "1"
+zk-mobile-bench = { path = "../../../target/v1-benchmarks/sources/world-id-protocol/crates/zk-mobile-bench" }

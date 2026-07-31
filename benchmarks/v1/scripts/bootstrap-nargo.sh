@@ -7,6 +7,7 @@ benchmark_root="$(cd "${script_dir}/.." && pwd)"
 repo_root="$(cd "${benchmark_root}/../.." && pwd)"
 lock_file="${benchmark_root}/toolchains.lock.json"
 tool_root="${V1_BENCHMARK_TOOL_ROOT:-${repo_root}/target/v1-benchmarks/tools}"
+lock_key="${V1_NARGO_LOCK_KEY:-noir}"
 
 for command in curl jq tar; do
   if ! command -v "${command}" >/dev/null 2>&1; then
@@ -47,10 +48,24 @@ case "$(uname -m)-$(uname -s)" in
     ;;
 esac
 
-version="$(jq -r '.noir.version' "${lock_file}")"
-base_url="$(jq -r '.noir.base_url' "${lock_file}")"
-asset="$(jq -r --arg platform "${platform}" '.noir.assets[$platform].name' "${lock_file}")"
-expected_sha="$(jq -r --arg platform "${platform}" '.noir.assets[$platform].sha256' "${lock_file}")"
+case "${lock_key}" in
+  noir | noir_provekit) ;;
+  *)
+    echo "error: unsupported Nargo lock key ${lock_key}" >&2
+    exit 1
+    ;;
+esac
+
+version="$(jq -r --arg key "${lock_key}" '.[$key].version' "${lock_file}")"
+base_url="$(jq -r --arg key "${lock_key}" '.[$key].base_url' "${lock_file}")"
+asset="$(
+  jq -r --arg key "${lock_key}" --arg platform "${platform}" \
+    '.[$key].assets[$platform].name' "${lock_file}"
+)"
+expected_sha="$(
+  jq -r --arg key "${lock_key}" --arg platform "${platform}" \
+    '.[$key].assets[$platform].sha256' "${lock_file}"
+)"
 destination="${tool_root}/nargo-${version}-${platform}"
 
 if [[ -x "${destination}/nargo" ]]; then

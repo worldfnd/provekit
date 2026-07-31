@@ -8,7 +8,10 @@ fi
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 "${repo_root}/benchmarks/v1/scripts/bootstrap-webauthn-source.sh"
-nargo_bin="$("${repo_root}/benchmarks/v1/scripts/bootstrap-nargo.sh")"
+nargo_bin="$(
+  V1_NARGO_LOCK_KEY=noir_provekit \
+    "${repo_root}/benchmarks/v1/scripts/bootstrap-nargo.sh"
+)"
 
 compile_fixture() {
   local circuit_dir="$1"
