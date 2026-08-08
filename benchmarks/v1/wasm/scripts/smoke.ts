@@ -24,8 +24,9 @@ try {
   const workload = process.env.MOBENCH_WORKLOAD ?? "webauthn_assertion";
   const warmup = process.env.MOBENCH_WARMUP ?? "1";
   const iterations = process.env.MOBENCH_ITERATIONS ?? "5";
+  const timingMode = process.env.MOBENCH_TIMING_MODE ?? "warm_reuse";
   await page.goto(
-    `${server.url}?autorun=1&workload=${encodeURIComponent(workload)}&warmup=${encodeURIComponent(warmup)}&iterations=${encodeURIComponent(iterations)}`,
+    `${server.url}?autorun=1&workload=${encodeURIComponent(workload)}&warmup=${encodeURIComponent(warmup)}&iterations=${encodeURIComponent(iterations)}&timing_mode=${encodeURIComponent(timingMode)}`,
   );
   sampler = startRendererRssSampler(profile);
   await page.waitForFunction(

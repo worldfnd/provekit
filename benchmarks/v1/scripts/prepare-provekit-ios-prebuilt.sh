@@ -10,8 +10,10 @@ output="${repo_root}/target/v1-benchmarks/provekit-ios"
 prebuilt_root="${V1_PROVEKIT_IOS_PREBUILT_ROOT:-${repo_root}/target/v1-benchmarks/provekit-ios-prebuilt}"
 project="${output}/ios/BenchRunner"
 resources="${project}/BenchRunner/Resources"
+iterations="${V1_IOS_ITERATIONS:-5}"
+warmup="${V1_IOS_WARMUP:-1}"
 
-for command in bun cargo-mobench cp jq shasum stat xcodegen; do
+for command in bun cargo-mobench cp git jq shasum stat xcodegen; do
   command -v "${command}" >/dev/null 2>&1 || {
     echo "error: ${command} is required" >&2
     exit 1
@@ -40,6 +42,10 @@ content_digest() {
     "${BASH_SOURCE[0]}"
     "${script_dir}/patch-ios-runner-json.ts"
     "${script_dir}/patch-ios15-xcuitest-suite.sh"
+    "${repo_root}/target/v1-benchmarks/provekit-beta11-artifacts/passport_p1.json"
+    "${repo_root}/target/v1-benchmarks/provekit-beta11-artifacts/passport_p1.Prover.toml"
+    "${repo_root}/target/v1-benchmarks/provekit-beta11-artifacts/oprf.json"
+    "${repo_root}/target/v1-benchmarks/provekit-beta11-artifacts/oprf.Prover.toml"
   )
   local hashes=()
   local file
@@ -53,7 +59,8 @@ content_digest() {
   printf '%s\n' "${hashes[@]}" | shasum | awk '{print $1}'
 }
 
-source_digest="$(content_digest)"
+source_digest="$(printf '%s\n%s\n%s\n' "$(content_digest)" "${iterations}" "${warmup}" | shasum -a 256 | awk '{print $1}')"
+source_sha="$(git -C "${repo_root}" rev-parse HEAD)"
 manifest="${prebuilt_root}/manifest.json"
 content_manifest="${prebuilt_root}.content.json"
 recorded_content_sha256=""
@@ -79,8 +86,8 @@ if [[ -f "${manifest}" && -f "${content_manifest}" ]] &&
     --expected-source-sha "${existing_source_sha}" \
     --expected-platform ios \
     --expected-functions "${existing_functions}" \
-    --expected-iterations 5 \
-    --expected-warmup 1 \
+    --expected-iterations "${iterations}" \
+    --expected-warmup "${warmup}" \
     --devices "iPhone SE 2022-15" \
     --max-completion-timeout-secs 7200 >/dev/null
   echo "Reusing frozen ${manifest}"
@@ -96,8 +103,8 @@ trap cleanup EXIT
 mkdir -p "${prebuilt_root}/entries"
 : >"${entries_file}"
 
-workloads=(passport_complete_age_check webauthn_assertion oprf)
-phases=(prove)
+workloads=(passport_complete_age_check passport_p1 webauthn_assertion oprf)
+phases=(input_to_proof)
 entry_index=0
 for workload in "${workloads[@]}"; do
   for phase in "${phases[@]}"; do
@@ -106,9 +113,9 @@ for workload in "${workloads[@]}"; do
   destination="${prebuilt_root}/entries/${entry}"
   mkdir -p "${destination}"
 
-  jq -n \
+  jq -n --argjson iterations "${iterations}" --argjson warmup "${warmup}" \
     --arg function "${function}" \
-    '{function: $function, iterations: 5, warmup: 1}' \
+    '{function: $function, iterations: $iterations, warmup: $warmup}' \
     >"${resources}/bench_spec.json"
   (
     cd "${project}"
@@ -141,6 +148,8 @@ for workload in "${workloads[@]}"; do
   suite_hash="$(shasum -a 256 "${suite}" | awk '{print $1}')"
   jq -cn \
     --arg function "${function}" \
+    --argjson iterations "${iterations}" \
+    --argjson warmup "${warmup}" \
     --arg app_path "entries/${entry}/app.ipa" \
     --arg suite_path "entries/${entry}/test-suite.zip" \
     --arg app_hash "${app_hash}" \
@@ -149,8 +158,8 @@ for workload in "${workloads[@]}"; do
     --argjson suite_size "${suite_size}" \
     '{
       function: $function,
-      iterations: 5,
-      warmup: 1,
+      iterations: $iterations,
+      warmup: $warmup,
       completion_timeout_secs: 7200,
       artifacts: [
         {
@@ -172,7 +181,7 @@ for workload in "${workloads[@]}"; do
 done
 
 jq -s \
-  --arg source_sha "${source_digest}" \
+  --arg source_sha "${source_sha}" \
   '{
     schema: "mobench.prebuilt.v1",
     source_sha: $source_sha,
@@ -187,7 +196,7 @@ jq -s \
   }' "${entries_file}" >"${manifest}"
 
 jq -n \
-  --arg source_sha "${source_digest}" \
+  --arg source_sha "${source_sha}" \
   --arg content_sha256 "${source_digest}" \
   --arg manifest_sha256 "$(shasum -a 256 "${manifest}" | awk '{print $1}')" \
   '{

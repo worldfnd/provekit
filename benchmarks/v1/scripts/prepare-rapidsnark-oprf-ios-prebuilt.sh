@@ -12,6 +12,8 @@ build_parent="${repo_root}/target/v1-benchmarks"
 library_name="provekit_v1_rapidsnark_mobile_oprf"
 asset_root="${benchmark_root}/circom/web/dist/assets/oprf"
 witness_root="${repo_root}/target/v1-benchmarks/circom/oprf"
+iterations="${V1_IOS_ITERATIONS:-5}"
+warmup="${V1_IOS_WARMUP:-1}"
 
 for command in bun cargo cargo-mobench cp jq shasum stat unzip xcodebuild xcodegen; do
   command -v "${command}" >/dev/null 2>&1 || {
@@ -24,6 +26,7 @@ compute_content_sha256() {
   shasum -a 256 \
     "${crate}/Cargo.toml" \
     "${crate}/src/lib.rs" \
+    "${crate}/src/wasmi_witness.rs" \
     "${benchmark_root}/rapidsnark-mobile/build.rs" \
     "${benchmark_root}/rapidsnark-mobile/src/rapidsnark.rs" \
     "${scaffold_crate}/Cargo.toml" \
@@ -32,19 +35,18 @@ compute_content_sha256() {
     "${script_dir}/build-rapidsnark-ios-libs.sh" \
     "${script_dir}/patch-ios-runner-json.ts" \
     "${script_dir}/patch-ios15-xcuitest-suite.sh" \
-    "${asset_root}/oprf_query.zkey" \
-    "${witness_root}/oprf_query.wtns" \
-    "${asset_root}/oprf_query.vkey.json" \
     "${asset_root}/oprf_nullifier.zkey" \
     "${witness_root}/oprf_nullifier.wtns" \
-    "${asset_root}/oprf_nullifier.vkey.json" |
+    "${asset_root}/oprf_nullifier.vkey.json" \
+    "${asset_root}/oprf_nullifier.wasm" \
+    "${asset_root}/oprf_nullifier.input.json" | \
     awk '{print $1}' |
     shasum -a 256 |
     awk '{print $1}'
 }
 
 content_manifest="${prebuilt_root}.content.json"
-content_sha256="$(compute_content_sha256)"
+content_sha256="$(printf '%s\n%s\n%s\n' "$(compute_content_sha256)" "${iterations}" "${warmup}" | shasum -a 256 | awk '{print $1}')"
 recorded_content_sha256=""
 recorded_manifest_sha256=""
 actual_manifest_sha256=""
@@ -70,13 +72,23 @@ if [[ -f "${prebuilt_root}/manifest.json" && -f "${content_manifest}" ]] &&
     --expected-source-sha "${existing_source_sha}" \
     --expected-platform ios \
     --expected-functions "${existing_functions}" \
-    --expected-iterations 5 \
-    --expected-warmup 1 \
+    --expected-iterations "${iterations}" \
+    --expected-warmup "${warmup}" \
     --devices "iPhone SE 2022-15" \
     --max-completion-timeout-secs 7200 >/dev/null
   echo "Reusing frozen ${prebuilt_root}/manifest.json"
   exit 0
 fi
+
+case "${prebuilt_root}" in
+  "${repo_root}/target/v1-benchmarks/"*)
+    rm -rf "${prebuilt_root}/entries"
+    ;;
+  *)
+    echo "error: refusing to clear unexpected prebuilt root: ${prebuilt_root}" >&2
+    exit 1
+    ;;
+esac
 
 "${script_dir}/build-rapidsnark-ios-libs.sh" >/dev/null
 
@@ -149,15 +161,15 @@ prepare_variant() {
 
   local phase function entry destination app suite
   local app_size suite_size app_hash suite_hash
-  for phase in prove; do
+  for phase in input_to_proof; do
     function="${library_name}::bench_oprf_${variant}_rapidsnark_${phase}"
     entry="$(printf '%04d' "${entry_index}")"
     destination="${prebuilt_root}/entries/${entry}"
     mkdir -p "${destination}"
 
-    jq -n \
+    jq -n --argjson iterations "${iterations}" --argjson warmup "${warmup}" \
       --arg function "${function}" \
-      '{function: $function, iterations: 5, warmup: 1}' \
+      '{function: $function, iterations: $iterations, warmup: $warmup}' \
       >"${resources}/bench_spec.json"
     (
       cd "${project}"
@@ -185,7 +197,9 @@ prepare_variant() {
     unzip -p "${app}" 'Payload/*.app/bench_spec.json' |
       jq -e \
         --arg function "${function}" \
-        '.function == $function and .iterations == 5 and .warmup == 1' \
+        --argjson iterations "${iterations}" \
+        --argjson warmup "${warmup}" \
+        '.function == $function and .iterations == $iterations and .warmup == $warmup' \
         >/dev/null
 
     app_size="$(stat -f '%z' "${app}")"
@@ -194,6 +208,8 @@ prepare_variant() {
     suite_hash="$(shasum -a 256 "${suite}" | awk '{print $1}')"
     jq -cn \
       --arg function "${function}" \
+      --argjson iterations "${iterations}" \
+      --argjson warmup "${warmup}" \
       --arg app_path "entries/${entry}/app.ipa" \
       --arg suite_path "entries/${entry}/test-suite.zip" \
       --arg app_hash "${app_hash}" \
@@ -202,8 +218,8 @@ prepare_variant() {
       --argjson suite_size "${suite_size}" \
       '{
         function: $function,
-        iterations: 5,
-        warmup: 1,
+        iterations: $iterations,
+        warmup: $warmup,
         completion_timeout_secs: 7200,
         artifacts: [
           {
@@ -224,12 +240,6 @@ prepare_variant() {
   done
 }
 
-prepare_variant \
-  query \
-  oprf-query \
-  "${asset_root}/oprf_query.zkey" \
-  "${witness_root}/oprf_query.wtns" \
-  "${asset_root}/oprf_query.vkey.json"
 prepare_variant \
   nullifier \
   oprf-nullifier \
@@ -266,5 +276,5 @@ jq -n \
     prebuilt_manifest_sha256: $manifest_sha256
   }' >"${content_manifest}"
 
-jq -e '.entries | length == 2' "${manifest}" >/dev/null
+jq -e '.entries | length == 1' "${manifest}" >/dev/null
 echo "${manifest}"

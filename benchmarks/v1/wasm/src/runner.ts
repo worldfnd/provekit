@@ -64,7 +64,14 @@ function run(): void {
     const warmup = boundedInteger(warmupInput, 0, 10);
     const iterations = boundedInteger(iterationsInput, 1, 20);
     setState({ status: "running" });
-    worker.postMessage({ type: "run", workload: workloadInput.value, warmup, iterations });
+    const timingMode = new URLSearchParams(location.search).get("timing_mode");
+    worker.postMessage({
+      type: "run",
+      workload: workloadInput.value,
+      warmup,
+      iterations,
+      timing_mode: timingMode === "cold_local" ? "cold_local" : "warm_reuse",
+    });
   } catch (error) {
     setState({ status: "error", error: error instanceof Error ? error.message : String(error) });
   }

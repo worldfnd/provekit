@@ -10,6 +10,8 @@ output="${repo_root}/target/v1-benchmarks/mopro-noir-ios"
 prebuilt_root="${V1_MOPRO_NOIR_IOS_PREBUILT_ROOT:-${repo_root}/target/v1-benchmarks/mopro-noir-ios-prebuilt}"
 project="${output}/ios/BenchRunner"
 resources="${project}/BenchRunner/Resources"
+iterations="${V1_IOS_ITERATIONS:-5}"
+warmup="${V1_IOS_WARMUP:-1}"
 
 for command in bun cargo-mobench cp jq shasum stat xcodegen; do
   command -v "${command}" >/dev/null 2>&1 || {
@@ -50,10 +52,16 @@ content_digest() {
     "${output}/ios/provekit_v1_mobile_adapters.xcframework/ios-arm64/libprovekit_v1_mobile_adapters.a"
     "${crate}/test-vectors/noir/campaign/webauthn/circuit.json"
     "${crate}/test-vectors/noir/campaign/webauthn/witness.gz"
+    "${crate}/test-vectors/noir/campaign/webauthn/Prover.toml"
     "${crate}/test-vectors/noir/campaign/passport/circuit.json"
     "${crate}/test-vectors/noir/campaign/passport/witness.gz"
+    "${crate}/test-vectors/noir/campaign/passport/Prover.toml"
+    "${crate}/test-vectors/noir/campaign/passport_p1/circuit.json"
+    "${crate}/test-vectors/noir/campaign/passport_p1/witness.gz"
+    "${crate}/test-vectors/noir/campaign/passport_p1/Prover.toml"
     "${crate}/test-vectors/noir/campaign/oprf/circuit.json"
     "${crate}/test-vectors/noir/campaign/oprf/witness.gz"
+    "${crate}/test-vectors/noir/campaign/oprf/Prover.toml"
     "${repo_root}/target/v1-benchmarks/noir-srs/noir_beta19_campaign.dat"
   )
   local file
@@ -67,7 +75,7 @@ content_digest() {
 }
 
 source_sha="$(git -C "${repo_root}" rev-parse HEAD)"
-content_sha256="$(content_digest)"
+content_sha256="$(printf '%s\n%s\n%s\n' "$(content_digest)" "${iterations}" "${warmup}" | shasum -a 256 | awk '{print $1}')"
 manifest="${prebuilt_root}/manifest.json"
 content_manifest="${prebuilt_root}.content.json"
 recorded_content_sha256=""
@@ -93,8 +101,8 @@ if [[ -f "${manifest}" && -f "${content_manifest}" ]] &&
     --expected-source-sha "${existing_source_sha}" \
     --expected-platform ios \
     --expected-functions "${existing_functions}" \
-    --expected-iterations 5 \
-    --expected-warmup 1 \
+    --expected-iterations "${iterations}" \
+    --expected-warmup "${warmup}" \
     --devices "iPhone SE 2022-15" \
     --max-completion-timeout-secs 7200 >/dev/null
   echo "Reusing frozen ${manifest}"
@@ -109,9 +117,10 @@ trap cleanup EXIT
 : >"${entries_file}"
 
 functions=(
-  provekit_v1_mobile_adapters::bench_webauthn_barretenberg_prove
-  provekit_v1_mobile_adapters::bench_passport_barretenberg_prove
-  provekit_v1_mobile_adapters::bench_oprf_barretenberg_prove
+  provekit_v1_mobile_adapters::bench_webauthn_barretenberg_input_to_proof
+  provekit_v1_mobile_adapters::bench_passport_barretenberg_input_to_proof
+  provekit_v1_mobile_adapters::bench_passport_p1_barretenberg_input_to_proof
+  provekit_v1_mobile_adapters::bench_oprf_barretenberg_input_to_proof
 )
 for index in "${!functions[@]}"; do
   function="${functions[$index]}"
@@ -119,9 +128,9 @@ for index in "${!functions[@]}"; do
   destination="${prebuilt_root}/entries/${entry}"
   mkdir -p "${destination}"
 
-  jq -n \
+  jq -n --argjson iterations "${iterations}" --argjson warmup "${warmup}" \
     --arg function "${function}" \
-    '{function: $function, iterations: 5, warmup: 1}' \
+    '{function: $function, iterations: $iterations, warmup: $warmup}' \
     >"${resources}/bench_spec.json"
   (
     cd "${project}"
@@ -156,6 +165,8 @@ for index in "${!functions[@]}"; do
   suite_hash="$(shasum -a 256 "${suite}" | awk '{print $1}')"
   jq -cn \
     --arg function "${function}" \
+    --argjson iterations "${iterations}" \
+    --argjson warmup "${warmup}" \
     --arg app_path "entries/${entry}/app.ipa" \
     --arg suite_path "entries/${entry}/test-suite.zip" \
     --arg app_hash "${app_hash}" \
@@ -164,8 +175,8 @@ for index in "${!functions[@]}"; do
     --argjson suite_size "${suite_size}" \
     '{
       function: $function,
-      iterations: 5,
-      warmup: 1,
+      iterations: $iterations,
+      warmup: $warmup,
       completion_timeout_secs: 7200,
       artifacts: [
         {

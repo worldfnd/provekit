@@ -49,4 +49,67 @@ fn main() {
     } else {
         println!("cargo:rustc-link-lib=pthread");
     }
+
+    let benchmark_root = manifest_dir
+        .parent()
+        .expect("Rapidsnark crates live below benchmarks/v1");
+    let (source, output_name) = if env::var_os("CARGO_FEATURE_OPRF_NULLIFIER").is_some() {
+        (
+            benchmark_root.join("circom/web/dist/assets/oprf/oprf_nullifier.wasm"),
+            "oprfnullifierproof.wasm",
+        )
+    } else if env::var_os("CARGO_FEATURE_OPRF_QUERY").is_some() {
+        (
+            benchmark_root.join("circom/web/dist/assets/oprf/oprf_query.wasm"),
+            "oprfqueryproof.wasm",
+        )
+    } else if env::var_os("CARGO_FEATURE_PASSPORT_REGISTER").is_some() {
+        (
+            benchmark_root.join(
+                "circom/web/dist/assets/passport/register_sha256_sha256_sha256_rsa_65537_4096.wasm",
+            ),
+            "registersha256sha256sha256rsa655374096.wasm",
+        )
+    } else if env::var_os("CARGO_FEATURE_PASSPORT_P1").is_some() {
+        (
+            repository_root
+                .join("target/v1-benchmarks/circom/passport_p1/passport_p1_js/passport_p1.wasm"),
+            "passportp1.wasm",
+        )
+    } else if env::var("CARGO_PKG_NAME")
+        .expect("package name")
+        .contains("webauthn")
+    {
+        (
+            benchmark_root.join("circom/web/dist/assets/webauthn/webauthn_default.wasm"),
+            "webauthndefault.wasm",
+        )
+    } else {
+        (
+            benchmark_root.join("circom/web/dist/assets/passport/vc_and_disclose.wasm"),
+            "vcanddisclose.wasm",
+        )
+    };
+    assert!(
+        source.is_file(),
+        "missing live witness WASM: {}",
+        source.display()
+    );
+    println!("cargo:rerun-if-changed={}", source.display());
+    println!(
+        "cargo:rustc-env=MOBENCH_LIVE_WITNESS_WASM_BYTES={}",
+        std::fs::metadata(&source)
+            .expect("read live witness WASM metadata")
+            .len()
+    );
+    let witness_dir =
+        PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR")).join("live-witness-wasm");
+    std::fs::create_dir_all(&witness_dir).expect("create live witness WASM directory");
+    std::fs::copy(&source, witness_dir.join(output_name)).expect("copy live witness WASM");
+    if !env::var("CARGO_PKG_NAME")
+        .expect("package name")
+        .contains("oprf")
+    {
+        rust_witness::transpile::transpile_wasm(witness_dir.to_string_lossy().into_owned());
+    }
 }

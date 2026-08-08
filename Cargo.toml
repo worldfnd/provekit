@@ -117,6 +117,7 @@ base64 = "0.22.1"
 bytes = "1.10.1"
 ciborium = "0.2.2"
 chrono = "0.4.41"
+chkstk_stub = "=0.1.0"
 # On CI divan get replaced by divan = { package = "codspeed-divan-compat", version = "3.0.1" } for benchmark tracking.
 # This is a workaround because different package selection based on target does not mix well with workspace dependencies.
 divan = "0.1.21"

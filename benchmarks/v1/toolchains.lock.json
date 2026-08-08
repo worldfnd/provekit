@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "policy": "Exact versions are immutable. Browser Noir/Barretenberg measurements are blocked until the candidate pair passes proof verification and tamper rejection for all three workloads; freeze its integrity in this file before measuring.",
+  "policy": "Exact versions are immutable. Browser Noir/Barretenberg measurements are blocked until the candidate pair passes proof verification and tamper rejection for every workload in the selected campaign; freeze its integrity in this file before measuring.",
   "noir": {
     "version": "1.0.0-beta.19",
     "base_url": "https://github.com/noir-lang/noir/releases/download/v1.0.0-beta.19",
@@ -52,6 +52,7 @@
   "provekit_v1": {
     "core_commit": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
     "campaign_harness_commit": "7de99e9e001d06797c9770684afea20f096d1ac3",
+    "beta11_fixture_harness_commit": "13044531f0f38e02ed19fcbd9b26202b8ba5a962",
     "noir_version": "1.0.0-beta.11",
     "wasm_crate": "tooling/provekit-wasm",
     "wasm_features": "no-default-features (single-thread)",
@@ -149,6 +150,12 @@
       "prover": "Mopro circom-prover (Arkworks)",
       "witness": "rust-witness",
       "condition": "Rapidsnark unsupported on confirmed Motorola E15 userspace ABI"
+    },
+    "iphone_oprf_witness_runtime": {
+      "package": "wasmi",
+      "version": "0.46.0",
+      "scope": "World ID O2 OPRF input-to-proof lane only",
+      "reason": "Interprets the exact Circom witness Wasm on arm64 iOS after the rust-witness AOT artifact produced repeatable EXC_BAD_ACCESS crashes"
     }
   },
   "circom_native_frozen_witnesses": {

@@ -20,9 +20,13 @@ anyhow = "1"
 inventory = "0.3"
 mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs.git", rev = "e992596a786cc18047102a318d40131c953e57b8" }
 uniffi = { version = "0.31", features = ["cli"] }
+num-bigint = "0.4"
+serde_json = "1"
+wasmi = "=0.46.0"
 
 [build-dependencies]
 cc = "1"
 chkstk_stub = "=0.1.0"
+rust-witness = "=0.1.6"
 
 [workspace]

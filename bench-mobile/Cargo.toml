@@ -46,6 +46,7 @@ libc = "0.2"
 
 [build-dependencies]
 base64.workspace = true
+chkstk_stub.workspace = true
 flate2 = "1.1"
 serde_json.workspace = true
 

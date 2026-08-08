@@ -12,6 +12,8 @@ target_dir="${V1_PROVEKIT_WASM_TARGET_DIR:-${repo_root}/target/v1-benchmarks/pro
 package_dir="${benchmark_root}/wasm/v1-wasm-pkg"
 artifact_dir="${repo_root}/target/v1-benchmarks/provekit-beta11-artifacts"
 input_dir="${repo_root}/target/v1-benchmarks/provekit-v1-inputs"
+passport_p1_beta11="${repo_root}/target/v1-benchmarks/passport-p1-beta11"
+oprf_o2_beta11="${repo_root}/target/v1-benchmarks/oprf-o2-beta11"
 
 for command in cargo git jq; do
   command -v "${command}" >/dev/null 2>&1 || {
@@ -19,6 +21,9 @@ for command in cargo git jq; do
     exit 1
   }
 done
+
+bash "${script_dir}/prepare-passport-p1-beta11.sh" >/dev/null
+bash "${script_dir}/prepare-oprf-o2-beta11.sh" >/dev/null
 
 core_commit="$(jq -er '.provekit_v1.core_commit' "${lock_file}")"
 if ! git -C "${repo_root}" cat-file -e "${core_commit}^{commit}"; then
@@ -41,8 +46,9 @@ fi
 
 for required in \
   "${artifact_dir}/complete_age_check.json" \
-  "${artifact_dir}/oprf.json" \
-  "${artifact_dir}/webauthn_assertion.json"; do
+  "${artifact_dir}/webauthn_assertion.json" \
+  "${passport_p1_beta11}/target/passport_p1.json" \
+  "${oprf_o2_beta11}/oprf/target/oprf.json"; do
   [[ -s "${required}" ]] || {
     echo "error: missing frozen beta.11 artifact ${required}; run prepare-provekit-beta11-artifacts.sh" >&2
     exit 1
@@ -55,7 +61,6 @@ wasm_bindgen_bin="${tool_root}/wasm-bindgen-cli-$(jq -er '.wasm_bindgen_cli.vers
 if [[ ! -x "${wasm_bindgen_bin}" ]]; then
   wasm_bindgen_bin="$(${script_dir}/bootstrap-wasm-bindgen.sh)"
 fi
-
 mkdir -p "${target_dir}"
 echo "Building ProveKit V1 WASM from ${core_commit}"
 (
@@ -63,31 +68,54 @@ echo "Building ProveKit V1 WASM from ${core_commit}"
   mkdir -p \
     noir-examples/noir-passport-monolithic/complete_age_check/target \
     noir-examples/oprf/target \
-    benchmarks/v1/noir/webauthn_assertion/target
+    benchmarks/v1/noir/webauthn_assertion/target \
+    benchmarks/v1/noir/passport_p1/target \
+    target/v1-benchmarks
+  rm -rf target/v1-benchmarks/noir-beta19-compat
+  ln -s "${repo_root}/target/v1-benchmarks/noir-beta19-compat" \
+    target/v1-benchmarks/noir-beta19-compat
+  cp "${benchmark_root}/noir/webauthn_assertion/Nargo.toml" \
+    benchmarks/v1/noir/webauthn_assertion/Nargo.toml
+  rm -rf benchmarks/v1/noir/webauthn_assertion/src
+  cp -R "${benchmark_root}/noir/webauthn_assertion/src" \
+    benchmarks/v1/noir/webauthn_assertion/src
+  cp "${benchmark_root}/noir/webauthn_assertion/Prover.toml" \
+    benchmarks/v1/noir/webauthn_assertion/Prover.toml
+  cp "${benchmark_root}/noir/webauthn_assertion/inputs.json" \
+    benchmarks/v1/noir/webauthn_assertion/inputs.json
   cp "${artifact_dir}/complete_age_check.json" \
     noir-examples/noir-passport-monolithic/complete_age_check/target/complete_age_check.json
-  cp "${artifact_dir}/oprf.json" noir-examples/oprf/target/oprf.json
+  rm -rf benchmarks/v1/noir/oprf_o2_beta11
+  cp -R "${oprf_o2_beta11}" benchmarks/v1/noir/oprf_o2_beta11
   cp "${artifact_dir}/webauthn_assertion.json" \
     benchmarks/v1/noir/webauthn_assertion/target/webauthn_assertion.json
+  cp "${passport_p1_beta11}/Nargo.toml" benchmarks/v1/noir/passport_p1/Nargo.toml
+  cp -R "${passport_p1_beta11}/src" benchmarks/v1/noir/passport_p1/
+  cp -R "${passport_p1_beta11}/utils" benchmarks/v1/noir/passport_p1/
+  cp "${passport_p1_beta11}/target/passport_p1.json" \
+    benchmarks/v1/noir/passport_p1/target/passport_p1.json
   cp "${artifact_dir}/complete_age_check.Prover.toml" \
     "${input_dir}/passport_complete_age_check.Prover.toml"
-  cp noir-examples/oprf/Prover.toml "${input_dir}/oprf_taceo.Prover.toml"
+  cp "${oprf_o2_beta11}/oprf/Prover.toml" "${input_dir}/oprf_taceo.Prover.toml"
   cp benchmarks/v1/noir/webauthn_assertion/Prover.toml \
     "${input_dir}/webauthn_assertion.Prover.toml"
   cp benchmarks/v1/noir/webauthn_assertion/inputs.json \
     "${input_dir}/webauthn_assertion.inputs.json"
+  cp "${passport_p1_beta11}/Prover.toml" "${input_dir}/passport_p1.Prover.toml"
   cargo build --locked --release -p provekit-cli
   CARGO_TARGET_DIR="${target_dir}" \
-    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS="-C target-feature=+simd128,+bulk-memory,+mutable-globals,-reference-types" \
-    cargo build --locked --release --target wasm32-unknown-unknown -p provekit-wasm --no-default-features
+    CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUSTFLAGS="-C target-feature=+atomics,+bulk-memory,+mutable-globals,+simd128,+relaxed-simd,-reference-types -C link-arg=--shared-memory -C link-arg=--import-memory -C link-arg=--max-memory=4294967296 -C link-arg=--export=__wasm_init_tls -C link-arg=--export=__tls_size -C link-arg=--export=__tls_align -C link-arg=--export=__tls_base" \
+    cargo build -Z build-std=panic_abort,std --locked --release \
+      --target wasm32-unknown-unknown -p provekit-wasm --no-default-features
 )
 
 cli="${source_root}/target/release/provekit-cli"
 [[ -x "${cli}" ]] || { echo "error: missing ${cli}" >&2; exit 1; }
 for spec in \
-  "passport_complete_age_check|noir-examples/noir-passport-monolithic/complete_age_check|complete_age_check|complete_age_check.Prover.toml" \
-  "oprf_taceo|noir-examples/oprf|oprf|oprf_taceo.Prover.toml" \
-  "webauthn_assertion|benchmarks/v1/noir/webauthn_assertion|webauthn_assertion|webauthn_assertion.Prover.toml"; do
+  "passport_complete_age_check|noir-examples/noir-passport-monolithic/complete_age_check|complete_age_check|passport_complete_age_check.Prover.toml" \
+  "oprf_taceo|benchmarks/v1/noir/oprf_o2_beta11/oprf|oprf|oprf_taceo.Prover.toml" \
+  "webauthn_assertion|benchmarks/v1/noir/webauthn_assertion|webauthn_assertion|webauthn_assertion.Prover.toml" \
+  "passport_p1|benchmarks/v1/noir/passport_p1|passport_p1|passport_p1.Prover.toml"; do
   IFS='|' read -r workload circuit_dir program input_name <<<"${spec}"
   out_dir="${repo_root}/target/v1-benchmarks/artifacts/${workload}"
   mkdir -p "${out_dir}"
@@ -112,6 +140,15 @@ mkdir -p "${package_dir}"
   --target web \
   --out-dir "${package_dir}" \
   "${target_dir}/wasm32-unknown-unknown/release/provekit_wasm.wasm"
+printf '%s\n' \
+  '{' \
+  '  "name": "provekit-v1-wasm-local",' \
+  '  "private": true,' \
+  '  "type": "module",' \
+  '  "module": "provekit_wasm.js",' \
+  '  "main": "provekit_wasm.js",' \
+  '  "sideEffects": true' \
+  '}' >"${package_dir}/package.json"
 
 wasm_sha256="$(shasum -a 256 "${package_dir}/provekit_wasm_bg.wasm" | awk '{print $1}')"
 jq -n \

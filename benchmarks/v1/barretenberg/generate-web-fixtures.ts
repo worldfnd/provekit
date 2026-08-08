@@ -17,6 +17,7 @@ const dist = resolve(Bun.argv[2] ?? "web/dist");
 const workloads = [
   "webauthn_assertion",
   "passport_complete_age_check",
+  "passport_p1",
   "oprf_taceo",
   "oprf_world_id_nullifier",
 ] as const;

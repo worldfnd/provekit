@@ -175,13 +175,16 @@ run_prepare() {
   verify_locks
   ((dry_run)) || source "${script_dir}/android-env.sh"
   run_command "${repo_root}" "${script_dir}/compile-noir-workloads.sh"
+  run_command "${repo_root}" "${script_dir}/prepare-passport-p1-circom-browser.sh"
+  run_command "${repo_root}" "${script_dir}/prepare-provekit-beta11-artifacts.sh"
+  run_command "${repo_root}" "${script_dir}/build-provekit-v1-wasm.sh"
   local workload
   for workload in webauthn_assertion passport_complete_age_check oprf_taceo; do
     run_command "${repo_root}" "${script_dir}/build-provekit-workload.sh" "${workload}"
   done
   run_command "${benchmark_root}/barretenberg" bun run build:web
   run_command "${repo_root}" "${script_dir}/prepare-webauthn-circom.sh" --witness
-  run_command "${repo_root}" "${script_dir}/prepare-mopro-native-adapters.sh"
+  run_command "${repo_root}" "${script_dir}/prepare-mopro-native-adapters.sh" --build-ios
   run_command "${repo_root}" "${script_dir}/prepare-self-passport.sh"
   run_command "${repo_root}" "${script_dir}/generate-self-passport-witnesses.sh"
   local circuit
@@ -192,6 +195,17 @@ run_prepare() {
   run_command "${benchmark_root}/wasm" bun run build
   run_command "${benchmark_root}/circom/web" bun run build
   run_command "${repo_root}" "${script_dir}/prepare-circom-native-witnesses.sh"
+  run_command "${repo_root}" env \
+    "MOBENCH_CI_PREPARE=1" \
+    "PROVEKIT_MOBILE_BENCH_ARTIFACT_DIR=${repo_root}/target/v1-benchmarks/provekit-beta11-artifacts" \
+    cargo-mobench build --target ios --release --yes --non-interactive \
+    --crate-path "${repo_root}/bench-mobile" \
+    --output-dir "${repo_root}/target/v1-benchmarks/provekit-ios"
+  run_command "${repo_root}" "${script_dir}/prepare-provekit-ios-prebuilt.sh"
+  run_command "${repo_root}" cargo-mobench build --target ios --release --yes --non-interactive \
+    --crate-path "${repo_root}/target/v1-benchmarks/mopro/provekit-v1-mobile-adapters" \
+    --output-dir "${repo_root}/target/v1-benchmarks/mopro-noir-ios"
+  run_command "${repo_root}" "${script_dir}/prepare-mopro-noir-ios-prebuilt.sh"
   run_command "${repo_root}" "${script_dir}/prepare-rapidsnark-oprf-ios-prebuilt.sh"
   run_command "${repo_root}" \
     "${script_dir}/prepare-rapidsnark-passport-webauthn-ios-prebuilt.sh"
@@ -202,8 +216,10 @@ run_smoke() {
   # Each called smoke is responsible for accepting a valid proof and rejecting
   # a tampered proof. A non-zero result prevents measurement.
   local workload
-  for workload in webauthn passport oprf; do
-    run_command "${benchmark_root}/barretenberg" bun run "smoke:${workload}"
+  for workload in webauthn_assertion passport_complete_age_check passport_p1 oprf_world_id_nullifier; do
+    run_command "${benchmark_root}/barretenberg" env \
+      "MOBENCH_WORKLOAD=${workload}" "MOBENCH_WARMUP=0" "MOBENCH_ITERATIONS=1" \
+      bun run web/smoke.ts
   done
   run_command "${benchmark_root}/wasm" bun run smoke
   local browser_workload
@@ -252,9 +268,8 @@ capture_e15_identity() {
 
 run_mac_chrome() {
   run_command "${repo_root}" env \
-    "MAC_WASM_BENCHMARK_JSON=${campaign_root}/mac-chrome-wasm-benchmarks.json" \
-    "MOBENCH_WARMUP=${WARMUP}" "MOBENCH_ITERATIONS=${SAMPLES}" \
-    bun run "${script_dir}/run-mac-wasm-benchmarks.ts"
+    "INPUT_TO_PROOF_OUTPUT_ROOT=${campaign_root}/mac-chrome" \
+    bun run "${script_dir}/run-mac-input-to-proof.ts"
 }
 
 run_e15() {
@@ -301,8 +316,49 @@ require_paid_access() {
   run_command "${repo_root}" "${script_dir}/preflight-browserstack-products.sh"
 }
 
+run_iphone_manifest() {
+  local manifest="$1"
+  local iterations="$2"
+  local warmup="$3"
+  local fetch_output="$4"
+  local result_output="$5"
+  require_file "${manifest}"
+  local source_sha function_list
+  source_sha="$(jq -er '.source_sha' "${manifest}")"
+  function_list="$(jq -c '[.entries[].function]' "${manifest}")"
+  jq -e --argjson warmup "${warmup}" --argjson iterations "${iterations}" \
+    'all(.entries[]; .warmup == $warmup and .iterations == $iterations)' "${manifest}" >/dev/null
+  run_command "${repo_root}" cargo-mobench ci run-prebuilt \
+    --manifest "${manifest}" --expected-source-sha "${source_sha}" \
+    --expected-platform ios --expected-functions "${function_list}" \
+    --expected-iterations "${iterations}" --expected-warmup "${warmup}" \
+    --devices "iPhone SE 2022-15" --fetch \
+    --fetch-output-dir "${fetch_output}" \
+    --output-dir "${result_output}" \
+    --max-completion-timeout-secs 7200
+}
+
 run_iphone() {
   require_paid_access
+  local warm_manifest="${V1_IOS_WARM_PREBUILT_MANIFEST:-}"
+  local cold_manifest="${V1_IOS_COLD_PREBUILT_MANIFEST:-}"
+  if [[ -n "${warm_manifest}" || -n "${cold_manifest}" ]]; then
+    [[ -n "${warm_manifest}" && -n "${cold_manifest}" ]] || {
+      echo "error: set both V1_IOS_WARM_PREBUILT_MANIFEST and V1_IOS_COLD_PREBUILT_MANIFEST" >&2
+      exit 1
+    }
+    run_iphone_manifest "${warm_manifest}" 5 1 \
+      "${campaign_root}/iphone/warm/browserstack" \
+      "${campaign_root}/iphone/warm/results"
+    local invocation
+    for invocation in 0 1 2 3 4 5; do
+      run_iphone_manifest "${cold_manifest}" 1 0 \
+        "${campaign_root}/iphone/cold/run-${invocation}/browserstack" \
+        "${campaign_root}/iphone/cold/run-${invocation}/results"
+    done
+    return
+  fi
+
   local manifest="${V1_IOS_PREBUILT_MANIFEST:-}"
   if [[ -z "${manifest}" ]]; then
     ((dry_run)) && {
@@ -313,20 +369,8 @@ run_iphone() {
     echo "error: set V1_IOS_PREBUILT_MANIFEST" >&2
     exit 1
   fi
-  require_file "${manifest}"
-  local source_sha functions
-  source_sha="$(jq -er '.source_sha' "${manifest}")"
-  functions="$(jq -c '[.entries[].function]' "${manifest}")"
-  jq -e --argjson warmup "${WARMUP}" --argjson samples "${SAMPLES}" \
-    'all(.entries[]; .warmup == $warmup and .iterations == $samples)' "${manifest}" >/dev/null
-  run_command "${repo_root}" cargo-mobench ci run-prebuilt \
-    --manifest "${manifest}" --expected-source-sha "${source_sha}" \
-    --expected-platform ios --expected-functions "${functions}" \
-    --expected-iterations "${SAMPLES}" --expected-warmup "${WARMUP}" \
-    --devices "iPhone SE 2022-15" --fetch \
-    --fetch-output-dir "${campaign_root}/browserstack-ios" \
-    --output-dir "${campaign_root}/native-ios" \
-    --max-completion-timeout-secs 7200
+  run_iphone_manifest "${manifest}" "${SAMPLES}" "${WARMUP}" \
+    "${campaign_root}/browserstack-ios" "${campaign_root}/native-ios"
 }
 
 run_measure() {
@@ -336,13 +380,13 @@ run_measure() {
 }
 
 run_export() {
-  local exporter="${benchmark_root}/semantic-parity-data/export-v1.ts"
-  local output="${benchmark_root}/semantic-parity-data/semantic-parity-samples.csv"
+  local exporter="${benchmark_root}/input-to-proof-data/export.ts"
   require_file "${exporter}"
-  # Publication export is sourced only from the committed, hash-locked V1
-  # evidence. The device runs above still retain their raw reports in the
-  # campaign directory for diagnosis and audit.
-  run_command "${repo_root}" bun "${exporter}" "--output=${output}"
+  run_command "${repo_root}" env \
+    "INPUT_TO_PROOF_RAW_ROOT=${campaign_root}/mac-chrome" \
+    "INPUT_TO_PROOF_IPHONE_RAW_ROOT=${campaign_root}/iphone/publication" \
+    "INPUT_TO_PROOF_EXPORT_TARGETS=${V1_EXPORT_TARGETS:-mac_chrome}" \
+    bun "${exporter}"
 }
 
 run_stage() {

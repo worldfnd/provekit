@@ -340,6 +340,31 @@ fn setup_oprf_prover() -> PreparedProverFixture {
     prover
 }
 
+fn setup_passport_p1_prover() -> PreparedProverFixture {
+    setup_validated_prover(MobileBenchFixture::PassportP1, &PASSPORT_P1_VALIDATION_GATE)
+}
+
+static PASSPORT_P1_VALIDATION_GATE: Once = Once::new();
+
+fn setup_validated_prover(
+    fixture: MobileBenchFixture,
+    validation_gate: &'static Once,
+) -> PreparedProverFixture {
+    validation_gate.call_once(|| {
+        let prepared = examples::prepare_fixture(fixture).expect("prepare validation canary");
+        let verified = examples::prove_fixture(prepared).expect("prove validation canary");
+        verified
+            .verify_and_reject_tampered()
+            .expect("validate proof and tamper rejection");
+    });
+    let prover = examples::prepare_fixture(fixture)
+        .expect("prepare input-to-proof fixture")
+        .into_prover_only();
+    record_proving_payload(&prover);
+    in_process::trim_process_memory();
+    prover
+}
+
 fn setup_p256_bigcurve_prepared() -> PreparedCircuitFixture {
     let prepared = examples::prepare_fixture(MobileBenchFixture::P256Bigcurve)
         .expect("prepare p256_bigcurve fixture");
@@ -415,6 +440,23 @@ fn record_proof_metrics(proof: &NoirProof, prove_started: Instant) {
     let (prove_time_ns, proof_size_bytes) = exact_proof_metrics(proof, prove_started);
     mobench_sdk::record_sample_u64("prove_time_ns", prove_time_ns);
     mobench_sdk::record_sample_u64("proof_size_bytes", proof_size_bytes);
+}
+
+fn record_input_to_proof_metrics(proof: &NoirProof, started: Instant) {
+    let (input_to_proof_time_ns, proof_size_bytes) = exact_proof_metrics(proof, started);
+    mobench_sdk::record_sample_u64("input_to_proof_time_ns", input_to_proof_time_ns);
+    // ProveKit's native `Prover::prove(input_map)` performs witness solving and
+    // proof generation as one call, so there is no honest phase split here.
+    mobench_sdk::record_sample_u64("prove_time_ns", input_to_proof_time_ns);
+    mobench_sdk::record_sample_u64("proof_size_bytes", proof_size_bytes);
+}
+
+fn benchmark_input_to_proof(prepared: PreparedProverFixture) {
+    let started = Instant::now();
+    let proof = examples::prove_fixture_proof_only(prepared)
+        .expect("generate ProveKit input-to-proof fixture");
+    record_input_to_proof_metrics(&proof, started);
+    black_box(proof);
 }
 
 fn exact_proof_metrics(proof: &NoirProof, prove_started: Instant) -> (u64, u64) {
@@ -595,6 +637,25 @@ pub fn bench_oprf_prove(prepared: PreparedProverFixture) {
     black_box(proof);
 }
 
+#[benchmark(setup = setup_oprf_prover, per_iteration)]
+pub fn bench_oprf_input_to_proof(prepared: PreparedProverFixture) {
+    benchmark_input_to_proof(prepared);
+}
+
+#[benchmark(setup = setup_passport_p1_prover, per_iteration)]
+pub fn bench_passport_p1_input_to_proof(prepared: PreparedProverFixture) {
+    benchmark_input_to_proof(prepared);
+}
+
+#[benchmark(setup = setup_complete_age_check_prover, per_iteration)]
+pub fn bench_passport_complete_age_check_input_to_proof(prepared: PreparedCompleteAgeCheckProver) {
+    let started = Instant::now();
+    let proof = prove_complete_age_check_fixture_proof_only(prepared)
+        .expect("generate complete_age_check input-to-proof fixture");
+    record_input_to_proof_metrics(&proof, started);
+    black_box(proof);
+}
+
 #[benchmark(setup = setup_oprf_verified)]
 pub fn bench_oprf_verify(verified: &VerifiedCircuitFixture) {
     let verified = profile_phase("verify", || {
@@ -700,6 +761,11 @@ pub fn bench_webauthn_assertion_prove(prepared: PreparedProverFixture) {
 
     record_proof_metrics(&proof, prove_started);
     black_box(proof);
+}
+
+#[benchmark(setup = setup_webauthn_assertion_prover, per_iteration)]
+pub fn bench_webauthn_assertion_input_to_proof(prepared: PreparedProverFixture) {
+    benchmark_input_to_proof(prepared);
 }
 
 #[benchmark(setup = setup_webauthn_assertion_verified)]

@@ -7,6 +7,7 @@ import { startServer } from "./server";
 
 const workloads = [
   "passport_complete_age_check",
+  "passport_p1",
   "webauthn_assertion",
   "oprf_taceo",
   "oprf_world_id_nullifier",
@@ -22,6 +23,7 @@ const executablePath =
   process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const warmup = Number.parseInt(process.env.MOBENCH_WARMUP ?? "1", 10);
 const iterations = Number.parseInt(process.env.MOBENCH_ITERATIONS ?? "5", 10);
+const timingMode = process.env.MOBENCH_TIMING_MODE === "cold_local" ? "cold_local" : "warm_reuse";
 const server = startServer();
 const profile = await mkdtemp(join(tmpdir(), "provekit-barretenberg-chrome-"));
 const context = await chromium.launchPersistentContext(profile, {
@@ -60,13 +62,14 @@ try {
   });
   sampler = startRendererRssSampler(profile);
   const report = await page.evaluate(
-    async ({ name, warmupCount, iterationCount }) =>
+    async ({ name, warmupCount, iterationCount, timingMode }) =>
       window.mobench.run({
-        name: `barretenberg::${name}::prove`,
+        name: `barretenberg::${name}::e2e`,
         warmup: warmupCount,
         iterations: iterationCount,
+        timing_mode: timingMode,
       }),
-    { name: workload, warmupCount: warmup, iterationCount: iterations },
+    { name: workload, warmupCount: warmup, iterationCount: iterations, timingMode },
   );
   const processMemory = await sampler.stop();
   sampler = undefined;
@@ -104,7 +107,7 @@ try {
 declare global {
   interface Window {
     mobench: {
-      run(spec: { name: string; warmup: number; iterations: number }): Promise<unknown>;
+      run(spec: { name: string; warmup: number; iterations: number; timing_mode?: "cold_local" | "warm_reuse" }): Promise<unknown>;
     };
   }
 }

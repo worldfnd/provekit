@@ -5,7 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 benchmark_root="$(cd "${script_dir}/.." && pwd)"
 repo_root="$(cd "${benchmark_root}/../.." && pwd)"
-source_revision="${V1_PROVEKIT_FIXTURE_SOURCE_REVISION:-$(git -C "${repo_root}" rev-parse HEAD)}"
+source_revision="${V1_PROVEKIT_FIXTURE_SOURCE_REVISION:-$(jq -er '.provekit_v1.beta11_fixture_harness_commit' "${benchmark_root}/toolchains.lock.json")}"
 snapshot_root="${repo_root}/target/v1-benchmarks/provekit-beta11-source"
 artifact_root="${repo_root}/target/v1-benchmarks/provekit-beta11-artifacts"
 source_root="${V1_BENCHMARK_SOURCE_ROOT:-${repo_root}/target/v1-benchmarks/sources}"
@@ -43,7 +43,7 @@ ln -s "${source_root}" "${snapshot_root}/target/v1-benchmarks/sources"
 (
   cd "${snapshot_root}"
   MOBENCH_CI_PREPARE=1 \
-    PROVEKIT_REUSE_WEBAUTHN_FIXTURE=1 \
+    PROVEKIT_REUSE_WEBAUTHN_FIXTURE=0 \
     V1_BENCHMARK_SOURCE_ROOT="${source_root}" \
     V1_BENCHMARK_NARGO_HOME="${nargo_home}" \
     V1_BENCHMARK_TOOL_ROOT="${tool_root}" \
@@ -60,7 +60,20 @@ cp \
 cp \
   "${snapshot_root}/noir-examples/noir-passport/merkle_age_check/target/"{t_add_dsc_720.json,t_add_id_data_720.json,t_add_integrity_commit.json,t_attest.json} \
   "${artifact_root}/"
-cp "${snapshot_root}/noir-examples/oprf/target/oprf.json" "${artifact_root}/oprf.json"
+"${script_dir}/prepare-oprf-o2-beta11.sh" >/dev/null
+cp \
+  "${repo_root}/target/v1-benchmarks/oprf-o2-beta11/oprf/target/oprf.json" \
+  "${artifact_root}/oprf.json"
+cp \
+  "${repo_root}/target/v1-benchmarks/oprf-o2-beta11/oprf/Prover.toml" \
+  "${artifact_root}/oprf.Prover.toml"
+"${script_dir}/prepare-passport-p1-beta11.sh" >/dev/null
+cp \
+  "${repo_root}/target/v1-benchmarks/passport-p1-beta11/target/passport_p1.json" \
+  "${artifact_root}/passport_p1.json"
+cp \
+  "${repo_root}/target/v1-benchmarks/passport-p1-beta11/Prover.toml" \
+  "${artifact_root}/passport_p1.Prover.toml"
 cp "${snapshot_root}/noir-examples/p256_bigcurve/target/p256.json" "${artifact_root}/p256.json"
 cp \
   "${snapshot_root}/benchmarks/v1/noir/webauthn_assertion/target/webauthn_assertion.json" \

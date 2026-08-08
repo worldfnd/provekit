@@ -15,7 +15,18 @@ const COMPLETE_AGE_CHECK_TOML: &str =
     include_str!("../../noir-examples/noir-passport-monolithic/complete_age_check/Prover.toml");
 const OPRF_PROGRAM: &str =
     include_str!(concat!(env!("OUT_DIR"), "/bench_mobile_fixtures/oprf.json"));
-const OPRF_TOML: &str = include_str!("../../noir-examples/oprf/Prover.toml");
+const OPRF_TOML: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/bench_mobile_fixtures/oprf.Prover.toml"
+));
+const PASSPORT_P1_PROGRAM: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/bench_mobile_fixtures/passport_p1.json"
+));
+const PASSPORT_P1_TOML: &str = include_str!(concat!(
+    env!("OUT_DIR"),
+    "/bench_mobile_fixtures/passport_p1.Prover.toml"
+));
 const P256_BIGCURVE_PROGRAM: &str =
     include_str!(concat!(env!("OUT_DIR"), "/bench_mobile_fixtures/p256.json"));
 const P256_BIGCURVE_TOML: &str = include_str!("../../noir-examples/p256_bigcurve/Prover.toml");
@@ -30,6 +41,7 @@ const WEBAUTHN_ASSERTION_TOML: &str =
 pub enum MobileBenchFixture {
     CompleteAgeCheck,
     Oprf,
+    PassportP1,
     P256Bigcurve,
     WebauthnAssertion,
 }
@@ -39,6 +51,7 @@ impl MobileBenchFixture {
         match self {
             Self::CompleteAgeCheck => "complete_age_check",
             Self::Oprf => "oprf",
+            Self::PassportP1 => "passport_p1",
             Self::P256Bigcurve => "p256_bigcurve",
             Self::WebauthnAssertion => "webauthn_assertion",
         }
@@ -48,6 +61,7 @@ impl MobileBenchFixture {
         match self {
             Self::CompleteAgeCheck => COMPLETE_AGE_CHECK_PROGRAM,
             Self::Oprf => OPRF_PROGRAM,
+            Self::PassportP1 => PASSPORT_P1_PROGRAM,
             Self::P256Bigcurve => P256_BIGCURVE_PROGRAM,
             Self::WebauthnAssertion => WEBAUTHN_ASSERTION_PROGRAM,
         }
@@ -57,6 +71,7 @@ impl MobileBenchFixture {
         match self {
             Self::CompleteAgeCheck => COMPLETE_AGE_CHECK_TOML,
             Self::Oprf => OPRF_TOML,
+            Self::PassportP1 => PASSPORT_P1_TOML,
             Self::P256Bigcurve => P256_BIGCURVE_TOML,
             Self::WebauthnAssertion => WEBAUTHN_ASSERTION_TOML,
         }
@@ -104,6 +119,7 @@ mod tests {
         for fixture in [
             MobileBenchFixture::CompleteAgeCheck,
             MobileBenchFixture::Oprf,
+            MobileBenchFixture::PassportP1,
             MobileBenchFixture::WebauthnAssertion,
         ] {
             prepare_fixture(fixture)

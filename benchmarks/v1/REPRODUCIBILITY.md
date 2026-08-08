@@ -1,10 +1,27 @@
 # Reproducing the ProveKit V1 cross-device campaign
 
-This is the canonical guide for the 27-cell ProveKit V1 campaign. It covers
-three workloads (Passport, WebAuthn, OPRF), three stacks (ProveKit V1,
-Noir/Barretenberg, Circom/Groth16), and three targets (BrowserStack iPhone SE
-2022 native, physical Motorola E15 native, and Chrome/WASM on an M4 Max
-MacBook).
+This is the canonical guide for both the immutable 27-cell proof-only campaign
+and its input-to-proof successor. The latter covers four workloads (historical
+Passport, Passport P1, WebAuthn, OPRF), three stacks (ProveKit V1,
+Noir/Barretenberg, Circom/Groth16), three targets (BrowserStack iPhone SE 2022
+native, physical Motorola E15 native, and Chrome/WASM on an M4 Max MacBook),
+and separate cold and warm timing modes. It therefore contains 72 logical
+series and 432 sample rows when complete.
+
+For input-to-proof rows, the measured boundary begins with raw structured
+circuit inputs and ends when serialized proof bytes exist. Witness generation
+and proof generation are both inside the boundary. Verification and tamper
+rejection are required after every proof but excluded from the headline.
+`cold_local` launches a fresh process/runtime per attempt; `warm_reuse` reuses
+the runtime while regenerating witness and proof each time.
+
+On native ProveKit, `Prover::prove(input_map)` performs witness construction
+and proving as one integrated operation. The campaign records that exact value
+as `input_to_proof_time_ms` (and retains it in `prover_time_ms` for schema
+compatibility) without inventing a witness split. Native Barretenberg and
+Rapidsnark record their directly observed witness and proving phases
+separately. In all cases, the headline is the outer
+raw-input-to-serialized-proof duration.
 
 This campaign does **not** drop Mopro or Arkworks. Mopro is the native
 integration layer. Rapidsnark is preferred on supported arm64 targets;
@@ -68,12 +85,18 @@ one-to-one nor apples-to-apples.
 
 ### Passport
 
-- Noir: `complete_age_check`, a monolithic passport age-check proof.
-- Circom: Self signature-specific registration followed by
+- Historical Noir: `complete_age_check`, a monolithic passport age-check
+  proof.
+- Historical Circom: Self signature-specific registration followed by
   `vc_and_disclose`, a two-proof product flow.
+- Passport P1 Noir: `benchmarks/v1/noir/passport_p1/src/main.nr`.
+- Passport P1 Circom: `benchmarks/v1/circom/passport_p1/passport_p1.circom`.
+  This additional pair is the exact P1-matched monolithic RSA-4096 profile and
+  is reported separately from the historical Passport workload.
 
-Report registration and disclosure identities and phase timings. Never add
-the two Circom proofs and label the total an equivalent circuit.
+Report registration and disclosure identities and phase timings. Their sum is
+the historical product flow, not one equivalent circuit. Do not merge it with
+the exact P1 pair.
 
 ### WebAuthn
 
@@ -89,12 +112,13 @@ frozen manifest, and label the semantic omissions. Do not claim equivalence.
 
 ### OPRF
 
-- Noir: TACEO `oprf-nr` core example.
-- Circom: World ID Protocol query and nullifier application circuits.
+- Noir: the World-ID-aligned O2 nullifier implementation, including issuer
+  schema, minimum issuance time, identity commitment, nonce, signal hash, and
+  the same public nullifier statement.
+- Circom: the World ID Protocol nullifier application circuit.
 
-Query and nullifier remain distinct circuit names and result rows. They are
-not collapsed into a synthetic circuit or represented as identical to TACEO's
-example.
+The older TACEO core example remains historical evidence only. It must not be
+substituted into an O2 input-to-proof row.
 
 ## 3. Target identity
 
@@ -392,6 +416,63 @@ the contributing manifest hashes to the adjacent `.provenance.json` file.
 The proof-metrics bundle contains 11 named proof functions: three ProveKit,
 three Noir/Barretenberg, and five Circom/Groth16 variants. Mobench dry-run
 validation must pass before paid execution.
+
+### Input-to-proof iPhone freeze
+
+The successor campaign adds Passport P1 and live witness generation. Its warm
+manifest contains 13 executable functions: four ProveKit V1, four native
+Noir/Barretenberg, and five Circom/Rapidsnark functions because historical
+Circom Passport remains a registration-plus-disclosure product flow.
+
+Prepare warm bundles with `V1_IOS_ITERATIONS=5` and `V1_IOS_WARMUP=1`.
+Prepare distinct cold bundles from the same source/artifact freeze with:
+
+```bash
+export V1_IOS_ITERATIONS=1
+export V1_IOS_WARMUP=0
+export V1_PROVEKIT_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-provekit-ios-prebuilt"
+export V1_MOPRO_NOIR_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-noir-ios-prebuilt"
+export V1_RAPIDSNARK_OPRF_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-oprf-ios-prebuilt"
+export V1_RAPIDSNARK_CORE_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-core-ios-prebuilt"
+
+benchmarks/v1/scripts/prepare-provekit-ios-prebuilt.sh
+benchmarks/v1/scripts/prepare-mopro-noir-ios-prebuilt.sh
+benchmarks/v1/scripts/prepare-rapidsnark-oprf-ios-prebuilt.sh
+benchmarks/v1/scripts/prepare-rapidsnark-passport-webauthn-ios-prebuilt.sh
+benchmarks/v1/scripts/merge-ios-prebuilt-manifests.sh \
+  "$PWD/target/v1-benchmarks/input-to-proof-cold-ios-prebuilt" \
+  "$V1_PROVEKIT_IOS_PREBUILT_ROOT/manifest.json" \
+  "$V1_MOPRO_NOIR_IOS_PREBUILT_ROOT/manifest.json" \
+  "$V1_RAPIDSNARK_OPRF_IOS_PREBUILT_ROOT/manifest.json" \
+  "$V1_RAPIDSNARK_CORE_IOS_PREBUILT_ROOT/manifest.json"
+```
+
+The large WebAuthn and Passport P1 zkeys are streamed from the campaign HTTPS
+host, length- and SHA-256-verified, and cached before timing. Network transfer
+is never included in `input_to_proof_time_ms`; the exact zkey still belongs in
+`proving_payload_size_bytes`.
+
+The iPhone OPRF lane uses pinned `wasmi@0.46.0` to interpret the exact Circom
+witness Wasm inside the timed region, then serializes WTNS and invokes
+`rust-rapidsnark@0.1.4`. Its generated WTNS must match the frozen SnarkJS WTNS
+byte-for-byte before device sampling. This target-specific witness runtime
+replaces a Rust-Witness AOT artifact that repeatedly crashed with
+`EXC_BAD_ACCESS` on iOS; it does not change the O2 circuit or Rapidsnark prover.
+
+Run the warm manifest once. Run the cold manifest six times, each through a
+fresh Mobench process/session. Cold invocation zero is the attested warmup and
+invocations one through five are the measured samples. The canonical entrypoint
+supports this with `V1_IOS_WARM_PREBUILT_MANIFEST` and
+`V1_IOS_COLD_PREBUILT_MANIFEST`. Every paid run still requires
+`--confirm-paid-browserstack`.
+
+If a BrowserStack transport error interrupts a multi-entry manifest after a
+passing build, fetch that build by ID and retain it. Create a non-destructive,
+hash-preserving resume bundle from the next entry with
+`scripts/slice-ios-prebuilt.ts`; never rerun or overwrite the already passing
+evidence. The publication exporter scans only the curated
+`target/v1-benchmarks/input-to-proof/iphone/publication` tree, excluding failed
+and superseded attempts.
 
 On the E15, make the decision from captured ABI/userspace evidence. Try
 Rapidsnark only if that target is supported. Otherwise use Mopro Arkworks plus

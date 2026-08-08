@@ -109,6 +109,12 @@ if (!cargo.includes('inventory = "0.3"')) {
     `inventory = "0.3"\n${mobenchDependency}`,
   );
 }
+if (!cargo.includes('noirc_abi = { git = "https://github.com/noir-lang/noir.git", rev = "v1.0.0-beta.19" }')) {
+  cargo = cargo.replace(
+    'serde_json = "1.0.94"',
+    'serde_json = "1.0.94"\nnoirc_abi = { git = "https://github.com/noir-lang/noir.git", rev = "v1.0.0-beta.19" }',
+  );
+}
 if (!cargo.includes("\n[workspace]\n")) cargo += "\n[workspace]\n";
 if (!cargo.includes('\ncc = "1"\n')) {
   cargo = cargo.replace(
@@ -224,13 +230,37 @@ use webauthn_mobench::{
     setup_verify as setup_webauthn_arkworks_verify,
 };
 use noir_mobench::{
+    setup_oprf_input_to_proof,
     setup_oprf_prove as setup_oprf_barretenberg_prove,
     setup_oprf_verify as setup_oprf_barretenberg_verify,
+    setup_passport_input_to_proof,
+    setup_passport_p1_input_to_proof,
     setup_passport_prove as setup_passport_barretenberg_prove,
     setup_passport_verify as setup_passport_barretenberg_verify,
+    setup_webauthn_input_to_proof,
     setup_webauthn_prove as setup_webauthn_barretenberg_prove,
     setup_webauthn_verify as setup_webauthn_barretenberg_verify,
 };
+
+#[benchmark(setup = setup_webauthn_input_to_proof, per_iteration)]
+pub fn bench_webauthn_barretenberg_input_to_proof(prepared: noir_mobench::PreparedInputToProof) {
+    noir_mobench::bench_input_to_proof_impl(prepared);
+}
+
+#[benchmark(setup = setup_passport_input_to_proof, per_iteration)]
+pub fn bench_passport_barretenberg_input_to_proof(prepared: noir_mobench::PreparedInputToProof) {
+    noir_mobench::bench_input_to_proof_impl(prepared);
+}
+
+#[benchmark(setup = setup_passport_p1_input_to_proof, per_iteration)]
+pub fn bench_passport_p1_barretenberg_input_to_proof(prepared: noir_mobench::PreparedInputToProof) {
+    noir_mobench::bench_input_to_proof_impl(prepared);
+}
+
+#[benchmark(setup = setup_oprf_input_to_proof, per_iteration)]
+pub fn bench_oprf_barretenberg_input_to_proof(prepared: noir_mobench::PreparedInputToProof) {
+    noir_mobench::bench_input_to_proof_impl(prepared);
+}
 
 #[benchmark(setup = setup_webauthn_arkworks_inputs, per_iteration)]
 pub fn bench_webauthn_arkworks_witness(inputs: String) {

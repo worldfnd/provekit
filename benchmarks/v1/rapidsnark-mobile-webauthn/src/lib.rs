@@ -1,8 +1,8 @@
 //! Native Mobench adapter for the Circom/Rapidsnark WebAuthn assertion lane.
 //!
-//! Witness generation is shared with the Mopro Arkworks adapter and is not
-//! relabelled as Rapidsnark work. This crate times proof, verification, and
-//! proof-plus-verification using the independently validated frozen WTNS.
+//! Input-to-proof functions generate a fresh WTNS from raw inputs and run
+//! Rapidsnark in the same measured region. The frozen WTNS remains only as an
+//! independently validated correctness canary.
 
 use {
     memmap2::{Mmap, MmapOptions},
@@ -17,8 +17,17 @@ use {
     },
 };
 
+#[path = "../../rapidsnark-mobile/src/live_witness.rs"]
+mod live_witness;
 #[path = "../../rapidsnark-mobile/src/rapidsnark.rs"]
 mod rapidsnark;
+
+mod witness {
+    rust_witness::witness!(webauthndefault);
+}
+
+const INPUTS: &str =
+    include_str!("../../circom/web/dist/assets/webauthn/webauthn_default.input.json");
 
 pub struct PreparedProof {
     zkey_path: String,
@@ -33,6 +42,16 @@ pub struct PreparedVerification {
 pub struct PreparedProofVerify {
     proof:            PreparedProof,
     verification_key: String,
+}
+
+pub struct PreparedInputToProof {
+    zkey_path: String,
+}
+
+fn generate_witness() -> Vec<u8> {
+    live_witness::serialize_wtns(&witness::webauthndefault_witness(
+        live_witness::parse_inputs(INPUTS),
+    ))
 }
 
 fn fixture_root() -> PathBuf {
@@ -138,7 +157,15 @@ fn validation_gate() {
     static VALIDATED: Once = Once::new();
     VALIDATED.call_once(|| {
         let verification_key = verification_key();
-        let proof = prove(load_proof_fixture());
+        let frozen = load_proof_fixture();
+        let generated = generate_witness();
+        assert_eq!(
+            generated.as_slice(),
+            frozen.witness.as_ref(),
+            "live WebAuthn WTNS differs from frozen canary"
+        );
+        let proof = rapidsnark::prove(&frozen.zkey_path, &generated)
+            .expect("Rapidsnark live WebAuthn canary");
         let proof_size_bytes = serialized_proof_size(&proof);
         assert!(
             rapidsnark::verify(&proof, &verification_key)
@@ -180,6 +207,52 @@ fn validation_gate() {
             })
         );
     });
+}
+
+fn setup_input_to_proof() -> PreparedInputToProof {
+    validation_gate();
+    let zkey_path = checked_fixture_file(&fixture_root(), "proving_key.zkey");
+    let zkey_size = fs::metadata(&zkey_path)
+        .expect("read WebAuthn zkey metadata")
+        .len();
+    let wasm_size = env!("MOBENCH_LIVE_WITNESS_WASM_BYTES")
+        .parse::<u64>()
+        .expect("live witness WASM byte count");
+    let input_size = INPUTS.len() as u64;
+    mobench_sdk::record_run_u64("zkey_size_bytes", zkey_size);
+    mobench_sdk::record_run_u64("witness_wasm_size_bytes", wasm_size);
+    mobench_sdk::record_run_u64("input_size_bytes", input_size);
+    mobench_sdk::record_run_u64(
+        "proving_payload_size_bytes",
+        zkey_size + wasm_size + input_size,
+    );
+    PreparedInputToProof {
+        zkey_path: zkey_path.to_string_lossy().into_owned(),
+    }
+}
+
+#[benchmark(setup = setup_input_to_proof, per_iteration)]
+pub fn bench_webauthn_rapidsnark_input_to_proof(prepared: PreparedInputToProof) {
+    let input_to_proof_started = Instant::now();
+    let witness_started = Instant::now();
+    let witness = generate_witness();
+    let witness_time_ns = witness_started
+        .elapsed()
+        .as_nanos()
+        .min(u128::from(u64::MAX)) as u64;
+    let prove_started = Instant::now();
+    let proof = rapidsnark::prove(&prepared.zkey_path, &witness)
+        .expect("Rapidsnark live-witness WebAuthn proof");
+    let prove_time_ns = prove_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+    let input_to_proof_time_ns = input_to_proof_started
+        .elapsed()
+        .as_nanos()
+        .min(u128::from(u64::MAX)) as u64;
+    mobench_sdk::record_sample_u64("witness_time_ns", witness_time_ns);
+    mobench_sdk::record_sample_u64("prove_time_ns", prove_time_ns);
+    mobench_sdk::record_sample_u64("input_to_proof_time_ns", input_to_proof_time_ns);
+    mobench_sdk::record_sample_u64("proof_size_bytes", serialized_proof_size(&proof) as u64);
+    black_box(proof);
 }
 
 fn setup_proof() -> PreparedProof {

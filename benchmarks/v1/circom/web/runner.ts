@@ -9,6 +9,7 @@ interface BenchSpec {
   warmup: number;
   iterations: number;
   single_thread?: boolean;
+  timing_mode?: "cold_local" | "warm_reuse";
 }
 interface Fixture {
   circuit: string;
@@ -98,7 +99,9 @@ async function runFixture(
   warmup: number,
   iterations: number,
   singleThread: boolean,
+  timingMode: "cold_local" | "warm_reuse",
 ) {
+  const coldStarted = performance.now();
   emit({ circuit: fixture.circuit, variant: fixture.variant, stage: "fixture-load-start" });
   const [input, verificationKey] = await Promise.all([
     json<Record<string, unknown>>(`./assets/${fixture.input}`),
@@ -123,7 +126,9 @@ async function runFixture(
       sample_index: index < warmup ? index : index - warmup,
       warmup: index < warmup,
     };
-    const started = performance.now();
+    const started = timingMode === "cold_local" && index === 0
+      ? coldStarted
+      : performance.now();
     const witness = { type: "mem" };
     const witnessStarted = performance.now();
     emit({ ...sample, stage: "witness-start" });
@@ -153,6 +158,7 @@ async function runFixture(
       { singleThread },
     );
     const proveNs = durationNs(proveStarted);
+    const inputToProofNs = durationNs(started);
     emit({ ...sample, stage: "prove-complete", detail: `${proveNs}ns` });
     const verifyStarted = performance.now();
     emit({ ...sample, stage: "verify-start" });
@@ -176,11 +182,14 @@ async function runFixture(
       sample_index: index < warmup ? index : index - warmup,
       warmup: index < warmup,
       status: "ok",
-      initialization_time_ns: null,
+      initialization_time_ns: timingMode === "cold_local"
+        ? inputToProofNs - witnessNs - proveNs
+        : 0,
       witness_time_ns: witnessNs,
       prove_time_ns: proveNs,
       verify_time_ns: verifyNs,
       end_to_end_time_ns: durationNs(started),
+      input_to_proof_time_ns: inputToProofNs,
       proof_size_bytes: new TextEncoder().encode(JSON.stringify(result.proof)).byteLength,
       tampered_proof_rejected: tamperedRejected,
     });
@@ -206,7 +215,13 @@ async function run(spec: BenchSpec): Promise<unknown> {
   const results = [];
   for (const fixture of fixtures) {
     if (status) status.textContent = `Running ${fixture.circuit}/${fixture.variant}`;
-    results.push(await runFixture(fixture, warmup, iterations, spec.single_thread === true));
+    results.push(await runFixture(
+      fixture,
+      warmup,
+      iterations,
+      spec.single_thread === true,
+      spec.timing_mode ?? "warm_reuse",
+    ));
   }
   const report = {
     schema_version: 1,
@@ -218,6 +233,7 @@ async function run(spec: BenchSpec): Promise<unknown> {
     workload: spec.workload,
     single_thread: spec.single_thread === true,
     witness_timing: "separate wtns.calculate memory-file phase",
+    timing_mode: spec.timing_mode ?? "warm_reuse",
     progress,
     results,
   };

@@ -7,7 +7,7 @@ wasm_root="$(cd "${script_dir}/.." && pwd)"
 benchmark_root="$(cd "${wasm_root}/.." && pwd)"
 repo_root="$(cd "${benchmark_root}/../.." && pwd)"
 dist_dir="${wasm_root}/dist"
-workloads=(webauthn_assertion passport_complete_age_check oprf_taceo)
+workloads=(webauthn_assertion passport_complete_age_check passport_p1 oprf_taceo)
 
 for command in bun jq; do
   if ! command -v "${command}" >/dev/null 2>&1; then
@@ -17,7 +17,6 @@ for command in bun jq; do
 done
 
 MOBENCH_CI_PREPARE=1 \
-  V1_PROVEKIT_FIXTURE_SOURCE_REVISION="$(jq -er '.provekit_v1.core_commit' "${benchmark_root}/toolchains.lock.json")" \
   "${benchmark_root}/scripts/prepare-provekit-beta11-artifacts.sh"
 "${benchmark_root}/scripts/build-provekit-v1-wasm.sh"
 (
@@ -46,6 +45,9 @@ cp "${repo_root}/target/v1-benchmarks/provekit-v1-inputs/webauthn_assertion.inpu
   bun run inputs -- \
     "${repo_root}/target/v1-benchmarks/provekit-v1-inputs/passport_complete_age_check.Prover.toml" \
     "${dist_dir}/assets/passport_complete_age_check/inputs.json"
+  bun run inputs -- \
+    "${repo_root}/target/v1-benchmarks/provekit-v1-inputs/passport_p1.Prover.toml" \
+    "${dist_dir}/assets/passport_p1/inputs.json"
   bun run inputs -- \
     "${repo_root}/target/v1-benchmarks/provekit-v1-inputs/oprf_taceo.Prover.toml" \
     "${dist_dir}/assets/oprf_taceo/inputs.json"

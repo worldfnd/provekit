@@ -179,5 +179,40 @@
       "browser": "V1 WASM proof byte serialization",
       "native": "serialized postcard NoirProof (.np) bytes"
     }
+  },
+  "input_to_proof_campaign": {
+    "campaign_id": "input-to-proof-v1-20260807",
+    "canonical_csv": "benchmarks/v1/input-to-proof-data/input-to-proof-samples.csv",
+    "headline_metric": "input_to_proof_time_ms",
+    "measurement_boundary": "raw structured circuit input through fresh witness generation to serialized proof bytes",
+    "verification_boundary": "valid-proof acceptance and tampered-proof rejection are mandatory but outside headline timing",
+    "workloads": [
+      "passport_complete_age_check",
+      "passport_p1",
+      "oprf_o2",
+      "webauthn_closest_analogue"
+    ],
+    "passport_p1": {
+      "noir_source": "benchmarks/v1/noir/passport_p1/src/main.nr",
+      "circom_source": "benchmarks/v1/circom/passport_p1/passport_p1.circom",
+      "identity": "P1-matched monolithic RSA-4096 passport integrity, registry authorization, DG1 validity, and minimum-age assertion"
+    },
+    "iphone_circom_oprf": {
+      "witness_backend": "wasmi 0.46.0 interpreting the exact Circom witness Wasm",
+      "prover_backend": "rust-rapidsnark 0.1.4",
+      "measurement_boundary": "raw input through interpreted Wasm witness generation, WTNS serialization, and Rapidsnark proof serialization",
+      "qualification": "witness byte equality with frozen SnarkJS WTNS plus valid-proof acceptance and tampered-proof rejection"
+    },
+    "timing_modes": {
+      "cold_local": "fresh process and proof runtime per attempt with locked assets already local",
+      "warm_reuse": "initialized runtime is reused while witness and proof are regenerated"
+    },
+    "expected_series": 72,
+    "expected_rows": 432,
+    "samples_per_series": {
+      "warmup": 1,
+      "measured": 5
+    },
+    "provekit_v1_core_commit": "9b2a6f37c67691eab4b0cec6c35e35c520e93285"
   }
 }

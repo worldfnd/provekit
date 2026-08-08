@@ -7,6 +7,7 @@ const root = resolve(process.env.CIRCOM_WEB_DIST ?? resolve(import.meta.dir, "di
 const workload = process.env.MOBENCH_WORKLOAD ?? "webauthn";
 const warmup = Number.parseInt(process.env.MOBENCH_WARMUP ?? "1", 10);
 const iterations = Number.parseInt(process.env.MOBENCH_ITERATIONS ?? "5", 10);
+const timingMode = process.env.MOBENCH_TIMING_MODE === "cold_local" ? "cold_local" : "warm_reuse";
 const singleThread = process.env.MOBENCH_SNARKJS_SINGLE_THREAD === "1";
 const timeoutMs = Number.parseInt(process.env.MOBENCH_TIMEOUT_MS ?? "900000", 10);
 const chrome =
@@ -114,14 +115,15 @@ try {
       }
     })();
     const benchmark = page.evaluate(
-      async ({ iterations, singleThread, warmup, workload }) =>
+      async ({ iterations, singleThread, warmup, workload, timingMode }) =>
         window.mobenchCircom.run({
           workload: workload as never,
           warmup,
           iterations,
           single_thread: singleThread,
+          timing_mode: timingMode,
         }),
-      { workload, warmup, iterations, singleThread },
+      { workload, warmup, iterations, singleThread, timingMode },
     );
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {

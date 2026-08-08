@@ -1,8 +1,11 @@
 # ProveKit V1 cross-device benchmark campaign
 
-This directory defines a reproducible 27-cell campaign: three workloads ×
-three proof stacks × three targets. The primary Mac result is browser/WASM in
-Google Chrome; Mac-native runs are smoke or diagnostic evidence only.
+This directory now defines two related, separately frozen campaigns. The
+published proof-only campaign remains 27 cells. The input-to-proof campaign is
+four workloads × three proof stacks × three targets × two timing modes: 72
+logical series and 432 attempts at one warmup plus five measured samples per
+series. The primary Mac surface is browser/WASM in Google Chrome; Mac-native
+runs are smoke or diagnostic evidence only.
 
 Read [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) before running anything.
 Machine-readable policy lives in
@@ -27,11 +30,51 @@ The older [`data/benchmark-samples.csv`](data/benchmark-samples.csv) is retained
 as the 2026-07-30 exploratory/compound-variant export and is not the V1
 publication source.
 
+## Input-to-proof campaign
+
+The headline metric for the new campaign is raw input to serialized proof. It
+includes fresh witness generation and proving, and excludes proof verification
+and tamper rejection. The latter remain mandatory correctness gates.
+
+The fourth workload is the exact Passport P1 pair:
+
+- Noir: [`noir/passport_p1/src/main.nr`](noir/passport_p1/src/main.nr)
+- Circom: [`circom/passport_p1/passport_p1.circom`](circom/passport_p1/passport_p1.circom)
+
+`cold_local` uses a fresh process and proof runtime per attempt with locked
+assets already local. `warm_reuse` reuses the initialized runtime, but still
+regenerates the witness and proof for every attempt. The schema and exporter
+live in [`input-to-proof-data/`](input-to-proof-data/); they preserve the old
+CSV column order and append `timing_mode` and `input_to_proof_time_ms`.
+
+On Mac, ProveKit uses the immutable V1 core commit
+`9b2a6f37c67691eab4b0cec6c35e35c520e93285`; Barretenberg runs Noir execution
+followed by proof generation; Circom runs `wtns.calculate` followed by Groth16
+proof generation. Frozen witness files are correctness fixtures only and are
+not accepted as input-to-proof measurements.
+
+The Mac input-to-proof campaign is complete at 24 series / 144 rows,
+including Passport P1 for all three stacks in both cold and warm modes. Native
+iPhone execution uses one 1+5 warm session per function and six separate 1/0
+sessions for cold sampling; cold invocation zero is the warmup and invocations
+one through five are measured samples. The exact native export contract is in
+[`input-to-proof-data/README.md`](input-to-proof-data/README.md).
+The separate Marimo analysis is
+[`analysis/input_to_proof_analysis.py`](analysis/input_to_proof_analysis.py);
+it reads only the canonical input-to-proof CSV and keeps every figure in its
+own cell.
+
 The native Circom decision is recorded per row. Mopro is the mobile integration
 layer; the iPhone uses Rapidsnark, while the 32-bit E15 uses the qualified
 Arkworks or Rapidsnark path appropriate to the workload. The selected prover
 and witness backend are explicit in the CSV. `iden3/circom-witnesscalc@0.3.0`
 remains a compatibility fallback, not a publication backend.
+
+For the iPhone OPRF input-to-proof lane, `wasmi@0.46.0` interprets the exact
+Circom witness Wasm and Rapidsnark proves the resulting WTNS. This replaces the
+layout-sensitive Rust-Witness AOT artifact that crashed on iOS; the interpreted
+witness was qualified byte-for-byte against the frozen SnarkJS WTNS. Other
+native iPhone Circom lanes retain their locked Rust-Witness generators.
 
 ### Publication snapshot
 

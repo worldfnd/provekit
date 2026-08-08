@@ -45,9 +45,9 @@ cp "${web_root}/index.html" "${dist}/index.html"
     --format esm \
     --splitting
 )
-cp "${repo_root}/benchmarks/v1/wasm/node_modules/@noir-lang/acvm_js/web/acvm_js_bg.wasm" \
+cp "${barretenberg_root}/node_modules/@noir-lang/acvm_js/web/acvm_js_bg.wasm" \
   "${dist}/acvm_js_bg.wasm"
-cp "${repo_root}/benchmarks/v1/wasm/node_modules/@noir-lang/noirc_abi/web/noirc_abi_wasm_bg.wasm" \
+cp "${barretenberg_root}/node_modules/@noir-lang/noirc_abi/web/noirc_abi_wasm_bg.wasm" \
   "${dist}/noirc_abi_wasm_bg.wasm"
 
 copy_workload() {
@@ -69,7 +69,7 @@ copy_workload() {
 
 selected_workload="${MOBENCH_WORKLOAD:-all}"
 case "${selected_workload}" in
-  all | webauthn_assertion | passport_complete_age_check | oprf_taceo | oprf_world_id_nullifier) ;;
+  all | webauthn_assertion | passport_complete_age_check | passport_p1 | oprf_taceo | oprf_world_id_nullifier) ;;
   *)
     echo "error: unsupported MOBENCH_WORKLOAD ${selected_workload}" >&2
     exit 1
@@ -83,6 +83,13 @@ if [[ "${selected_workload}" == "all" || "${selected_workload}" == "webauthn_ass
     "${benchmark_root}/noir/webauthn_assertion/target/webauthn_assertion.json" \
     "${benchmark_root}/noir/webauthn_assertion/inputs.json"
   workloads+=(webauthn_assertion)
+fi
+if [[ "${selected_workload}" == "all" || "${selected_workload}" == "passport_p1" ]]; then
+  copy_workload \
+    passport_p1 \
+    "${benchmark_root}/noir/passport_p1/target/passport_p1.json" \
+    "${benchmark_root}/noir/passport_p1/Prover.toml"
+  workloads+=(passport_p1)
 fi
 if [[ "${selected_workload}" == "all" || "${selected_workload}" == "passport_complete_age_check" ]]; then
   copy_workload \

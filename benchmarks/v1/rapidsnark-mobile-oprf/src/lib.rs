@@ -1,8 +1,8 @@
 //! Native Mobench adapter for World ID Circom/Rapidsnark OPRF counterparts.
 //!
 //! Query and nullifier are separate named variants and are packaged as
-//! separate apps. Witness generation is not measured: each app uses a frozen
-//! SnarkJS-validated WTNS and reports proof, verification, and proof+verify.
+//! separate apps. Input-to-proof functions generate a fresh WTNS from raw
+//! inputs and then prove within one measured region.
 
 use {
     mobench_sdk::benchmark,
@@ -17,6 +17,19 @@ use {
 
 #[path = "../../rapidsnark-mobile/src/rapidsnark.rs"]
 mod rapidsnark;
+mod wasmi_witness;
+
+#[cfg(feature = "oprf-query")]
+const WITNESS_WASM: &[u8] =
+    include_bytes!("../../circom/web/dist/assets/oprf/oprf_query.wasm");
+#[cfg(feature = "oprf-nullifier")]
+const WITNESS_WASM: &[u8] =
+    include_bytes!("../../circom/web/dist/assets/oprf/oprf_nullifier.wasm");
+
+#[cfg(feature = "oprf-query")]
+const INPUTS: &str = include_str!("../../circom/web/dist/assets/oprf/oprf_query.input.json");
+#[cfg(feature = "oprf-nullifier")]
+const INPUTS: &str = include_str!("../../circom/web/dist/assets/oprf/oprf_nullifier.input.json");
 
 #[cfg(all(feature = "oprf-query", feature = "oprf-nullifier"))]
 compile_error!("enable exactly one OPRF workload feature");
@@ -36,6 +49,14 @@ pub struct PreparedVerification {
 pub struct PreparedProofVerify {
     proof:            PreparedProof,
     verification_key: String,
+}
+
+pub struct PreparedInputToProof {
+    zkey_path: String,
+}
+
+fn generate_witness() -> Vec<u8> {
+    wasmi_witness::generate_wtns(WITNESS_WASM, INPUTS).expect("calculate OPRF witness")
 }
 
 fn fixture_root() -> PathBuf {
@@ -112,7 +133,14 @@ fn validation_gate() {
     static VALIDATED: Once = Once::new();
     VALIDATED.call_once(|| {
         let verification_key = verification_key();
-        let proof = prove(load_proof_fixture());
+        let frozen = load_proof_fixture();
+        let generated = generate_witness();
+        assert_eq!(
+            generated, frozen.witness,
+            "live OPRF WTNS differs from frozen canary"
+        );
+        let proof =
+            rapidsnark::prove(&frozen.zkey_path, &generated).expect("Rapidsnark live OPRF canary");
         assert!(
             rapidsnark::verify(&proof, &verification_key)
                 .expect("verify valid Rapidsnark OPRF canary"),
@@ -123,6 +151,51 @@ fn validation_gate() {
             "tampered Rapidsnark OPRF canary was accepted"
         );
     });
+}
+
+fn setup_input_to_proof() -> PreparedInputToProof {
+    validation_gate();
+    let zkey_path = checked_fixture_file(&fixture_root(), "proving_key.zkey");
+    let zkey_size = fs::metadata(&zkey_path)
+        .expect("read OPRF zkey metadata")
+        .len();
+    let wasm_size = env!("MOBENCH_LIVE_WITNESS_WASM_BYTES")
+        .parse::<u64>()
+        .expect("live witness WASM byte count");
+    let input_size = INPUTS.len() as u64;
+    mobench_sdk::record_run_u64("zkey_size_bytes", zkey_size);
+    mobench_sdk::record_run_u64("witness_wasm_size_bytes", wasm_size);
+    mobench_sdk::record_run_u64("input_size_bytes", input_size);
+    mobench_sdk::record_run_u64(
+        "proving_payload_size_bytes",
+        zkey_size + wasm_size + input_size,
+    );
+    PreparedInputToProof {
+        zkey_path: zkey_path.to_string_lossy().into_owned(),
+    }
+}
+
+fn bench_input_to_proof(prepared: PreparedInputToProof) {
+    let input_to_proof_started = Instant::now();
+    let witness_started = Instant::now();
+    let witness = generate_witness();
+    let witness_time_ns = witness_started
+        .elapsed()
+        .as_nanos()
+        .min(u128::from(u64::MAX)) as u64;
+    let prove_started = Instant::now();
+    let proof = rapidsnark::prove(&prepared.zkey_path, &witness)
+        .expect("Rapidsnark live-witness OPRF proof");
+    let prove_time_ns = prove_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+    let input_to_proof_time_ns = input_to_proof_started
+        .elapsed()
+        .as_nanos()
+        .min(u128::from(u64::MAX)) as u64;
+    mobench_sdk::record_sample_u64("witness_time_ns", witness_time_ns);
+    mobench_sdk::record_sample_u64("prove_time_ns", prove_time_ns);
+    mobench_sdk::record_sample_u64("input_to_proof_time_ns", input_to_proof_time_ns);
+    mobench_sdk::record_sample_u64("proof_size_bytes", serialized_proof_size(&proof) as u64);
+    black_box(proof);
 }
 
 fn setup_proof() -> PreparedProof {
@@ -136,10 +209,7 @@ fn setup_proof() -> PreparedProof {
         .len();
     mobench_sdk::record_run_u64("zkey_size_bytes", zkey_size);
     mobench_sdk::record_run_u64("witness_size_bytes", witness_size);
-    mobench_sdk::record_run_u64(
-        "proving_payload_size_bytes",
-        zkey_size + witness_size,
-    );
+    mobench_sdk::record_run_u64("proving_payload_size_bytes", zkey_size + witness_size);
     load_proof_fixture()
 }
 
@@ -167,7 +237,12 @@ fn setup_proof_verify() -> PreparedProofVerify {
 }
 
 macro_rules! benchmarks {
-    ($prove:ident, $verify:ident, $proof_verify:ident) => {
+    ($input_to_proof:ident, $prove:ident, $verify:ident, $proof_verify:ident) => {
+        #[benchmark(setup = setup_input_to_proof, per_iteration)]
+        pub fn $input_to_proof(prepared: PreparedInputToProof) {
+            bench_input_to_proof(prepared);
+        }
+
         #[benchmark(setup = setup_proof, per_iteration)]
         pub fn $prove(prepared: PreparedProof) {
             let started = Instant::now();
@@ -202,6 +277,7 @@ macro_rules! benchmarks {
 
 #[cfg(feature = "oprf-query")]
 benchmarks!(
+    bench_oprf_query_rapidsnark_input_to_proof,
     bench_oprf_query_rapidsnark_prove,
     bench_oprf_query_rapidsnark_verify,
     bench_oprf_query_rapidsnark_proof_verify
@@ -209,6 +285,7 @@ benchmarks!(
 
 #[cfg(feature = "oprf-nullifier")]
 benchmarks!(
+    bench_oprf_nullifier_rapidsnark_input_to_proof,
     bench_oprf_nullifier_rapidsnark_prove,
     bench_oprf_nullifier_rapidsnark_verify,
     bench_oprf_nullifier_rapidsnark_proof_verify
@@ -229,7 +306,7 @@ mod tests {
                 .iter()
                 .filter(|name| name.contains("oprf_") && name.contains("_rapidsnark_"))
                 .count(),
-            3,
+            4,
             "registered benchmarks: {names:?}"
         );
     }

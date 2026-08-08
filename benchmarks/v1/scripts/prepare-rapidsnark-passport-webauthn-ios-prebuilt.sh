@@ -16,7 +16,9 @@ remote_passport_p1_zkey_url="${MOBENCH_PASSPORT_P1_ZKEY_URL:-}"
 passport_p1_zkey="${repo_root}/target/v1-benchmarks/groth16/passport_p1/passport_p1_final.zkey"
 passport_p1_witness="${repo_root}/target/v1-benchmarks/circom-witnesses/passport_p1/native.wtns"
 passport_p1_vkey="${repo_root}/target/v1-benchmarks/groth16/passport_p1/verification_key.json"
-selected_workloads="${V1_RAPIDSNARK_CORE_IOS_WORKLOADS:-passport-disclose,passport-register,webauthn}"
+selected_workloads="${V1_RAPIDSNARK_CORE_IOS_WORKLOADS:-passport-disclose,passport-register,passport-p1,webauthn}"
+iterations="${V1_IOS_ITERATIONS:-5}"
+warmup="${V1_IOS_WARMUP:-1}"
 
 workload_selected() {
   case ",${selected_workloads}," in
@@ -47,6 +49,7 @@ compute_content_sha256() {
     "${benchmark_root}/rapidsnark-mobile/Cargo.toml" \
     "${benchmark_root}/rapidsnark-mobile/src/lib.rs" \
     "${benchmark_root}/rapidsnark-mobile/src/rapidsnark.rs" \
+    "${benchmark_root}/rapidsnark-mobile/src/live_witness.rs" \
     "${benchmark_root}/rapidsnark-mobile-register/Cargo.toml" \
     "${benchmark_root}/rapidsnark-mobile-webauthn/Cargo.toml" \
     "${benchmark_root}/rapidsnark-mobile-webauthn/Cargo.lock" \
@@ -63,15 +66,23 @@ compute_content_sha256() {
     "${passport_assets}/vc_and_disclose.zkey" \
     "${passport_witnesses}/vc_and_disclose.wtns" \
     "${passport_assets}/vc_and_disclose.vkey.json" \
+    "${passport_assets}/vc_and_disclose.wasm" \
+    "${passport_assets}/vc_and_disclose.input.json" \
     "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.zkey" \
     "${passport_witnesses}/register_sha256_sha256_sha256_rsa_65537_4096.wtns" \
     "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.vkey.json" \
+    "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.wasm" \
+    "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.input.json" \
     "${passport_p1_zkey}" \
     "${passport_p1_witness}" \
     "${passport_p1_vkey}" \
+    "${repo_root}/target/v1-benchmarks/circom/passport_p1/passport_p1_js/passport_p1.wasm" \
+    "${benchmark_root}/circom/fixtures/passport_p1/input.json" \
     "${webauthn_assets}/webauthn_default.zkey" \
     "${repo_root}/target/v1-benchmarks/circom/webauthn/fixture.wtns" \
-    "${webauthn_assets}/webauthn_default.vkey.json" |
+    "${webauthn_assets}/webauthn_default.vkey.json" \
+    "${webauthn_assets}/webauthn_default.wasm" \
+    "${webauthn_assets}/webauthn_default.input.json" |
     awk '{print $1}' |
     {
       cat
@@ -84,7 +95,7 @@ compute_content_sha256() {
 }
 
 content_manifest="${prebuilt_root}.content.json"
-content_sha256="$(compute_content_sha256)"
+content_sha256="$(printf '%s\n%s\n%s\n' "$(compute_content_sha256)" "${iterations}" "${warmup}" | shasum -a 256 | awk '{print $1}')"
 recorded_content_sha256=""
 recorded_manifest_sha256=""
 actual_manifest_sha256=""
@@ -110,13 +121,23 @@ if [[ -f "${prebuilt_root}/manifest.json" && -f "${content_manifest}" ]] &&
     --expected-source-sha "${existing_source_sha}" \
     --expected-platform ios \
     --expected-functions "${existing_functions}" \
-    --expected-iterations 5 \
-    --expected-warmup 1 \
+    --expected-iterations "${iterations}" \
+    --expected-warmup "${warmup}" \
     --devices "iPhone SE 2022-15" \
     --max-completion-timeout-secs 7200 >/dev/null
   echo "Reusing frozen ${prebuilt_root}/manifest.json"
   exit 0
 fi
+
+case "${prebuilt_root}" in
+  "${repo_root}/target/v1-benchmarks/"*)
+    rm -rf "${prebuilt_root}/entries"
+    ;;
+  *)
+    echo "error: refusing to clear unexpected prebuilt root: ${prebuilt_root}" >&2
+    exit 1
+    ;;
+esac
 
 "${script_dir}/build-rapidsnark-ios-libs.sh" >/dev/null
 
@@ -169,11 +190,21 @@ prepare_workload() {
     }
   done
 
-  cargo build \
-    --manifest-path "${crate}/Cargo.toml" \
-    --target aarch64-apple-ios \
-    --release \
-    --target-dir "${cargo_target}"
+  if [[ "${workload}" == "passport-p1" ]]; then
+    cargo build \
+      --manifest-path "${crate}/Cargo.toml" \
+      --target aarch64-apple-ios \
+      --release \
+      --target-dir "${cargo_target}" \
+      --no-default-features \
+      --features passport-p1
+  else
+    cargo build \
+      --manifest-path "${crate}/Cargo.toml" \
+      --target aarch64-apple-ios \
+      --release \
+      --target-dir "${cargo_target}"
+  fi
 
   cargo run \
     --quiet \
@@ -222,9 +253,9 @@ prepare_workload() {
     destination="${prebuilt_root}/entries/${entry}"
     mkdir -p "${destination}"
 
-    jq -n \
+    jq -n --argjson iterations "${iterations}" --argjson warmup "${warmup}" \
       --arg function "${function}" \
-      '{function: $function, iterations: 5, warmup: 1}' \
+      '{function: $function, iterations: $iterations, warmup: $warmup}' \
       >"${resources}/bench_spec.json"
     (
       cd "${project}"
@@ -251,7 +282,9 @@ prepare_workload() {
     unzip -p "${app}" 'Payload/*.app/bench_spec.json' |
       jq -e \
         --arg function "${function}" \
-        '.function == $function and .iterations == 5 and .warmup == 1' \
+        --argjson iterations "${iterations}" \
+        --argjson warmup "${warmup}" \
+        '.function == $function and .iterations == $iterations and .warmup == $warmup' \
         >/dev/null
 
     app_size="$(stat -f '%z' "${app}")"
@@ -260,6 +293,8 @@ prepare_workload() {
     suite_hash="$(shasum -a 256 "${suite}" | awk '{print $1}')"
     jq -cn \
       --arg function "${function}" \
+      --argjson iterations "${iterations}" \
+      --argjson warmup "${warmup}" \
       --arg app_path "entries/${entry}/app.ipa" \
       --arg suite_path "entries/${entry}/test-suite.zip" \
       --arg app_hash "${app_hash}" \
@@ -268,8 +303,8 @@ prepare_workload() {
       --argjson suite_size "${suite_size}" \
       '{
         function: $function,
-        iterations: 5,
-        warmup: 1,
+        iterations: $iterations,
+        warmup: $warmup,
         completion_timeout_secs: 7200,
         artifacts: [
           {
@@ -299,7 +334,7 @@ if workload_selected passport-disclose; then
     "${passport_assets}/vc_and_disclose.zkey" \
     "${passport_witnesses}/vc_and_disclose.wtns" \
     "${passport_assets}/vc_and_disclose.vkey.json" \
-    prove
+    input_to_proof
 fi
 if workload_selected passport-register; then
   prepare_workload \
@@ -310,7 +345,7 @@ if workload_selected passport-register; then
     "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.zkey" \
     "${passport_witnesses}/register_sha256_sha256_sha256_rsa_65537_4096.wtns" \
     "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.vkey.json" \
-    prove
+    input_to_proof
 fi
 if workload_selected passport-p1; then
   [[ -n "${remote_passport_p1_zkey_url}" ]] || {
@@ -321,11 +356,11 @@ if workload_selected passport-p1; then
     passport-p1 \
     "${benchmark_root}/rapidsnark-mobile" \
     provekit_v1_rapidsnark_mobile \
-    bench_passport_rapidsnark \
+    bench_passport_p1_rapidsnark \
     "${passport_p1_zkey}" \
     "${passport_p1_witness}" \
     "${passport_p1_vkey}" \
-    prove
+    input_to_proof
 fi
 if workload_selected webauthn; then
   prepare_workload \
@@ -336,7 +371,7 @@ if workload_selected webauthn; then
     "${webauthn_assets}/webauthn_default.zkey" \
     "${repo_root}/target/v1-benchmarks/circom/webauthn/fixture.wtns" \
     "${webauthn_assets}/webauthn_default.vkey.json" \
-    prove
+    input_to_proof
 fi
 
 mkdir -p "${prebuilt_root}"

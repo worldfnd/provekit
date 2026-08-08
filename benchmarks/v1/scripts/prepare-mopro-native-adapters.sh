@@ -55,7 +55,11 @@ if [[ ! -d "${project_root}" ]]; then
 fi
 
 noir_vectors="${project_root}/test-vectors/noir/campaign"
-mkdir -p "${noir_vectors}/webauthn" "${noir_vectors}/passport" "${noir_vectors}/oprf"
+mkdir -p \
+  "${noir_vectors}/webauthn" \
+  "${noir_vectors}/passport" \
+  "${noir_vectors}/passport_p1" \
+  "${noir_vectors}/oprf"
 (
   cd "${benchmark_root}/noir/webauthn_assertion"
   "${nargo}" execute campaign_webauthn --skip-brillig-constraints-check
@@ -65,7 +69,11 @@ mkdir -p "${noir_vectors}/webauthn" "${noir_vectors}/passport" "${noir_vectors}/
   "${nargo}" execute campaign_passport --skip-brillig-constraints-check
 )
 (
-  cd "${repo_root}/target/v1-benchmarks/sources/oprf-nr/oprf_example"
+  cd "${benchmark_root}/noir/passport_p1"
+  "${nargo}" execute campaign_passport_p1 --skip-brillig-constraints-check
+)
+(
+  cd "${repo_root}/noir-examples/oprf"
   "${nargo}" execute campaign_oprf --skip-brillig-constraints-check
 )
 cp \
@@ -74,18 +82,32 @@ cp \
 cp \
   "${benchmark_root}/noir/webauthn_assertion/target/campaign_webauthn.gz" \
   "${noir_vectors}/webauthn/witness.gz"
+cp "${benchmark_root}/noir/webauthn_assertion/Prover.toml" \
+  "${noir_vectors}/webauthn/Prover.toml"
 cp \
   "${repo_root}/noir-examples/noir-passport-monolithic/complete_age_check/target/complete_age_check.json" \
   "${noir_vectors}/passport/circuit.json"
 cp \
   "${repo_root}/noir-examples/noir-passport-monolithic/complete_age_check/target/campaign_passport.gz" \
   "${noir_vectors}/passport/witness.gz"
+cp "${repo_root}/noir-examples/noir-passport-monolithic/complete_age_check/Prover.toml" \
+  "${noir_vectors}/passport/Prover.toml"
 cp \
-  "${repo_root}/target/v1-benchmarks/sources/oprf-nr/oprf_example/target/oprf_example.json" \
+  "${benchmark_root}/noir/passport_p1/target/passport_p1.json" \
+  "${noir_vectors}/passport_p1/circuit.json"
+cp \
+  "${benchmark_root}/noir/passport_p1/target/campaign_passport_p1.gz" \
+  "${noir_vectors}/passport_p1/witness.gz"
+cp "${benchmark_root}/noir/passport_p1/Prover.toml" \
+  "${noir_vectors}/passport_p1/Prover.toml"
+cp \
+  "${repo_root}/noir-examples/oprf/target/oprf.json" \
   "${noir_vectors}/oprf/circuit.json"
 cp \
-  "${repo_root}/target/v1-benchmarks/sources/oprf-nr/oprf_example/target/campaign_oprf.gz" \
+  "${repo_root}/noir-examples/oprf/target/campaign_oprf.gz" \
   "${noir_vectors}/oprf/witness.gz"
+cp "${repo_root}/noir-examples/oprf/Prover.toml" \
+  "${noir_vectors}/oprf/Prover.toml"
 
 bun run "${script_dir}/configure-mopro-native.ts" "${project_root}" "${artifact_root}"
 (

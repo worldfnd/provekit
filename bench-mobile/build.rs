@@ -42,6 +42,10 @@ const FIXTURE_ARTIFACTS: &[FixtureArtifact] = &[
         source_target_rel: "noir-examples/oprf/target/oprf.json",
     },
     FixtureArtifact {
+        output_file:       "passport_p1.json",
+        source_target_rel: "target/v1-benchmarks/passport-p1-beta11/target/passport_p1.json",
+    },
+    FixtureArtifact {
         output_file:       "p256.json",
         source_target_rel: "noir-examples/p256_bigcurve/target/p256.json",
     },
@@ -52,6 +56,8 @@ const FIXTURE_ARTIFACTS: &[FixtureArtifact] = &[
 ];
 
 const COMPLETE_AGE_CHECK_INPUT: &str = "complete_age_check.Prover.toml";
+const OPRF_INPUT: &str = "oprf.Prover.toml";
+const PASSPORT_P1_INPUT: &str = "passport_p1.Prover.toml";
 
 fn copy_if_present(from: &Path, to: &Path) -> io::Result<bool> {
     if from.exists() {
@@ -100,6 +106,9 @@ fn require_provekit_noir_version(path: &Path) {
 }
 
 fn main() {
+    if env::var("TARGET").is_ok_and(|target| target.contains("apple-ios")) {
+        chkstk_stub::build();
+    }
     let manifest_dir =
         PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let workspace_dir = manifest_dir
@@ -122,27 +131,33 @@ fn main() {
 
     fs::create_dir_all(&out_dir).expect("create generated fixture output dir");
 
-    let frozen_input = artifact_dir
-        .as_ref()
-        .map(|dir| dir.join(COMPLETE_AGE_CHECK_INPUT));
-    let source_input =
-        workspace_dir.join("noir-examples/noir-passport-monolithic/complete_age_check/Prover.toml");
-    let selected_input = frozen_input
-        .as_ref()
-        .filter(|path| path.is_file())
-        .unwrap_or(&source_input);
-    if require_artifacts && frozen_input.as_ref().is_none_or(|path| !path.is_file()) {
-        let expected = frozen_input
+    for (output_name, source_rel) in [
+        (
+            COMPLETE_AGE_CHECK_INPUT,
+            "noir-examples/noir-passport-monolithic/complete_age_check/Prover.toml",
+        ),
+        (OPRF_INPUT, "noir-examples/oprf/Prover.toml"),
+        (
+            PASSPORT_P1_INPUT,
+            "target/v1-benchmarks/passport-p1-beta11/Prover.toml",
+        ),
+    ] {
+        let frozen_input = artifact_dir.as_ref().map(|dir| dir.join(output_name));
+        let source_input = workspace_dir.join(source_rel);
+        let selected_input = frozen_input
             .as_ref()
-            .map_or_else(|| "<unset>".to_owned(), |path| path.display().to_string());
-        panic!(
-            "missing required frozen beta.11 complete_age_check input at {}",
-            expected
-        );
+            .filter(|path| path.is_file())
+            .unwrap_or(&source_input);
+        if require_artifacts && frozen_input.as_ref().is_none_or(|path| !path.is_file()) {
+            let expected = frozen_input
+                .as_ref()
+                .map_or_else(|| "<unset>".to_owned(), |path| path.display().to_string());
+            panic!("missing required frozen beta.11 input at {expected}");
+        }
+        fs::copy(selected_input, out_dir.join(output_name))
+            .unwrap_or_else(|error| panic!("copy {output_name}: {error}"));
+        println!("cargo:rerun-if-changed={}", selected_input.display());
     }
-    fs::copy(selected_input, out_dir.join(COMPLETE_AGE_CHECK_INPUT))
-        .expect("copy complete_age_check input");
-    println!("cargo:rerun-if-changed={}", selected_input.display());
 
     for artifact in FIXTURE_ARTIFACTS {
         let out_path = out_dir.join(artifact.output_file);

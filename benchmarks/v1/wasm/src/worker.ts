@@ -11,9 +11,10 @@ interface RunCommand {
   workload: WorkloadName;
   warmup: number;
   iterations: number;
+  timing_mode?: "cold_local" | "warm_reuse";
 }
 
-type WorkloadName = "webauthn_assertion" | "passport_complete_age_check" | "oprf_taceo";
+type WorkloadName = "webauthn_assertion" | "passport_complete_age_check" | "passport_p1" | "oprf_taceo";
 
 interface PhaseSample {
   iteration: number;
@@ -23,6 +24,7 @@ interface PhaseSample {
   prove_time_ms: number;
   verify_time_ms: number;
   end_to_end_time_ms: number;
+  input_to_proof_time_ms: number;
   proof_size_bytes: number;
   tampered_proof_rejected: boolean;
   js_heap_bytes?: number;
@@ -52,19 +54,28 @@ async function fetchJson<T extends object = Record<string, unknown>>(path: strin
   return (await response.json()) as T;
 }
 
+async function fetchJsonSized<T extends object = Record<string, unknown>>(path: string) {
+  const response = await fetch(path, { cache: "no-store" });
+  if (!response.ok) throw new Error(`failed to fetch ${path}: HTTP ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  return { value: JSON.parse(new TextDecoder().decode(bytes)) as T, bytes: bytes.byteLength };
+}
+
 function currentHeapBytes(): number | undefined {
   return (performance as PerformanceWithMemory).memory?.usedJSHeapSize;
 }
 
 async function runBenchmark(command: RunCommand): Promise<unknown> {
+  const coldStarted = performance.now();
   const assetRoot = `/assets/${command.workload}`;
   const downloadStart = performance.now();
-  const [pkp, pkv, inputs, manifest] = await Promise.all([
+  const [pkp, pkv, sizedInputs, manifest] = await Promise.all([
     fetchBytes(`${assetRoot}/${command.workload}.pkp`),
     fetchBytes(`${assetRoot}/${command.workload}.pkv`),
-    fetchJson(`${assetRoot}/inputs.json`),
+    fetchJsonSized(`${assetRoot}/inputs.json`),
     fetchJson<BundleManifest>("/manifest.json"),
   ]);
+  const inputs = sizedInputs.value;
   const downloadTimeMs = elapsed(downloadStart);
   const sharedRuntimeBytes = manifest.totals["shared-runtime"];
   const incrementalCircuitBytes = manifest.totals[command.workload];
@@ -87,7 +98,9 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
 
   const samples: PhaseSample[] = [];
   for (let run = 0; run < command.warmup + command.iterations; run += 1) {
-    const endToEndStart = performance.now();
+    const endToEndStart = command.timing_mode === "cold_local" && run === 0
+      ? coldStarted
+      : performance.now();
     const prepareStart = performance.now();
     const prover = new Prover(pkp);
     const prepareTimeMs = elapsed(prepareStart);
@@ -96,9 +109,10 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
     const execution = await noir.execute(inputs);
     const witnessMap = decompressWitness(execution.witness);
     const witnessTimeMs = elapsed(witnessStart);
-    const proveStart = witnessStart;
+    const proveStart = performance.now();
     const proof = prover.proveBytes(witnessMap);
     const proveTimeMs = elapsed(proveStart);
+    const inputToProofTimeMs = elapsed(endToEndStart);
     prover.free();
 
     const verifyStart = performance.now();
@@ -117,11 +131,14 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
     samples.push({
       iteration: run < command.warmup ? run : run - command.warmup,
       warmup: run < command.warmup,
-      prepare_time_ms: prepareTimeMs,
+      prepare_time_ms: command.timing_mode === "cold_local" && run === 0
+        ? inputToProofTimeMs - witnessTimeMs - proveTimeMs
+        : prepareTimeMs,
       witness_time_ms: witnessTimeMs,
       prove_time_ms: proveTimeMs,
       verify_time_ms: verifyTimeMs,
       end_to_end_time_ms: elapsed(endToEndStart),
+      input_to_proof_time_ms: inputToProofTimeMs,
       proof_size_bytes: proof.byteLength,
       tampered_proof_rejected: tamperedProofRejected,
       js_heap_bytes: currentHeapBytes(),
@@ -135,7 +152,12 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
     backend: "provekit_v1_branch_9b2a6f_wasm_single",
     download_time_ms: downloadTimeMs,
     initialization_time_ms: initTimeMs,
-    artifacts: { prover_bytes: pkp.byteLength, verifier_bytes: pkv.byteLength },
+    artifacts: {
+      prover_bytes: pkp.byteLength,
+      verifier_bytes: pkv.byteLength,
+      input_bytes: sizedInputs.bytes,
+      proving_payload_size_bytes: pkp.byteLength + sizedInputs.bytes,
+    },
     bundle: {
       shared_runtime_bytes: sharedRuntimeBytes,
       incremental_circuit_bytes: incrementalCircuitBytes,
@@ -151,6 +173,7 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
     },
     warmup: command.warmup,
     iterations: command.iterations,
+    timing_mode: command.timing_mode ?? "warm_reuse",
     samples,
   };
 }

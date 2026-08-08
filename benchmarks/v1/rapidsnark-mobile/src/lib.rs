@@ -1,8 +1,8 @@
 //! Native Mobench adapter for the Circom/Rapidsnark passport lanes.
 //!
 //! The large proving key and reference witness are installed as ordinary app
-//! resources. They are resolved and read before each timed iteration; only the
-//! native Groth16 prover call is inside the measurement boundary.
+//! resources. Input-to-proof functions generate a fresh WTNS from raw inputs
+//! and then run the native Groth16 prover in the same measured region.
 
 use {
     mobench_sdk::benchmark,
@@ -15,17 +15,51 @@ use {
     },
 };
 
+mod live_witness;
 mod rapidsnark;
 
-#[cfg(all(feature = "passport-register", feature = "passport-disclose"))]
+#[cfg(feature = "passport-register")]
+mod witness {
+    rust_witness::witness!(registersha256sha256sha256rsa655374096);
+}
+#[cfg(feature = "passport-disclose")]
+mod witness {
+    rust_witness::witness!(vcanddisclose);
+}
+#[cfg(feature = "passport-p1")]
+mod witness {
+    rust_witness::witness!(passportp1);
+}
+
+#[cfg(feature = "passport-register")]
+const INPUTS: &str = include_str!(
+    "../../circom/web/dist/assets/passport/register_sha256_sha256_sha256_rsa_65537_4096.input.json"
+);
+#[cfg(feature = "passport-disclose")]
+const INPUTS: &str =
+    include_str!("../../circom/web/dist/assets/passport/vc_and_disclose.input.json");
+#[cfg(feature = "passport-p1")]
+const INPUTS: &str = include_str!("../../circom/fixtures/passport_p1/input.json");
+
+#[cfg(any(
+    all(feature = "passport-register", feature = "passport-disclose"),
+    all(feature = "passport-register", feature = "passport-p1"),
+    all(feature = "passport-disclose", feature = "passport-p1")
+))]
 compile_error!("enable exactly one passport workload feature");
-#[cfg(not(any(feature = "passport-register", feature = "passport-disclose")))]
-compile_error!("enable one of passport-register or passport-disclose");
+#[cfg(not(any(
+    feature = "passport-register",
+    feature = "passport-disclose",
+    feature = "passport-p1"
+)))]
+compile_error!("enable one passport workload feature");
 
 #[cfg(all(feature = "passport-register", not(target_os = "android")))]
 const WORKLOAD: &str = "passport-register";
 #[cfg(all(feature = "passport-disclose", not(target_os = "android")))]
 const WORKLOAD: &str = "passport-disclose";
+#[cfg(all(feature = "passport-p1", not(target_os = "android")))]
+const WORKLOAD: &str = "passport-p1";
 
 #[derive(Debug)]
 pub struct PreparedProof {
@@ -43,6 +77,22 @@ pub struct PreparedVerification {
 pub struct PreparedProofVerify {
     proof:            PreparedProof,
     verification_key: String,
+}
+
+#[derive(Debug)]
+pub struct PreparedInputToProof {
+    zkey_path: String,
+}
+
+fn generate_witness() -> Vec<u8> {
+    let inputs = live_witness::parse_inputs(INPUTS);
+    #[cfg(feature = "passport-register")]
+    let values = witness::registersha256sha256sha256rsa655374096_witness(inputs);
+    #[cfg(feature = "passport-disclose")]
+    let values = witness::vcanddisclose_witness(inputs);
+    #[cfg(feature = "passport-p1")]
+    let values = witness::passportp1_witness(inputs);
+    live_witness::serialize_wtns(&values)
 }
 
 fn fixture_root() -> PathBuf {
@@ -159,7 +209,14 @@ fn validation_gate() {
     static VALIDATED: Once = Once::new();
     VALIDATED.call_once(|| {
         let verification_key = verification_key();
-        let proof = prove(load_proof_fixture());
+        let frozen = load_proof_fixture();
+        let generated = generate_witness();
+        assert_eq!(
+            generated, frozen.witness,
+            "live Passport WTNS differs from frozen canary"
+        );
+        let proof = rapidsnark::prove(&frozen.zkey_path, &generated)
+            .expect("Rapidsnark live Passport canary");
         assert!(
             rapidsnark::verify(&proof, &verification_key)
                 .expect("verify valid Rapidsnark passport canary"),
@@ -170,6 +227,63 @@ fn validation_gate() {
             "tampered Rapidsnark passport canary was accepted"
         );
     });
+}
+
+fn setup_input_to_proof() -> PreparedInputToProof {
+    validation_gate();
+    let zkey_path = checked_fixture_file(&fixture_root(), "proving_key.zkey");
+    let zkey_size = fs::metadata(&zkey_path)
+        .expect("read passport zkey metadata")
+        .len();
+    let wasm_size = env!("MOBENCH_LIVE_WITNESS_WASM_BYTES")
+        .parse::<u64>()
+        .expect("live witness WASM byte count");
+    let input_size = INPUTS.len() as u64;
+    mobench_sdk::record_run_u64("zkey_size_bytes", zkey_size);
+    mobench_sdk::record_run_u64("witness_wasm_size_bytes", wasm_size);
+    mobench_sdk::record_run_u64("input_size_bytes", input_size);
+    mobench_sdk::record_run_u64(
+        "proving_payload_size_bytes",
+        zkey_size + wasm_size + input_size,
+    );
+    PreparedInputToProof {
+        zkey_path: zkey_path.to_string_lossy().into_owned(),
+    }
+}
+
+#[cfg(not(feature = "passport-p1"))]
+#[benchmark(setup = setup_input_to_proof, per_iteration)]
+pub fn bench_passport_rapidsnark_input_to_proof(prepared: PreparedInputToProof) {
+    bench_passport_input_to_proof_impl(prepared);
+}
+
+#[cfg(feature = "passport-p1")]
+#[benchmark(setup = setup_input_to_proof, per_iteration)]
+pub fn bench_passport_p1_rapidsnark_input_to_proof(prepared: PreparedInputToProof) {
+    bench_passport_input_to_proof_impl(prepared);
+}
+
+fn bench_passport_input_to_proof_impl(prepared: PreparedInputToProof) {
+    let input_to_proof_started = Instant::now();
+    let witness_started = Instant::now();
+    let witness = generate_witness();
+    let witness_time_ns = witness_started
+        .elapsed()
+        .as_nanos()
+        .min(u128::from(u64::MAX)) as u64;
+    let prove_started = Instant::now();
+    let proof = rapidsnark::prove(&prepared.zkey_path, &witness)
+        .expect("Rapidsnark live-witness Passport proof");
+    let prove_time_ns = prove_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+    let input_to_proof_time_ns = input_to_proof_started
+        .elapsed()
+        .as_nanos()
+        .min(u128::from(u64::MAX)) as u64;
+    mobench_sdk::record_sample_u64("witness_time_ns", witness_time_ns);
+    mobench_sdk::record_sample_u64("prove_time_ns", prove_time_ns);
+    mobench_sdk::record_sample_u64("input_to_proof_time_ns", input_to_proof_time_ns);
+    mobench_sdk::record_sample_u64("proof_size_bytes", serialized_proof_size(&proof) as u64);
+    black_box(proof);
 }
 
 fn setup_proof() -> PreparedProof {
@@ -183,10 +297,7 @@ fn setup_proof() -> PreparedProof {
         .len();
     mobench_sdk::record_run_u64("zkey_size_bytes", zkey_size);
     mobench_sdk::record_run_u64("witness_size_bytes", witness_size);
-    mobench_sdk::record_run_u64(
-        "proving_payload_size_bytes",
-        zkey_size + witness_size,
-    );
+    mobench_sdk::record_run_u64("proving_payload_size_bytes", zkey_size + witness_size);
     load_proof_fixture()
 }
 
@@ -255,6 +366,20 @@ mod tests {
     fn registers_expected_mobench_functions() {
         let names = mobench_sdk::list_benchmark_names();
         eprintln!("registered benchmarks: {names:?}");
+        #[cfg(not(feature = "passport-p1"))]
+        assert!(
+            names
+                .iter()
+                .any(|name| name.ends_with("::bench_passport_rapidsnark_input_to_proof")),
+            "registered benchmarks: {names:?}"
+        );
+        #[cfg(feature = "passport-p1")]
+        assert!(
+            names
+                .iter()
+                .any(|name| name.ends_with("::bench_passport_p1_rapidsnark_input_to_proof")),
+            "registered benchmarks: {names:?}"
+        );
         assert!(
             names
                 .iter()

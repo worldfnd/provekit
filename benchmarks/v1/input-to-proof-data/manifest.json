@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "campaign_id": "input-to-proof-v1-20260807",
+  "sampling": { "warmups": 1, "measured": 5, "sequential": true },
+  "workloads": [
+    "passport_complete_age_check",
+    "passport_p1",
+    "oprf_o2",
+    "webauthn_closest_analogue"
+  ],
+  "timing_modes": {
+    "cold_local": "Fresh process/runtime per attempt; hash-verified assets are local and network transfer is excluded.",
+    "warm_reuse": "One initialized runtime is reused; every attempt still regenerates its witness and proof."
+  },
+  "headline": "input_to_proof_time_ms",
+  "verification": "Valid-proof acceptance and tampered-proof rejection are mandatory and excluded from headline latency.",
+  "pins": {
+    "provekit_v1": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
+    "provekit_noir": "1.0.0-beta.11",
+    "oprf_noir_compat_commit": "7831dca615db55147c60f49415af6e86730df090",
+    "barretenberg_noir": "1.0.0-beta.19",
+    "bb_js": "4.2.0-aztecnr-rc.2",
+    "mopro": "0.3.7",
+    "circom": "2.2.2",
+    "snarkjs": "0.7.6",
+    "rust_witness": "0.1.6",
+    "rust_rapidsnark": "0.1.4",
+    "rust_rapidsnark_commit": "fcf92e7454600109e4eab4a0c907e8d59649fd9c",
+    "wasmi_iphone_oprf": "0.46.0"
+  },
+  "publication_boundaries": {
+    "mac_chrome": "browser_wasm",
+    "iphone_se_2022": "ios_native",
+    "motorola_e15": "android_native"
+  }
+}
