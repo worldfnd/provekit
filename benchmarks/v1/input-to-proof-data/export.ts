@@ -267,8 +267,9 @@ async function loadIosEvidence() {
     const path = resolve(iphoneRawRoot, relative);
     const sessionRoot = dirname(path);
     const buildRoot = dirname(sessionRoot);
-    const report = await Bun.file(path).json();
-    if (!iosFunctions[report.function]) continue;
+    const rawReport = await Bun.file(path).json();
+    const reports = normalizeIosReports(rawReport);
+    if (!reports.some((report) => iosFunctions[report.function])) continue;
     const sessionPath = resolve(sessionRoot, "session.json");
     const buildPath = resolve(buildRoot, "build.json");
     if (!(await Bun.file(sessionPath).exists()) || !(await Bun.file(buildPath).exists())) {
@@ -282,20 +283,32 @@ async function loadIosEvidence() {
       throw new Error(`${path}: unexpected BrowserStack device identity`);
     }
     const coldMatch = relative.match(/(?:^|\/)cold\/run-(\d+)(?:\/|$)/);
-    evidence.push({
-      path,
-      buildPath,
-      sessionPath,
-      buildId: build.id ?? basename(buildRoot),
-      sessionId: session.id ?? basename(sessionRoot).replace(/^session-/, ""),
-      invocation: coldMatch ? Number(coldMatch[1]) : null,
-      mode: coldMatch ? "cold_local" : "warm_reuse",
-      report,
-      build,
-      session,
+    const coldBatch = relative.match(/(?:^|\/)cold\/batch(?:\/|$)/);
+    reports.forEach((report, reportIndex) => {
+      if (!iosFunctions[report.function]) return;
+      evidence.push({
+        path,
+        buildPath,
+        sessionPath,
+        buildId: build.id ?? basename(buildRoot),
+        sessionId: session.id ?? basename(sessionRoot).replace(/^session-/, ""),
+        invocation: coldMatch ? Number(coldMatch[1]) : coldBatch ? reportIndex : null,
+        mode: coldMatch || coldBatch ? "cold_local" : "warm_reuse",
+        report,
+        build,
+        session,
+      });
     });
   }
   return evidence;
+}
+
+export function normalizeIosReports(rawReport: unknown): Record<string, any>[] {
+  const reports = Array.isArray(rawReport) ? rawReport : [rawReport];
+  if (!reports.every((report) => report && typeof report === "object" && !Array.isArray(report))) {
+    throw new Error("iPhone benchmark report must be a JSON object or array of JSON objects");
+  }
+  return reports;
 }
 
 export function validateRows(rows: CsvRow[], expected = expectedSeries(["mac_chrome"])) {

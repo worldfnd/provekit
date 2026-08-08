@@ -19,6 +19,7 @@ passport_p1_vkey="${repo_root}/target/v1-benchmarks/groth16/passport_p1/verifica
 selected_workloads="${V1_RAPIDSNARK_CORE_IOS_WORKLOADS:-passport-disclose,passport-register,passport-p1,webauthn}"
 iterations="${V1_IOS_ITERATIONS:-5}"
 warmup="${V1_IOS_WARMUP:-1}"
+cold_launches="${V1_IOS_COLD_LAUNCHES:-1}"
 
 workload_selected() {
   case ",${selected_workloads}," in
@@ -62,6 +63,7 @@ compute_content_sha256() {
     "${script_dir}/build-rapidsnark-ios-libs.sh" \
     "${script_dir}/patch-ios-remote-proving-key.ts" \
     "${script_dir}/patch-ios-runner-json.ts" \
+    "${script_dir}/patch-ios-cold-launches.ts" \
     "${script_dir}/patch-ios15-xcuitest-suite.sh" \
     "${passport_assets}/vc_and_disclose.zkey" \
     "${passport_witnesses}/vc_and_disclose.wtns" \
@@ -95,7 +97,7 @@ compute_content_sha256() {
 }
 
 content_manifest="${prebuilt_root}.content.json"
-content_sha256="$(printf '%s\n%s\n%s\n' "$(compute_content_sha256)" "${iterations}" "${warmup}" | shasum -a 256 | awk '{print $1}')"
+content_sha256="$(printf '%s\n%s\n%s\n%s\n' "$(compute_content_sha256)" "${iterations}" "${warmup}" "${cold_launches}" | shasum -a 256 | awk '{print $1}')"
 recorded_content_sha256=""
 recorded_manifest_sha256=""
 actual_manifest_sha256=""
@@ -216,6 +218,11 @@ prepare_workload() {
 
   bun "${script_dir}/patch-ios-runner-json.ts" \
     "${project}/BenchRunner/BenchRunnerFFI.swift" >/dev/null
+  if ((cold_launches > 1)); then
+    bun "${script_dir}/patch-ios-cold-launches.ts" \
+      "${project}/BenchRunnerUITests/BenchRunnerUITests.swift" \
+      "${cold_launches}" >/dev/null
+  fi
   local remote_zkey_url=""
   case "${workload}" in
     webauthn) remote_zkey_url="${remote_webauthn_zkey_url}" ;;

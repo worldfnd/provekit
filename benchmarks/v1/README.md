@@ -55,9 +55,10 @@ not accepted as input-to-proof measurements.
 
 The Mac input-to-proof campaign is complete at 24 series / 144 rows,
 including Passport P1 for all three stacks in both cold and warm modes. Native
-iPhone execution uses one 1+5 warm session per function and six separate 1/0
-sessions for cold sampling; cold invocation zero is the warmup and invocations
-one through five are measured samples. The exact native export contract is in
+iPhone execution uses one 1+5 warm session per function. Its cold session
+relaunches the app six times, retaining downloaded hash-verified assets but
+creating a fresh process and proof runtime for every attempt; launch zero is
+the warmup and launches one through five are measured samples. The exact native export contract is in
 [`input-to-proof-data/README.md`](input-to-proof-data/README.md).
 The separate Marimo analysis is
 [`analysis/input_to_proof_analysis.py`](analysis/input_to_proof_analysis.py);

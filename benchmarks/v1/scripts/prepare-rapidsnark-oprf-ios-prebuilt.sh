@@ -14,6 +14,7 @@ asset_root="${benchmark_root}/circom/web/dist/assets/oprf"
 witness_root="${repo_root}/target/v1-benchmarks/circom/oprf"
 iterations="${V1_IOS_ITERATIONS:-5}"
 warmup="${V1_IOS_WARMUP:-1}"
+cold_launches="${V1_IOS_COLD_LAUNCHES:-1}"
 
 for command in bun cargo cargo-mobench cp jq shasum stat unzip xcodebuild xcodegen; do
   command -v "${command}" >/dev/null 2>&1 || {
@@ -34,6 +35,7 @@ compute_content_sha256() {
     "${BASH_SOURCE[0]}" \
     "${script_dir}/build-rapidsnark-ios-libs.sh" \
     "${script_dir}/patch-ios-runner-json.ts" \
+    "${script_dir}/patch-ios-cold-launches.ts" \
     "${script_dir}/patch-ios15-xcuitest-suite.sh" \
     "${asset_root}/oprf_nullifier.zkey" \
     "${witness_root}/oprf_nullifier.wtns" \
@@ -46,7 +48,7 @@ compute_content_sha256() {
 }
 
 content_manifest="${prebuilt_root}.content.json"
-content_sha256="$(printf '%s\n%s\n%s\n' "$(compute_content_sha256)" "${iterations}" "${warmup}" | shasum -a 256 | awk '{print $1}')"
+content_sha256="$(printf '%s\n%s\n%s\n%s\n' "$(compute_content_sha256)" "${iterations}" "${warmup}" "${cold_launches}" | shasum -a 256 | awk '{print $1}')"
 recorded_content_sha256=""
 recorded_manifest_sha256=""
 actual_manifest_sha256=""
@@ -148,6 +150,11 @@ prepare_variant() {
 
   bun "${script_dir}/patch-ios-runner-json.ts" \
     "${project}/BenchRunner/BenchRunnerFFI.swift" >/dev/null
+  if ((cold_launches > 1)); then
+    bun "${script_dir}/patch-ios-cold-launches.ts" \
+      "${project}/BenchRunnerUITests/BenchRunnerUITests.swift" \
+      "${cold_launches}" >/dev/null
+  fi
 
   xcodebuild -create-xcframework \
     -library "${static_library}" \

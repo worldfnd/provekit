@@ -12,6 +12,7 @@ project="${output}/ios/BenchRunner"
 resources="${project}/BenchRunner/Resources"
 iterations="${V1_IOS_ITERATIONS:-5}"
 warmup="${V1_IOS_WARMUP:-1}"
+cold_launches="${V1_IOS_COLD_LAUNCHES:-1}"
 
 for command in bun cargo-mobench cp jq shasum stat xcodegen; do
   command -v "${command}" >/dev/null 2>&1 || {
@@ -28,6 +29,11 @@ done
 mkdir -p "${resources}" "${prebuilt_root}/entries"
 bun "${script_dir}/patch-ios-runner-json.ts" \
   "${project}/BenchRunner/BenchRunnerFFI.swift" >/dev/null
+if ((cold_launches > 1)); then
+  bun "${script_dir}/patch-ios-cold-launches.ts" \
+    "${project}/BenchRunnerUITests/BenchRunnerUITests.swift" \
+    "${cold_launches}" >/dev/null
+fi
 cp -c \
   "${repo_root}/target/v1-benchmarks/noir-srs/noir_beta19_campaign.dat" \
   "${resources}/noir_beta19_campaign.dat" 2>/dev/null ||
@@ -45,6 +51,7 @@ content_digest() {
     "${benchmark_root}/scripts/prepare-noir-beta19-srs.sh"
     "${BASH_SOURCE[0]}"
     "${script_dir}/patch-ios-runner-json.ts"
+    "${script_dir}/patch-ios-cold-launches.ts"
     "${script_dir}/preflight-ios15-charconv.sh"
     "${script_dir}/patch-ios15-xcuitest-suite.sh"
     "${benchmark_root}/toolchains.lock.json"
@@ -75,7 +82,7 @@ content_digest() {
 }
 
 source_sha="$(git -C "${repo_root}" rev-parse HEAD)"
-content_sha256="$(printf '%s\n%s\n%s\n' "$(content_digest)" "${iterations}" "${warmup}" | shasum -a 256 | awk '{print $1}')"
+content_sha256="$(printf '%s\n%s\n%s\n%s\n' "$(content_digest)" "${iterations}" "${warmup}" "${cold_launches}" | shasum -a 256 | awk '{print $1}')"
 manifest="${prebuilt_root}/manifest.json"
 content_manifest="${prebuilt_root}.content.json"
 recorded_content_sha256=""

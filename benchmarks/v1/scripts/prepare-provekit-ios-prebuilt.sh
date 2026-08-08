@@ -12,6 +12,7 @@ project="${output}/ios/BenchRunner"
 resources="${project}/BenchRunner/Resources"
 iterations="${V1_IOS_ITERATIONS:-5}"
 warmup="${V1_IOS_WARMUP:-1}"
+cold_launches="${V1_IOS_COLD_LAUNCHES:-1}"
 
 for command in bun cargo-mobench cp git jq shasum stat xcodegen; do
   command -v "${command}" >/dev/null 2>&1 || {
@@ -27,6 +28,11 @@ done
 mkdir -p "${resources}"
 bun "${script_dir}/patch-ios-runner-json.ts" \
   "${project}/BenchRunner/BenchRunnerFFI.swift" >/dev/null
+if ((cold_launches > 1)); then
+  bun "${script_dir}/patch-ios-cold-launches.ts" \
+    "${project}/BenchRunnerUITests/BenchRunnerUITests.swift" \
+    "${cold_launches}" >/dev/null
+fi
 
 content_digest() {
   local files=(
@@ -41,6 +47,7 @@ content_digest() {
     "${output}/ios/bench_mobile.xcframework/ios-arm64/bench_mobile.framework/bench_mobile"
     "${BASH_SOURCE[0]}"
     "${script_dir}/patch-ios-runner-json.ts"
+    "${script_dir}/patch-ios-cold-launches.ts"
     "${script_dir}/patch-ios15-xcuitest-suite.sh"
     "${repo_root}/target/v1-benchmarks/provekit-beta11-artifacts/passport_p1.json"
     "${repo_root}/target/v1-benchmarks/provekit-beta11-artifacts/passport_p1.Prover.toml"
@@ -59,7 +66,7 @@ content_digest() {
   printf '%s\n' "${hashes[@]}" | shasum | awk '{print $1}'
 }
 
-source_digest="$(printf '%s\n%s\n%s\n' "$(content_digest)" "${iterations}" "${warmup}" | shasum -a 256 | awk '{print $1}')"
+source_digest="$(printf '%s\n%s\n%s\n%s\n' "$(content_digest)" "${iterations}" "${warmup}" "${cold_launches}" | shasum -a 256 | awk '{print $1}')"
 source_sha="$(git -C "${repo_root}" rev-parse HEAD)"
 manifest="${prebuilt_root}/manifest.json"
 content_manifest="${prebuilt_root}.content.json"

@@ -31,8 +31,8 @@ bun run benchmarks/v1/input-to-proof-data/export.ts
 bun test benchmarks/v1/input-to-proof-data/export.test.ts
 ```
 
-After the native iPhone warm campaign and all six fresh-process cold
-invocations have been fetched, export both completed targets with:
+After the native iPhone warm campaign and every six-launch fresh-process cold
+batch have been fetched, export both completed targets with:
 
 ```bash
 INPUT_TO_PROOF_EXPORT_TARGETS=mac_chrome,iphone_se_2022 \
@@ -40,6 +40,8 @@ INPUT_TO_PROOF_EXPORT_TARGETS=mac_chrome,iphone_se_2022 \
 ```
 
 The iPhone exporter reads only passed BrowserStack build/session artifacts.
+It expands a cold batch's six-report JSON array into launch indices zero
+through five while retaining the shared build/session provenance.
 It preserves build/session IDs and raw-report hashes. The historical staged
 Circom Passport row sums registration and disclosure latency, payload, and
 proof bytes while taking the larger of the two process-RSS peaks. A warmup's

@@ -430,6 +430,7 @@ Prepare distinct cold bundles from the same source/artifact freeze with:
 ```bash
 export V1_IOS_ITERATIONS=1
 export V1_IOS_WARMUP=0
+export V1_IOS_COLD_LAUNCHES=6
 export V1_PROVEKIT_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-provekit-ios-prebuilt"
 export V1_MOPRO_NOIR_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-noir-ios-prebuilt"
 export V1_RAPIDSNARK_OPRF_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-oprf-ios-prebuilt"
@@ -459,9 +460,11 @@ byte-for-byte before device sampling. This target-specific witness runtime
 replaces a Rust-Witness AOT artifact that repeatedly crashed with
 `EXC_BAD_ACCESS` on iOS; it does not change the O2 circuit or Rapidsnark prover.
 
-Run the warm manifest once. Run the cold manifest six times, each through a
-fresh Mobench process/session. Cold invocation zero is the attested warmup and
-invocations one through five are the measured samples. The canonical entrypoint
+Run the warm manifest once. Run each cold function in one BrowserStack session
+whose XCUITest runner terminates and relaunches the app six times. Every launch
+creates a fresh process and proof runtime; only the hash-verified downloaded
+asset cache survives outside the timed region. Cold launch zero is the attested
+warmup and launches one through five are the measured samples. The canonical entrypoint
 supports this with `V1_IOS_WARM_PREBUILT_MANIFEST` and
 `V1_IOS_COLD_PREBUILT_MANIFEST`. Every paid run still requires
 `--confirm-paid-browserstack`.
