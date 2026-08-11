@@ -89,6 +89,27 @@ fn srs_path() -> String {
     if let Some(path) = env::var_os("MOBENCH_NOIR_SRS") {
         return checked_file(PathBuf::from(path));
     }
+
+    #[cfg(target_os = "android")]
+    {
+        let library_name = format!("lib{}.so", env!("CARGO_PKG_NAME").replace('-', "_"));
+        let maps = fs::read_to_string("/proc/self/maps").expect("read Android process maps");
+        let library_path = maps
+            .lines()
+            .filter_map(|line| line.split_whitespace().last())
+            .map(|path| path.trim_end_matches(" (deleted)"))
+            .find(|path| path.ends_with(&library_name))
+            .unwrap_or_else(|| panic!("locate {library_name} in Android process maps"));
+        return checked_file(
+            PathBuf::from(library_path)
+                .parent()
+                .expect("Android benchmark library has a parent")
+                .join("libnoir_beta19_campaign.so"),
+        );
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
     let executable = env::current_exe().expect("resolve benchmark executable path");
     checked_file(
         executable
@@ -96,6 +117,7 @@ fn srs_path() -> String {
             .expect("benchmark executable has an app-bundle parent")
             .join(SRS_NAME),
     )
+    }
 }
 
 fn load_workload(

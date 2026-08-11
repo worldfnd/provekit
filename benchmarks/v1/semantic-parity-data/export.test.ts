@@ -28,7 +28,7 @@ describe("semantic parity export", () => {
   });
 
   test("emits the exact legacy benchmark-samples.csv schema and metric units", async () => {
-    const legacyHeader = (await Bun.file(new URL("../data/benchmark-samples.csv", import.meta.url)).text()).split("\n", 1)[0];
+    const legacyHeader = (await Bun.file(new URL("../legacy/data/benchmark-samples.csv", import.meta.url)).text()).split("\n", 1)[0];
     expect(CSV_COLUMNS.join(",")).toBe(legacyHeader);
     const output = toCsv([row({ prove_time_ms: 12.5, proof_size_bytes: 42,
       proving_payload_size_bytes: 9000, process_peak_memory_kib: 2048 })]);

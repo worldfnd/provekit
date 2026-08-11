@@ -12,6 +12,26 @@
     "cold_local": "Fresh process/runtime per attempt; hash-verified assets are local and network transfer is excluded.",
     "warm_reuse": "One initialized runtime is reused; every attempt still regenerates its witness and proof."
   },
+  "e15_status": {
+    "successful_logical_series": 23,
+    "gap_logical_series": 1,
+    "gap_manifest": "benchmarks/v1/input-to-proof-data/e15-webauthn-cold-gap.json",
+    "gap": {
+      "series": "webauthn_closest_analogue__motorola_e15__circom_groth16__cold_local",
+      "status": "runtime_failed",
+      "failure_code": "out_of_memory"
+    }
+  },
+  "final_export": {
+    "path": "benchmarks/v1/input-to-proof-data/input-to-proof-samples.csv",
+    "sha256": "d6c8055a73bf87dac0e8c158dd103df18a968a9921799a4d2e6b4bd54e3860d7",
+    "logical_series": 72,
+    "successful_series": 71,
+    "gap_series": 1,
+    "rows": 427,
+    "successful_attempt_rows": 426,
+    "gap_rows": 1
+  },
   "headline": "input_to_proof_time_ms",
   "verification": "Valid-proof acceptance and tampered-proof rejection are mandatory and excluded from headline latency.",
   "pins": {

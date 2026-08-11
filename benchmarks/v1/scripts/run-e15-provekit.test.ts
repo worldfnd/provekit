@@ -19,6 +19,18 @@ describe("E15 logcat parsing", () => {
     });
   });
 
+  test("uses the last complete report when Android launches the activity twice", () => {
+    const log = [
+      "1 I BenchRunner: BENCH_JSON_START",
+      '2 I BenchRunner: BENCH_JSON_CHUNK {"samples":[{"duration_ns":41}]}',
+      "3 I BenchRunner: BENCH_JSON_END",
+      "4 I BenchRunner: BENCH_JSON_START",
+      '5 I BenchRunner: BENCH_JSON_CHUNK {"samples":[{"duration_ns":42}]}',
+      "6 I BenchRunner: BENCH_JSON_END",
+    ].join("\n");
+    expect(parseBenchJson(log)).toEqual({ samples: [{ duration_ns: 42 }] });
+  });
+
   test("extracts the last structured failure", () => {
     const log = [
       '1 I BenchRunner: BENCH_FAILURE_JSON {"kind":"old"}',

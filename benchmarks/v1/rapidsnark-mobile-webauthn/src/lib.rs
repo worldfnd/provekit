@@ -5,10 +5,12 @@
 //! independently validated correctness canary.
 
 use {
+    libc::{c_char, c_void},
     memmap2::{Mmap, MmapOptions},
     mobench_sdk::benchmark,
     std::{
         env,
+        ffi::{CStr, CString},
         fs::{self, File},
         hint::black_box,
         path::{Path, PathBuf},
@@ -17,14 +19,8 @@ use {
     },
 };
 
-#[path = "../../rapidsnark-mobile/src/live_witness.rs"]
-mod live_witness;
 #[path = "../../rapidsnark-mobile/src/rapidsnark.rs"]
 mod rapidsnark;
-
-mod witness {
-    rust_witness::witness!(webauthndefault);
-}
 
 const INPUTS: &str =
     include_str!("../../circom/web/dist/assets/webauthn/webauthn_default.input.json");
@@ -48,10 +44,112 @@ pub struct PreparedInputToProof {
     zkey_path: String,
 }
 
+type GenerateWitness = unsafe extern "C" fn(*mut u8, usize) -> usize;
+
 fn generate_witness() -> Vec<u8> {
-    live_witness::serialize_wtns(&witness::webauthndefault_witness(
-        live_witness::parse_inputs(INPUTS),
-    ))
+    let root = fixture_root();
+    let helper_path = checked_fixture_file(&root, "witness.so");
+    let expected_size = fs::metadata(checked_fixture_file(&root, "reference.wtns"))
+        .expect("read WebAuthn witness metadata")
+        .len();
+    let helper_path = CString::new(helper_path.to_string_lossy().as_bytes())
+        .expect("witness helper path contains no NUL");
+    let (handle, output, written) = std::thread::spawn(move || {
+        // SAFETY: The path is a valid NUL-terminated string and Android's
+        // dynamic linker owns the returned handle until the matching dlclose.
+        let handle = unsafe {
+            libc::dlopen(helper_path.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL)
+        };
+        assert!(!handle.is_null(), "load WebAuthn witness helper: {}", dl_error());
+        let symbol = CString::new("mobench_generate_webauthn_witness")
+            .expect("witness symbol contains no NUL");
+        // SAFETY: `handle` is a live dlopen handle and the symbol name is valid.
+        let address = unsafe { libc::dlsym(handle, symbol.as_ptr()) };
+        assert!(!address.is_null(), "resolve WebAuthn witness helper: {}", dl_error());
+        // SAFETY: The helper exports exactly this C ABI function.
+        let generate: GenerateWitness = unsafe { std::mem::transmute(address) };
+        let mut output =
+            vec![0_u8; usize::try_from(expected_size).expect("witness size fits usize")];
+        // SAFETY: `output` is writable for its full length and the helper
+        // checks the capacity before copying the generated WTNS.
+        let written = unsafe { generate(output.as_mut_ptr(), output.len()) };
+        // Keep the handle open: dlclose on a Rust cdylib can run its TLS
+        // destructors on Android's benchmark thread. The caller releases the
+        // large read-only image without invoking those destructors.
+        (handle as usize, output, written)
+    })
+    .join()
+    .expect("WebAuthn witness helper thread");
+    release_helper_readonly_mapping(handle);
+    assert_eq!(written, output.len(), "WebAuthn witness helper output length");
+    output
+}
+
+fn release_helper_readonly_mapping(handle: usize) {
+    // Keep the library loaded so its dynamic-loader/TLS bookkeeping remains
+    // valid, but release the large first PT_LOAD (ELF headers + witness
+    // tables) after generation. The first page contains the ELF header used by
+    // loader diagnostics; the rest is immutable data no longer referenced.
+    std::hint::black_box(handle);
+    let maps = fs::read_to_string("/proc/self/maps").expect("read Android process maps");
+    for line in maps.lines() {
+        let mut fields = line.split_whitespace();
+        let range = match fields.next() {
+            Some(value) => value,
+            None => continue,
+        };
+        let permissions = match fields.next() {
+            Some(value) => value,
+            None => continue,
+        };
+        let offset = match fields.next() {
+            Some(value) => value,
+            None => continue,
+        };
+        let path = fields.last().unwrap_or_default();
+        if !permissions.starts_with("r--")
+            || offset != "00000000"
+            || !path.ends_with("libmobench_witness.so")
+        {
+            continue;
+        }
+        let (start, end) = match range.split_once('-') {
+            Some((start, end)) => (
+                usize::from_str_radix(start, 16).ok(),
+                usize::from_str_radix(end, 16).ok(),
+            ),
+            None => (None, None),
+        };
+        let (Some(start), Some(end)) = (start, end) else {
+            continue;
+        };
+        let page = 4096_usize;
+        let keep = start.saturating_add(page);
+        if end <= keep {
+            continue;
+        }
+        // SAFETY: This is the helper's private, file-backed read-only mapping;
+        // witness generation has returned and no later benchmark code calls
+        // into the helper. The first page remains mapped for loader metadata.
+        let status = unsafe { libc::munmap(keep as *mut c_void, end - keep) };
+        assert_eq!(status, 0, "release WebAuthn witness helper mapping");
+        break;
+    }
+}
+
+fn dl_error() -> String {
+    // SAFETY: `dlerror` returns either a NUL-terminated diagnostic owned by
+    // the dynamic linker or null; the string is copied before the next call.
+    unsafe {
+        let error = libc::dlerror();
+        if error.is_null() {
+            "unknown dynamic-loader error".to_owned()
+        } else {
+            CStr::from_ptr(error.cast::<c_char>())
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
 }
 
 fn fixture_root() -> PathBuf {
@@ -61,7 +159,7 @@ fn fixture_root() -> PathBuf {
 
     #[cfg(target_os = "android")]
     {
-        let library_name = format!("lib{}.so", env!("CARGO_PKG_NAME").replace('-', "_"));
+        let library_name = "libprovekit_v1_mobile_adapters.so";
         let maps = fs::read_to_string("/proc/self/maps").expect("read Android process maps");
         let library_path = maps
             .lines()
@@ -91,6 +189,7 @@ fn checked_fixture_file(root: &Path, name: &str) -> PathBuf {
         "proving_key.zkey" => "libmobench_proving_key.so",
         "reference.wtns" => "libmobench_reference_wtns.so",
         "verification_key.json" => "libmobench_verification_key.so",
+        "witness.so" => "libmobench_witness.so",
         _ => name,
     };
     #[cfg(not(target_os = "android"))]
@@ -164,7 +263,13 @@ fn validation_gate() {
             frozen.witness.as_ref(),
             "live WebAuthn WTNS differs from frozen canary"
         );
-        let proof = rapidsnark::prove(&frozen.zkey_path, &generated)
+        // The frozen witness is only an independently validated canary.  On
+        // the 32-bit E15, retaining its mapping while Rapidsnark maps the
+        // 1.73 GiB proving key exhausts the available address space.  Keep
+        // the path, release the mapping, and prove from the live WTNS.
+        let zkey_path = frozen.zkey_path.clone();
+        drop(frozen);
+        let proof = rapidsnark::prove(&zkey_path, &generated)
             .expect("Rapidsnark live WebAuthn canary");
         let proof_size_bytes = serialized_proof_size(&proof);
         assert!(

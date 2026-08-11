@@ -8530,6 +8530,7 @@ dependencies = [
  "ark-bn254",
  "ark-ec",
  "ark-ff 0.5.0",
+ "ark-serialize 0.5.0",
  "inventory",
  "mobench-sdk",
  "rand 0.8.7",

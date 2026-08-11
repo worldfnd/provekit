@@ -37,9 +37,9 @@ Required environment for real device stages:
   V1_E15_NOIR_EVIDENCE          Retained beta.19 Passport witness-failure evidence.
   ANDROID_SERIAL                Optional adb serial (required if >1 device).
 
-The publication export reads the committed, hash-locked V1 evidence under
-benchmarks/v1/semantic-parity-data/evidence/provekit-v1 and does not accept
-browser or native timings from another campaign implicitly.
+The publication export reads the committed, hash-locked input-to-proof evidence
+for the selected campaign targets and does not accept browser or native timings
+from another campaign implicitly.
 
 BrowserStack credentials must be exported as BROWSERSTACK_USERNAME and
 BROWSERSTACK_ACCESS_KEY. They are never accepted as arguments or written to
@@ -385,7 +385,8 @@ run_export() {
   run_command "${repo_root}" env \
     "INPUT_TO_PROOF_RAW_ROOT=${campaign_root}/mac-chrome" \
     "INPUT_TO_PROOF_IPHONE_RAW_ROOT=${campaign_root}/iphone/publication" \
-    "INPUT_TO_PROOF_EXPORT_TARGETS=${V1_EXPORT_TARGETS:-mac_chrome}" \
+    "INPUT_TO_PROOF_E15_RAW_ROOT=${campaign_root}/e15" \
+    "INPUT_TO_PROOF_EXPORT_TARGETS=${V1_EXPORT_TARGETS:-mac_chrome,iphone_se_2022,motorola_e15}" \
     bun "${exporter}"
 }
 

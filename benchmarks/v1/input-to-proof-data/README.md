@@ -7,17 +7,23 @@ This campaign measures the complete local path from raw circuit inputs through f
 - `cold_local`: a fresh app/browser process and proof runtime for every attempt. Locked assets are already local; downloads are excluded.
 - `warm_reuse`: the runtime remains initialized, but witness generation and proving are repeated for every attempt.
 
-The proof-only semantic-parity CSV is immutable and is not imported as input-to-proof evidence.
+The historical proof-only semantic-parity CSV is immutable at
+`../legacy/semantic-parity/semantic-parity-samples.csv` and is not imported as
+input-to-proof evidence.
 
 The campaign has four workloads. `passport_complete_age_check` preserves the earlier Passport lane; `passport_p1` is the additional exact source pair at `noir/passport_p1/src/main.nr` and `circom/passport_p1/passport_p1.circom`.
 
-The expected coverage is 72 logical series and 432 rows:
+The nominal all-success coverage is 72 logical series and 432 rows:
 
 - 4 semantic profiles
 - 3 targets
 - 3 proof stacks
 - 2 timing modes
 - 1 warmup plus 5 measured attempts
+
+The finalized freeze contains 427 rows: 426 valid attempts across 71 complete
+series, plus one structured E15 out-of-memory gap row. No failed attempt is
+expanded into synthetic warmup or measured rows.
 
 Mac preparation and execution:
 
@@ -63,6 +69,16 @@ Only the hash-matched final evidence set belongs under
 superseded valid runs from a different frozen bundle, tunnel logs, and retry
 diagnostics remain alongside it under the broader `iphone/` evidence root but
 are intentionally outside the export scan.
+
+The E15 input-to-proof freeze has 23 successful logical series. The remaining
+series, `webauthn_closest_analogue__motorola_e15__circom_groth16__cold_local`,
+is an explicit `runtime_failed` / `out_of_memory` gap. Rapidsnark reached the
+native worker but could not map the 1,733,145,772-byte WebAuthn zkey alongside
+the 109,218,412-byte WTNS in the 32-bit `armeabi-v7a` userspace. The final
+report and logcat hashes are recorded in
+[`e15-webauthn-cold-gap.json`](e15-webauthn-cold-gap.json). All timing, proof,
+payload, and memory fields for this gap are null; APK size is transport
+evidence only and is not a proving-payload measurement.
 
 The Mac runner is resumable. It writes one immutable JSON file per logical
 series under `target/v1-benchmarks/input-to-proof/mac-chrome`. Set

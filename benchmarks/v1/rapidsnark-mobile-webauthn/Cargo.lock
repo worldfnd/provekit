@@ -470,6 +470,7 @@ dependencies = [
  "cc",
  "chkstk_stub",
  "inventory",
+ "libc",
  "memmap2",
  "mobench-sdk",
  "num-bigint",

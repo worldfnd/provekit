@@ -1,12 +1,15 @@
-# Benchmark sample data
+# Historical exploratory benchmark sample data
 
-`benchmark-samples.csv` is the canonical, sample-level interchange file for the
-cross-device campaign. Generate it from normalized JSON attempt records:
+`benchmark-samples.csv` is retained as the original exploratory/compound
+variant export. It is not canonical; use
+[`../../input-to-proof-data/input-to-proof-samples.csv`](../../input-to-proof-data/input-to-proof-samples.csv)
+for publication. Generate this historical format from normalized JSON attempt
+records:
 
 ```sh
 bun benchmarks/v1/data/export-benchmark-csv.ts \
   path/to/attempts.json \
-  benchmarks/v1/data/benchmark-samples.csv
+  benchmarks/v1/legacy/data/benchmark-samples.csv
 ```
 
 The default validation gate requires all 27 hardware × circuit × prover cells.
@@ -33,7 +36,7 @@ metrics: `prover_time_ms`, deduplicated proving payload in
 `bundle_size_bytes` for compatibility), `proof_size_bytes`, and process peak
 RSS in `peak_memory_mib`.
 
-The publication freeze has 27 logical cells and 33 variant series. Five iPhone
+This export has 27 base cells and 33 historical variant series. Five iPhone
 Circom variants predate structured payload telemetry; their payload is a
 labelled asset-size estimate of the pinned zkey plus frozen WTNS witness. The
 estimate is recorded in `non_equivalence_note` and excludes IPA and transport

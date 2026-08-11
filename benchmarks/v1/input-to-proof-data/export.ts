@@ -28,6 +28,12 @@ const iphoneRawRoot = resolve(
   process.env.INPUT_TO_PROOF_IPHONE_RAW_ROOT ??
     resolve(repoRoot, "target/v1-benchmarks/input-to-proof/iphone/publication"),
 );
+const e15RawRoot = resolve(
+  process.env.INPUT_TO_PROOF_E15_RAW_ROOT ??
+    resolve(repoRoot, "target/v1-benchmarks/input-to-proof/e15"),
+);
+const e15GapPath = resolve(import.meta.dir, "e15-webauthn-cold-gap.json");
+const E15_OOM_GAP_SERIES = "webauthn_closest_analogue__motorola_e15__circom_groth16__cold_local";
 
 const circuitIdentity: Record<Profile, { circuit: string; variant: string; commit: string; note: string }> = {
   passport_complete_age_check: {
@@ -327,15 +333,27 @@ export function validateRows(rows: CsvRow[], expected = expectedSeries(["mac_chr
     if (duplicates.has(key)) throw new Error(`duplicate sample ${key}`);
     duplicates.add(key);
     grouped.set(id, [...(grouped.get(id) ?? []), row]);
-    for (const metric of ["prover_time_ms", "total_time_ms", "input_to_proof_time_ms", "proof_size_bytes", "circuit_size_bytes"] as const) {
-      if (typeof row[metric] !== "number" || row[metric]! <= 0) throw new Error(`${id}: invalid ${metric}`);
+    if (row.sample_kind === "gap") {
+      if (id !== E15_OOM_GAP_SERIES || row.status !== "runtime_failed" || row.failure_code !== "out_of_memory" || !row.failure_detail) {
+        throw new Error(`${id}: invalid gap status`);
+      }
+      for (const metric of ["prover_time_ms", "total_time_ms", "input_to_proof_time_ms", "proof_size_bytes", "circuit_size_bytes", "peak_memory_mib"] as const) {
+        if (row[metric] != null && row[metric] !== "") throw new Error(`${id}: gap ${metric} must be blank`);
+      }
+    } else {
+      for (const metric of ["prover_time_ms", "total_time_ms", "input_to_proof_time_ms", "proof_size_bytes", "circuit_size_bytes"] as const) {
+        if (typeof row[metric] !== "number" || row[metric]! <= 0) throw new Error(`${id}: invalid ${metric}`);
+      }
+      if (row.sample_kind === "measured" && (typeof row.peak_memory_mib !== "number" || row.peak_memory_mib <= 0)) throw new Error(`${id}: invalid peak_memory_mib`);
+      if (row.prover !== "provekit_v1" && (typeof row.witness_time_ms !== "number" || row.witness_time_ms <= 0)) throw new Error(`${id}: invalid witness_time_ms`);
+      if (Math.abs(Number(row.total_time_ms) - Number(row.input_to_proof_time_ms)) > 0.001) throw new Error(`${id}: headline mismatch`);
     }
-    if (row.sample_kind === "measured" && (typeof row.peak_memory_mib !== "number" || row.peak_memory_mib <= 0)) throw new Error(`${id}: invalid peak_memory_mib`);
-    if (row.prover !== "provekit_v1" && (typeof row.witness_time_ms !== "number" || row.witness_time_ms <= 0)) throw new Error(`${id}: invalid witness_time_ms`);
-    if (Math.abs(Number(row.total_time_ms) - Number(row.input_to_proof_time_ms)) > 0.001) throw new Error(`${id}: headline mismatch`);
   }
   for (const id of expected) {
     const series = grouped.get(id) ?? [];
+    const gaps = series.filter((r) => r.sample_kind === "gap");
+    if (gaps.length === 1 && series.length === 1) continue;
+    if (gaps.length) throw new Error(`${id}: gap cannot be mixed with attempts`);
     if (series.filter((r) => r.sample_kind === "warmup").length !== 1) throw new Error(`${id}: expected one warmup`);
     if (series.filter((r) => r.sample_kind === "measured").length !== 5) throw new Error(`${id}: expected five measured samples`);
   }
@@ -512,11 +530,202 @@ export async function buildIphoneRows() {
   return rows;
 }
 
+type E15Evidence = {
+  path: string;
+  envelope: any;
+  result: any;
+};
+
+const e15WarmPaths: Record<Profile, Record<Stack, string | [string, string]>> = {
+  passport_complete_age_check: {
+    provekit_v1: "publication/warm/provekit-passport-single-thread-v3-postreboot-20260809/results.json",
+    noir_barretenberg: "publication/warm/barretenberg-passport-20260810/results.json",
+    circom_groth16: ["publication/warm/circom-passport-register/results.json", "publication/warm/circom-passport-disclose/results.json"],
+  },
+  passport_p1: {
+    provekit_v1: "publication/warm/provekit-passport-p1-v2-postreboot-20260809/results.json",
+    noir_barretenberg: "publication/warm/barretenberg-passport-p1-20260810/results.json",
+    circom_groth16: "publication/warm/circom-passport-p1/results.json",
+  },
+  oprf_o2: {
+    provekit_v1: "publication/warm/provekit-oprf-v2-20260809/results.json",
+    noir_barretenberg: "publication/warm/barretenberg-oprf-20260810/results.json",
+    circom_groth16: "publication/warm/circom-oprf/results.json",
+  },
+  webauthn_closest_analogue: {
+    provekit_v1: "publication/warm/provekit-webauthn-v2-postreboot-20260809/results.json",
+    noir_barretenberg: "publication/warm/barretenberg-webauthn-20260810/results.json",
+    circom_groth16: "publication/warm/circom-webauthn/results.json",
+  },
+};
+
+const e15ColdDirectories: Record<Profile, Record<Stack, string | [string, string] | null>> = {
+  passport_complete_age_check: {
+    provekit_v1: "attempts/cold/passport",
+    noir_barretenberg: "publication/cold/barretenberg-passport",
+    circom_groth16: ["publication/cold/circom-passport-register", "publication/cold/circom-passport-disclose"],
+  },
+  passport_p1: {
+    provekit_v1: "attempts/cold/passport-p1",
+    noir_barretenberg: "publication/cold/barretenberg-passport-p1",
+    circom_groth16: "publication/cold/circom-passport-p1",
+  },
+  oprf_o2: {
+    provekit_v1: "attempts/cold/oprf",
+    noir_barretenberg: "publication/cold/barretenberg-oprf",
+    circom_groth16: "publication/cold/circom-oprf",
+  },
+  webauthn_closest_analogue: {
+    provekit_v1: "attempts/cold/webauthn",
+    noir_barretenberg: "publication/cold/barretenberg-webauthn",
+    circom_groth16: null,
+  },
+};
+
+const e15ProveKitColdReplacements: Partial<Record<Profile, Record<number, string>>> = {
+  passport_complete_age_check: { 3: "attempts/cold-retry4-20260809/passport/run-3/results.json" },
+  passport_p1: { 1: "attempts/cold-retry2-20260809/passport-p1/run-1/results.json" },
+  oprf_o2: { 3: "attempts/cold-retry-20260809/oprf/run-3/results.json" },
+  webauthn_closest_analogue: { 5: "attempts/cold-retry-20260809/webauthn/run-5/results.json" },
+};
+
+async function loadE15Evidence(relative: string): Promise<E15Evidence> {
+  const path = resolve(e15RawRoot, relative);
+  if (!(await Bun.file(path).exists())) throw new Error(`missing E15 evidence ${path}`);
+  const envelope = await Bun.file(path).json();
+  const successful = envelope.results?.filter((result: any) => result.status === "ok") ?? [];
+  if (successful.length !== 1) throw new Error(`${path}: expected one successful result, found ${successful.length}`);
+  return { path, envelope, result: successful[0] };
+}
+
+function e15Samples(stack: Stack, evidence: E15Evidence) {
+  const report = evidence.result.report;
+  const custom = report.custom_metrics;
+  const run = custom?.run_u64 ?? {};
+  const values = custom?.sample_u64 ?? {};
+  const total: number[] = values.input_to_proof_time_ns ?? [];
+  const proofs: number[] = values.proof_size_bytes ?? [];
+  const prove: number[] = values.prove_time_ns ?? [];
+  const witness: number[] = values.witness_time_ns ?? [];
+  if (!total.length || total.length !== proofs.length || total.length !== prove.length) {
+    throw new Error(`${evidence.path}: incomplete input-to-proof custom metrics`);
+  }
+  if (stack !== "provekit_v1" && witness.length !== total.length) throw new Error(`${evidence.path}: incomplete witness metrics`);
+  const warmups = Number(report.spec?.warmup ?? 0);
+  const resources: any[] = report.samples ?? [];
+  return total.map((outer, index) => {
+    const warmup = index < warmups;
+    const resource = warmup ? null : resources[index - warmups];
+    const artifact = stack === "provekit_v1"
+      ? run.prover_size_bytes
+      : stack === "noir_barretenberg"
+        ? Number(run.circuit_size_bytes) + Number(run.srs_size_bytes)
+        : run.zkey_size_bytes;
+    return {
+      warmup,
+      witness: stack === "provekit_v1" ? null : witness[index] / 1e6,
+      prove: prove[index] / 1e6,
+      outer: outer / 1e6,
+      proof: proofs[index],
+      payload: run.proving_payload_size_bytes,
+      artifact,
+      bundle: run.proving_payload_size_bytes,
+      peak: resource?.process_peak_memory_kb == null ? null : resource.process_peak_memory_kb / 1024,
+    };
+  });
+}
+
+async function e15EvidenceFor(profile: Profile, stack: Stack, mode: TimingMode) {
+  const selected = mode === "warm_reuse" ? e15WarmPaths[profile][stack] : e15ColdDirectories[profile][stack];
+  if (selected == null) return [];
+  const components = Array.isArray(selected) ? selected : [selected];
+  const attempts: E15Evidence[][] = [];
+  if (mode === "warm_reuse") {
+    attempts.push(await Promise.all(components.map(loadE15Evidence)));
+  } else {
+    for (let index = 0; index < 6; index++) {
+      const replacement = stack === "provekit_v1" ? e15ProveKitColdReplacements[profile]?.[index] : undefined;
+      attempts.push(await Promise.all(components.map((directory) => loadE15Evidence(replacement ?? `${directory}/run-${index}/results.json`))));
+    }
+  }
+  return attempts;
+}
+
+export async function buildE15Rows() {
+  const rows: CsvRow[] = [];
+  for (const profile of PROFILES) for (const stack of STACKS) for (const mode of TIMING_MODES) {
+    const id = seriesId(profile, "motorola_e15", stack, mode);
+    const attempts = await e15EvidenceFor(profile, stack, mode);
+    if (!attempts.length) {
+      if (id !== E15_OOM_GAP_SERIES) throw new Error(`${id}: missing E15 evidence manifest`);
+      const gap = await Bun.file(e15GapPath).json();
+      if (gap.logical_series_id !== id || gap.status !== "runtime_failed" || gap.failure_code !== "out_of_memory") throw new Error(`${id}: invalid gap manifest`);
+      const reportPath = resolve(repoRoot, gap.evidence.report_path);
+      const logcatPath = resolve(repoRoot, gap.evidence.logcat_path);
+      if (await sha256(reportPath) !== gap.evidence.report_sha256 || await sha256(logcatPath) !== gap.evidence.logcat_sha256) throw new Error(`${id}: gap evidence hash mismatch`);
+      const failedEnvelope = await Bun.file(reportPath).json();
+      rows.push({
+        campaign_id: CAMPAIGN_ID, attempt_id: `${id}-gap`, recorded_at_utc: failedEnvelope.generated_at_utc, hardware: "motorola_e15",
+        device_model: gap.device.model, os_version: gap.device.os, abi: gap.device.abi, runtime: gap.runtime, browser: "",
+        circuit: gap.circuit, circuit_variant: gap.circuit_variant, circuit_commit: gap.circuit_commit, prover: gap.stack,
+        frontend: gap.frontend, prover_backend: gap.prover_backend, witness_backend: gap.witness_backend, sample_kind: "gap",
+        sample_index: null, status: gap.status, initialization_time_ms: null, witness_time_ms: null, prover_time_ms: null,
+        verify_time_ms: null, total_time_ms: null, peak_memory_mib: null, proof_size_bytes: null, circuit_size_bytes: null,
+        artifact_size_bytes: null, bundle_size_bytes: null, constraint_count: null, artifact_version: "input-to-proof-v1",
+        source_commit: gap.circuit_commit, package_versions: nativePackages(profile, stack),
+        artifact_hashes: JSON.stringify({ report_sha256: gap.evidence.report_sha256, logcat_sha256: gap.evidence.logcat_sha256 }),
+        session_id: "", non_equivalence_note: gap.note, failure_code: gap.failure_code, failure_detail: gap.failure_detail,
+        evidence_path: `${reportPath};${logcatPath}`, timing_mode: mode, input_to_proof_time_ms: null,
+      });
+      continue;
+    }
+
+    const extracted: Array<{ sample: ReturnType<typeof e15Samples>[number]; evidence: E15Evidence[] }> = [];
+    for (const componentEvidence of attempts) {
+      const componentSamples = componentEvidence.map((item) => e15Samples(stack, item));
+      const count = componentSamples[0].length;
+      if (!componentSamples.every((samples) => samples.length === count)) throw new Error(`${id}: staged sample count mismatch`);
+      for (let index = 0; index < count; index++) {
+        const parts = componentSamples.map((samples) => samples[index]);
+        const sample = parts.length === 1 ? parts[0] : combineIosPassport(parts[0], parts[1]);
+        extracted.push({ sample, evidence: componentEvidence });
+      }
+    }
+    if (extracted.length !== 6) throw new Error(`${id}: expected six attempts, found ${extracted.length}`);
+    const circuit = circuitIdentity[profile];
+    const [frontend, proverBackend, witnessBackend] = nativeIdentity(profile, stack);
+    for (let index = 0; index < extracted.length; index++) {
+      const item = extracted[index];
+      const isWarmup = mode === "cold_local" ? index === 0 : item.sample.warmup;
+      const first = item.evidence[0];
+      const hashes = await Promise.all(item.evidence.map(async (value) => ({ raw_evidence_sha256: await sha256(value.path) })));
+      rows.push({
+        campaign_id: CAMPAIGN_ID, attempt_id: `${id}-${index}`, recorded_at_utc: first.envelope.generated_at_utc,
+        hardware: "motorola_e15", device_model: first.envelope.device.model, os_version: first.envelope.device.os,
+        abi: first.envelope.device.abi, runtime: "android_native", browser: "", circuit: circuit.circuit,
+        circuit_variant: circuit.variant, circuit_commit: circuit.commit, prover: stack, frontend, prover_backend: proverBackend,
+        witness_backend: witnessBackend, sample_kind: isWarmup ? "warmup" : "measured", sample_index: isWarmup ? 0 : index,
+        status: "ok", initialization_time_ms: null, witness_time_ms: item.sample.witness, prover_time_ms: item.sample.prove,
+        verify_time_ms: null, total_time_ms: item.sample.outer, peak_memory_mib: item.sample.peak,
+        proof_size_bytes: item.sample.proof, circuit_size_bytes: item.sample.payload, artifact_size_bytes: item.sample.artifact,
+        bundle_size_bytes: item.sample.bundle, constraint_count: null, artifact_version: "input-to-proof-v1",
+        source_commit: stack === "provekit_v1" ? "9b2a6f37c67691eab4b0cec6c35e35c520e93285" : circuit.commit,
+        package_versions: nativePackages(profile, stack), artifact_hashes: JSON.stringify(hashes), session_id: "",
+        non_equivalence_note: `${circuit.note}${stack === "provekit_v1" ? " Native ProveKit exposes witness generation and proving as one integrated timed operation, so witness_time_ms is intentionally blank." : ""}`,
+        failure_code: "", failure_detail: "", evidence_path: item.evidence.map((value) => value.path).join(";"),
+        timing_mode: mode, input_to_proof_time_ms: item.sample.outer,
+      });
+    }
+  }
+  return rows;
+}
+
 if (import.meta.main) {
   const targets = (process.env.INPUT_TO_PROOF_EXPORT_TARGETS ?? "mac_chrome").split(",") as Target[];
   const rows = [
     ...(targets.includes("mac_chrome") ? await buildMacRows() : []),
     ...(targets.includes("iphone_se_2022") ? await buildIphoneRows() : []),
+    ...(targets.includes("motorola_e15") ? await buildE15Rows() : []),
   ];
   validateRows(rows, expectedSeries(targets));
   const csv = [CSV_COLUMNS.join(","), ...rows.map((row) => CSV_COLUMNS.map((column) => csvValue(row[column])).join(","))].join("\n") + "\n";

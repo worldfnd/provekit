@@ -23,13 +23,13 @@ unsafe extern "C" {
     fn groth16_prover_zkey_file(
         zkey_file_path: *const c_char,
         wtns_buffer: *const c_void,
-        wtns_size: c_ulong,
+        wtns_size: u64,
         proof_buffer: *mut c_char,
-        proof_size: *mut c_ulong,
+        proof_size: *mut u64,
         public_buffer: *mut c_char,
-        public_size: *mut c_ulong,
+        public_size: *mut u64,
         error_msg: *mut c_char,
-        error_msg_maxsize: c_ulong,
+        error_msg_maxsize: u64,
     ) -> i32;
 
     fn groth16_verify(
@@ -73,9 +73,9 @@ pub fn prove(zkey_path: &str, witness: &[u8]) -> Result<ProofResult> {
     let zkey_path =
         CString::new(zkey_path).map_err(|_| anyhow!("zkey path contains an interior NUL"))?;
     let mut proof = vec![0_u8; 4 * 1024 * 1024];
-    let mut proof_size = proof.len() as c_ulong;
+    let mut proof_size = proof.len() as u64;
     let mut public = vec![0_u8; 4 * 1024 * 1024];
-    let mut public_size = public.len() as c_ulong;
+    let mut public_size = public.len() as u64;
     let mut error = vec![0_u8; 1024];
 
     // SAFETY: All pointers reference live buffers for the duration of the call.
@@ -85,13 +85,13 @@ pub fn prove(zkey_path: &str, witness: &[u8]) -> Result<ProofResult> {
         groth16_prover_zkey_file(
             zkey_path.as_ptr(),
             witness.as_ptr().cast::<c_void>(),
-            witness.len() as c_ulong,
+            witness.len() as u64,
             proof.as_mut_ptr().cast::<c_char>(),
             &mut proof_size,
             public.as_mut_ptr().cast::<c_char>(),
             &mut public_size,
             error.as_mut_ptr().cast::<c_char>(),
-            error.len() as c_ulong,
+            error.len() as u64,
         )
     };
     if status != 0 {
@@ -101,7 +101,7 @@ pub fn prove(zkey_path: &str, witness: &[u8]) -> Result<ProofResult> {
         return Err(anyhow!("Rapidsnark failed with status {status}: {message}"));
     }
 
-    fn output_string(bytes: &[u8], declared_size: c_ulong, name: &str) -> Result<String> {
+    fn output_string(bytes: &[u8], declared_size: u64, name: &str) -> Result<String> {
         let size = usize::try_from(declared_size).map_err(|_| anyhow!("{name} size overflow"))?;
         let bounded = bytes
             .get(..size.min(bytes.len()))

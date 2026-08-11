@@ -14,6 +14,7 @@ doctest = false
 anyhow = "1"
 inventory = "0.3"
 memmap2 = "0.9"
+libc = "0.2"
 mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs.git", rev = "e992596a786cc18047102a318d40131c953e57b8" }
 serde_json = "1"
 uniffi = { version = "0.31", features = ["cli"] }

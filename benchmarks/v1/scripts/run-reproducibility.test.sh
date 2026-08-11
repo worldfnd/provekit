@@ -18,7 +18,7 @@ for stage in bootstrap prepare smoke measure export all; do
 done
 
 measure_log="${temporary}/measure/commands.log"
-grep -q 'MAC_WASM_BENCHMARK_JSON=' "${measure_log}"
+grep -q 'run-mac-input-to-proof.ts' "${measure_log}"
 grep -q 'adb.*ro.product.cpu.abilist' "${measure_log}"
 grep -q 'run-e15-provekit.ts' "${measure_log}"
 grep -q 'normalize-e15-provekit.ts' "${measure_log}"
@@ -28,8 +28,9 @@ if grep -q 'BROWSERSTACK_ACCESS_KEY' "${measure_log}"; then
   exit 1
 fi
 
-grep -q 'semantic-parity-data/export-v1.ts' "${temporary}/export/commands.log"
-grep -q 'semantic-parity-samples.csv' "${temporary}/export/commands.log"
+grep -q 'input-to-proof-data/export.ts' "${temporary}/export/commands.log"
+grep -q 'INPUT_TO_PROOF_EXPORT_TARGETS=mac_chrome\\,iphone_se_2022\\,motorola_e15' "${temporary}/export/commands.log"
+grep -q 'INPUT_TO_PROOF_E15_RAW_ROOT=' "${temporary}/export/commands.log"
 if grep -q 'BROWSERSTACK_ACCESS_KEY' "${temporary}/export/commands.log"; then
   echo "error: credential name leaked to export command log" >&2
   exit 1

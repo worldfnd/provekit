@@ -49,7 +49,7 @@
     },
     "webauthn_closest_analogue": {
       "definition": "Historical closest available counterparts, not semantically equivalent: Noir binds challenge, client-data type, origin, RP-ID hash, UP/UV flags, and public key; privacy-ethereum/webauthn-circom omits several of those bindings.",
-      "source": "benchmarks/v1/data/benchmark-samples.csv",
+      "source": "benchmarks/v1/legacy/data/benchmark-samples.csv",
       "source_sha256": "474cb49d528862da3a029967f63fdee1875339b7c3da5f7599f2aded40d57d60"
     }
   },

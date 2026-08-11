@@ -19,6 +19,9 @@ interface Options {
 }
 
 const workloads = [
+  ["taceo_oprf_query", "zk_mobile_bench::bench_query_cached_proof_generation"],
+  ["taceo_oprf_nullifier", "zk_mobile_bench::bench_nullifier_cached_proof_generation"],
+  ["taceo_correctness_canary", "zk_mobile_bench::bench_taceo_correctness_canary"],
   ["oprf", "bench_mobile::bench_oprf_prove"],
   ["webauthn", "bench_mobile::bench_webauthn_assertion_prove"],
   ["passport", "bench_mobile::bench_passport_complete_age_check_prove"],

@@ -6,9 +6,11 @@ adapters or supporting evidence. For a blog-linked reproduction path, use
 [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) and
 [`scripts/run-reproducibility.sh`](scripts/run-reproducibility.sh). The
 authoritative V1 results are
-[`semantic-parity-data/semantic-parity-samples.csv`](semantic-parity-data/semantic-parity-samples.csv).
-The older [`data/benchmark-samples.csv`](data/benchmark-samples.csv) remains a
-historical exploratory export with compound Circom variants.
+[`input-to-proof-data/input-to-proof-samples.csv`](input-to-proof-data/input-to-proof-samples.csv).
+The proof-only semantic-parity export at
+[`legacy/semantic-parity/semantic-parity-samples.csv`](legacy/semantic-parity/semantic-parity-samples.csv)
+and [`legacy/data/benchmark-samples.csv`](legacy/data/benchmark-samples.csv)
+remain historical exports with different measurement boundaries.
 
 The orchestration script records the actual expanded commands in
 `target/v1-benchmarks/reproduction/<campaign>/commands.log`.

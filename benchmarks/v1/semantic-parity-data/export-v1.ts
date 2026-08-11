@@ -6,7 +6,7 @@ import { toCsv, validateAttempts } from "../data/export-benchmark-csv";
 import { CSV_COLUMNS, type AttemptRecord, type CsvColumn } from "../data/schema";
 
 const root = resolve(import.meta.dir);
-const csvPath = resolve(root, "semantic-parity-samples.csv");
+const csvPath = resolve(root, "../legacy/semantic-parity/semantic-parity-samples.csv");
 const manifestPath = resolve(root, "manifest.json");
 const numericColumns = new Set<CsvColumn>([
   "initialization_time_ms", "witness_time_ms", "prover_time_ms", "verify_time_ms",

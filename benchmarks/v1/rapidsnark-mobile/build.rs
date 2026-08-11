@@ -20,6 +20,8 @@ fn main() {
         repository_root.join("target/v1-benchmarks/native-libs/rapidsnark/aarch64-apple-darwin")
     } else if target == "aarch64-linux-android" {
         repository_root.join("target/v1-benchmarks/native-libs/rapidsnark/aarch64-linux-android")
+    } else if target == "armv7-linux-androideabi" {
+        repository_root.join("target/v1-benchmarks/mopro/rapidsnark-armv7-libs")
     } else {
         panic!("unsupported Rapidsnark benchmark target: {target}");
     };

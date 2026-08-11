@@ -1,12 +1,13 @@
 # Reproducing the ProveKit V1 cross-device campaign
 
-This is the canonical guide for both the immutable 27-cell proof-only campaign
-and its input-to-proof successor. The latter covers four workloads (historical
-Passport, Passport P1, WebAuthn, OPRF), three stacks (ProveKit V1,
+This is the canonical guide for the input-to-proof publication campaign. It
+covers four workloads (historical Passport, Passport P1, WebAuthn, OPRF), three stacks (ProveKit V1,
 Noir/Barretenberg, Circom/Groth16), three targets (BrowserStack iPhone SE 2022
 native, physical Motorola E15 native, and Chrome/WASM on an M4 Max MacBook),
-and separate cold and warm timing modes. It therefore contains 72 logical
-series and 432 sample rows when complete.
+and separate cold and warm timing modes. It therefore has 72 logical series
+and would contain 432 sample rows if every series completed. The finalized
+freeze contains 426 valid attempt rows plus one structured E15 out-of-memory
+gap row, for 427 CSV rows total.
 
 For input-to-proof rows, the measured boundary begins with raw structured
 circuit inputs and ends when serialized proof bytes exist. Witness generation
@@ -489,9 +490,22 @@ component independently passed the proof/tamper and 1+5 gates before it entered
 the CSV. `iden3/circom-witnesscalc@0.3.0` remains a compatibility fallback, not
 a publication backend.
 
+For the input-to-proof successor, 23 E15 logical series are successful. The
+remaining cold Circom WebAuthn series is intentionally a structured gap, not a
+zero or an estimate. The final helper-unmap canary reached Rapidsnark and failed
+with `mmap failed: Out of memory` on the attested 32-bit E15; the 1,733,145,772
+byte zkey plus 109,218,412 byte WTNS could not be mapped. See
+[`input-to-proof-data/e15-webauthn-cold-gap.json`](input-to-proof-data/e15-webauthn-cold-gap.json)
+for the null metrics and SHA-256-linked report/logcat evidence. Do not merge
+this gap with the passing warm WebAuthn result or substitute an iPhone/Mac
+measurement.
+
 ### Analysis environment
 
-The Marimo notebook reads only `semantic-parity-data/semantic-parity-samples.csv`.
+The canonical Marimo notebook is `analysis/input_to_proof_analysis.py` and
+reads only `input-to-proof-data/input-to-proof-samples.csv`. The historical
+proof-only notebook `analysis/benchmark_analysis.py` is retained for the
+legacy semantic-parity export.
 Its Python 3.12
 environment is locked by `analysis/pyproject.toml` and `analysis/uv.lock`:
 Marimo 0.23.15, Pandas 2.3.3, Matplotlib 3.10.8, and Seaborn 0.13.2.
@@ -499,8 +513,8 @@ Marimo 0.23.15, Pandas 2.3.3, Matplotlib 3.10.8, and Seaborn 0.13.2.
 ```bash
 cd benchmarks/v1/analysis
 uv sync --frozen
-uv run marimo check benchmark_analysis.py
-uv run marimo export html benchmark_analysis.py \
+uv run marimo check input_to_proof_analysis.py
+uv run marimo export html input_to_proof_analysis.py \
   --no-include-code --force \
   -o ../../../target/v1-benchmarks/analysis/benchmark-analysis.html
 ```
@@ -595,33 +609,30 @@ hash-locked V1 evidence and retains secret-free provenance. It must fail on:
 - an expected Noir/Circom cell which has neither samples nor an explicit
   failure row.
 
-The publication export path is
-`semantic-parity-data/export-v1.ts`. It verifies every committed V1 evidence
-hash, replaces the nine stale ProveKit rows, and runs the full 27-cell legacy
-CSV validator. Raw `measure` outputs remain in the campaign directory and are
-never substituted into the publication file without an explicit evidence and
-manifest update.
+The publication export path is `input-to-proof-data/export.ts`. It verifies
+every committed V1 evidence hash, enforces the 72-series input-to-proof matrix,
+and writes only `input-to-proof-data/input-to-proof-samples.csv`. Raw
+`measure` outputs remain in the campaign directory and are never substituted
+into the publication file without an explicit evidence and manifest update.
 
 When BrowserStack rejects an immutable iOS artifact before a session can
 start, set `V1_IOS_GAPS_JSON` to an array of structured, evidence-backed gap
 records. The normalizer accepts a gap only for a lane whose required result or
-manifest entry is absent; it still rejects unexplained missing lanes. The final
-freeze has no gap rows. Its only non-telemetry values are the five clearly
-labelled iPhone Circom proving-payload estimates described below.
+manifest entry is absent; it still rejects unexplained missing lanes. The
+input-to-proof freeze has one explicit E15 Circom/WebAuthn cold gap; all of its
+metrics are blank and its failure evidence is hash-linked.
 
 The Marimo notebook reads only this master CSV. It independently validates
 coverage and units, derives median and dispersion from measured (non-warmup)
 rows, and renders missing cells distinctly. Titles, captions, and legends must
 state that circuit counterparts are non-equivalent.
 
-At the final V1 evidence freeze, all **27 logical cells** have the four
-requested publication fields: prove-only time, deduplicated proving payload
-size, serialized proof size, and peak process memory. The canonical file has
-**162 records**: **135 measured rows** and **27 attested warmups**. The
-historical WebAuthn iPhone Circom closest-analogue row retains its explicit
-asset-size estimate note (hash-pinned zkey plus frozen WTNS); it excludes IPA,
-XCUITest, and upload transport sizes. Every ProveKit V1 payload and every
-matched P1/O2 native payload is exact committed evidence, not an estimate.
+At the final V1 evidence freeze, the canonical file has **427 records**:
+**355 measured rows**, **71 attested warmups**, and one explicit E15
+out-of-memory gap. Successful series have the four requested publication
+fields: input-to-proof time, deduplicated proving payload size, serialized
+proof size, and peak process memory. The legacy proof-only export remains
+available for historical comparisons but is not merged into these metrics.
 
 ## 10. Evidence and publication rules
 
@@ -641,7 +652,6 @@ only if all of the following match this campaign:
 - valid-proof acceptance and tampered-proof rejection.
 
 Unsupported and failed cells are findings, not values. Never estimate a timing,
-copy another target's value, or silently omit a failure. The only estimates in
-the older compound-variant export are the five iPhone Circom payloads called
-out in that file's estimate notes; the semantic-parity publication has only
-the historical WebAuthn estimate described above.
+copy another target's value, or silently omit a failure. Historical payload
+estimates remain disclosed only in the legacy CSV notes; the canonical
+input-to-proof export contains no estimates.

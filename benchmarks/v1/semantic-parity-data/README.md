@@ -1,10 +1,12 @@
-# Semantic-parity campaign data
+# Historical semantic-parity campaign data
 
-This directory is the isolated, publication sample-level export for the V1
-semantic-parity sweep. It freezes the matched Passport P1 and OPRF O2 rows,
-the closest-analogue WebAuthn rows, and the exact ProveKit V1 evidence for all
-nine ProveKit target/workload cells. The older `../data/benchmark-samples.csv`
-is retained as a historical exploratory export and is not used for V1 claims.
+This directory contains the exporter, manifest, and evidence for the historical
+proof-only semantic-parity sweep. It is not the publication source. The
+resulting CSV is retained at
+[`../legacy/semantic-parity/semantic-parity-samples.csv`](../legacy/semantic-parity/semantic-parity-samples.csv);
+the canonical publication file is
+[`../input-to-proof-data/input-to-proof-samples.csv`](../input-to-proof-data/input-to-proof-samples.csv).
+The older exploratory export is at `../legacy/data/benchmark-samples.csv`.
 
 `manifest.json` freezes the 27 expected profile × target × stack cells, the
 semantic identities, exact Mac evidence hashes, and deduplicated proving
@@ -19,15 +21,16 @@ bun benchmarks/v1/semantic-parity-data/export-v1.ts
 bun test benchmarks/v1/semantic-parity-data/export.test.ts
 ```
 
-The checked-in `semantic-parity-samples.csv` contains exactly 162 rows across
+The historical `../legacy/semantic-parity/semantic-parity-samples.csv`
+contains exactly 162 rows across
 all 27 cells: one warmup and five measured attempts per cell. All nine
 ProveKit V1 cells are qualified from committed Mac, BrowserStack iPhone, and
 physical E15 evidence. The exporter rejects missing V1 evidence, hash drift,
 and incomplete sampling rather than silently falling back to current-main or
 npm ProveKit timings.
 
-The checked-in CSV deliberately uses the exact column order and units of
-`../data/benchmark-samples.csv` so existing notebooks can read it unchanged.
+The historical CSV deliberately uses the exact column order and units of
+`../legacy/data/benchmark-samples.csv` so old notebooks can read it unchanged.
 Internally validated `prove_time_ms`, `proving_payload_size_bytes`, and
 `process_peak_memory_kib` are exported as legacy `prover_time_ms`,
 `circuit_size_bytes`, and `peak_memory_mib` respectively. The semantic profile
@@ -59,11 +62,11 @@ positionally and checked with the full matrix gate:
 bun benchmarks/v1/semantic-parity-data/export.ts \
   target/v1-benchmarks/semantic-parity/passport-p1/iphone-native/provekit.json \
   target/v1-benchmarks/semantic-parity/oprf-o2/e15-native/provekit.json \
-  --output=benchmarks/v1/semantic-parity-data/semantic-parity-samples.csv
+  --output=benchmarks/v1/legacy/semantic-parity/semantic-parity-samples.csv
 
 bun benchmarks/v1/semantic-parity-data/export.ts target/.../*.json \
   --require-complete \
-  --output=benchmarks/v1/semantic-parity-data/semantic-parity-samples.csv
+  --output=benchmarks/v1/legacy/semantic-parity/semantic-parity-samples.csv
 ```
 
 The generic exporter prints separate `successful_cells` and `gap_cells` counts.

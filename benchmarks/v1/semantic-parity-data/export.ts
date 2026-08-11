@@ -66,7 +66,7 @@ export type NativeParityEvidence = NativeParityEvidenceBase & ({
 const repoRoot = resolve(import.meta.dir, "../../..");
 const semanticDataRoot = resolve(import.meta.dir);
 const manifestPath = resolve(import.meta.dir, "manifest.json");
-const historicalCsvPath = resolve(repoRoot, "benchmarks/v1/data/benchmark-samples.csv");
+const historicalCsvPath = resolve(repoRoot, "benchmarks/v1/legacy/data/benchmark-samples.csv");
 const historicalCsvSha256 = "474cb49d528862da3a029967f63fdee1875339b7c3da5f7599f2aded40d57d60";
 const matchedProfileNote: Record<Exclude<Profile, "webauthn_closest_analogue">, string> = {
   passport_p1: "Matched semantic profile: monolithic RSA-4096 passport integrity, Self registry authorization, DG1 validity, and asserted minimum-age proof.",
@@ -458,7 +458,7 @@ if (import.meta.main) {
   const requireComplete = args.includes("--require-complete");
   const outputArg = args.find((arg) => arg.startsWith("--output="));
   const nativePaths = args.filter((arg) => !arg.startsWith("--"));
-  const output = resolve(outputArg?.slice("--output=".length) ?? resolve(import.meta.dir, "semantic-parity-samples.csv"));
+  const output = resolve(outputArg?.slice("--output=".length) ?? resolve(import.meta.dir, "../legacy/semantic-parity/semantic-parity-samples.csv"));
   const rows = await exportCampaign(nativePaths, requireComplete);
   await Bun.write(output, toCsv(rows));
   const successfulCells = new Set(rows.filter((row) => row.status === "ok").map((row) => row.cell_id));

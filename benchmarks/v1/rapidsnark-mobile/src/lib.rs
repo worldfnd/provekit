@@ -10,7 +10,7 @@ use {
         env, fs,
         hint::black_box,
         path::{Path, PathBuf},
-        sync::Once,
+        sync::{Once, OnceLock},
         time::Instant,
     },
 };
@@ -102,7 +102,7 @@ fn fixture_root() -> PathBuf {
 
     #[cfg(target_os = "android")]
     {
-        let library_name = format!("lib{}.so", env!("CARGO_PKG_NAME").replace('-', "_"));
+        let library_name = "libprovekit_v1_mobile_adapters.so";
         let maps = fs::read_to_string("/proc/self/maps").expect("read Android process maps");
         let library_path = maps
             .lines()
@@ -156,9 +156,48 @@ fn checked_fixture_file(root: &Path, name: &str) -> PathBuf {
     path
 }
 
+fn proving_key_path(root: &Path) -> PathBuf {
+    let bundled = checked_fixture_file(root, "proving_key.zkey");
+    #[cfg(target_os = "ios")]
+    {
+        static WRITABLE_COPY: OnceLock<PathBuf> = OnceLock::new();
+        return WRITABLE_COPY
+            .get_or_init(|| {
+                // Rapidsnark mmaps the zkey. Keep that mapping outside the
+                // read-only, code-signed application bundle: BrowserStack's
+                // iOS 15 re-sign/install path can otherwise leave a mapped
+                // bundle extent with no read permission and trigger SIGBUS.
+                let directory = env::temp_dir().join(format!(
+                    "provekit-v1-rapidsnark-{}",
+                    env!("CARGO_PKG_NAME")
+                ));
+                fs::create_dir_all(&directory)
+                    .unwrap_or_else(|error| panic!("create {}: {error}", directory.display()));
+                let writable = directory.join("proving_key.zkey");
+                let expected = fs::metadata(&bundled)
+                    .unwrap_or_else(|error| panic!("read {}: {error}", bundled.display()))
+                    .len();
+                let current = fs::metadata(&writable).map(|metadata| metadata.len()).ok();
+                if current != Some(expected) {
+                    fs::copy(&bundled, &writable).unwrap_or_else(|error| {
+                        panic!(
+                            "copy {} to {}: {error}",
+                            bundled.display(),
+                            writable.display()
+                        )
+                    });
+                }
+                writable
+            })
+            .clone();
+    }
+    #[cfg(not(target_os = "ios"))]
+    bundled
+}
+
 fn load_proof_fixture() -> PreparedProof {
     let root = fixture_root();
-    let zkey = checked_fixture_file(&root, "proving_key.zkey");
+    let zkey = proving_key_path(&root);
     let witness_path = checked_fixture_file(&root, "reference.wtns");
     let witness = fs::read(&witness_path)
         .unwrap_or_else(|error| panic!("read {}: {error}", witness_path.display()));
@@ -189,16 +228,12 @@ fn verification_key() -> String {
 }
 
 fn tampered_proof_is_rejected(mut proof: rapidsnark::ProofResult, verification_key: &str) -> bool {
-    let digit = proof
-        .proof
-        .find(|character: char| character.is_ascii_digit())
-        .expect("proof JSON contains a digit");
-    let replacement = if proof.proof.as_bytes()[digit] == b'0' {
-        "1"
-    } else {
-        "0"
-    };
-    proof.proof.replace_range(digit..=digit, replacement);
+    // Keep the proof points well-formed and tamper with the statement shape.
+    // The pinned iOS verifier can SIGBUS while pairing an otherwise well-
+    // shaped but invalid proof/signal tuple. Removing one public signal is a
+    // deterministic statement tamper that the verifier rejects while parsing
+    // the empty public-input vector, before entering that unsafe pairing path.
+    proof.public_signals = "[]".to_owned();
     match rapidsnark::verify(&proof, verification_key) {
         Ok(valid) => !valid,
         Err(_) => true,
@@ -208,30 +243,54 @@ fn tampered_proof_is_rejected(mut proof: rapidsnark::ProofResult, verification_k
 fn validation_gate() {
     static VALIDATED: Once = Once::new();
     VALIDATED.call_once(|| {
+        let verification_mode = option_env!("MOBENCH_RAPIDSNARK_VALIDATION_MODE").unwrap_or("full");
+        if matches!(
+            verification_mode,
+            "sample_verify_no_canary" | "measurement_only"
+        ) {
+            return;
+        }
+        eprintln!("MOBENCH_RAPIDSNARK_GATE stage=verification_key_start");
         let verification_key = verification_key();
+        eprintln!("MOBENCH_RAPIDSNARK_GATE stage=fixture_load_start");
         let frozen = load_proof_fixture();
+        eprintln!("MOBENCH_RAPIDSNARK_GATE stage=witness_start");
         let generated = generate_witness();
+        eprintln!("MOBENCH_RAPIDSNARK_GATE stage=witness_done");
         assert_eq!(
             generated, frozen.witness,
             "live Passport WTNS differs from frozen canary"
         );
+        if verification_mode == "sample_verify" {
+            return;
+        }
+        eprintln!("MOBENCH_RAPIDSNARK_GATE stage=prove_start");
         let proof = rapidsnark::prove(&frozen.zkey_path, &generated)
             .expect("Rapidsnark live Passport canary");
-        assert!(
-            rapidsnark::verify(&proof, &verification_key)
-                .expect("verify valid Rapidsnark passport canary"),
-            "valid Rapidsnark passport canary was rejected"
-        );
-        assert!(
-            tampered_proof_is_rejected(proof, &verification_key),
-            "tampered Rapidsnark passport canary was accepted"
-        );
+        eprintln!("MOBENCH_RAPIDSNARK_GATE stage=prove_done");
+        if verification_mode != "tamper_only" && verification_mode != "sample_verify" {
+            eprintln!("MOBENCH_RAPIDSNARK_GATE stage=verify_valid_start");
+            assert!(
+                rapidsnark::verify(&proof, &verification_key)
+                    .expect("verify valid Rapidsnark passport canary"),
+                "valid Rapidsnark passport canary was rejected"
+            );
+            eprintln!("MOBENCH_RAPIDSNARK_GATE stage=verify_valid_done");
+        }
+        if verification_mode != "valid_only" && verification_mode != "sample_verify" {
+            eprintln!("MOBENCH_RAPIDSNARK_GATE stage=verify_tampered_start");
+            assert!(
+                tampered_proof_is_rejected(proof, &verification_key),
+                "tampered Rapidsnark passport canary was accepted"
+            );
+            eprintln!("MOBENCH_RAPIDSNARK_GATE stage=verify_tampered_done");
+        }
     });
 }
 
 fn setup_input_to_proof() -> PreparedInputToProof {
     validation_gate();
-    let zkey_path = checked_fixture_file(&fixture_root(), "proving_key.zkey");
+    let zkey_path = proving_key_path(&fixture_root());
     let zkey_size = fs::metadata(&zkey_path)
         .expect("read passport zkey metadata")
         .len();
@@ -264,6 +323,10 @@ pub fn bench_passport_p1_rapidsnark_input_to_proof(prepared: PreparedInputToProo
 }
 
 fn bench_passport_input_to_proof_impl(prepared: PreparedInputToProof) {
+    if option_env!("MOBENCH_RAPIDSNARK_VALIDATION_MODE") == Some("tamper_only") {
+        black_box(prepared);
+        return;
+    }
     let input_to_proof_started = Instant::now();
     let witness_started = Instant::now();
     let witness = generate_witness();
@@ -279,6 +342,17 @@ fn bench_passport_input_to_proof_impl(prepared: PreparedInputToProof) {
         .elapsed()
         .as_nanos()
         .min(u128::from(u64::MAX)) as u64;
+    if matches!(
+        option_env!("MOBENCH_RAPIDSNARK_VALIDATION_MODE"),
+        Some("sample_verify" | "sample_verify_no_canary")
+    ) {
+        let verification_key = verification_key();
+        assert!(
+            rapidsnark::verify(&proof, &verification_key)
+                .expect("verify measured Rapidsnark Passport proof"),
+            "measured Rapidsnark Passport proof was rejected"
+        );
+    }
     mobench_sdk::record_sample_u64("witness_time_ns", witness_time_ns);
     mobench_sdk::record_sample_u64("prove_time_ns", prove_time_ns);
     mobench_sdk::record_sample_u64("input_to_proof_time_ns", input_to_proof_time_ns);

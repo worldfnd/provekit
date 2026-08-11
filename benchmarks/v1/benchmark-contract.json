@@ -168,17 +168,46 @@
     "constraint_count"
   ],
   "publication": {
-    "canonical_csv": "benchmarks/v1/semantic-parity-data/semantic-parity-samples.csv",
-    "rows": 162,
-    "logical_cells": 27,
+    "canonical_csv": "benchmarks/v1/input-to-proof-data/input-to-proof-samples.csv",
+    "campaign_id": "input-to-proof-v1-20260807",
+    "headline_metric": "input_to_proof_time_ms",
+    "measurement_boundary": "raw structured circuit input through fresh witness generation to serialized proof bytes",
+    "rows": 427,
+    "logical_cells": 36,
+    "logical_series": 72,
+    "successful_series": 71,
+    "gap_series": 1,
     "samples_per_successful_cell": {"warmup": 1, "measured": 5},
-    "all_cells_status": "ok",
+    "all_cells_status": "one_structured_runtime_gap",
     "provekit_v1_core_commit": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
     "payload_definition": "PKP/prover plus the frozen proving input; verifier-only artifacts, APK/IPA/XCUITest packages, and transport duplication are excluded",
     "proof_serialization": {
       "browser": "V1 WASM proof byte serialization",
       "native": "serialized postcard NoirProof (.np) bytes"
-    }
+    },
+    "gap": {
+      "series": "webauthn_closest_analogue__motorola_e15__circom_groth16__cold_local",
+      "status": "runtime_failed",
+      "failure_code": "out_of_memory",
+      "metrics": "blank"
+    },
+    "legacy_datasets": [
+      {
+        "path": "benchmarks/v1/legacy/data/benchmark-samples.csv",
+        "kind": "exploratory_compound_proof_only",
+        "rows": 198
+      },
+      {
+        "path": "benchmarks/v1/legacy/semantic-parity/semantic-parity-samples.csv",
+        "kind": "proof_only_semantic_parity",
+        "rows": 162
+      },
+      {
+        "path": "benchmarks/v1/legacy/taceo-candidate/input-to-proof-samples.taceo-candidate.csv",
+        "kind": "experimental_production_backend_candidate",
+        "rows": 372
+      }
+    ]
   },
   "input_to_proof_campaign": {
     "campaign_id": "input-to-proof-v1-20260807",

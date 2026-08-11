@@ -656,6 +656,31 @@ pub fn bench_passport_complete_age_check_input_to_proof(prepared: PreparedComple
     black_box(proof);
 }
 
+/// Memory-constrained input-to-proof Passport lane for 32-bit Android devices.
+///
+/// Witness solving and proof generation remain inside the measured `prove`
+/// call. Correct-proof acceptance and tamper rejection run afterward, outside
+/// the timing interval, in the same single-thread Rayon pool.
+#[benchmark(setup = setup_complete_age_check_prover_single_thread, per_iteration)]
+pub fn bench_passport_complete_age_check_input_to_proof_single_thread(
+    prepared: PreparedCompleteAgeCheckProverWithSerializedVerifier,
+) {
+    let (input_to_proof_time_ns, proof_size_bytes) = passport_single_thread_pool().install(|| {
+        let started = Instant::now();
+        let verified = prepared
+            .prove()
+            .expect("generate single-thread complete_age_check input-to-proof fixture");
+        let metrics = exact_proof_metrics(verified.proof(), started);
+        verified
+            .verify_and_reject_tampered()
+            .expect("verify single-thread complete_age_check proof and reject tampering");
+        metrics
+    });
+    mobench_sdk::record_sample_u64("input_to_proof_time_ns", input_to_proof_time_ns);
+    mobench_sdk::record_sample_u64("prove_time_ns", input_to_proof_time_ns);
+    mobench_sdk::record_sample_u64("proof_size_bytes", proof_size_bytes);
+}
+
 #[benchmark(setup = setup_oprf_verified)]
 pub fn bench_oprf_verify(verified: &VerifiedCircuitFixture) {
     let verified = profile_phase("verify", || {

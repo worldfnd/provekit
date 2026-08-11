@@ -1,0 +1,16 @@
+{
+  "schema_version": "taceo-native-circom-v1",
+  "candidate_campaign_id": "input-to-proof-v1-20260807-taceo-candidate",
+  "circom_helpers_commit": "dfe86b7cc2ca89fbf806e05e8140e3e7551a8a44",
+  "production_world_id_commit": "ccaac272c72012daa18608a62d00f8b10908b560",
+  "prover_backend": "taceo-groth16-0.1.3",
+  "witness_backend": "circom-witness-rs-0.2.3",
+  "package_versions": {
+    "circom": "2.2.2",
+    "circom_helpers": "dfe86b7cc2ca89fbf806e05e8140e3e7551a8a44",
+    "circom_witness_rs": "0.2.3",
+    "taceo_groth16": "0.1.3",
+    "taceo_groth16_material": "0.3.0",
+    "world_id_protocol": "ccaac272c72012daa18608a62d00f8b10908b560"
+  }
+}

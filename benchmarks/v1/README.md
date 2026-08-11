@@ -1,11 +1,11 @@
 # ProveKit V1 cross-device benchmark campaign
 
-This directory now defines two related, separately frozen campaigns. The
-published proof-only campaign remains 27 cells. The input-to-proof campaign is
-four workloads × three proof stacks × three targets × two timing modes: 72
-logical series and 432 attempts at one warmup plus five measured samples per
-series. The primary Mac surface is browser/WASM in Google Chrome; Mac-native
-runs are smoke or diagnostic evidence only.
+This directory defines the ProveKit V1 cross-device campaign. The canonical
+publication dataset is the raw-input-to-proof export: four workloads × three
+proof stacks × three targets × two timing modes, or 72 logical series. Its
+freeze has 427 rows: 426 valid attempts across 71 complete series and one
+structured E15 out-of-memory gap. The primary Mac surface is browser/WASM in
+Google Chrome; Mac-native runs are smoke or diagnostic evidence only.
 
 Read [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) before running anything.
 Machine-readable policy lives in
@@ -21,14 +21,17 @@ in [`sources.lock.json`](sources.lock.json), and compiler/package versions in
 | Noir + Barretenberg | Mopro native | Mopro native, subject to ABI support | `noir_js` + smoke-validated `bb.js` |
 | Circom + Groth16 | Mopro native | Mopro native | `snarkjs@0.7.6` |
 
-Each stack runs Passport, WebAuthn, and OPRF, producing 27 logical cells. The
-published semantic-parity freeze is complete: every cell has a proving-time,
-proving-payload, proof-size, and peak-process-memory value. The canonical
-sample file contains 162 records (one warmup and five measured proofs per
-cell): [`semantic-parity-data/semantic-parity-samples.csv`](semantic-parity-data/semantic-parity-samples.csv).
-The older [`data/benchmark-samples.csv`](data/benchmark-samples.csv) is retained
-as the 2026-07-30 exploratory/compound-variant export and is not the V1
-publication source.
+The canonical sample-level file is
+[`input-to-proof-data/input-to-proof-samples.csv`](input-to-proof-data/input-to-proof-samples.csv).
+It contains one warmup and five measured attempts for every successful timing
+series, with raw input, witness generation, and serialized proof generation in
+the headline boundary. The explicit E15 gap has blank metrics and hashed
+failure evidence; no other target's value is substituted.
+
+The earlier 27-cell proof-only export, the exploratory compound export, and
+the TACEO production-backend candidate are retained under
+[`legacy/`](legacy/README.md). They are useful historical/diagnostic evidence,
+but none is a publication replacement for the canonical input-to-proof CSV.
 
 ## Input-to-proof campaign
 
@@ -71,6 +74,14 @@ Arkworks or Rapidsnark path appropriate to the workload. The selected prover
 and witness backend are explicit in the CSV. `iden3/circom-witnesscalc@0.3.0`
 remains a compatibility fallback, not a publication backend.
 
+The E15 input-to-proof freeze has 23 successful logical series. The final
+WebAuthn/Circom cold series is retained as a structured `runtime_failed` gap
+with failure code `out_of_memory`: Rapidsnark could not map the 1.73 GB zkey
+and WTNS in the device's 32-bit address space. Its null metrics and hashed
+evidence are recorded in
+[`input-to-proof-data/e15-webauthn-cold-gap.json`](input-to-proof-data/e15-webauthn-cold-gap.json);
+no other device's value is substituted.
+
 For the iPhone OPRF input-to-proof lane, `wasmi@0.46.0` interprets the exact
 Circom witness Wasm and Rapidsnark proves the resulting WTNS. This replaces the
 layout-sensitive Rust-Witness AOT artifact that crashed on iOS; the interpreted
@@ -79,19 +90,15 @@ native iPhone Circom lanes retain their locked Rust-Witness generators.
 
 ### Publication snapshot
 
-- **27 / 27 logical cells** passed the valid-proof, tamper-rejection,
-  one-warmup/five-measured-sample contract.
-- **162 CSV records:** 135 measured rows and 27 attested warmups.
-- The four publication metrics are prove-only time, deduplicated proving
+- **72 logical timing series** are expected; **71** completed with one warmup
+  and five measured attempts, while one E15 Circom/WebAuthn cold series is an
+  explicit `runtime_failed` / `out_of_memory` gap.
+- **427 CSV records:** 355 measured rows, 71 attested warmups, and one gap row.
+- The four publication metrics are input-to-proof time, deduplicated proving
   payload, serialized proof bytes, and peak benchmark-process RSS.
-- The semantic-parity export has no estimated V1 metrics. Its historical
-  WebAuthn iPhone Circom row retains the explicit frozen zkey-plus-WTNS
-  estimate note from the earlier campaign; it deliberately excludes IPA,
-  XCUITest, and upload transport sizes. The older compound-variant export
-  retains its separate five-row estimate annotations.
-
-Use the CSV as the source of truth and keep that payload-estimate caveat in any
-blog chart, caption, or comparison text.
+- The canonical export contains no estimated metrics. Historical estimates
+  and proof-only boundaries remain labeled in `legacy/` and must not be mixed
+  into the input-to-proof charts.
 
 ## These are counterparts, not identical circuits
 
@@ -141,10 +148,15 @@ expecting an independently prepared bundle to have identical bytes.
 Historical files and measurements elsewhere in this directory are diagnostic
 inputs only. They enter this campaign only when their source commit, package
 versions, circuit identity, device/runtime identity, bundle hashes, and 1+5
-sampling contract match exactly. The V1 exporter verifies the committed
-evidence hashes and regenerates the canonical CSV idempotently:
+sampling contract match exactly. The input-to-proof exporter verifies the
+committed evidence hashes and regenerates the canonical CSV idempotently:
 
 ```bash
-bun benchmarks/v1/semantic-parity-data/export-v1.ts
-bun test benchmarks/v1/semantic-parity-data/export.test.ts
+bun benchmarks/v1/input-to-proof-data/export.ts
+bun test benchmarks/v1/input-to-proof-data/export.test.ts
 ```
+
+The proof-only and TACEO exporters remain runnable as historical diagnostics;
+their outputs are written under `legacy/` and never overwrite the canonical
+file. See [`legacy/README.md`](legacy/README.md) for the exact provenance and
+the reason the campaign was rerun.

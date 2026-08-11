@@ -1,8 +1,8 @@
-# ProveKit V1 semantic-parity results
+# Historical ProveKit V1 semantic-parity results
 
 This report is generated from
-[`semantic-parity-data/semantic-parity-samples.csv`](semantic-parity-data/semantic-parity-samples.csv),
-not from the older exploratory `data/benchmark-samples.csv`. The CSV contains
+[`legacy/semantic-parity/semantic-parity-samples.csv`](legacy/semantic-parity/semantic-parity-samples.csv),
+not from the older exploratory `legacy/data/benchmark-samples.csv`. The CSV contains
 27 logical cells, one warmup and five measured samples per cell, and all four
 publication metrics. ProveKit rows use core commit
 `9b2a6f37c67691eab4b0cec6c35e35c520e93285` on every target.
@@ -11,6 +11,10 @@ The circuits are closest counterparts, not identical statements. Passport P1
 is the monolithic matched age/integrity profile; WebAuthn is the pinned
 privacy-ethereum closest analogue; OPRF O2 is the World ID nullifier profile.
 The Circom and Noir rows retain their semantic notes in every CSV record.
+
+This report is retained for historical comparison. It measures proving-only
+rows and predates the canonical raw-input-to-proof rerun. Do not combine its
+timings with the publication CSV.
 
 ## Median measured results
 

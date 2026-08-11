@@ -63,15 +63,44 @@ fn fixture_root() -> PathBuf {
     if let Some(path) = env::var_os("MOBENCH_GROTH16_FIXTURE_ROOT") {
         return PathBuf::from(path);
     }
+
+    #[cfg(target_os = "android")]
+    {
+        let library_name = "libprovekit_v1_mobile_adapters.so";
+        let maps = fs::read_to_string("/proc/self/maps").expect("read Android process maps");
+        let library_path = maps
+            .lines()
+            .filter_map(|line| line.split_whitespace().last())
+            .map(|path| path.trim_end_matches(" (deleted)"))
+            .find(|path| path.ends_with(library_name))
+            .unwrap_or_else(|| panic!("locate {library_name} in Android process maps"));
+        return PathBuf::from(library_path)
+            .parent()
+            .expect("Android benchmark library has a parent")
+            .to_path_buf();
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
     env::current_exe()
         .expect("resolve benchmark executable path")
         .parent()
         .expect("benchmark executable has an app-bundle parent")
         .to_path_buf()
+    }
 }
 
 fn checked_fixture_file(root: &Path, name: &str) -> PathBuf {
-    let path = root.join(name);
+    #[cfg(target_os = "android")]
+    let packaged_name = match name {
+        "proving_key.zkey" => "libmobench_proving_key.so",
+        "reference.wtns" => "libmobench_reference_wtns.so",
+        "verification_key.json" => "libmobench_verification_key.so",
+        _ => name,
+    };
+    #[cfg(not(target_os = "android"))]
+    let packaged_name = name;
+    let path = root.join(packaged_name);
     let metadata = fs::metadata(&path)
         .unwrap_or_else(|error| panic!("read fixture metadata for {}: {error}", path.display()));
     assert!(

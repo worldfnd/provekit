@@ -1,4 +1,4 @@
-"""Marimo analysis for the ProveKit v1 cross-device benchmark campaign.
+"""Historical Marimo analysis for the proof-only semantic-parity export.
 
 Run from the repository root:
     marimo edit benchmarks/v1/analysis/benchmark_analysis.py
@@ -26,20 +26,20 @@ def _():
 @app.cell
 def _(mo):
     mo.md(r"""
-    # ProveKit v1 cross-device benchmark
+    # Historical semantic-parity benchmark
 
     ## tl;dr
 
-    This notebook reads only the canonical sample CSV. Completed charts use
-    measured samples, never warmups or gaps. Missing and failed cells remain
-    visible rather than being converted to zeros.
+    This notebook reads only the legacy proof-only semantic-parity CSV.
+    Completed charts use measured samples, never warmups or gaps. Missing and
+    failed cells remain visible rather than being converted to zeros.
     """)
     return
 
 
 @app.cell
 def _(Path, pd):
-    csv_path = Path(__file__).resolve().parents[1] / "semantic-parity-data" / "semantic-parity-samples.csv"
+    csv_path = Path(__file__).resolve().parents[1] / "legacy" / "semantic-parity" / "semantic-parity-samples.csv"
     samples = pd.read_csv(csv_path, keep_default_na=False)
 
     numeric_columns = [
