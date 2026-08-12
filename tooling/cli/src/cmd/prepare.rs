@@ -1,19 +1,15 @@
 use {
     super::Command,
-    acir::circuit::ExpressionWidth,
     anyhow::{anyhow, bail, Context as _, Result},
     argh::FromArgs,
     nargo::{
         insert_all_files_for_workspace_into_file_manager,
-        ops::{check_program, collect_errors, compile_program, report_errors, transform_program},
+        ops::{check_program, collect_errors, compile_program, optimize_program, report_errors},
         parse_all,
     },
     nargo_toml::{find_root, get_package_manifest, resolve_workspace_from_toml, PackageSelection},
     noir_artifact_cli::fs::artifact::save_program_to_file,
-    noirc_driver::{
-        CompilationResult, CompileOptions, CrateName, DEFAULT_EXPRESSION_WIDTH,
-        NOIR_ARTIFACT_VERSION_STRING,
-    },
+    noirc_driver::{CompilationResult, CompileOptions, CrateName, NOIR_ARTIFACT_VERSION_STRING},
     provekit_common::{file::write, NoirProofScheme, Prover, Verifier},
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
     rayon::prelude::*,
@@ -123,10 +119,7 @@ impl Command for Args {
                     &options,
                     None,
                 )?;
-                let program = transform_program(
-                    program,
-                    target_width(package.expression_width, options.expression_width),
-                );
+                let program = optimize_program(program);
                 check_program(&program)?;
                 let artifact = program.into();
                 save_program_to_file(&artifact, &package.name, &target_dir)
@@ -138,6 +131,7 @@ impl Command for Args {
         let artifacts = report_errors(
             collect_errors(program_results),
             &file_manager,
+            &parsed_files,
             options.deny_warnings,
             options.silence_warnings,
         )?;
@@ -205,11 +199,4 @@ impl Args {
         }
         Ok(PackageSelection::DefaultOrAll)
     }
-}
-
-fn target_width(
-    package: Option<ExpressionWidth>,
-    options: Option<ExpressionWidth>,
-) -> ExpressionWidth {
-    options.or(package).unwrap_or(DEFAULT_EXPRESSION_WIDTH)
 }

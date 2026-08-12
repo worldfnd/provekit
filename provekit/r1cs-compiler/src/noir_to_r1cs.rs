@@ -10,9 +10,7 @@ use {
     },
     acir::{
         circuit::{
-            opcodes::{
-                BlackBoxFuncCall, BlockType, ConstantOrWitnessEnum as ConstantOrACIRWitness,
-            },
+            opcodes::{BlackBoxFuncCall, BlockType, FunctionInput as ConstantOrACIRWitness},
             Circuit, Opcode,
         },
         native_types::{Expression, Witness as NoirWitness},
@@ -513,19 +511,7 @@ impl NoirToR1CSCompiler {
                     });
                     memory_blocks.insert(block_id, block);
                 }
-                Opcode::MemoryOp {
-                    block_id,
-                    op,
-                    predicate,
-                } => {
-                    // Panic if the predicate is set (according to Noir developers, predicate is
-                    // always None and will soon be removed).
-                    assert!(
-                        predicate.is_none(),
-                        "MemoryOp has unexpected predicate: {:?}",
-                        predicate
-                    );
-
+                Opcode::MemoryOp { block_id, op } => {
                     let block_id = block_id.0 as usize;
                     assert!(
                         memory_blocks.contains_key(&block_id),
@@ -570,10 +556,9 @@ impl NoirToR1CSCompiler {
                 Opcode::BlackBoxFuncCall(black_box_func_call) => match black_box_func_call {
                     BlackBoxFuncCall::RANGE {
                         input: function_input,
+                        num_bits,
                     } => {
-                        let input = function_input.input();
-                        let num_bits = function_input.num_bits();
-                        let input_witness = match input {
+                        let input_witness = match *function_input {
                             ConstantOrACIRWitness::Constant(_) => {
                                 panic!(
                                     "We should never be range-checking a constant value, as this \
@@ -585,7 +570,7 @@ impl NoirToR1CSCompiler {
                             }
                         };
                         range_checks
-                            .entry(num_bits)
+                            .entry(*num_bits)
                             .or_default()
                             .push(input_witness);
                     }
@@ -594,20 +579,23 @@ impl NoirToR1CSCompiler {
                     // The inputs and outputs will have already been solved for by the ACIR solver.
                     // Noir blackbox AND/XOR operate on 32-bit values. We decompose into 4 bytes
                     // and add byte-level ops to leverage the combined byte-level lookup table.
-                    BlackBoxFuncCall::AND { lhs, rhs, output } => {
-                        self.process_binop_opcode(lhs.input(), rhs.input(), *output, &mut and_ops);
-                    }
-                    BlackBoxFuncCall::XOR { lhs, rhs, output } => {
-                        self.process_binop_opcode(lhs.input(), rhs.input(), *output, &mut xor_ops);
-                    }
-                    BlackBoxFuncCall::Poseidon2Permutation {
-                        inputs,
-                        outputs,
-                        len,
+                    BlackBoxFuncCall::AND {
+                        lhs, rhs, output, ..
                     } => {
-                        assert_eq!(inputs.len() as u32, *len, "Poseidon2: inputs.len != len");
-                        assert_eq!(outputs.len() as u32, *len, "Poseidon2: outputs.len != len");
-                        let t = *len;
+                        self.process_binop_opcode(*lhs, *rhs, *output, &mut and_ops);
+                    }
+                    BlackBoxFuncCall::XOR {
+                        lhs, rhs, output, ..
+                    } => {
+                        self.process_binop_opcode(*lhs, *rhs, *output, &mut xor_ops);
+                    }
+                    BlackBoxFuncCall::Poseidon2Permutation { inputs, outputs } => {
+                        assert_eq!(
+                            inputs.len(),
+                            outputs.len(),
+                            "Poseidon2: inputs.len != outputs.len"
+                        );
+                        let t = inputs.len() as u32;
 
                         // Only these widths are allowed for Poseidon2
                         assert!(
@@ -618,7 +606,7 @@ impl NoirToR1CSCompiler {
                         // Convert ACIR inputs to (Constant | Witness)
                         let in_wits: Vec<ConstantOrR1CSWitness> = inputs
                             .iter()
-                            .map(|inp| self.fetch_constant_or_r1cs_witness(inp.input()))
+                            .map(|inp| self.fetch_constant_or_r1cs_witness(*inp))
                             .collect();
                         let out_wits: Vec<usize> = outputs
                             .iter()
@@ -633,11 +621,11 @@ impl NoirToR1CSCompiler {
                     } => {
                         let input_witnesses: Vec<ConstantOrR1CSWitness> = inputs
                             .iter()
-                            .map(|input| self.fetch_constant_or_r1cs_witness(input.input()))
+                            .map(|input| self.fetch_constant_or_r1cs_witness(*input))
                             .collect();
                         let hash_witnesses: Vec<ConstantOrR1CSWitness> = hash_values
                             .iter()
-                            .map(|hv| self.fetch_constant_or_r1cs_witness(hv.input()))
+                            .map(|hv| self.fetch_constant_or_r1cs_witness(*hv))
                             .collect();
                         let output_witnesses: Vec<usize> = outputs
                             .iter()

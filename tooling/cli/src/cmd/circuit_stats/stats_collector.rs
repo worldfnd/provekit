@@ -7,7 +7,7 @@ use {
     super::memory::MemoryStats,
     acir::{
         circuit::{
-            opcodes::{AcirFunctionId, BlackBoxFuncCall, ConstantOrWitnessEnum},
+            opcodes::{AcirFunctionId, BlackBoxFuncCall, FunctionInput as ConstantOrWitnessEnum},
             Circuit, Opcode,
         },
         native_types::Expression,
@@ -105,11 +105,7 @@ impl CircuitStats {
 
             Opcode::BlackBoxFuncCall(call) => self.process_blackbox_call(call),
 
-            Opcode::MemoryOp {
-                block_id,
-                op,
-                predicate: _,
-            } => {
+            Opcode::MemoryOp { block_id, op } => {
                 // Expression::zero() indicates read, Expression::one() indicates write
                 if op.operation == Expression::zero() {
                     self.memory.record_read(block_id.0, &op.index);
@@ -142,9 +138,17 @@ impl CircuitStats {
     fn process_blackbox_call(&mut self, call: &BlackBoxFuncCall<FieldElement>) {
         match call {
             BlackBoxFuncCall::AES128Encrypt { .. } => self.increment_blackbox("AES128Encrypt"),
-            BlackBoxFuncCall::AND { lhs, rhs, .. } => self.process_and_operation(lhs, rhs),
-            BlackBoxFuncCall::XOR { lhs, rhs, .. } => self.process_xor_operation(lhs, rhs),
-            BlackBoxFuncCall::RANGE { input } => self.process_range_check(input),
+            BlackBoxFuncCall::AND {
+                lhs, rhs, num_bits, ..
+            } => {
+                self.process_and_operation(lhs, rhs, *num_bits);
+            }
+            BlackBoxFuncCall::XOR {
+                lhs, rhs, num_bits, ..
+            } => {
+                self.process_xor_operation(lhs, rhs, *num_bits);
+            }
+            BlackBoxFuncCall::RANGE { num_bits, .. } => self.process_range_check(*num_bits),
             BlackBoxFuncCall::Blake2s { .. } => self.increment_blackbox("Blake2s"),
             BlackBoxFuncCall::Blake3 { .. } => self.increment_blackbox("Blake3"),
             BlackBoxFuncCall::EcdsaSecp256k1 { .. } => self.increment_blackbox("EcdsaSecp256k1"),
@@ -157,14 +161,6 @@ impl CircuitStats {
             BlackBoxFuncCall::RecursiveAggregation { .. } => {
                 self.increment_blackbox("RecursiveAggregation")
             }
-            BlackBoxFuncCall::BigIntAdd { .. } => self.increment_blackbox("BigIntAdd"),
-            BlackBoxFuncCall::BigIntSub { .. } => self.increment_blackbox("BigIntSub"),
-            BlackBoxFuncCall::BigIntMul { .. } => self.increment_blackbox("BigIntMul"),
-            BlackBoxFuncCall::BigIntDiv { .. } => self.increment_blackbox("BigIntDiv"),
-            BlackBoxFuncCall::BigIntFromLeBytes { .. } => {
-                self.increment_blackbox("BigIntFromLeBytes")
-            }
-            BlackBoxFuncCall::BigIntToLeBytes { .. } => self.increment_blackbox("BigIntToLeBytes"),
             BlackBoxFuncCall::Poseidon2Permutation { .. } => {
                 self.increment_blackbox("Poseidon2Permutation")
             }
@@ -183,16 +179,14 @@ impl CircuitStats {
 
     fn process_and_operation(
         &mut self,
-        lhs: &acir::circuit::opcodes::FunctionInput<FieldElement>,
-        rhs: &acir::circuit::opcodes::FunctionInput<FieldElement>,
+        lhs: &ConstantOrWitnessEnum<FieldElement>,
+        rhs: &ConstantOrWitnessEnum<FieldElement>,
+        num_bits: u32,
     ) {
         self.increment_blackbox("AND");
-        *self
-            .and_bit_counts
-            .entry((lhs.num_bits(), rhs.num_bits()))
-            .or_insert(0) += 1;
+        *self.and_bit_counts.entry((num_bits, num_bits)).or_insert(0) += 1;
 
-        match (lhs.input(), rhs.input()) {
+        match (lhs, rhs) {
             (ConstantOrWitnessEnum::Constant(_), ConstantOrWitnessEnum::Constant(_)) => {
                 self.homogeneous_constant_and_inputs += 1;
             }
@@ -208,22 +202,20 @@ impl CircuitStats {
 
     fn process_xor_operation(
         &mut self,
-        lhs: &acir::circuit::opcodes::FunctionInput<FieldElement>,
-        rhs: &acir::circuit::opcodes::FunctionInput<FieldElement>,
+        lhs: &ConstantOrWitnessEnum<FieldElement>,
+        rhs: &ConstantOrWitnessEnum<FieldElement>,
+        num_bits: u32,
     ) {
         self.increment_blackbox("XOR");
-        *self
-            .xor_bit_counts
-            .entry((lhs.num_bits(), rhs.num_bits()))
-            .or_insert(0) += 1;
+        *self.xor_bit_counts.entry((num_bits, num_bits)).or_insert(0) += 1;
 
-        if matches!(lhs.input(), ConstantOrWitnessEnum::Constant(_))
-            || matches!(rhs.input(), ConstantOrWitnessEnum::Constant(_))
+        if matches!(lhs, ConstantOrWitnessEnum::Constant(_))
+            || matches!(rhs, ConstantOrWitnessEnum::Constant(_))
         {
             self.xor_with_non_witness_value = true;
         }
 
-        match (lhs.input(), rhs.input()) {
+        match (lhs, rhs) {
             (ConstantOrWitnessEnum::Constant(_), ConstantOrWitnessEnum::Constant(_)) => {
                 self.homogeneous_constant_xor_inputs += 1;
             }
@@ -237,12 +229,9 @@ impl CircuitStats {
         }
     }
 
-    fn process_range_check(&mut self, input: &acir::circuit::opcodes::FunctionInput<FieldElement>) {
+    fn process_range_check(&mut self, num_bits: u32) {
         self.increment_blackbox("RANGE");
-        *self
-            .range_check_bit_counts
-            .entry(input.num_bits())
-            .or_insert(0) += 1;
+        *self.range_check_bit_counts.entry(num_bits).or_insert(0) += 1;
     }
 }
 
@@ -260,12 +249,6 @@ const BLACKBOX_FUNCTIONS: &[&str] = &[
     "EmbeddedCurveAdd",
     "Keccakf1600",
     "RecursiveAggregation",
-    "BigIntAdd",
-    "BigIntSub",
-    "BigIntMul",
-    "BigIntDiv",
-    "BigIntFromLeBytes",
-    "BigIntToLeBytes",
     "Poseidon2Permutation",
     "Sha256Compression",
 ];
