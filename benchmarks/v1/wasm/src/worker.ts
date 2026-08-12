@@ -2,9 +2,12 @@ import { decompressWitness } from "@noir-lang/acvm_js";
 import { Noir } from "@noir-lang/noir_js";
 import initProveKitV1, {
   initPanicHook,
+  initThreadPool,
   Prover,
   Verifier,
 } from "../v1-wasm-pkg/provekit_wasm.js";
+
+type ThreadRequest = "single" | "auto" | number;
 
 interface RunCommand {
   type: "run";
@@ -12,6 +15,13 @@ interface RunCommand {
   warmup: number;
   iterations: number;
   timing_mode?: "cold_local" | "warm_reuse";
+  /**
+   * `single` preserves the historical V1 measurement. `auto` uses a bounded
+   * worker pool when the page is cross-origin isolated; a numeric value is a
+   * strict request and fails instead of silently becoming a single-thread
+   * measurement when the browser cannot share WASM memory.
+   */
+  wasm_threads?: ThreadRequest;
 }
 
 type WorkloadName = "webauthn_assertion" | "passport_complete_age_check" | "passport_p1" | "oprf_taceo";
@@ -36,6 +46,125 @@ interface PerformanceWithMemory extends Performance {
 
 interface BundleManifest {
   totals: Record<string, number>;
+}
+
+interface ThreadRuntime {
+  request: ThreadRequest;
+  requested_threads: number;
+  wasm_threads: boolean;
+  wasm_thread_count: number;
+  wasm_thread_mode: "single" | "rayon_threaded" | "fallback_single";
+  cross_origin_isolated: boolean;
+  shared_array_buffer: boolean;
+  init_thread_pool_available: boolean;
+  hardware_concurrency?: number;
+  fallback_reason?: string;
+}
+
+let runtimeInitialization: Promise<void> | undefined;
+let threadRuntime: ThreadRuntime | undefined;
+
+function threadCapabilities() {
+  const hardwareConcurrency =
+    typeof navigator === "undefined" || !Number.isInteger(navigator.hardwareConcurrency)
+      ? undefined
+      : navigator.hardwareConcurrency;
+  return {
+    crossOriginIsolated: self.crossOriginIsolated === true,
+    sharedArrayBuffer: typeof SharedArrayBuffer !== "undefined",
+    initThreadPoolAvailable: typeof initThreadPool === "function",
+    hardwareConcurrency,
+  };
+}
+
+function requestedThreadCount(request: ThreadRequest): number {
+  if (request === "single") return 1;
+  if (request === "auto") {
+    // Keep the browser campaign deterministic while avoiding an unbounded pool
+    // on high-core-count hosts. A browser that reports one core remains scalar.
+    const hardwareConcurrency = threadCapabilities().hardwareConcurrency ?? 4;
+    return hardwareConcurrency <= 1 ? 1 : Math.min(8, hardwareConcurrency);
+  }
+  if (!Number.isInteger(request) || request < 2 || request > 32) {
+    throw new Error("wasm_threads must be `single`, `auto`, or an integer from 2 to 32");
+  }
+  return request;
+}
+
+async function initializeRuntime(request: ThreadRequest): Promise<ThreadRuntime> {
+  if (!runtimeInitialization) {
+    runtimeInitialization = (async () => {
+      await initProveKitV1();
+      initPanicHook();
+    })();
+  }
+  await runtimeInitialization;
+
+  const requestedThreads = requestedThreadCount(request);
+  const capabilities = threadCapabilities();
+  const canUseThreads =
+    requestedThreads > 1 &&
+    capabilities.crossOriginIsolated &&
+    capabilities.sharedArrayBuffer &&
+    capabilities.initThreadPoolAvailable;
+
+  if (threadRuntime) {
+    // wasm-bindgen-rayon owns one global pool per module. Do not allow a page
+    // to report a different thread policy after the pool has been initialized.
+    if (threadRuntime.wasm_thread_count !== (canUseThreads ? requestedThreads : 1)) {
+      throw new Error("WASM thread policy cannot change after runtime initialization");
+    }
+    return threadRuntime;
+  }
+
+  if (requestedThreads > 1 && !canUseThreads && request !== "auto") {
+    const reasons = [
+      !capabilities.crossOriginIsolated && "crossOriginIsolated is false",
+      !capabilities.sharedArrayBuffer && "SharedArrayBuffer is unavailable",
+      !capabilities.initThreadPoolAvailable && "the WASM module has no initThreadPool export",
+    ].filter(Boolean);
+    throw new Error(`threaded WASM requested but unavailable (${reasons.join(", ")})`);
+  }
+
+  if (canUseThreads) {
+    await initThreadPool(requestedThreads);
+    threadRuntime = {
+      request,
+      requested_threads: requestedThreads,
+      wasm_threads: true,
+      wasm_thread_count: requestedThreads,
+      wasm_thread_mode: "rayon_threaded",
+      cross_origin_isolated: capabilities.crossOriginIsolated,
+      shared_array_buffer: capabilities.sharedArrayBuffer,
+      init_thread_pool_available: capabilities.initThreadPoolAvailable,
+      hardware_concurrency: capabilities.hardwareConcurrency,
+    };
+    return threadRuntime;
+  }
+
+  threadRuntime = {
+    request,
+    requested_threads: requestedThreads,
+    wasm_threads: false,
+    wasm_thread_count: 1,
+    wasm_thread_mode: request === "auto" && requestedThreads > 1 ? "fallback_single" : "single",
+    cross_origin_isolated: capabilities.crossOriginIsolated,
+    shared_array_buffer: capabilities.sharedArrayBuffer,
+    init_thread_pool_available: capabilities.initThreadPoolAvailable,
+    hardware_concurrency: capabilities.hardwareConcurrency,
+    ...(request === "auto" && requestedThreads > 1
+      ? {
+          fallback_reason: [
+            !capabilities.crossOriginIsolated && "crossOriginIsolated is false",
+            !capabilities.sharedArrayBuffer && "SharedArrayBuffer is unavailable",
+            !capabilities.initThreadPoolAvailable && "the WASM module has no initThreadPool export",
+          ]
+            .filter(Boolean)
+            .join(", "),
+        }
+      : {}),
+  };
+  return threadRuntime;
 }
 
 function elapsed(start: number): number {
@@ -84,8 +213,7 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
   }
 
   const initStart = performance.now();
-  await initProveKitV1();
-  initPanicHook();
+  const runtime = await initializeRuntime(command.wasm_threads ?? "single");
   const verifier = new Verifier(pkv);
   const initTimeMs = elapsed(initStart);
 
@@ -149,7 +277,7 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
   return {
     schema_version: 1,
     benchmark: command.workload,
-    backend: "provekit_v1_branch_9b2a6f_wasm_single",
+    backend: `provekit_v1_branch_9b2a6f_wasm_${runtime.wasm_thread_mode}`,
     download_time_ms: downloadTimeMs,
     initialization_time_ms: initTimeMs,
     artifacts: {
@@ -167,8 +295,14 @@ async function runBenchmark(command: RunCommand): Promise<unknown> {
     environment: {
       user_agent: navigator.userAgent,
       hardware_concurrency: navigator.hardwareConcurrency,
-      cross_origin_isolated: self.crossOriginIsolated,
-      wasm_threads: false,
+      cross_origin_isolated: runtime.cross_origin_isolated,
+      shared_array_buffer: runtime.shared_array_buffer,
+      init_thread_pool_available: runtime.init_thread_pool_available,
+      wasm_threads: runtime.wasm_threads,
+      wasm_thread_count: runtime.wasm_thread_count,
+      wasm_thread_mode: runtime.wasm_thread_mode,
+      wasm_thread_request: runtime.request,
+      ...(runtime.fallback_reason ? { wasm_thread_fallback_reason: runtime.fallback_reason } : {}),
       memory_metric: currentHeapBytes() === undefined ? "unavailable" : "chromium-used-js-heap-not-process-rss",
     },
     warmup: command.warmup,

@@ -6,10 +6,16 @@ import {
 } from "../input-to-proof-data/schema";
 
 const benchmarkRoot = resolve(import.meta.dir, "..");
+const executionPolicy = process.env.INPUT_TO_PROOF_EXECUTION_POLICY === "multithread"
+  ? "multithread"
+  : "singlethread";
 const outputRoot = resolve(
   process.env.INPUT_TO_PROOF_OUTPUT_ROOT ??
-    resolve(benchmarkRoot, "../../target/v1-benchmarks/input-to-proof/mac-chrome"),
+    resolve(benchmarkRoot, executionPolicy === "multithread"
+      ? "../../target/v1-benchmarks/input-to-proof/mac-chrome-multithread"
+      : "../../target/v1-benchmarks/input-to-proof/mac-chrome"),
 );
+const campaignId = process.env.INPUT_TO_PROOF_CAMPAIGN_ID ?? "input-to-proof-v1-20260807";
 const force = process.argv.includes("--force");
 const only = process.env.INPUT_TO_PROOF_SERIES;
 
@@ -71,7 +77,18 @@ async function runOnce(profile: Profile, stack: Stack, mode: TimingMode) {
     MOBENCH_WARMUP: mode === "warm_reuse" ? "1" : "0",
     MOBENCH_ITERATIONS: mode === "warm_reuse" ? "5" : "1",
     MOBENCH_TIMING_MODE: mode,
-    MOBENCH_SNARKJS_SINGLE_THREAD: "1",
+    MOBENCH_SNARKJS_SINGLE_THREAD: executionPolicy === "singlethread" ? "1" : "0",
+    // SnarkJS derives its worker pool from navigator.hardwareConcurrency. Keep
+    // the default automatic so the published browser lane reflects the host
+    // rather than an arbitrary cap; an explicit override remains available for
+    // diagnostics (and is recorded in each raw report).
+    MOBENCH_SNARKJS_THREADS: process.env.MOBENCH_SNARKJS_THREADS ?? (executionPolicy === "multithread"
+      ? profile === "webauthn_closest_analogue" ? "4" : "0"
+      : "1"),
+    MOBENCH_WASM_THREAD_MODE: executionPolicy,
+    MOBENCH_WASM_THREADS: executionPolicy === "multithread" ? "auto" : "single",
+    MOBENCH_BARRETENBERG_THREAD_MODE: executionPolicy,
+    MOBENCH_BB_THREADS: executionPolicy === "multithread" ? "32" : "1",
     MOBENCH_TIMEOUT_MS: "3600000",
   };
   if (stack === "circom_groth16" && profile === "passport_p1") {
@@ -98,8 +115,12 @@ for (const profile of PROFILES) {
       if (only && id !== only) continue;
       const output = resolve(outputRoot, `${id}.json`);
       if (!force && await Bun.file(output).exists()) {
-        console.error(`[skip] ${id}`);
-        continue;
+        const existing = await Bun.file(output).json().catch(() => null) as { campaign_id?: string; execution_policy?: string } | null;
+        if (existing?.campaign_id === campaignId && existing.execution_policy === executionPolicy) {
+          console.error(`[skip] ${id}`);
+          continue;
+        }
+        console.error(`[rerun] ${id}: existing evidence has a different campaign/policy`);
       }
       console.error(`[run] ${id}`);
       const attempts = [];
@@ -115,12 +136,13 @@ for (const profile of PROFILES) {
       }
       const series = {
         schema_version: 1,
-        campaign_id: "input-to-proof-v1-20260807",
+        campaign_id: campaignId,
         series_id: id,
         semantic_profile: profile,
         target: "mac_chrome",
         stack,
         timing_mode: mode,
+        execution_policy: executionPolicy,
         environment: hostEnvironment,
         created_at: new Date().toISOString(),
         attempts,

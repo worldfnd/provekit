@@ -9,6 +9,8 @@ interface BenchSpec {
   warmup: number;
   iterations: number;
   single_thread?: boolean;
+  /** snarkjs chooses its worker pool from hardwareConcurrency; this is metadata only. */
+  prover_threads?: number;
   timing_mode?: "cold_local" | "warm_reuse";
 }
 interface Fixture {
@@ -100,6 +102,7 @@ async function runFixture(
   iterations: number,
   singleThread: boolean,
   timingMode: "cold_local" | "warm_reuse",
+  proverThreadsRequested: number,
 ) {
   const coldStarted = performance.now();
   emit({ circuit: fixture.circuit, variant: fixture.variant, stage: "fixture-load-start" });
@@ -202,6 +205,20 @@ async function runFixture(
       input_size_bytes: inputSizeBytes,
       proving_payload_size_bytes: wasmSizeBytes + zkeySizeBytes + inputSizeBytes,
     },
+    execution: {
+      witness_backend: "circom_runtime_wasm_single",
+      witness_threads: 1,
+      prover_backend: singleThread
+        ? "snarkjs_0.7.6_browser_wasm_single_thread"
+        : "snarkjs_0.7.6_browser_wasm_workers",
+      prover_threads_requested: proverThreadsRequested,
+      prover_threads_effective: singleThread
+        ? 1
+        : Math.min(proverThreadsRequested, navigator.hardwareConcurrency || 1, 64),
+      worker_available: typeof Worker !== "undefined",
+      hardware_concurrency: navigator.hardwareConcurrency || 1,
+      cross_origin_isolated: self.crossOriginIsolated,
+    },
     samples,
   };
 }
@@ -209,6 +226,13 @@ async function runFixture(
 async function run(spec: BenchSpec): Promise<unknown> {
   const warmup = bounded(spec.warmup, 0, 10, "warmup");
   const iterations = bounded(spec.iterations, 1, 20, "iterations");
+  const hardwareConcurrency = navigator.hardwareConcurrency || 1;
+  const proverThreadsRequested = bounded(
+    spec.prover_threads ?? (spec.single_thread === true ? 1 : hardwareConcurrency),
+    1,
+    64,
+    "prover_threads",
+  );
   const manifest = await json<Manifest>("./assets/manifest.json");
   const fixtures = manifest.fixtures[spec.workload];
   if (!fixtures?.length) throw new Error(`no Circom browser fixture for ${spec.workload}`);
@@ -221,6 +245,7 @@ async function run(spec: BenchSpec): Promise<unknown> {
       iterations,
       spec.single_thread === true,
       spec.timing_mode ?? "warm_reuse",
+      proverThreadsRequested,
     ));
   }
   const report = {
@@ -233,6 +258,16 @@ async function run(spec: BenchSpec): Promise<unknown> {
     workload: spec.workload,
     single_thread: spec.single_thread === true,
     witness_timing: "separate wtns.calculate memory-file phase",
+    witness_backend: "circom_runtime_wasm_single",
+    witness_threads: 1,
+    prover_threads_requested: proverThreadsRequested,
+    prover_threads_effective: spec.single_thread === true
+      ? 1
+      : Math.min(proverThreadsRequested, hardwareConcurrency, 64),
+    worker_available: typeof Worker !== "undefined",
+    hardware_concurrency: hardwareConcurrency,
+    shared_array_buffer: typeof SharedArrayBuffer !== "undefined",
+    cross_origin_isolated: self.crossOriginIsolated,
     timing_mode: spec.timing_mode ?? "warm_reuse",
     progress,
     results,

@@ -8,8 +8,50 @@ repo_root="$(cd "${benchmark_root}/../.." && pwd)"
 lock_file="${benchmark_root}/toolchains.lock.json"
 tool_root="${V1_BENCHMARK_TOOL_ROOT:-${repo_root}/target/v1-benchmarks/tools}"
 source_root="${V1_PROVEKIT_SOURCE_ROOT:-${repo_root}/target/v1-benchmarks/provekit-v1-source}"
-target_dir="${V1_PROVEKIT_WASM_TARGET_DIR:-${repo_root}/target/v1-benchmarks/provekit-v1-wasm-target}"
-package_dir="${benchmark_root}/wasm/v1-wasm-pkg"
+target_dir_override="${V1_PROVEKIT_WASM_TARGET_DIR:-}"
+package_dir_override="${PROVEKIT_V1_WASM_PACKAGE_DIR:-}"
+wasm_thread_request="${MOBENCH_WASM_THREADS:-single}"
+wasm_variant="${PROVEKIT_V1_WASM_VARIANT:-}"
+case "${wasm_thread_request}" in
+  single|auto|threaded) ;;
+  *)
+    if [[ ! "${wasm_thread_request}" =~ ^[0-9]+$ ]] ||
+      (( wasm_thread_request < 2 || wasm_thread_request > 32 )); then
+      echo "error: MOBENCH_WASM_THREADS must be single, auto, threaded, or an integer from 2 to 32" >&2
+      exit 2
+    fi
+    ;;
+esac
+if [[ -z "${wasm_variant}" ]]; then
+  case "${wasm_thread_request}" in
+    single) wasm_variant="single" ;;
+    auto|threaded|[0-9]*) wasm_variant="threaded" ;;
+  esac
+fi
+case "${wasm_variant}" in
+  single|threaded) ;;
+  *)
+    echo "error: PROVEKIT_V1_WASM_VARIANT must be single or threaded" >&2
+    exit 2
+    ;;
+esac
+# The pinned V1 crate always emits wasm-bindgen-rayon hooks. The variant is a
+# recorded campaign policy, not a scalar replacement of the proving artifact.
+wasm_threads_available=true
+if [[ -n "${target_dir_override}" ]]; then
+  target_dir="${target_dir_override}"
+elif [[ "${wasm_variant}" == "threaded" ]]; then
+  target_dir="${repo_root}/target/v1-benchmarks/provekit-v1-wasm-target-threaded"
+else
+  target_dir="${repo_root}/target/v1-benchmarks/provekit-v1-wasm-target"
+fi
+if [[ -n "${package_dir_override}" ]]; then
+  package_dir="${package_dir_override}"
+elif [[ "${wasm_variant}" == "threaded" ]]; then
+  package_dir="${benchmark_root}/wasm/v1-wasm-pkg-threaded"
+else
+  package_dir="${benchmark_root}/wasm/v1-wasm-pkg"
+fi
 artifact_dir="${repo_root}/target/v1-benchmarks/provekit-beta11-artifacts"
 input_dir="${repo_root}/target/v1-benchmarks/provekit-v1-inputs"
 passport_p1_beta11="${repo_root}/target/v1-benchmarks/passport-p1-beta11"
@@ -155,8 +197,14 @@ jq -n \
   --arg core_commit "${core_commit}" \
   --arg wasm_bindgen_version "$("${wasm_bindgen_bin}" --version | awk '{print $2}')" \
   --arg wasm_sha256 "${wasm_sha256}" \
-  '{schema_version:1,backend:"provekit_v1_wasm_single",core_commit:$core_commit,
-    wasm_bindgen_version:$wasm_bindgen_version,wasm_sha256:$wasm_sha256}' \
+  --arg wasm_variant "${wasm_variant}" \
+  --arg wasm_thread_request "${wasm_thread_request}" \
+  --argjson wasm_threads_available "${wasm_threads_available}" \
+  '{schema_version:1,backend:("provekit_v1_wasm_" + $wasm_variant),core_commit:$core_commit,
+    wasm_bindgen_version:$wasm_bindgen_version,wasm_sha256:$wasm_sha256,
+    wasm_variant:$wasm_variant,wasm_thread_request:$wasm_thread_request,
+    wasm_thread_mode:$wasm_variant,
+    wasm_threads_available:$wasm_threads_available,shared_memory_build:true}' \
   >"${package_dir}/manifest.json"
 
 echo "Prepared ${package_dir}"

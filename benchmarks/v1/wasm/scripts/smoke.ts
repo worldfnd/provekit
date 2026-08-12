@@ -25,8 +25,20 @@ try {
   const warmup = process.env.MOBENCH_WARMUP ?? "1";
   const iterations = process.env.MOBENCH_ITERATIONS ?? "5";
   const timingMode = process.env.MOBENCH_TIMING_MODE ?? "warm_reuse";
+  const wasmThreads = process.env.MOBENCH_WASM_THREADS ?? "single";
+  if (
+    wasmThreads !== "single" &&
+    wasmThreads !== "auto" &&
+    (!/^[0-9]+$/.test(wasmThreads) ||
+      Number.parseInt(wasmThreads, 10) < 2 ||
+      Number.parseInt(wasmThreads, 10) > 32)
+  ) {
+    throw new Error(
+      "MOBENCH_WASM_THREADS must be `single`, `auto`, or an integer from 2 to 32",
+    );
+  }
   await page.goto(
-    `${server.url}?autorun=1&workload=${encodeURIComponent(workload)}&warmup=${encodeURIComponent(warmup)}&iterations=${encodeURIComponent(iterations)}&timing_mode=${encodeURIComponent(timingMode)}`,
+    `${server.url}?autorun=1&workload=${encodeURIComponent(workload)}&warmup=${encodeURIComponent(warmup)}&iterations=${encodeURIComponent(iterations)}&timing_mode=${encodeURIComponent(timingMode)}&threads=${encodeURIComponent(wasmThreads)}`,
   );
   sampler = startRendererRssSampler(profile);
   await page.waitForFunction(
@@ -38,6 +50,18 @@ try {
   sampler = undefined;
   const state = await page.evaluate(() => window.__MOBENCH_STATE__);
   if (state.status !== "complete") throw new Error(state.error ?? "browser benchmark failed");
+  if (wasmThreads !== "single") {
+    const environment = (
+      state.result as {
+        environment?: { wasm_threads?: boolean; wasm_thread_mode?: string };
+      }
+    ).environment;
+    if (environment?.wasm_threads !== true || environment.wasm_thread_mode !== "rayon_threaded") {
+      throw new Error(
+        `requested threaded ProveKit WASM but runtime reported ${JSON.stringify(environment)}`,
+      );
+    }
+  }
   console.log(
     JSON.stringify(
       {

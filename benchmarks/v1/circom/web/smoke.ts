@@ -9,6 +9,13 @@ const warmup = Number.parseInt(process.env.MOBENCH_WARMUP ?? "1", 10);
 const iterations = Number.parseInt(process.env.MOBENCH_ITERATIONS ?? "5", 10);
 const timingMode = process.env.MOBENCH_TIMING_MODE === "cold_local" ? "cold_local" : "warm_reuse";
 const singleThread = process.env.MOBENCH_SNARKJS_SINGLE_THREAD === "1";
+const requestedProverThreads = Number.parseInt(
+  process.env.MOBENCH_SNARKJS_THREADS ?? (singleThread ? "1" : "0"),
+  10,
+);
+if (!Number.isInteger(requestedProverThreads) || requestedProverThreads < 0 || requestedProverThreads > 64) {
+  throw new Error("MOBENCH_SNARKJS_THREADS must be 0 (auto) or an integer from 1 to 64");
+}
 const timeoutMs = Number.parseInt(process.env.MOBENCH_TIMEOUT_MS ?? "900000", 10);
 const chrome =
   process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -17,7 +24,18 @@ const server = Bun.serve({
   async fetch(request) {
     const url = new URL(request.url);
     const file = Bun.file(resolve(root, `.${url.pathname === "/" ? "/index.html" : url.pathname}`));
-    return (await file.exists()) ? new Response(file) : new Response("not found", { status: 404 });
+    if (!(await file.exists())) return new Response("not found", { status: 404 });
+    return new Response(file, {
+      headers: {
+        "Cache-Control": "no-store",
+        // Keep the browser surface consistent with the other threaded WASM
+        // lanes. snarkjs Blob workers do not require SAB, but this makes the
+        // execution policy observable and catches an accidentally non-isolated
+        // deployment before it is used for comparison.
+        "Cross-Origin-Embedder-Policy": "require-corp",
+        "Cross-Origin-Opener-Policy": "same-origin",
+      },
+    });
   },
 });
 
@@ -99,6 +117,19 @@ try {
   });
   try {
     const page = context.pages()[0] ?? (await context.newPage());
+    if (!singleThread && requestedProverThreads > 0) {
+      // SnarkJS 0.7.6 sizes its worker pool from navigator.hardwareConcurrency
+      // and exposes no public worker-count option. Pin the browser lane to the
+      // requested count so a large zkey cannot spawn one full copy per host
+      // core and exhaust the renderer. This remains a genuine multithreaded
+      // run; the effective value is recorded in the report.
+      await page.addInitScript((threads) => {
+        Object.defineProperty(navigator, "hardwareConcurrency", {
+          configurable: true,
+          value: threads,
+        });
+      }, requestedProverThreads);
+    }
     page.on("console", (message) => {
       if (message.text().startsWith("MOBENCH_PROGRESS ")) {
         console.error(message.text());
@@ -115,15 +146,23 @@ try {
       }
     })();
     const benchmark = page.evaluate(
-      async ({ iterations, singleThread, warmup, workload, timingMode }) =>
+      async ({ iterations, singleThread, warmup, workload, timingMode, proverThreads }) =>
         window.mobenchCircom.run({
           workload: workload as never,
           warmup,
           iterations,
           single_thread: singleThread,
+          prover_threads: proverThreads > 0 ? proverThreads : undefined,
           timing_mode: timingMode,
         }),
-      { workload, warmup, iterations, singleThread, timingMode },
+      {
+        workload,
+        warmup,
+        iterations,
+        singleThread,
+        timingMode,
+        proverThreads: requestedProverThreads,
+      },
     );
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
@@ -139,6 +178,9 @@ try {
       const peak = memorySamples.sort(
         (left, right) => right.renderer_rss_kib - left.renderer_rss_kib,
       )[0];
+      const observedHardwareConcurrency = await page
+        .evaluate(() => navigator.hardwareConcurrency || 1)
+        .catch(() => null);
       console.log(JSON.stringify({
         ...(result as Record<string, unknown>),
         process_memory: {
@@ -157,6 +199,9 @@ try {
       const peak = memorySamples.sort(
         (left, right) => right.renderer_rss_kib - left.renderer_rss_kib,
       )[0];
+      const observedHardwareConcurrency = await page
+        .evaluate(() => navigator.hardwareConcurrency || 1)
+        .catch(() => null);
       console.log(JSON.stringify({
         schema_version: 1,
         stack: "circom_groth16",
@@ -172,6 +217,20 @@ try {
         failure_message: error instanceof Error ? error.message : String(error),
         warmup_attempts_requested: warmup,
         measured_attempts_requested: iterations,
+        single_thread: singleThread,
+        witness_backend: "circom_runtime_wasm_single",
+        witness_threads: 1,
+        prover_threads_requested: requestedProverThreads > 0
+          ? requestedProverThreads
+          : null,
+        prover_threads_effective: singleThread
+          ? 1
+          : requestedProverThreads > 0
+            ? Math.min(requestedProverThreads, observedHardwareConcurrency ?? 1, 64)
+            : null,
+        worker_available: true,
+        hardware_concurrency: observedHardwareConcurrency,
+        cross_origin_isolated: await page.evaluate(() => self.crossOriginIsolated).catch(() => null),
         progress,
         process_memory: {
           metric: "peak_chrome_renderer_rss",

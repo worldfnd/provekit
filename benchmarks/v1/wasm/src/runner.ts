@@ -65,12 +65,27 @@ function run(): void {
     const iterations = boundedInteger(iterationsInput, 1, 20);
     setState({ status: "running" });
     const timingMode = new URLSearchParams(location.search).get("timing_mode");
+    const threadQuery = new URLSearchParams(location.search).get("threads") ?? "single";
+    const wasmThreads =
+      threadQuery === "single" || threadQuery === "auto"
+        ? threadQuery
+        : /^\d+$/.test(threadQuery)
+          ? Number.parseInt(threadQuery, 10)
+          : Number.NaN;
+    if (
+      wasmThreads !== "single" &&
+      wasmThreads !== "auto" &&
+      (!Number.isInteger(wasmThreads) || wasmThreads < 2 || wasmThreads > 32)
+    ) {
+      throw new Error("threads must be `single`, `auto`, or an integer from 2 to 32");
+    }
     worker.postMessage({
       type: "run",
       workload: workloadInput.value,
       warmup,
       iterations,
       timing_mode: timingMode === "cold_local" ? "cold_local" : "warm_reuse",
+      wasm_threads: wasmThreads,
     });
   } catch (error) {
     setState({ status: "error", error: error instanceof Error ? error.message : String(error) });

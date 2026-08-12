@@ -7,6 +7,21 @@ wasm_root="$(cd "${script_dir}/.." && pwd)"
 benchmark_root="$(cd "${wasm_root}/.." && pwd)"
 repo_root="$(cd "${benchmark_root}/../.." && pwd)"
 dist_dir="${wasm_root}/dist"
+default_package_dir="${wasm_root}/v1-wasm-pkg"
+wasm_threads="${MOBENCH_WASM_THREADS:-}"
+if [[ -z "${wasm_threads}" ]]; then
+  wasm_threads="$(
+    [[ "${INPUT_TO_PROOF_EXECUTION_POLICY:-}" == "multithread" ]] && echo auto || echo single
+  )"
+fi
+package_dir="${PROVEKIT_V1_WASM_PACKAGE_DIR:-}"
+if [[ -z "${package_dir}" ]]; then
+  if [[ "${wasm_threads}" == "single" ]]; then
+    package_dir="${default_package_dir}"
+  else
+    package_dir="${wasm_root}/v1-wasm-pkg-threaded"
+  fi
+fi
 workloads=(webauthn_assertion passport_complete_age_check passport_p1 oprf_taceo)
 
 for command in bun jq; do
@@ -18,7 +33,16 @@ done
 
 MOBENCH_CI_PREPARE=1 \
   "${benchmark_root}/scripts/prepare-provekit-beta11-artifacts.sh"
-"${benchmark_root}/scripts/build-provekit-v1-wasm.sh"
+MOBENCH_WASM_THREADS="${wasm_threads}" \
+PROVEKIT_V1_WASM_PACKAGE_DIR="${package_dir}" \
+  "${benchmark_root}/scripts/build-provekit-v1-wasm.sh"
+
+# Vite's source import remains stable at v1-wasm-pkg. Keep the immutable
+# threaded package separately, then mirror it into that ignored build alias.
+if [[ "${package_dir}" != "${default_package_dir}" ]]; then
+  rm -rf "${default_package_dir}"
+  cp -R "${package_dir}" "${default_package_dir}"
+fi
 (
   cd "${wasm_root}"
   bun install --frozen-lockfile
@@ -86,4 +110,21 @@ mkdir -p "$(dirname "${runtime_manifest}")"
     "${dist_dir}/manifest.json"
 )
 
-echo "Built single-thread browser benchmark at ${dist_dir}"
+# Keep the generated package identity alongside the static-file hashes. The
+# browser runner only consumes `totals`, while result provenance can inspect
+# this immutable build/request metadata without reading the ignored package
+# directory from the host filesystem.
+package_manifest="${package_dir}/manifest.json"
+if [[ -s "${package_manifest}" ]]; then
+  tmp_manifest="${dist_dir}/manifest.json.tmp"
+  jq --slurpfile wasm_build "${package_manifest}" \
+    '. + {wasm_build: $wasm_build[0]}' \
+    "${dist_dir}/manifest.json" >"${tmp_manifest}"
+  mv "${tmp_manifest}" "${dist_dir}/manifest.json"
+fi
+
+if [[ "${wasm_threads}" == "single" ]]; then
+  echo "Built single-thread browser benchmark at ${dist_dir}"
+else
+  echo "Built threaded browser benchmark at ${dist_dir}"
+fi

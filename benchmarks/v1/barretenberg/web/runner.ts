@@ -14,6 +14,8 @@ interface BenchSpec {
   iterations: number;
   warmup: number;
   timing_mode?: "cold_local" | "warm_reuse";
+  /** Requested bb.js worker count. 1 keeps the historical single-thread path. */
+  threads?: number;
 }
 
 interface ProofData {
@@ -60,6 +62,13 @@ function boundedInteger(value: number, minimum: number, maximum: number, label: 
   return value;
 }
 
+function resolveThreads(requested: number | undefined): { requested: number; effective: number } {
+  const value = requested ?? 1;
+  const bounded = boundedInteger(value, 1, 32, "threads");
+  const hardware = navigator.hardwareConcurrency || 1;
+  return { requested: bounded, effective: Math.min(bounded, hardware, 32) };
+}
+
 function parseFunction(name: string): { workload: WorkloadName; phase: PhaseName } {
   const match = /^barretenberg::([^:]+)::(witness|prove|verify|e2e)$/.exec(name);
   if (!match) throw new Error(`unsupported Barretenberg benchmark function: ${name}`);
@@ -99,6 +108,7 @@ async function run(spec: BenchSpec): Promise<unknown> {
   const coldStarted = performance.now();
   const iterations = boundedInteger(spec.iterations, 1, 20, "iterations");
   const warmup = boundedInteger(spec.warmup, 0, 10, "warmup");
+  const threads = resolveThreads(spec.threads);
   const { workload, phase } = parseFunction(spec.name);
   const benchmarkStarted = performance.now();
   setProgress(`Loading ${spec.name}`, benchmarkStarted);
@@ -113,7 +123,8 @@ async function run(spec: BenchSpec): Promise<unknown> {
     contentLength(`./assets/${workload}/inputs.json`),
   ]);
   const noir = new Noir(circuit);
-  const api = await Barretenberg.new({ backend: BackendType.Wasm, threads: 1 });
+  const backendType = threads.effective > 1 ? BackendType.WasmWorker : BackendType.Wasm;
+  const api = await Barretenberg.new({ backend: backendType, threads: threads.effective });
   const backend = new UltraHonkBackend(circuit.bytecode, api);
 
   try {
@@ -270,7 +281,9 @@ async function run(spec: BenchSpec): Promise<unknown> {
       phases: [],
       timeline,
       metadata: {
-        backend: "barretenberg_4.2.0-aztecnr-rc.2_wasm_single",
+        backend: threads.effective > 1
+          ? "barretenberg_4.2.0-aztecnr-rc.2_wasm_workers"
+          : "barretenberg_4.2.0-aztecnr-rc.2_wasm_single",
         workload,
         phase,
         timing_mode: spec.timing_mode ?? "warm_reuse",
@@ -281,6 +294,9 @@ async function run(spec: BenchSpec): Promise<unknown> {
         tampered_proof_rejected: tamperedRejected,
         user_agent: navigator.userAgent,
         hardware_concurrency: navigator.hardwareConcurrency,
+        threads_requested: threads.requested,
+        threads_effective: threads.effective,
+        shared_array_buffer: typeof SharedArrayBuffer !== "undefined",
         cross_origin_isolated: self.crossOriginIsolated,
       },
     };

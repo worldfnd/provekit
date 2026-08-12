@@ -1,5 +1,11 @@
 # ProveKit V1 cross-device benchmark campaign
 
+The Mac browser baseline in `input-to-proof-data/input-to-proof-samples.csv` is
+single-threaded. The separate multithreaded Chrome rerun is documented in
+[`MULTITHREADED_WASM.md`](./MULTITHREADED_WASM.md) and writes
+`input-to-proof-data/wasm-multithread-samples.csv`; do not merge the two
+execution policies when comparing results.
+
 This directory defines the ProveKit V1 cross-device campaign. The canonical
 publication dataset is the raw-input-to-proof export: four workloads × three
 proof stacks × three targets × two timing modes, or 72 logical series. Its
@@ -17,7 +23,7 @@ in [`sources.lock.json`](sources.lock.json), and compiler/package versions in
 
 | Stack | iPhone SE 2022 | Motorola E15 | M4 Max Chrome |
 | --- | --- | --- | --- |
-| ProveKit V1 | native C ABI/Mobench | native C ABI/Mobench | pinned V1 `tooling/provekit-wasm`, single-thread |
+| ProveKit V1 | native C ABI/Mobench | native C ABI/Mobench | pinned V1 `tooling/provekit-wasm` (single-thread baseline and threaded rerun) |
 | Noir + Barretenberg | Mopro native | Mopro native, subject to ABI support | `noir_js` + smoke-validated `bb.js` |
 | Circom + Groth16 | Mopro native | Mopro native | `snarkjs@0.7.6` |
 
@@ -67,6 +73,15 @@ The separate Marimo analysis is
 [`analysis/input_to_proof_analysis.py`](analysis/input_to_proof_analysis.py);
 it reads only the canonical input-to-proof CSV and keeps every figure in its
 own cell.
+
+The multithreaded Mac-only rerun is exported separately as
+[`input-to-proof-data/wasm-multithread-samples.csv`](input-to-proof-data/wasm-multithread-samples.csv).
+It has the same 41-column sample schema and 144 rows, but must not be merged
+with the single-thread CSV. ProveKit uses eight Rayon workers, Barretenberg
+uses its 16-worker host-effective pool, and Circom uses 16 SnarkJS workers for
+the smaller profiles. The large Circom WebAuthn key is capped at four workers
+because the 16-worker Chrome renderer did not complete within the host memory
+budget; this is recorded in its raw report and remains a multithreaded result.
 
 The native Circom decision is recorded per row. Mopro is the mobile integration
 layer; the iPhone uses Rapidsnark, while the 32-bit E15 uses the qualified

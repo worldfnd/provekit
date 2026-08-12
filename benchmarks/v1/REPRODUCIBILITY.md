@@ -54,7 +54,7 @@ Locked highlights:
 | Android SDK/NDK | platform `android-34`; NDK `26.1.10909125` |
 | Native Noir | `nargo 1.0.0-beta.19` |
 | Native Barretenberg | `barretenberg-rs 4.2.0-aztecnr-rc.2` |
-| Browser ProveKit | pinned V1 `tooling/provekit-wasm` at `9b2a6f37`, single-thread WASM |
+| Browser ProveKit | pinned V1 `tooling/provekit-wasm` at `9b2a6f37`; eight-worker Rayon WASM for the multithread rerun, with the historical single-thread baseline retained |
 | Browser Circom | `snarkjs@0.7.6` |
 | Rapidsnark witness adapter | `witnesscalc-adapter@0.1.7` |
 | Rapidsnark prover | `rust-rapidsnark@0.1.4` |
@@ -655,3 +655,11 @@ Unsupported and failed cells are findings, not values. Never estimate a timing,
 copy another target's value, or silently omit a failure. Historical payload
 estimates remain disclosed only in the legacy CSV notes; the canonical
 input-to-proof export contains no estimates.
+# Browser execution policies
+
+The published Mac baseline is single-thread WASM. A separate multithreaded
+campaign can be run with the instructions in
+[`MULTITHREADED_WASM.md`](./MULTITHREADED_WASM.md). It requires Chrome
+cross-origin isolation and records whether workers actually initialized. Noir
+and Circom witness generation remains single-threaded in the pinned browser
+libraries; only the proving backend is worker-enabled.

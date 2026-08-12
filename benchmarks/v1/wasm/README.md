@@ -4,13 +4,28 @@ Browser proving is an execution backend, not a mobile target. Native device
 runs continue to use BrowserStack App Automate; real browser runs require
 BrowserStack Automate/WebDriver and a static HTTPS site or BrowserStack Local.
 
-The V1 WASM crate now exposes separate build modes:
+The V1 WASM crate exposes the threaded runtime needed for the Mac campaign:
 
-- default/`parallel`: the existing shared-memory worker build;
-- `--no-default-features`: the single-thread module required by iOS Safari.
+- `parallel` plus `wasm-bindgen-rayon`: the shared-memory worker build;
+- the historical runner policy, which never calls `initThreadPool`, is the
+  single-thread baseline. The generated V1 package is kept pinned to the same
+  V1 commit for both policies.
 
-The first gate is a local macOS browser smoke using the single-thread module.
-Only after that passes should the same immutable static bundle run through
+Select the policy with `MOBENCH_WASM_THREADS=single` (default), `auto`, or an
+explicit count from 2 through 32. `auto` records a single-thread fallback with
+the reason when the page is not cross-origin isolated; an explicit count fails
+instead of silently producing a scalar measurement. The generated package
+manifest records the build variant and requested policy, while each result
+records the actual pool mode and count.
+
+`bun run build` keeps the threaded generated package in
+`v1-wasm-pkg-threaded/` (and mirrors it into the ignored Vite import alias for
+that build). Direct invocations of `build-provekit-v1-wasm.sh` can select an
+explicit output with `PROVEKIT_V1_WASM_PACKAGE_DIR`.
+
+The first gate is a local macOS browser smoke. The multithread campaign must
+report `crossOriginIsolated`, `SharedArrayBuffer`, and an initialized Rayon
+pool before its timings are accepted. Only after that passes should the same immutable static bundle run through
 BrowserStack Local on mobile Safari and Chrome.
 
 The publication workflow also uses Mobench 0.1.48's `build --target web` and
@@ -26,13 +41,17 @@ Build and run that gate with:
 ```bash
 cd benchmarks/v1/wasm
 bun install --frozen-lockfile
-bun run build
-bun run smoke
+MOBENCH_WASM_THREADS=auto bun run build
+MOBENCH_WASM_THREADS=auto bun run smoke
 ```
 
+Omit `MOBENCH_WASM_THREADS=auto` for the historical single-thread build and
+smoke.
+
 The build uses a separate Cargo target directory and overrides the repository's
-threaded WASM linker flags. Merely disabling the `parallel` feature does not
-remove the shared-memory flags in the repository-wide `.cargo/config.toml`.
+threaded WASM linker flags. The pinned V1 `provekit-wasm` crate always exports
+the Rayon hooks, so the historical single-thread lane is defined by not
+initializing the pool rather than by replacing the V1 proving artifact.
 
 The browser runner must report:
 

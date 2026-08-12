@@ -24,6 +24,10 @@ const executablePath =
 const warmup = Number.parseInt(process.env.MOBENCH_WARMUP ?? "1", 10);
 const iterations = Number.parseInt(process.env.MOBENCH_ITERATIONS ?? "5", 10);
 const timingMode = process.env.MOBENCH_TIMING_MODE === "cold_local" ? "cold_local" : "warm_reuse";
+const requestedThreads = Number.parseInt(process.env.MOBENCH_BB_THREADS ?? "1", 10);
+if (!Number.isInteger(requestedThreads) || requestedThreads < 1 || requestedThreads > 32) {
+  throw new Error("MOBENCH_BB_THREADS must be an integer from 1 to 32");
+}
 const server = startServer();
 const profile = await mkdtemp(join(tmpdir(), "provekit-barretenberg-chrome-"));
 const context = await chromium.launchPersistentContext(profile, {
@@ -62,14 +66,21 @@ try {
   });
   sampler = startRendererRssSampler(profile);
   const report = await page.evaluate(
-    async ({ name, warmupCount, iterationCount, timingMode }) =>
+    async ({ name, warmupCount, iterationCount, timingMode, threads }) =>
       window.mobench.run({
         name: `barretenberg::${name}::e2e`,
         warmup: warmupCount,
         iterations: iterationCount,
         timing_mode: timingMode,
+        threads,
       }),
-    { name: workload, warmupCount: warmup, iterationCount: iterations, timingMode },
+    {
+      name: workload,
+      warmupCount: warmup,
+      iterationCount: iterations,
+      timingMode,
+      threads: requestedThreads,
+    },
   );
   const processMemory = await sampler.stop();
   sampler = undefined;
@@ -107,7 +118,13 @@ try {
 declare global {
   interface Window {
     mobench: {
-      run(spec: { name: string; warmup: number; iterations: number; timing_mode?: "cold_local" | "warm_reuse" }): Promise<unknown>;
+      run(spec: {
+        name: string;
+        warmup: number;
+        iterations: number;
+        timing_mode?: "cold_local" | "warm_reuse";
+        threads?: number;
+      }): Promise<unknown>;
     };
   }
 }

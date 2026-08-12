@@ -44,6 +44,19 @@ cp "${web_root}/index.html" "${dist}/index.html"
     --target browser \
     --format esm \
     --splitting
+  # bb.js's worker factories use import.meta.url to resolve these two files
+  # relative to the bundled vendor index. Bundle them explicitly; without
+  # these entry points WasmWorker initialization fails at runtime with a 404.
+  bun build node_modules/@aztec/bb.js/dest/browser/barretenberg_wasm/barretenberg_wasm_main/factory/browser/main.worker.js \
+    --outfile web/dist/vendor/bb/main.worker.js \
+    --target browser \
+    --format esm \
+    --minify
+  bun build node_modules/@aztec/bb.js/dest/browser/barretenberg_wasm/barretenberg_wasm_thread/factory/browser/thread.worker.js \
+    --outfile web/dist/vendor/bb/thread.worker.js \
+    --target browser \
+    --format esm \
+    --minify
 )
 cp "${barretenberg_root}/node_modules/@noir-lang/acvm_js/web/acvm_js_bg.wasm" \
   "${dist}/acvm_js_bg.wasm"

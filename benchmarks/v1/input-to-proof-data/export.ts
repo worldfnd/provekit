@@ -19,11 +19,18 @@ type RawSeries = {
 };
 
 const repoRoot = resolve(import.meta.dir, "../../..");
+const executionPolicy = process.env.INPUT_TO_PROOF_EXECUTION_POLICY === "multithread"
+  ? "multithread"
+  : "singlethread";
 const rawRoot = resolve(
   process.env.INPUT_TO_PROOF_RAW_ROOT ??
-    resolve(repoRoot, "target/v1-benchmarks/input-to-proof/mac-chrome"),
+    resolve(repoRoot, executionPolicy === "multithread"
+      ? "target/v1-benchmarks/input-to-proof/mac-chrome-multithread"
+      : "target/v1-benchmarks/input-to-proof/mac-chrome"),
 );
 const output = resolve(import.meta.dir, "input-to-proof-samples.csv");
+const outputPath = resolve(process.env.INPUT_TO_PROOF_OUTPUT_CSV ?? output);
+const campaignId = process.env.INPUT_TO_PROOF_CAMPAIGN_ID ?? CAMPAIGN_ID;
 const iphoneRawRoot = resolve(
   process.env.INPUT_TO_PROOF_IPHONE_RAW_ROOT ??
     resolve(repoRoot, "target/v1-benchmarks/input-to-proof/iphone/publication"),
@@ -155,15 +162,43 @@ function reportSamples(profile: Profile, stack: Stack, report: any) {
 }
 
 function identity(stack: Stack) {
-  if (stack === "provekit_v1") return ["noir", "provekit-v1-whir-wasm-single-thread", "@noir-lang/noir_js@1.0.0-beta.11"];
-  if (stack === "noir_barretenberg") return ["noir", "barretenberg-ultrahonk-wasm-single-thread", "@noir-lang/noir_js@1.0.0-beta.19"];
-  return ["circom", "snarkjs-groth16-browser-wasm-single-thread", "circom-witness-wasm"];
+  const suffix = executionPolicy === "multithread" ? "workers" : "single-thread";
+  if (stack === "provekit_v1") return ["noir", `provekit-v1-whir-wasm-${suffix}`, "@noir-lang/noir_js@1.0.0-beta.11"];
+  if (stack === "noir_barretenberg") return ["noir", `barretenberg-ultrahonk-wasm-${suffix}`, "@noir-lang/noir_js@1.0.0-beta.19"];
+  return ["circom", `snarkjs-groth16-browser-wasm-${suffix}`, "circom-witness-wasm"];
 }
 
 function packages(stack: Stack) {
-  if (stack === "provekit_v1") return JSON.stringify({ provekit: "9b2a6f37c67691eab4b0cec6c35e35c520e93285", noir_js: "1.0.0-beta.11" });
-  if (stack === "noir_barretenberg") return JSON.stringify({ bb_js: "4.2.0-aztecnr-rc.2", noir_js: "1.0.0-beta.19" });
-  return JSON.stringify({ circom: "2.2.2", snarkjs: "0.7.6" });
+  const mode = executionPolicy === "multithread" ? "workers" : "single-thread";
+  if (stack === "provekit_v1") return JSON.stringify({ provekit: "9b2a6f37c67691eab4b0cec6c35e35c520e93285", noir_js: "1.0.0-beta.11", execution_policy: mode });
+  if (stack === "noir_barretenberg") return JSON.stringify({ bb_js: "4.2.0-aztecnr-rc.2", noir_js: "1.0.0-beta.19", execution_policy: mode });
+  return JSON.stringify({ circom: "2.2.2", snarkjs: "0.7.6", execution_policy: mode });
+}
+
+function browserExecution(report: any) {
+  const metadata = report.metadata ?? {};
+  const environment = report.environment ?? {};
+  const requested = report.prover_threads_requested
+    ?? metadata.threads_requested
+    ?? environment.wasm_thread_request
+    ?? null;
+  const effective = report.prover_threads_effective
+    ?? metadata.threads_effective
+    ?? environment.wasm_thread_count
+    ?? null;
+  const witness = report.witness_backend
+    ?? environment.witness_backend
+    ?? "single";
+  const prover = report.backend
+    ?? metadata.backend
+    ?? "unknown";
+  return {
+    requested: requested === "auto" ? "auto" : requested,
+    effective,
+    witness,
+    prover,
+    note: `Browser execution policy: ${executionPolicy}; requested threads=${requested ?? "unknown"}, effective threads=${effective ?? "unknown"}; witness generation remains ${witness}, prover backend=${prover}.`,
+  };
 }
 
 const iosFunctions: Record<string, { profile: Profile; stack: Stack; component?: "registration" | "disclosure" }> = {
@@ -373,8 +408,9 @@ export async function buildMacRows() {
     const path = resolve(rawRoot, `${id}.json`);
     if (!(await Bun.file(path).exists())) throw new Error(`missing raw series ${path}`);
     const series = await Bun.file(path).json() as RawSeries;
-    if (series.campaign_id !== CAMPAIGN_ID || series.series_id !== id) throw new Error(`${id}: identity mismatch`);
+    if (series.campaign_id !== campaignId || series.series_id !== id) throw new Error(`${id}: identity mismatch`);
     const evidenceHash = await sha256(path);
+    const execution = browserExecution(series.attempts[0]?.report ?? {});
     const extracted = series.attempts.flatMap((attempt) =>
       reportSamples(profile, stack, attempt.report).map((sample: any) => ({ attempt, sample })),
     );
@@ -385,7 +421,7 @@ export async function buildMacRows() {
       const warmup = mode === "cold_local" ? attempt.warmup === true : sample.warmup === true;
       const peakKib = attempt.report.process_memory?.peak_rss_kib;
       const row: CsvRow = {
-        campaign_id: CAMPAIGN_ID,
+        campaign_id: campaignId,
         attempt_id: `${id}-${index}`,
         recorded_at_utc: series.created_at,
         hardware: "macbook_m4",
@@ -415,12 +451,12 @@ export async function buildMacRows() {
         artifact_size_bytes: sample.artifact,
         bundle_size_bytes: sample.bundle,
         constraint_count: sample.constraints,
-        artifact_version: "input-to-proof-v1",
+        artifact_version: `input-to-proof-v1-${executionPolicy}`,
         source_commit: stack === "provekit_v1" ? "9b2a6f37c67691eab4b0cec6c35e35c520e93285" : circuit.commit,
-        package_versions: packages(stack),
+        package_versions: `${packages(stack)};execution_policy=${executionPolicy};threads_requested=${execution.requested};threads_effective=${execution.effective};witness_backend=${execution.witness};prover_backend=${execution.prover}`,
         artifact_hashes: JSON.stringify({ raw_evidence_sha256: evidenceHash }),
         session_id: "",
-        non_equivalence_note: circuit.note,
+        non_equivalence_note: `${circuit.note} ${execution.note}`,
         failure_code: "",
         failure_detail: "",
         evidence_path: path,
@@ -483,7 +519,7 @@ export async function buildIphoneRows() {
       const device = first.build.devices?.[0];
       const recordedAt = new Date(first.session.start_time ?? first.build.start_time).toISOString();
       rows.push({
-        campaign_id: CAMPAIGN_ID,
+        campaign_id: campaignId,
         attempt_id: `${id}-${index}`,
         recorded_at_utc: recordedAt,
         hardware: "iphone_se_2022",
@@ -513,7 +549,7 @@ export async function buildIphoneRows() {
         artifact_size_bytes: item.sample.artifact,
         bundle_size_bytes: item.sample.bundle,
         constraint_count: null,
-        artifact_version: "input-to-proof-v1",
+        artifact_version: `input-to-proof-v1-${executionPolicy}`,
         source_commit: stack === "provekit_v1" ? "9b2a6f37c67691eab4b0cec6c35e35c520e93285" : circuit.commit,
         package_versions: nativePackages(profile, stack),
         artifact_hashes: JSON.stringify({ raw_evidence_sha256: evidenceHashes }),
@@ -665,13 +701,13 @@ export async function buildE15Rows() {
       if (await sha256(reportPath) !== gap.evidence.report_sha256 || await sha256(logcatPath) !== gap.evidence.logcat_sha256) throw new Error(`${id}: gap evidence hash mismatch`);
       const failedEnvelope = await Bun.file(reportPath).json();
       rows.push({
-        campaign_id: CAMPAIGN_ID, attempt_id: `${id}-gap`, recorded_at_utc: failedEnvelope.generated_at_utc, hardware: "motorola_e15",
+        campaign_id: campaignId, attempt_id: `${id}-gap`, recorded_at_utc: failedEnvelope.generated_at_utc, hardware: "motorola_e15",
         device_model: gap.device.model, os_version: gap.device.os, abi: gap.device.abi, runtime: gap.runtime, browser: "",
         circuit: gap.circuit, circuit_variant: gap.circuit_variant, circuit_commit: gap.circuit_commit, prover: gap.stack,
         frontend: gap.frontend, prover_backend: gap.prover_backend, witness_backend: gap.witness_backend, sample_kind: "gap",
         sample_index: null, status: gap.status, initialization_time_ms: null, witness_time_ms: null, prover_time_ms: null,
         verify_time_ms: null, total_time_ms: null, peak_memory_mib: null, proof_size_bytes: null, circuit_size_bytes: null,
-        artifact_size_bytes: null, bundle_size_bytes: null, constraint_count: null, artifact_version: "input-to-proof-v1",
+        artifact_size_bytes: null, bundle_size_bytes: null, constraint_count: null, artifact_version: `input-to-proof-v1-${executionPolicy}`,
         source_commit: gap.circuit_commit, package_versions: nativePackages(profile, stack),
         artifact_hashes: JSON.stringify({ report_sha256: gap.evidence.report_sha256, logcat_sha256: gap.evidence.logcat_sha256 }),
         session_id: "", non_equivalence_note: gap.note, failure_code: gap.failure_code, failure_detail: gap.failure_detail,
@@ -700,7 +736,7 @@ export async function buildE15Rows() {
       const first = item.evidence[0];
       const hashes = await Promise.all(item.evidence.map(async (value) => ({ raw_evidence_sha256: await sha256(value.path) })));
       rows.push({
-        campaign_id: CAMPAIGN_ID, attempt_id: `${id}-${index}`, recorded_at_utc: first.envelope.generated_at_utc,
+        campaign_id: campaignId, attempt_id: `${id}-${index}`, recorded_at_utc: first.envelope.generated_at_utc,
         hardware: "motorola_e15", device_model: first.envelope.device.model, os_version: first.envelope.device.os,
         abi: first.envelope.device.abi, runtime: "android_native", browser: "", circuit: circuit.circuit,
         circuit_variant: circuit.variant, circuit_commit: circuit.commit, prover: stack, frontend, prover_backend: proverBackend,
@@ -708,7 +744,7 @@ export async function buildE15Rows() {
         status: "ok", initialization_time_ms: null, witness_time_ms: item.sample.witness, prover_time_ms: item.sample.prove,
         verify_time_ms: null, total_time_ms: item.sample.outer, peak_memory_mib: item.sample.peak,
         proof_size_bytes: item.sample.proof, circuit_size_bytes: item.sample.payload, artifact_size_bytes: item.sample.artifact,
-        bundle_size_bytes: item.sample.bundle, constraint_count: null, artifact_version: "input-to-proof-v1",
+        bundle_size_bytes: item.sample.bundle, constraint_count: null, artifact_version: `input-to-proof-v1-${executionPolicy}`,
         source_commit: stack === "provekit_v1" ? "9b2a6f37c67691eab4b0cec6c35e35c520e93285" : circuit.commit,
         package_versions: nativePackages(profile, stack), artifact_hashes: JSON.stringify(hashes), session_id: "",
         non_equivalence_note: `${circuit.note}${stack === "provekit_v1" ? " Native ProveKit exposes witness generation and proving as one integrated timed operation, so witness_time_ms is intentionally blank." : ""}`,
@@ -729,6 +765,6 @@ if (import.meta.main) {
   ];
   validateRows(rows, expectedSeries(targets));
   const csv = [CSV_COLUMNS.join(","), ...rows.map((row) => CSV_COLUMNS.map((column) => csvValue(row[column])).join(","))].join("\n") + "\n";
-  await Bun.write(output, csv);
-  console.log(`${output}: ${rows.length} rows, ${expectedSeries(targets).length} series validated`);
+  await Bun.write(outputPath, csv);
+  console.log(`${outputPath}: ${rows.length} rows, ${expectedSeries(targets).length} series validated`);
 }
