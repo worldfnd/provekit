@@ -3,8 +3,13 @@
 //
 
 // This is an
-global COLS = 18;
-global ROWS = 14;
+global COLS: u8 = 18;
+global ROWS: u8 = 14;
+
+struct U128 {
+    lo: u64,
+    hi: u64,
+}
 
 fn sq(x: Field) -> Field {
     x * x
@@ -47,9 +52,9 @@ fn hash(val: Field, salt: Field) -> Field {
 }
 
 fn expand_position(position: Field) -> (u8, u8) {
-    let pos_bytes = position.to_be_bytes(2);
-    let mut px = pos_bytes[0];
-    let mut py = pos_bytes[1];
+    let pos: u16 = position as u16;
+    let px = (pos >> 8) as u8;
+    let py = (pos & 0xff) as u8;
     (px, py)
 }
 
@@ -109,7 +114,7 @@ fn map_bit(map0: U128, map1: U128, x: u8, mut y: u8) -> u8 {
     // bits to drop, everything after the reqd bit
     let mut drop_bits = bit;
     // print(" ] ");
-    let divide_drop_bits: u64 = 1 as u64 << (drop_bits as u8);
+    let divide_drop_bits: u64 = 1 as u64 << (drop_bits as u64);
     // divide by power of two to drop lower bits
     let remainder_map = map_part / divide_drop_bits as u64;
     // drop higher bits
@@ -169,7 +174,7 @@ mod test {
      111001110011100000
      110001100001100000
     */
-    global MAP1 = U128::from_integer(8572555389858747807877673192308021344);
+    global MAP1: crate::U128 = crate::U128 { lo: 0xf3ddfe7e73831860, hi: 0x0673039ce0e01e33 };
 
     /*
      000001100001100011
@@ -180,7 +185,7 @@ mod test {
      000111001110011100
      000011001110011000
     */
-    global MAP0 = U128::from_integer(2025978491129711385918832679433810840);
+    global MAP0: crate::U128 = crate::U128 { lo: 0xf31e01c1ce703398, hi: 0x018630739f9feef3 };
 
     #[test]
     fn test_bush() {
@@ -210,7 +215,7 @@ mod test {
                 // let i = 17 - i;
                 // print(i);
                 // print(" : ");
-                let bit = map_bit(MAP0, MAP1, i, y);
+                let bit = map_bit(MAP0, MAP1, i as u8, y as u8);
                 // print(bit);
                 if bit == row[i] {
                     // print(" == ");

@@ -69,7 +69,7 @@ pub fn generate_window_table(base: MontgomeryPoint) -> [MontgomeryPoint; 8] {
     table
 }
 
-pub fn select_from_window(bits: [u1; 3], table: [MontgomeryPoint; 8]) -> MontgomeryPoint {
+pub fn select_from_window(bits: [bool; 3], table: [MontgomeryPoint; 8]) -> MontgomeryPoint {
     let b0 = bits[0] as Field;
     let b1 = bits[1] as Field;
     let b2 = bits[2] as Field;
@@ -101,7 +101,7 @@ fn test_window_selection() {
     let g = crate::BabyJubJubPoint::generator();
     let table = generate_window_table(g.to_montgomery());
 
-    let bits: [u1; 3] = [1, 0, 1];
+    let bits: [bool; 3] = [true, false, true];
     let selected = select_from_window(bits, table);
 
     assert(selected.u == table[5].u, "Window selection u mismatch for bits [1,0,1] -> 6B"); // 6B is at index 5
@@ -109,7 +109,7 @@ fn test_window_selection() {
 
     // Test window = 0 (bits = [0, 0, 0])
     // Window value 0 should return table[0] = 1B (compensation: 0 -> 1B)
-    let zero_bits: [u1; 3] = [0, 0, 0];
+    let zero_bits: [bool; 3] = [false, false, false];
     let selected_zero = select_from_window(zero_bits, table);
 
     assert(selected_zero.u == table[0].u, "Window selection u mismatch for bits [0,0,0] -> 1B"); // 1B is at index 0

@@ -1,6 +1,6 @@
 use super::{constants::DS_DLOG, types::PublicKey};
 use babyjubjub::BabyJubJubPoint;
-use poseidon2::bn254::perm;
+use poseidon2::bn254::permutation as perm;
 
 pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: PublicKey) {
     BabyJubJubPoint::validate_babyjubjub_field(s);
@@ -53,7 +53,7 @@ pub fn verify_dlog_equality(e: Field, s: Field, a: PublicKey, b: PublicKey, c: P
         0,
     ];
 
-    let hash_state = perm::x5_16(hash_input);
+    let hash_state = perm::t16(hash_input);
     let challenge = hash_state[1];
 
     // Verify that the recomputed challenge matches e

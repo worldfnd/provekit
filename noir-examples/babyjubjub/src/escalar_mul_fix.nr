@@ -5,7 +5,7 @@
 use super::BabyJubJubPoint;
 use super::montgomery::MontgomeryPoint;
 use super::window_table::{generate_window_table, generator_window_table, select_from_window};
-fn segment_mul_fix_generator<let N: u32>(bits: [u1; N]) -> (BabyJubJubPoint, MontgomeryPoint) {
+fn segment_mul_fix_generator<let N: u32>(bits: [bool; N]) -> (BabyJubJubPoint, MontgomeryPoint) {
     let generator_table = generator_window_table();
 
     // Calculate number of windows (each window is 3 bits)
@@ -28,11 +28,11 @@ fn segment_mul_fix_generator<let N: u32>(bits: [u1; N]) -> (BabyJubJubPoint, Mon
             };
 
             // Extract 3 bits for this window
-            let bit0 = if (3 * i) < N { bits[3 * i] } else { 0 };
-            let bit1 = if (3 * i + 1) < N { bits[3 * i + 1] } else { 0 };
-            let bit2 = if (3 * i + 2) < N { bits[3 * i + 2] } else { 0 };
+            let bit0 = if (3 * i) < N { bits[3 * i] } else { false };
+            let bit1 = if (3 * i + 1) < N { bits[3 * i + 1] } else { false };
+            let bit2 = if (3 * i + 2) < N { bits[3 * i + 2] } else { false };
 
-            let window_bits: [u1; 3] = [bit0, bit1, bit2];
+            let window_bits: [bool; 3] = [bit0, bit1, bit2];
             let selected = select_from_window(window_bits, table);
 
             window_outputs[i] = selected;
@@ -68,7 +68,7 @@ fn segment_mul_fix_generator<let N: u32>(bits: [u1; N]) -> (BabyJubJubPoint, Mon
 }
 
 pub fn generator_mul_fix(scalar: Field) -> BabyJubJubPoint {
-    let bits: [u1; 251] = scalar.to_le_bits();
+    let bits: [bool; 251] = scalar.to_le_bits();
     let (result, _) = segment_mul_fix_generator(bits);
     result
 }
@@ -76,7 +76,7 @@ pub fn generator_mul_fix(scalar: Field) -> BabyJubJubPoint {
 #[test]
 fn test_segment_mul_fix_small() {
     let g = BabyJubJubPoint::generator();
-    let bits: [u1; 3] = [1, 0, 1];
+    let bits: [bool; 3] = [true, false, true];
 
     let (result, _) = segment_mul_fix_generator(bits);
     let expected = g.scalar_mul(5);
@@ -88,7 +88,7 @@ fn test_segment_mul_fix_small() {
 #[test]
 fn test_segment_mul_fix_medium() {
     let g = BabyJubJubPoint::generator();
-    let bits: [u1; 9] = [1, 0, 1, 1, 0, 0, 0, 1, 1]; // 397 in LE
+    let bits: [bool; 9] = [true, false, true, true, false, false, false, true, true]; // 397 in LE
 
     let (result, _) = segment_mul_fix_generator(bits);
     let expected = g.scalar_mul(397);
@@ -164,7 +164,7 @@ fn test_optimized_generator_mul_fix() {
 
 #[test]
 fn test_segment_mul_fix_generator() {
-    let bits: [u1; 9] = [1, 0, 1, 1, 0, 0, 0, 1, 1]; // 397 in LE
+    let bits: [bool; 9] = [true, false, true, true, false, false, false, true, true]; // 397 in LE
 
     let (result_opt, _) = segment_mul_fix_generator(bits);
     let (result_reg, _) = segment_mul_fix_generator(bits);
