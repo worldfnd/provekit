@@ -9,5 +9,5 @@ input-to-proof export:
 - `export-benchmark-csv.ts` and `schema.ts` provide the shared row validator.
 
 The old proof-only, semantic-parity, iOS-recovery, and Mac-browser normalizers
-are under [`../legacy/data/`](../legacy/data/). They are retained for audit
+are under [`../../legacy/data/`](../../legacy/data/). They are retained for audit
 history and are not inputs to `input-to-proof-samples.csv`.

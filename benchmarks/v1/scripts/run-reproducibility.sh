@@ -284,9 +284,9 @@ run_e15() {
   ((dry_run)) || source "${script_dir}/android-env.sh"
   capture_e15_identity
   local measure_script="${V1_E15_MEASURE_SCRIPT:-${script_dir}/run-e15-provekit.ts}"
-  local normalizer="${benchmark_root}/data/normalize-e15-provekit.ts"
-  local native_normalizer="${benchmark_root}/data/normalize-e15-native-backend.ts"
-  local gap_generator="${benchmark_root}/data/generate-e15-native-gaps.ts"
+  local normalizer="${benchmark_root}/input-to-proof-data/native/normalize-e15-provekit.ts"
+  local native_normalizer="${benchmark_root}/input-to-proof-data/native/normalize-e15-native-backend.ts"
+  local gap_generator="${benchmark_root}/input-to-proof-data/native/generate-e15-native-gaps.ts"
   local output="${campaign_root}/e15"
   require_file "${measure_script}"
   require_file "${normalizer}"

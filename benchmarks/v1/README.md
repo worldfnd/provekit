@@ -98,4 +98,4 @@ mobile crates, iOS scaffold, and iOS patches are grouped under
 [`rapidsnark/`](rapidsnark/); the shared browser RSS sampler lives with the
 reproduction scripts. The native Mopro adapter sources remain under
 [`mopro/`](mopro/), while E15 normalization helpers remain separate from the
-committed publication CSV under [`data/`](data/).
+committed publication CSV under [`input-to-proof-data/native/`](input-to-proof-data/native/).

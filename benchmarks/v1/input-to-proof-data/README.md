@@ -39,6 +39,6 @@ Mac portion with the fixed-16 campaign while retaining the mobile rows. Its
 intermediate fixed-16 source CSV is preserved under `../legacy/wasm/`; it is
 not a second publication dataset.
 
-The native E15 normalizers and gap generator are in `../data/`. The old
+The native E15 normalizers and gap generator are in [`native/`](native/). The old
 proof-only, semantic-parity, TACEO, and automatic-thread exporters are under
 `../legacy/` and must not be used to update this file.
