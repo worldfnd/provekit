@@ -114,10 +114,14 @@ async function main() {
   await mkdir(outputRoot, { recursive: true });
   const identity = await deviceIdentity();
   const apkMeta = await hash(apk);
-  const libraryMeta = await Promise.all([
-    hash(resolve(repoRoot, "benchmarks/v1/circom/taceo-mobile/target/armv7-linux-androideabi/release/libzk_mobile_bench.so")),
-    hash(resolve(repoRoot, "benchmarks/v1/circom/taceo-mobile/target/aarch64-linux-android/release/libzk_mobile_bench.so")),
-  ]);
+  const libraryPaths = [
+    resolve(repoRoot, "benchmarks/v1/circom/taceo-mobile/target/armv7-linux-androideabi/release/libzk_mobile_bench.so"),
+    resolve(repoRoot, "benchmarks/v1/circom/taceo-mobile/target/aarch64-linux-android/release/libzk_mobile_bench.so"),
+  ];
+  const libraryMeta = [];
+  for (const path of libraryPaths) {
+    if (await Bun.file(path).exists()) libraryMeta.push(await hash(path));
+  }
   await Bun.write(resolve(outputRoot, "device.json"), `${JSON.stringify({ captured_at_utc: new Date().toISOString(), serial, ...identity }, null, 2)}\n`);
 
   for (const [circuit, mode, functionName, warmup] of functions.filter(([circuit, mode]) =>
