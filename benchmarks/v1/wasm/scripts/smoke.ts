@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium } from "playwright-core";
-import { startRendererRssSampler } from "../../shared/browser-process-memory";
+import { startRendererRssSampler } from "../../scripts/browser-process-memory";
 import { startServer } from "./server";
 
 const server = startServer();

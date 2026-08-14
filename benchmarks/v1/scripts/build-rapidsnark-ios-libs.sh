@@ -37,7 +37,7 @@ expected_revision="$(
   exit 1
 }
 
-single_thread_patch="${benchmark_root}/rapidsnark-ios-single-thread.patch"
+single_thread_patch="${benchmark_root}/rapidsnark/rapidsnark-ios-single-thread.patch"
 [[ -f "${single_thread_patch}" ]] || {
   echo "error: missing iOS single-thread patch ${single_thread_patch}" >&2
   exit 1
@@ -50,7 +50,7 @@ elif ! git -C "${source}/depends/ffiasm" apply --reverse --check \
   exit 1
 fi
 
-low_memory_patch="${benchmark_root}/rapidsnark-ios-low-memory.patch"
+low_memory_patch="${benchmark_root}/rapidsnark/rapidsnark-ios-low-memory.patch"
 [[ -f "${low_memory_patch}" ]] || {
   echo "error: missing iOS low-memory patch ${low_memory_patch}" >&2
   exit 1

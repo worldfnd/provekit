@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { chromium } from "../../../barretenberg/node_modules/playwright-core/index.mjs";
-import { startRendererRssSampler } from "../../../shared/browser-process-memory";
+import { startRendererRssSampler } from "../../../scripts/browser-process-memory";
 
 const root = resolve(import.meta.dir, "dist");
 const mimeTypes: Record<string, string> = {

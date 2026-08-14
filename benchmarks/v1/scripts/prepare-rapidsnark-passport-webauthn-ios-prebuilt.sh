@@ -5,7 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 benchmark_root="$(cd "${script_dir}/.." && pwd)"
 repo_root="$(cd "${benchmark_root}/../.." && pwd)"
-scaffold_crate="${benchmark_root}/mobench-ios-scaffold"
+scaffold_crate="${benchmark_root}/rapidsnark/mobench-ios-scaffold"
 prebuilt_root="${V1_RAPIDSNARK_CORE_IOS_PREBUILT_ROOT:-${repo_root}/target/v1-benchmarks/rapidsnark-core-ios-prebuilt}"
 build_parent="${repo_root}/target/v1-benchmarks"
 passport_assets="${benchmark_root}/circom/web/dist/assets/passport"
@@ -58,8 +58,8 @@ compute_content_sha256() {
     "${scaffold_crate}/Cargo.toml" \
     "${scaffold_crate}/src/main.rs" \
     "${BASH_SOURCE[0]}" \
-    "${benchmark_root}/rapidsnark-ios-single-thread.patch" \
-    "${benchmark_root}/rapidsnark-ios-low-memory.patch" \
+    "${benchmark_root}/rapidsnark/rapidsnark-ios-single-thread.patch" \
+    "${benchmark_root}/rapidsnark/rapidsnark-ios-low-memory.patch" \
     "${script_dir}/build-rapidsnark-ios-libs.sh" \
     "${script_dir}/patch-ios-remote-proving-key.ts" \
     "${script_dir}/patch-ios-runner-json.ts" \

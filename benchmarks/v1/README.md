@@ -92,3 +92,10 @@ canonical data/export path, and the scripts required to reproduce it. Superseded
 CSVs, proof-only and semantic-parity runs, TACEO candidates, old notebooks,
 diagnostic adapters, command transcripts, and automatic-thread exports are
 preserved under [`legacy/`](legacy/README.md).
+
+Backend-specific sources live under their backend directory. Rapidsnark's
+mobile crates, iOS scaffold, and iOS patches are grouped under
+[`rapidsnark/`](rapidsnark/); the shared browser RSS sampler lives with the
+reproduction scripts. The native Mopro adapter sources remain under
+[`mopro/`](mopro/), while E15 normalization helpers remain separate from the
+committed publication CSV under [`data/`](data/).
