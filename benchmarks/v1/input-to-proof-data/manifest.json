@@ -24,7 +24,7 @@
   },
   "final_export": {
     "path": "benchmarks/v1/input-to-proof-data/input-to-proof-samples.csv",
-    "sha256": "f4016f197ccf48813c1739dc0c76f437a45f97d0afa63a0e02601a39e05e13d3",
+    "sha256": "388ec30b6331792b741e1f4248929a1cabd2174f60c15b5663297dc170fd731e",
     "logical_series": 72,
     "successful_series": 69,
     "gap_series": 3,
