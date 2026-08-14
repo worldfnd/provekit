@@ -55,7 +55,9 @@
     "beta11_fixture_harness_commit": "13044531f0f38e02ed19fcbd9b26202b8ba5a962",
     "noir_version": "1.0.0-beta.11",
     "wasm_crate": "tooling/provekit-wasm",
-    "wasm_features": "no-default-features (single-thread)",
+    "wasm_features": "no-default-features with rayon WASM threading enabled; canonical campaign requests 16 workers",
+    "canonical_wasm_threads": 16,
+    "canonical_snarkjs_threads": 16,
     "wasm_bindgen_cli_version": "0.2.100",
     "browser_frontend": "@noir-lang/noir_js@1.0.0-beta.11 plus @noir-lang/acvm_js@1.0.0-beta.11",
     "browser_sdk_package": {
@@ -121,7 +123,7 @@
     "bb_js_package": "@aztec/bb.js",
     "bb_js_version": "4.2.0-aztecnr-rc.2",
     "bb_js_integrity": "sha512-ksFWHrm8QYAXP059paItEKCM/UhpHg5Dwl/eSp2BI6EAtD9+JlonkOwJ+94TYai2y5Gz0qnrgd65dsvDwJelVQ==",
-    "status": "candidate-requires-three-workload-smoke-before-freeze"
+    "status": "smoke-validated for the canonical Mac fixed-16 campaign"
   },
   "browser_circom": {
     "package": "snarkjs",

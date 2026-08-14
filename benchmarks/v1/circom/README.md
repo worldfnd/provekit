@@ -1,84 +1,27 @@
-# Circom native benchmark lanes
+# Circom + Groth16 lane
 
-There are two distinct native Groth16 implementations:
+The canonical Circom backend is Groth16 with SnarkJS in Chrome and the pinned
+Mopro-native Rapidsnark adapter on supported mobile targets. The preferred
+native witness path is `witnesscalc-adapter@0.1.7`; the exact circuit, witness,
+zkey, and backend are recorded per CSV row. The iPhone OPRF lane uses the
+qualified Wasmi witness runtime because its native AOT witness artifact was
+layout-unsafe on iOS.
 
-- Rapidsnark consumes a Circom witness (`.wtns`) and the original `.zkey`.
-- Arkworks uses `circom-witness-rs` for a mobile-safe native witness graph and
-  Arkworks Groth16 proving material.
+The Motorola E15 is a confirmed 32-bit `armeabi-v7a` userspace. Its rows retain
+the target-specific backend evidence. The Circom WebAuthn cold series remains
+an explicit out-of-memory gap because the device cannot map the pinned zkey
+and WTNS; no other target's value is substituted.
 
-`circom-compat` is pinned as the desktop preparation/reference implementation.
-It must not be pulled into the iOS runtime unchanged: its witness path includes
-Wasmer. Mobile uses the graph interpreter from `circom-witness-rs` instead.
-
-## First runnable workload: World ID OPRF
-
-The pinned World ID Protocol source already contains:
-
-- deterministic query/nullifier fixtures;
-- serialized witness graphs;
-- Arkworks proving keys; and
-- a Mobench crate at `crates/zk-mobile-bench`.
-
-Verify the checked-in source artifacts before building:
+Verify frozen Circom artifacts and run the local browser smoke:
 
 ```bash
-benchmarks/v1/scripts/verify-circom-artifacts.sh
+bash benchmarks/v1/scripts/verify-circom-artifacts.sh
+cd benchmarks/v1/circom/web
+bun install --frozen-lockfile
+bun run build
+bun run smoke
 ```
 
-Compile the pinned mobile crate and generate one real Arkworks Groth16 query
-proof with:
-
-```bash
-benchmarks/v1/scripts/smoke-arkworks-oprf.sh
-```
-
-The first Arkworks mobile run should reuse the source crate's query functions:
-
-- `bench_query_witness_generation_only`;
-- `bench_query_proving_only`;
-- `bench_query_cached_proof_generation`; and
-- the matching nullifier functions.
-
-These are World ID application circuits. They are not semantically equivalent
-to the smaller `oprf-nr/oprf_example` Noir circuit and must be reported as a
-separate workload.
-
-## Passport
-
-Self's passport flow is a two-proof product flow:
-
-1. a signature-specific registration circuit; and
-2. `vc_and_disclose`, which applies disclosure and age predicates.
-
-That is not equivalent to ProveKit's monolithic `complete_age_check`. Report
-both Self stages separately until a matching Circom statement exists. Never
-present either stage alone as a direct passport comparison.
-
-The portable Circom WASM and `--no_asm` C++ witness generators agree
-byte-for-byte with their reference WTNS files. The current
-`circom-witness-rs` graph generator does not support these Self circuits:
-graph generation reaches `Fr_isTrue` with a runtime-dependent node. This is a
-dynamic-control-flow compatibility boundary, not an optimization-level flag.
-Supporting an Arkworks Self passport lane requires either refactoring those
-branches into named `bbf*` Circom functions with matching Rust blackboxes, or
-adding symbolic branch/select support to the witness graph engine. The World
-ID OPRF graphs remain the working Arkworks mobile lane.
-
-## Passkey
-
-No licensed Circom circuit was found that matches the benchmark's ES256
-assertion statement (challenge, RP ID hash, ceremony type, origin, flags, and
-credential key). This lane remains a new-circuit task and an equivalence gate.
-
-## Rapidsnark mobile
-
-The pinned Rapidsnark source supports Android NDK and iOS static-library
-builds. The adapter must expose witness, prove, and verify phases separately
-through Mobench. Before distributing an iOS app, document the LGPL relinking
-strategy for the statically linked library.
-
-The host prover bootstrap is:
-
-```bash
-benchmarks/v1/scripts/build-rapidsnark-host.sh
-```
+The browser campaign sets SnarkJS to exactly 16 requested/effective workers.
+Self Passport registration/disclosure and World ID query/nullifier circuits are
+reported as their named counterparts, not as equivalent Noir statements.

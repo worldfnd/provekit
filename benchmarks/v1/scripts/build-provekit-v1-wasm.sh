@@ -10,7 +10,7 @@ tool_root="${V1_BENCHMARK_TOOL_ROOT:-${repo_root}/target/v1-benchmarks/tools}"
 source_root="${V1_PROVEKIT_SOURCE_ROOT:-${repo_root}/target/v1-benchmarks/provekit-v1-source}"
 target_dir_override="${V1_PROVEKIT_WASM_TARGET_DIR:-}"
 package_dir_override="${PROVEKIT_V1_WASM_PACKAGE_DIR:-}"
-wasm_thread_request="${MOBENCH_WASM_THREADS:-single}"
+wasm_thread_request="${MOBENCH_WASM_THREADS:-16}"
 wasm_variant="${PROVEKIT_V1_WASM_VARIANT:-}"
 case "${wasm_thread_request}" in
   single|auto|threaded) ;;

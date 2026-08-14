@@ -1,71 +1,49 @@
-# Legacy benchmark exports
+# Legacy benchmark material
 
-These files are retained for auditability and historical comparison. They are
-not the publication dataset. The canonical source is
-[`../input-to-proof-data/input-to-proof-samples.csv`](../input-to-proof-data/input-to-proof-samples.csv).
+The publication source is [`../input-to-proof-data/input-to-proof-samples.csv`](../input-to-proof-data/input-to-proof-samples.csv).
+Everything in this directory is retained only for auditability and historical
+comparison; it must not be merged into the canonical input-to-proof dataset.
 
-## What each export contains
+## Retained history
 
-### `data/benchmark-samples.csv`
+- `data/benchmark-samples.csv` is the original exploratory export. It mixed
+  proof-only timings, compound Passport registration/disclosure rows, and
+  older circuit identities.
+- `semantic-parity/semantic-parity-samples.csv` is the 27-cell proof-only
+  rerun. Its timing begins after witness generation, so it is not an
+  input-to-proof result.
+- `semantic-parity-data/` contains the exporter and retained proof-only
+  evidence for that rerun.
+- `taceo-candidate/` contains an experimental Circom Helpers/Groth16 lane.
+  It changed witness graphs, proving keys, and statements, so it is not a
+  backend-only replacement for the canonical Circom rows.
+- `wasm/` contains the superseded automatic-thread and fixed-16 Mac source
+  exports used while rebuilding the canonical Mac rows. The fixed-16 result
+  was merged into the canonical CSV; the source export remains here solely as
+  provenance.
+- `retired-docs/` contains the former semantic-parity, proof-only,
+  multithreading, and command-transcript documents.
+- `scripts/` contains superseded device runners, Android shard tooling,
+  Barretenberg mobile packaging, and chart generators.
+- `analysis/`, `data/`, `manifests/`, `examples/`, `arkworks-host/`, and
+  `barretenberg-mobile/` contain diagnostic or superseded tooling not needed
+  by the canonical reproduction entrypoint.
 
-This was the original exploratory cross-device export. It mixed proof-only and
-compound product variants, historical circuit identities, and earlier timing
-boundaries. Circom Passport registration/disclosure and World ID OPRF
-query/nullifier appear as separate variants, so its rows are useful for
-debugging but are not one normalized input-to-proof matrix.
+## Why the canonical campaign was rerun
 
-### `semantic-parity/semantic-parity-samples.csv`
-
-This was the later proof-only rerun for 27 workload/target/stack cells. It
-aligned the Passport P1 and OPRF O2 counterparts and corrected proof, payload,
-and peak-RSS instrumentation. Its headline timing starts after witness
-generation, and it preserves the earlier iPhone Circom payload estimate
-disclosures. It is superseded by the input-to-proof campaign because witness
-generation must be coupled to proving.
-
-The historical exporter and evidence remain in
-[`../semantic-parity-data/`](../semantic-parity-data/). Its default output is
-the CSV in this directory:
-
-```bash
-bun benchmarks/v1/semantic-parity-data/export-v1.ts
-bun test benchmarks/v1/semantic-parity-data/export.test.ts
-```
-
-### `taceo-candidate/`
-
-This is an experimental fork using TACEO Circom Helpers/Groth16 production
-material. It qualified some World ID OPRF production rows, but Passport,
-Passport P1, and WebAuthn had witness-graph compatibility gaps. The candidate
-also changes the optimized witness graph, zkey, and statement, so its apparent
-speedup is not a backend-only apples-to-apples replacement for the frozen
-Rapidsnark rows. Its CSV and evidence are preserved with the exporter and
-configuration in that directory.
-
-## Why the campaign was rerun
-
-The final input-to-proof campaign was rerun rather than patched from the old
-files for several concrete reasons:
-
-1. Earlier headline numbers measured proving only and omitted witness
-   generation; the new boundary is raw structured input through serialized
-   proof bytes.
+1. Earlier headline rows measured proving only; the canonical boundary is raw
+   structured input through serialized proof bytes, including witness
+   generation.
 2. Cold and warm initialization boundaries were inconsistent across stacks.
-3. The old exports mixed non-equivalent circuits and compound product flows;
-   the new freeze names all four semantic profiles explicitly, including the
-   additional Passport P1 pair.
-4. ProveKit V1 had to be pinned to its branch/core commit and kept separate
-   from current-main and the npm compatibility package.
-5. Proof-size, proving-payload, and peak-process-memory instrumentation had to
-   be corrected; APK/IPA upload size is transport evidence, not proving input.
-6. The iPhone Circom OPRF lane needed the qualified `wasmi` witness path after
-   the layout-sensitive Rust-Witness AOT artifact failed on iOS.
-7. The E15 required explicit 32-bit ABI and address-space evidence. One cold
-   Circom WebAuthn series remains a structured out-of-memory gap rather than
-   an estimate or a substituted browser value.
-8. Publication needed one immutable manifest, valid-proof/tamper gates, and
-   exactly one warmup plus five sequential measured attempts per successful
-   series.
+3. The old files mixed non-equivalent circuits and staged Passport product
+   flows; the canonical file names four explicit profiles, including P1.
+4. ProveKit is pinned to the V1 core commit and the Mac browser lane uses a
+   fixed 16-worker build for ProveKit and SnarkJS.
+5. Proof bytes, deduplicated proving payload, and peak process RSS are recorded
+   separately; APK/IPA transport size is never used as proving payload.
+6. Mobile rows require valid-proof acceptance, tampered-proof rejection, and
+   one warmup plus five measured samples. The E15 Circom/WebAuthn OOM remains a
+   blank structured gap rather than an estimate or a substituted value.
 
-The rerun therefore establishes a single reproducible measurement contract;
-the legacy exports remain available to explain how earlier charts were made.
+Historical files are intentionally not deleted. Their provenance is useful,
+but their measurement contracts are different from the canonical campaign.

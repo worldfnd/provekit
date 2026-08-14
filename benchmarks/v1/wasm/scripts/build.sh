@@ -11,7 +11,7 @@ default_package_dir="${wasm_root}/v1-wasm-pkg"
 wasm_threads="${MOBENCH_WASM_THREADS:-}"
 if [[ -z "${wasm_threads}" ]]; then
   wasm_threads="$(
-    [[ "${INPUT_TO_PROOF_EXECUTION_POLICY:-}" == "multithread" ]] && echo auto || echo single
+    [[ "${INPUT_TO_PROOF_EXECUTION_POLICY:-}" == "singlethread" ]] && echo single || echo 16
   )"
 fi
 package_dir="${PROVEKIT_V1_WASM_PACKAGE_DIR:-}"

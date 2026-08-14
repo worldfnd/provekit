@@ -6,16 +6,19 @@ import {
 } from "../input-to-proof-data/schema";
 
 const benchmarkRoot = resolve(import.meta.dir, "..");
-const executionPolicy = process.env.INPUT_TO_PROOF_EXECUTION_POLICY === "multithread"
-  ? "multithread"
-  : "singlethread";
+const executionPolicy = process.env.INPUT_TO_PROOF_EXECUTION_POLICY === "singlethread"
+  ? "singlethread"
+  : "multithread";
 const outputRoot = resolve(
   process.env.INPUT_TO_PROOF_OUTPUT_ROOT ??
     resolve(benchmarkRoot, executionPolicy === "multithread"
       ? "../../target/v1-benchmarks/input-to-proof/mac-chrome-multithread"
       : "../../target/v1-benchmarks/input-to-proof/mac-chrome"),
 );
-const campaignId = process.env.INPUT_TO_PROOF_CAMPAIGN_ID ?? "input-to-proof-v1-20260807";
+const campaignId = process.env.INPUT_TO_PROOF_CAMPAIGN_ID ??
+  (executionPolicy === "multithread"
+    ? "input-to-proof-v1-mac-multithread-16-20260812"
+    : "input-to-proof-v1-20260807");
 const force = process.argv.includes("--force");
 const only = process.env.INPUT_TO_PROOF_SERIES;
 
@@ -78,15 +81,11 @@ async function runOnce(profile: Profile, stack: Stack, mode: TimingMode) {
     MOBENCH_ITERATIONS: mode === "warm_reuse" ? "5" : "1",
     MOBENCH_TIMING_MODE: mode,
     MOBENCH_SNARKJS_SINGLE_THREAD: executionPolicy === "singlethread" ? "1" : "0",
-    // SnarkJS derives its worker pool from navigator.hardwareConcurrency. Keep
-    // the default automatic so the published browser lane reflects the host
-    // rather than an arbitrary cap; an explicit override remains available for
-    // diagnostics (and is recorded in each raw report).
-    MOBENCH_SNARKJS_THREADS: process.env.MOBENCH_SNARKJS_THREADS ?? (executionPolicy === "multithread"
-      ? profile === "webauthn_closest_analogue" ? "4" : "0"
-      : "1"),
+    // The canonical campaign is fixed at 16 workers. An explicit single-thread
+    // policy remains available for historical diagnostics only.
+    MOBENCH_SNARKJS_THREADS: process.env.MOBENCH_SNARKJS_THREADS ?? (executionPolicy === "multithread" ? "16" : "1"),
     MOBENCH_WASM_THREAD_MODE: executionPolicy,
-    MOBENCH_WASM_THREADS: executionPolicy === "multithread" ? "auto" : "single",
+    MOBENCH_WASM_THREADS: process.env.MOBENCH_WASM_THREADS ?? (executionPolicy === "multithread" ? "16" : "single"),
     MOBENCH_BARRETENBERG_THREAD_MODE: executionPolicy,
     MOBENCH_BB_THREADS: executionPolicy === "multithread" ? "32" : "1",
     MOBENCH_TIMEOUT_MS: "3600000",
@@ -94,7 +93,7 @@ async function runOnce(profile: Profile, stack: Stack, mode: TimingMode) {
   if (stack === "circom_groth16" && profile === "passport_p1") {
     env.CIRCOM_WEB_DIST = resolve(
       benchmarkRoot,
-      "../../target/v1-benchmarks/semantic-parity/passport-p1/browser/dist",
+      "../../target/v1-benchmarks/circom-browser-p1/dist",
     );
   }
   const child = Bun.spawn(spec.args, { cwd: spec.cwd, env, stdout: "pipe", stderr: "pipe" });

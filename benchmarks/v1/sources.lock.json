@@ -7,7 +7,7 @@
       "revision": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
       "license": "MIT OR Apache-2.0",
       "sparse_paths": ["provekit", "tooling/provekit-wasm", "tooling/cli"],
-      "purpose": "Exact ProveKit V1 proving/verifying and single-thread browser WASM implementation"
+      "purpose": "Exact ProveKit V1 proving/verifying and fixed-16-worker browser WASM implementation"
     },
     {
       "name": "self",

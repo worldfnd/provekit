@@ -19,6 +19,9 @@ done
 
 measure_log="${temporary}/measure/commands.log"
 grep -q 'run-mac-input-to-proof.ts' "${measure_log}"
+grep -q 'INPUT_TO_PROOF_EXECUTION_POLICY=multithread' "${measure_log}"
+grep -q 'MOBENCH_WASM_THREADS=16' "${measure_log}"
+grep -q 'MOBENCH_SNARKJS_THREADS=16' "${measure_log}"
 grep -q 'adb.*ro.product.cpu.abilist' "${measure_log}"
 grep -q 'run-e15-provekit.ts' "${measure_log}"
 grep -q 'normalize-e15-provekit.ts' "${measure_log}"

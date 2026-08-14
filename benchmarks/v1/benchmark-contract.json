@@ -40,7 +40,7 @@
       "id": "provekit_v1",
       "frontend": "noir",
       "native_adapter": "ProveKit C ABI through Mobench",
-      "browser_adapter": "tooling/provekit-wasm at provekit_v1.core_commit, single-thread wasm-bindgen package",
+      "browser_adapter": "tooling/provekit-wasm at provekit_v1.core_commit, fixed-16-worker threaded wasm-bindgen package",
       "browser_sdk_compatibility": "@worldcoin/provekit@0.1.0 is retained only as an incompatibility record; it is not a measured runtime",
       "proof_system": "WHIR",
       "required_cells": 9
@@ -59,7 +59,7 @@
       "frontend": "circom",
       "native_adapter": "Mopro 0.3.7",
       "native_backend_policy": "Rapidsnark preferred; Arkworks plus rust-witness is a target-specific fallback",
-      "browser_adapter": "snarkjs@0.7.6",
+      "browser_adapter": "snarkjs@0.7.6 with exactly 16 requested/effective workers",
       "proof_system": "Groth16",
       "required_cells": 9
     }
@@ -170,27 +170,46 @@
   "publication": {
     "canonical_csv": "benchmarks/v1/input-to-proof-data/input-to-proof-samples.csv",
     "campaign_id": "input-to-proof-v1-20260807",
+    "campaign_ids": [
+      "input-to-proof-v1-20260807",
+      "input-to-proof-v1-mac-multithread-16-20260812"
+    ],
+    "canonical_mac_campaign_id": "input-to-proof-v1-mac-multithread-16-20260812",
     "headline_metric": "input_to_proof_time_ms",
     "measurement_boundary": "raw structured circuit input through fresh witness generation to serialized proof bytes",
-    "rows": 427,
+    "rows": 417,
     "logical_cells": 36,
     "logical_series": 72,
-    "successful_series": 71,
-    "gap_series": 1,
+    "successful_series": 69,
+    "gap_series": 3,
     "samples_per_successful_cell": {"warmup": 1, "measured": 5},
-    "all_cells_status": "one_structured_runtime_gap",
+    "all_cells_status": "three_structured_runtime_gaps",
     "provekit_v1_core_commit": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
     "payload_definition": "PKP/prover plus the frozen proving input; verifier-only artifacts, APK/IPA/XCUITest packages, and transport duplication are excluded",
     "proof_serialization": {
       "browser": "V1 WASM proof byte serialization",
       "native": "serialized postcard NoirProof (.np) bytes"
     },
-    "gap": {
-      "series": "webauthn_closest_analogue__motorola_e15__circom_groth16__cold_local",
-      "status": "runtime_failed",
-      "failure_code": "out_of_memory",
-      "metrics": "blank"
-    },
+    "gaps": [
+      {
+        "series": "webauthn_closest_analogue__mac_chrome__circom_groth16__cold_local",
+        "status": "runtime_failed",
+        "failure_code": "out_of_memory",
+        "metrics": "blank"
+      },
+      {
+        "series": "webauthn_closest_analogue__mac_chrome__circom_groth16__warm_reuse",
+        "status": "not_run",
+        "failure_code": "blocked_by_cold_failure",
+        "metrics": "blank"
+      },
+      {
+        "series": "webauthn_closest_analogue__motorola_e15__circom_groth16__cold_local",
+        "status": "runtime_failed",
+        "failure_code": "out_of_memory",
+        "metrics": "blank"
+      }
+    ],
     "legacy_datasets": [
       {
         "path": "benchmarks/v1/legacy/data/benchmark-samples.csv",

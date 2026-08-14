@@ -177,7 +177,11 @@ run_prepare() {
   run_command "${repo_root}" "${script_dir}/compile-noir-workloads.sh"
   run_command "${repo_root}" "${script_dir}/prepare-passport-p1-circom-browser.sh"
   run_command "${repo_root}" "${script_dir}/prepare-provekit-beta11-artifacts.sh"
-  run_command "${repo_root}" "${script_dir}/build-provekit-v1-wasm.sh"
+  run_command "${repo_root}" env \
+    "INPUT_TO_PROOF_EXECUTION_POLICY=multithread" \
+    "MOBENCH_WASM_THREADS=16" \
+    "MOBENCH_SNARKJS_THREADS=16" \
+    "${script_dir}/build-provekit-v1-wasm.sh"
   local workload
   for workload in webauthn_assertion passport_complete_age_check oprf_taceo; do
     run_command "${repo_root}" "${script_dir}/build-provekit-workload.sh" "${workload}"
@@ -268,6 +272,10 @@ capture_e15_identity() {
 
 run_mac_chrome() {
   run_command "${repo_root}" env \
+    "INPUT_TO_PROOF_EXECUTION_POLICY=multithread" \
+    "MOBENCH_WASM_THREADS=16" \
+    "MOBENCH_SNARKJS_THREADS=16" \
+    "INPUT_TO_PROOF_CAMPAIGN_ID=input-to-proof-v1-mac-multithread-16-20260812" \
     "INPUT_TO_PROOF_OUTPUT_ROOT=${campaign_root}/mac-chrome" \
     bun run "${script_dir}/run-mac-input-to-proof.ts"
 }
@@ -383,6 +391,8 @@ run_export() {
   local exporter="${benchmark_root}/input-to-proof-data/export.ts"
   require_file "${exporter}"
   run_command "${repo_root}" env \
+    "INPUT_TO_PROOF_EXECUTION_POLICY=multithread" \
+    "INPUT_TO_PROOF_MAC_CAMPAIGN_ID=input-to-proof-v1-mac-multithread-16-20260812" \
     "INPUT_TO_PROOF_RAW_ROOT=${campaign_root}/mac-chrome" \
     "INPUT_TO_PROOF_IPHONE_RAW_ROOT=${campaign_root}/iphone/publication" \
     "INPUT_TO_PROOF_E15_RAW_ROOT=${campaign_root}/e15" \

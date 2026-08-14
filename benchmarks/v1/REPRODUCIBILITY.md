@@ -1,665 +1,199 @@
-# Reproducing the ProveKit V1 cross-device campaign
+# Reproducing the V1 input-to-proof campaign
 
-This is the canonical guide for the input-to-proof publication campaign. It
-covers four workloads (historical Passport, Passport P1, WebAuthn, OPRF), three stacks (ProveKit V1,
-Noir/Barretenberg, Circom/Groth16), three targets (BrowserStack iPhone SE 2022
-native, physical Motorola E15 native, and Chrome/WASM on an M4 Max MacBook),
-and separate cold and warm timing modes. It therefore has 72 logical series
-and would contain 432 sample rows if every series completed. The finalized
-freeze contains 426 valid attempt rows plus one structured E15 out-of-memory
-gap row, for 427 CSV rows total.
+This is the canonical reproduction contract for
+[`input-to-proof-data/input-to-proof-samples.csv`](input-to-proof-data/input-to-proof-samples.csv).
+Do not use the files under `legacy/` as inputs to this campaign.
 
-For input-to-proof rows, the measured boundary begins with raw structured
-circuit inputs and ends when serialized proof bytes exist. Witness generation
-and proof generation are both inside the boundary. Verification and tamper
-rejection are required after every proof but excluded from the headline.
-`cold_local` launches a fresh process/runtime per attempt; `warm_reuse` reuses
-the runtime while regenerating witness and proof each time.
+## Frozen result
 
-On native ProveKit, `Prover::prove(input_map)` performs witness construction
-and proving as one integrated operation. The campaign records that exact value
-as `input_to_proof_time_ms` (and retains it in `prover_time_ms` for schema
-compatibility) without inventing a witness split. Native Barretenberg and
-Rapidsnark record their directly observed witness and proving phases
-separately. In all cases, the headline is the outer
-raw-input-to-serialized-proof duration.
+The matrix is 4 profiles × 3 stacks × 3 targets × 2 modes = 72 logical
+series. The committed CSV has 417 rows: 345 measured, 69 warmup, and three
+structured gaps. A complete series is exactly one warmup followed by five
+sequential measured samples. A gap is exactly one row with blank timing,
+proof-size, payload-size, and memory metrics.
 
-This campaign does **not** drop Mopro or Arkworks. Mopro is the native
-integration layer. Rapidsnark is preferred on supported arm64 targets;
-Arkworks plus `rust-witness` is the explicit target-specific fallback when the
-E15 userspace cannot support Rapidsnark.
+The three gaps are evidence, not estimates:
 
-## 1. Immutable inputs
+| Series | Status | Evidence |
+| --- | --- | --- |
+| Mac Chrome · Circom WebAuthn · cold | `runtime_failed` | 16-worker renderer exhausted memory while mapping the pinned zkey/WTNS |
+| Mac Chrome · Circom WebAuthn · warm | `not_run` | blocked by the cold failure; no earlier four-worker timing substituted |
+| Motorola E15 · Circom WebAuthn · cold | `runtime_failed` | 32-bit userspace could not map the pinned 1.73 GB zkey plus WTNS |
 
-The following files are part of the campaign identity:
+## Immutable identities
 
-- `benchmark-contract.json`: workloads, targets, gates, fields, and failure
-  semantics.
-- `sources.lock.json`: immutable upstream Git revisions for Self, World ID
-  Protocol, TACEO OPRF, `privacy-ethereum/webauth-circom`, Mopro, and native
-  adapters.
-- `toolchains.lock.json`: exact compiler, SDK, crate, npm, and WASM adapter
-  versions.
-- the repository commit recorded in the frozen campaign manifest;
-- Bun/Cargo lockfiles and hashes of every prepared circuit/proving bundle.
+The lock files are part of the campaign identity:
 
-Locked highlights:
+- [`benchmark-contract.json`](benchmark-contract.json) defines the matrix,
+  measurement boundary, correctness gates, and gap semantics.
+- [`sources.lock.json`](sources.lock.json) pins ProveKit V1, Self, World ID
+  Protocol, TACEO OPRF, `privacy-ethereum/webauth-circom`, Circom, Mopro,
+  witness generators, and Rapidsnark by immutable revision.
+- [`toolchains.lock.json`](toolchains.lock.json) pins Nargo/Noir, Barretenberg,
+  SnarkJS, wasm-bindgen, Mobench, Android, SRS, and artifact hashes.
 
-| Component | Fixed identity |
+Important pins:
+
+| Component | Identity |
 | --- | --- |
+| ProveKit V1 | core commit `9b2a6f37c67691eab4b0cec6c35e35c520e93285` |
+| ProveKit browser package | `tooling/provekit-wasm`, Noir beta.11 inputs |
+| ProveKit/SnarkJS browser workers | exactly 16 requested/effective workers |
+| Noir native | Nargo `1.0.0-beta.19` |
+| Barretenberg native/browser | `barretenberg-rs`/`bb.js` `4.2.0-aztecnr-rc.2` |
 | Mopro | `0.3.7`, commit `10871f02e365c478cb4b61016e4034f7e74f076b` |
-| Mobench SDK in frozen device artifacts | `0.1.48` plus PR #45 commit `e992596a786cc18047102a318d40131c953e57b8` |
-| Mobench orchestration CLI | `0.1.48` plus PR #45 commit `e992596a786cc18047102a318d40131c953e57b8` |
-| Android JDK | Temurin `21.0.11+10.0.LTS` via Mise |
-| Android SDK/NDK | platform `android-34`; NDK `26.1.10909125` |
-| Native Noir | `nargo 1.0.0-beta.19` |
-| Native Barretenberg | `barretenberg-rs 4.2.0-aztecnr-rc.2` |
-| Browser ProveKit | pinned V1 `tooling/provekit-wasm` at `9b2a6f37`; eight-worker Rayon WASM for the multithread rerun, with the historical single-thread baseline retained |
-| Browser Circom | `snarkjs@0.7.6` |
-| Rapidsnark witness adapter | `witnesscalc-adapter@0.1.7` |
-| Rapidsnark prover | `rust-rapidsnark@0.1.4` |
-| Witness compatibility fallback | `iden3/circom-witnesscalc@0.3.0` |
+| Circom | `2.2.2` |
+| SnarkJS | `0.7.6` |
+| Native Rapidsnark | `rust-rapidsnark` `0.1.4` |
+| Native witness adapter | `witnesscalc-adapter` `0.1.7` where qualified |
+| Compatibility fallback | `iden3/circom-witnesscalc` `0.3.0`, not default |
+| iPhone OPRF witness | `wasmi` `0.46.0` interpreting the exact Circom witness Wasm |
+| E15 ABI bridge | Mobench `0.1.48` plus commit `e992596a786cc18047102a318d40131c953e57b8` |
 
-Mobench is pinned to the immutable commit behind
-`codex/android-32bit-native-abi`, not to the published `0.1.48` crate alone.
-That patch maps Rust `usize` values to JNA's native `size_t` width and prevents
-the generated runner from corrupting the C ABI on the E15's 32-bit userspace.
+The reference npm package `@worldcoin/provekit@0.1.0` is not the measured V1
+runtime. It is retained only as a compatibility record.
 
-The browser Noir candidate is `@noir-lang/noir_js@1.0.0-beta.19` with
-`@aztec/bb.js@4.2.0-aztecnr-rc.2`, matching Mopro's native Barretenberg line.
-It is not measurement-ready merely because it installs:
-all three browser circuits must first pass proof verification and tamper
-rejection. If a different `bb.js` is required, update its exact version and
-integrity in `toolchains.lock.json`, regenerate the Bun lockfile, and create a
-new campaign manifest before collecting samples.
+## Circuits and semantic boundary
 
-`@worldcoin/provekit@0.1.0` is retained as a compatibility/reference package,
-but it is not used for the V1 publication measurements. The measured browser
-lane builds `tooling/provekit-wasm` from the immutable V1 core commit with
-single-thread WASM and the frozen beta.11 inputs. This distinction prevents a
-current npm SDK artifact from being reported as a V1-branch result.
+The CSV names four profiles separately. They are closest counterparts, not
+apples-to-apples proof statements:
 
-## 2. Circuit identity and non-equivalence
+- Passport historical: Noir `complete_age_check`; Circom Self registration
+  plus `vc_and_disclose`.
+- Passport P1: the matching monolithic RSA-4096 sources under
+  `noir/passport_p1/` and `circom/passport_p1/`.
+- OPRF O2: the World-ID-aligned Noir nullifier statement and World ID Protocol
+  Circom nullifier circuit. TACEO's core OPRF example is historical only.
+- WebAuthn: Noir's ES256 assertion with challenge/type/origin/RP-ID/UP/UV/key
+  bindings and the pinned Circom closest analogue with documented omissions.
 
-These workloads are the closest counterparts available. They are neither
-one-to-one nor apples-to-apples.
+Every row carries the circuit variant, source commit, backend, witness backend,
+artifact hashes, and a non-equivalence note. No staged Passport result is
+silently treated as a monolithic proof.
 
-### Passport
+## Targets and prerequisites
 
-- Historical Noir: `complete_age_check`, a monolithic passport age-check
-  proof.
-- Historical Circom: Self signature-specific registration followed by
-  `vc_and_disclose`, a two-proof product flow.
-- Passport P1 Noir: `benchmarks/v1/noir/passport_p1/src/main.nr`.
-- Passport P1 Circom: `benchmarks/v1/circom/passport_p1/passport_p1.circom`.
-  This additional pair is the exact P1-matched monolithic RSA-4096 profile and
-  is reported separately from the historical Passport workload.
+Required tools are Git, `jq`, Bun, Rust/Cargo, Xcode, Android SDK/NDK/JDK,
+ADB, and Google Chrome. The locked Android environment is Temurin 21,
+platform `android-34`, NDK `26.1.10909125`.
 
-Report registration and disclosure identities and phase timings. Their sum is
-the historical product flow, not one equivalent circuit. Do not merge it with
-the exact P1 pair.
-
-### WebAuthn
-
-- Noir: an ES256 assertion which binds signature/public key, challenge,
-  `clientDataJSON.type`, expected origin, RP-ID hash, required UP/UV flags, and
-  the configured assertion inputs.
-- Circom: pinned `privacy-ethereum/webauth-circom`, the closest practical
-  ES256 counterpart. It does not bind the complete same statement.
-
-The older “no Circom WebAuthn circuit” claim is stale. The correct posture is
-to run the pinned counterpart, inventory its public/private signals in the
-frozen manifest, and label the semantic omissions. Do not claim equivalence.
-
-### OPRF
-
-- Noir: the World-ID-aligned O2 nullifier implementation, including issuer
-  schema, minimum issuance time, identity commitment, nonce, signal hash, and
-  the same public nullifier statement.
-- Circom: the World ID Protocol nullifier application circuit.
-
-The older TACEO core example remains historical evidence only. It must not be
-substituted into an O2 input-to-proof row.
-
-## 3. Target identity
-
-Capture identity before preparation or measurement:
+Capture target identity before preparation:
 
 ```bash
-# Mac
+# Mac publication surface
 sw_vers
 uname -m
 system_profiler SPHardwareDataType
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
 
 # Physical Motorola E15
-adb shell getprop ro.product.manufacturer
 adb shell getprop ro.product.model
 adb shell getprop ro.build.version.release
-adb shell getprop ro.build.version.sdk
 adb shell getprop ro.product.cpu.abilist
 adb shell getconf LONG_BIT
 ```
 
-Prepare and run the ProveKit diagnostic lane with the locked 32-bit Mobench
-bridge:
+The iPhone lane is BrowserStack iPhone SE 2022 on iOS 15 and requires external
+credentials plus explicit paid-session confirmation. The E15 lane records its
+ABI, zygote, and userspace bitness in the raw evidence. Browser and native
+rows are never merged into one runtime category.
+
+## Entrypoint
+
+Always inspect the dry plan first; it starts no devices and no paid session:
 
 ```bash
-benchmarks/v1/scripts/build-e15-provekit-diagnostic.sh
-benchmarks/v1/scripts/run-e15-provekit.ts \
-  --campaign provekit-v1-cross-device \
-  --output target/v1-benchmarks/reproduction/provekit-v1-cross-device/e15 \
-  --warmup 1 --samples 5 --sequential
+bash benchmarks/v1/scripts/run-reproducibility.sh \
+  --stage all --campaign provekit-v1-cross-device --dry-run
 ```
 
-The runner requires exactly one authorized ADB device, installs the signed APK,
-runs Passport, WebAuthn, and OPRF sequentially, retains per-workload logcat,
-and reconstructs Mobench's chunked JSON. The normalizer emits one blank-timing
-attested warmup plus five measured rows for each success, or one structured gap
-row carrying the actual native panic or timeout.
-
-For BrowserStack, resolve the current `iPhone SE 2022` catalog entry before
-dispatch and retain the resolved OS/device identifier, session ID, build ID,
-app URL/ID, and result URL. Credentials, authorization headers, and signed URLs
-must not enter logs or exports.
-
-The three runtime categories are:
-
-- `native-ios`;
-- `native-android`;
-- `browser-wasm-chrome`.
-
-Mac-native output is smoke/diagnostic evidence and is not a fourth publication
-target. Browser results cannot be inserted into native rows.
-
-## 4. Bootstrap
-
-Requirements are Git, `jq`, Bun, Rust/Cargo, Xcode, the Android SDK/NDK/JDK,
-ADB, Google Chrome, and enough disk space for Groth16 keys and frozen bundles.
-
-Android builds source `scripts/android-env.sh`. OpenJDK 26 is rejected because
-the campaign's Kotlin/Android Gradle toolchain cannot parse that version and
-release lint fails. `bootstrap-android-java.sh` installs the locked Temurin 21
-runtime through Mise; SDK platform 34 and NDK 26.1.10909125 are verified before
-an Android build starts.
-
-Inspect the complete non-secret command plan first:
+Supported stages are `bootstrap`, `prepare`, `smoke`, `measure`, `export`, and
+`all`:
 
 ```bash
-benchmarks/v1/scripts/run-reproducibility.sh --stage all \
-  --campaign provekit-v1-cross-device --dry-run
+bash benchmarks/v1/scripts/run-reproducibility.sh \
+  --stage all --campaign provekit-v1-cross-device \
+  --confirm-paid-browserstack
 ```
 
-Then bootstrap:
+BrowserStack username/key are read from the caller's environment only. They
+are never written to command logs, raw exports, or the committed CSV.
+
+### Bootstrap
+
+Bootstrap verifies the JSON locks and Circom artifact hashes, then installs
+only the locked compiler, SDK, adapter, and package versions. It preserves Bun
+and Cargo lockfiles and rejects toolchain drift.
+
+### Prepare
+
+Preparation compiles/fixes the four workload profiles, freezes circuit and
+proving bundles, builds the native Mobench adapters, and builds the browser
+fixtures. Prepared artifacts are content-hashed under `target/v1-benchmarks/`.
+The committed CSV is a frozen publication artifact; a clean rerun must retain
+its raw reports and write a new campaign manifest rather than overwrite it.
+
+### Fixed-16 Mac WASM policy
+
+The canonical runner always invokes the Mac browser lane with:
+
+```text
+INPUT_TO_PROOF_EXECUTION_POLICY=multithread
+MOBENCH_WASM_THREADS=16
+MOBENCH_SNARKJS_THREADS=16
+```
+
+The ProveKit report must show 16 WASM workers. The Circom report must show 16
+requested and effective SnarkJS workers. Barretenberg requests 32 and records
+its 16-worker effective limit. The fixed worker values are in the raw report,
+the package manifest, and the CSV `package_versions`/`non_equivalence_note`
+fields; no host `hardwareConcurrency` default is accepted for the canonical
+Mac rows.
+
+### Smoke and measurement gates
+
+Before timing, every runnable lane must accept a valid proof and reject a
+tampered proof. The headline boundary is:
+
+```text
+raw structured input → witness generation → proof generation → serialized proof bytes
+```
+
+For ProveKit, witness construction and proving are one integrated operation;
+`witness_time_ms` remains blank rather than being inferred. Noir/Barretenberg
+and Circom report their observed witness and proving phases separately, while
+`input_to_proof_time_ms` is the outer end-to-end duration.
+
+Cold mode starts a fresh process/runtime for every attempt with locked assets
+already local. Warm mode reuses the initialized runtime but regenerates the
+witness and proof for every attempt. The runner performs one warmup and five
+sequential measured samples and refuses to export incomplete successful
+series.
+
+## Export and validation
+
+Raw evidence is exported only after schema, duplicate, unit, coverage, proof,
+tamper, and gap checks pass:
 
 ```bash
-benchmarks/v1/scripts/run-reproducibility.sh --stage bootstrap \
-  --campaign provekit-v1-cross-device
+bun benchmarks/v1/input-to-proof-data/export.ts
+bun test benchmarks/v1/input-to-proof-data/export.test.ts
+git diff --check
 ```
 
-Bootstrap must:
-
-1. parse all JSON locks;
-2. reject a source checkout whose `HEAD` differs from `sources.lock.json`;
-3. install exact versions only and verify package/archive integrity;
-4. preserve Bun and Cargo lockfiles;
-5. record tool version output in the campaign log.
-
-Sources and tools belong under `target/v1-benchmarks/`. A second bootstrap is
-idempotent and must reject drift rather than reset a user's checkout.
-
-## 5. Prepare and freeze bundles
-
-```bash
-benchmarks/v1/scripts/run-reproducibility.sh --stage prepare \
-  --campaign provekit-v1-cross-device
-```
-
-Preparation compiles every selected circuit, creates its witness/proving
-artifacts, and writes a frozen manifest containing:
-
-- repository and circuit source commits;
-- tool/package versions and lockfile hashes;
-- circuit, bytecode/R1CS, witness generator, proving key, verification key,
-  runtime, and bundle SHA-256 values;
-- circuit size and constraint count;
-- workload/circuit semantic identity and public-output schema;
-- target/backend compatibility decisions.
-
-ProveKit preparation may be nondeterministic. Prepare one PKP/PKV pair per
-workload, hash it, freeze it in the campaign manifest, and reuse that exact
-pair on all three targets. Independently prepared pairs define different
-campaigns even when both verify.
-
-For Groth16, the final `.zkey` and verification key are campaign artifacts.
-The PTAU is preparation-only and is not shipped or counted in the runtime
-bundle. A reference WTNS used by a proof-only harness is also not circuit
-download size.
-
-Run preparation twice as a determinism audit. Deterministic artifacts must
-match. An intentionally nondeterministic ProveKit pair is accepted only by
-reusing the first frozen manifest; the second pair is diagnostic and must not
-replace or mix with it.
-
-## 6. Backend gates
-
-### ProveKit V1
-
-Native iOS and Android use the ProveKit C ABI through Mobench. Chrome uses the
-pinned single-thread V1 `tooling/provekit-wasm` build. ProveKit must deliver all nine
-workload/target cells; an incomplete ProveKit matrix is not publication-ready.
-
-The publication iPhone ProveKit prebuilt contains one isolated proof-only
-function per workload. Each setup performs the valid-proof/tamper gate outside
-timing, and each proof records an internal prover duration plus exact serialized
-`.np` bytes. The Mobench wrapper duration is retained separately and must never
-be substituted for the internal prover duration.
-
-ProveKit beta.11 circuit artifacts and their matching inputs are frozen as one
-unit under `target/v1-benchmarks/provekit-beta11-artifacts`. In particular,
-`complete_age_check.json` must be paired with
-`complete_age_check.Prover.toml` from the same detached beta.11 source
-revision. The six-overflow-bit beta.19 Passport input is incompatible with
-that beta.11 artifact and must never overwrite or feed the ProveKit lane.
-
-### Noir + Barretenberg
-
-Native uses Mopro 0.3.7, Noir beta.19, and
-`barretenberg-rs 4.2.0-aztecnr-rc.2`. Port existing circuits to beta.19 only
-when changes are mechanical and public/semantic outputs remain identical.
-
-The native WebAuthn and TACEO OPRF adapters consume frozen beta.19
-`WitnessStack` files produced by pinned Nargo. They pass the solved witness
-directly to Barretenberg; witness generation is outside the timed boundary and
-`witness_time_ms` therefore remains blank. Their combined benchmark is named
-`proof_verify`, not `e2e`. Both host canaries verify a valid proof and reject a
-one-bit mutation before measurement.
-
-The shared local CRS is the first 134,217,792 bytes (2,097,153 points) of
-`https://crs.aztec.network/g1.dat`, SHA-256
-`ea6069e3563ad79f186d1c0088499309cbdaeb54254346760ffec7fe15ae49cd`.
-`prepare-noir-beta19-srs.sh` refuses an existing file with a different size or
-hash. The publication arm64 iOS prebuilt records one one-warmup/five-sample
-proof-only function per workload; correctness and tamper rejection run in its
-setup.
-
-The publication Passport fixture uses Barrett parameters generated for the
-pinned beta.19 `noir-bignum` revision. Earlier four-overflow-bit inputs are
-kept only as beta.11 ProveKit recovery evidence; they must never be reused for
-the beta.19 Barretenberg lane.
-
-Chrome and the E15 use the frozen version pair after proof-and-tamper smoke
-validation. The campaign includes an armv7 Barretenberg build and records the
-exact backend/ABI in every E15 row; Mac or browser results are never substituted
-for Android measurements.
-
-The default ProveKit Passport lane may exceed the E15's usable memory and be
-killed by Android's low-memory killer. After retaining that failed attempt,
-the runner may use
-`bench_passport_complete_age_check_e2e_single_thread` as a constrained native
-fallback. Its Rayon pool is created during warmup and reused for the five
-measured samples. Export it under the distinct
-`passport_complete_age_check_single_thread` variant with
-`rayon_threads: 1`; never present it as the same execution policy as the
-unconstrained iPhone or browser lane.
-
-The committed E15 V1 evidence records the actual `armeabi-v7a`/`zygote32`
-identity and uses the constrained single-thread Passport fallback where
-required. It completed the valid-proof/tamper gates and one warmup plus five
-sequential samples for all three workloads. The resulting medians are
-71,595.260 ms (Passport), 27,839.158 ms (WebAuthn), and 12,564.926 ms (OPRF);
-the sample-level payload, proof, and RSS values are in the canonical CSV.
-Earlier low-memory kills and Android quarantine attempts remain recovery
-evidence, not measurements.
-
-### Circom + Groth16
-
-Chrome uses `snarkjs@0.7.6`, including its WASM witness calculation/proving
-path.
-
-For native arm64, pilot `witnesscalc-adapter@0.1.7` and
-`rust-rapidsnark@0.1.4`. Use Rapidsnark on iPhone only after Passport,
-WebAuthn, and both named World ID OPRF circuits pass:
-
-1. build and package;
-2. valid proof verification;
-3. tampered proof rejection;
-4. one warmup;
-5. five sequential measured samples.
-
-The native Rapidsnark lane uses frozen SnarkJS-validated WTNS files. Their
-SHA-256 values are locked in `toolchains.lock.json`; preparation regenerates a
-Groth16 proof and verifies it before packaging:
-
-- World ID OPRF query:
-  `89844b3d8e0b0a9a58075659b694f2e0f5582a198430da6d8101a48707f7446f`
-- World ID OPRF nullifier:
-  `b5c2bf1c167f8fe77cf13bf96db143c21aa19f27f6b7cc9317b255c43d32f568`
-- Self `vc_and_disclose`:
-  `53a4ce55036d040275e3cb5548ad771f67789e018098eab92656beb0e218807f`
-- Self RSA-4096 registration:
-  `9a785c0e2a974ca751777bb6824ebd8e6d4be1b43224cc1a0cbe6cc02d663c6a`
-- WebAuthn:
-  `294c8091d87c2dbec8bc8997d0e892b65e81d5f95a14320081dcaefea1a5e0d8`
-
-Each native app runs a process-local correctness gate before timing: a valid
-proof must verify and a mutated proof must be rejected. The two OPRF variants
-are separate apps and separate circuit variants. `proof_verify` means proof
-generation plus verification with a frozen witness; it is not full
-witness-to-proof end-to-end time.
-
-`prepare-rapidsnark-oprf-ios-prebuilt.sh` creates two isolated proof entries.
-`prepare-rapidsnark-passport-webauthn-ios-prebuilt.sh` creates three more.
-Both use a device-only arm64 XCFramework path; simulator builds are opt-in via
-`V1_RAPIDSNARK_BUILD_IOS_SIMULATOR=1`.
-
-The iOS Rapidsnark build applies the tracked
-`rapidsnark-ios-single-thread.patch` and
-`rapidsnark-ios-low-memory.patch`. The first fixes the ffiasm default worker
-pool to one thread only for iPhone device builds. The second mmaps the WTNS,
-runs QAP/FFT before the point MSMs, releases the FFT roots before the MSM
-passes, and page-aligns and unmaps each read-only zkey section after its last
-use. Mac and simulator behavior is not changed unless the iOS-equivalent
-calibration macros are explicitly enabled. Both patches are included in the
-frozen bundle's content identity, and the resulting backend configuration
-must remain visible in the row package versions.
-
-The WebAuthn zkey is 1.73 GB, so embedding it makes an IPA that BrowserStack
-rejects before a device session. Set `MOBENCH_WEBAUTHN_ZKEY_URL` to a
-campaign-controlled HTTPS URL while preparing the Passport/WebAuthn bundle.
-The resulting WebAuthn IPA contains only the expected byte length and SHA-256;
-the iOS runner downloads to its cache, verifies both values, and only then
-sets the native fixture path. The exact downloaded zkey remains part of
-`proving_payload_size_bytes`; the smaller IPA is transport only and is never
-reported as the proving payload. Retain the URL service and tunnel logs with
-the session evidence, and rebuild the immutable prebuilt if the URL changes.
-
-The remote downloader streams to a file. Its SHA-256 pass additionally uses
-Darwin `F_NOCACHE` and drains an autorelease pool around every 8 MiB read.
-Without those two controls, integrity verification left the 1.73 GB file hot
-or retained immediately before the mmap prover and iOS killed the process at
-its 2,098 MB `ActiveHard` limit.
-
-The final 2026-07-30 iPhone SE 2022 attempt passed in BrowserStack build
-`9fe5b442db9319cae7010b9e89c95610685e4a6e`, session
-`5e8373982ce020b462092542ecce8e5a49caf4aa`. The device downloaded and
-hash-verified exactly 1,733,145,772 zkey bytes, accepted a valid proof,
-rejected the tampered canary, completed one warmup and five measured proofs,
-and emitted the structured report. The measured prover median is
-38,679.039 ms; the exact proving payload is 1,842,364,184 bytes; proof sizes
-range from 1,000 to 1,006 bytes; and per-sample process peaks range from
-844.406 to 848.219 MiB. The retained passing session, device,
-instrumentation, report, and App Profiling evidence are the publication
-source. Earlier HTTP and jetsam attempts remain retained as recovery evidence,
-not measurements.
-
-IPA executables may receive nondeterministic Xcode build UUIDs when rebuilt.
-Each preparation script therefore freezes its first validated bundle behind a
-content manifest. A second invocation hashes every relevant adapter, packaging
-script, zkey, WTNS, and verification key; when those inputs are unchanged it
-revalidates and reuses the byte-identical prebuilt manifest. Any content drift
-forces a fresh bundle instead of silently mixing artifacts.
-
-The final iPhone bundle can be assembled without changing its source
-artifacts:
-
-```bash
-benchmarks/v1/scripts/merge-ios-prebuilt-manifests.sh \
-  target/v1-benchmarks/full-campaign-ios-prebuilt \
-  target/v1-benchmarks/provekit-ios-prebuilt/manifest.json \
-  target/v1-benchmarks/mopro-noir-ios-prebuilt/manifest.json \
-  target/v1-benchmarks/rapidsnark-core-ios-prebuilt/manifest.json \
-  target/v1-benchmarks/rapidsnark-oprf-ios-prebuilt/manifest.json
-```
-
-The merged manifest uses a deterministic 40-hex content identity and writes
-the contributing manifest hashes to the adjacent `.provenance.json` file.
-The proof-metrics bundle contains 11 named proof functions: three ProveKit,
-three Noir/Barretenberg, and five Circom/Groth16 variants. Mobench dry-run
-validation must pass before paid execution.
-
-### Input-to-proof iPhone freeze
-
-The successor campaign adds Passport P1 and live witness generation. Its warm
-manifest contains 13 executable functions: four ProveKit V1, four native
-Noir/Barretenberg, and five Circom/Rapidsnark functions because historical
-Circom Passport remains a registration-plus-disclosure product flow.
-
-Prepare warm bundles with `V1_IOS_ITERATIONS=5` and `V1_IOS_WARMUP=1`.
-Prepare distinct cold bundles from the same source/artifact freeze with:
-
-```bash
-export V1_IOS_ITERATIONS=1
-export V1_IOS_WARMUP=0
-export V1_IOS_COLD_LAUNCHES=6
-export V1_PROVEKIT_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-provekit-ios-prebuilt"
-export V1_MOPRO_NOIR_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-noir-ios-prebuilt"
-export V1_RAPIDSNARK_OPRF_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-oprf-ios-prebuilt"
-export V1_RAPIDSNARK_CORE_IOS_PREBUILT_ROOT="$PWD/target/v1-benchmarks/input-to-proof-cold-core-ios-prebuilt"
-
-benchmarks/v1/scripts/prepare-provekit-ios-prebuilt.sh
-benchmarks/v1/scripts/prepare-mopro-noir-ios-prebuilt.sh
-benchmarks/v1/scripts/prepare-rapidsnark-oprf-ios-prebuilt.sh
-benchmarks/v1/scripts/prepare-rapidsnark-passport-webauthn-ios-prebuilt.sh
-benchmarks/v1/scripts/merge-ios-prebuilt-manifests.sh \
-  "$PWD/target/v1-benchmarks/input-to-proof-cold-ios-prebuilt" \
-  "$V1_PROVEKIT_IOS_PREBUILT_ROOT/manifest.json" \
-  "$V1_MOPRO_NOIR_IOS_PREBUILT_ROOT/manifest.json" \
-  "$V1_RAPIDSNARK_OPRF_IOS_PREBUILT_ROOT/manifest.json" \
-  "$V1_RAPIDSNARK_CORE_IOS_PREBUILT_ROOT/manifest.json"
-```
-
-The large WebAuthn and Passport P1 zkeys are streamed from the campaign HTTPS
-host, length- and SHA-256-verified, and cached before timing. Network transfer
-is never included in `input_to_proof_time_ms`; the exact zkey still belongs in
-`proving_payload_size_bytes`.
-
-The iPhone OPRF lane uses pinned `wasmi@0.46.0` to interpret the exact Circom
-witness Wasm inside the timed region, then serializes WTNS and invokes
-`rust-rapidsnark@0.1.4`. Its generated WTNS must match the frozen SnarkJS WTNS
-byte-for-byte before device sampling. This target-specific witness runtime
-replaces a Rust-Witness AOT artifact that repeatedly crashed with
-`EXC_BAD_ACCESS` on iOS; it does not change the O2 circuit or Rapidsnark prover.
-
-Run the warm manifest once. Run each cold function in one BrowserStack session
-whose XCUITest runner terminates and relaunches the app six times. Every launch
-creates a fresh process and proof runtime; only the hash-verified downloaded
-asset cache survives outside the timed region. Cold launch zero is the attested
-warmup and launches one through five are the measured samples. The canonical entrypoint
-supports this with `V1_IOS_WARM_PREBUILT_MANIFEST` and
-`V1_IOS_COLD_PREBUILT_MANIFEST`. Every paid run still requires
-`--confirm-paid-browserstack`.
-
-If a BrowserStack transport error interrupts a multi-entry manifest after a
-passing build, fetch that build by ID and retain it. Create a non-destructive,
-hash-preserving resume bundle from the next entry with
-`scripts/slice-ios-prebuilt.ts`; never rerun or overwrite the already passing
-evidence. The publication exporter scans only the curated
-`target/v1-benchmarks/input-to-proof/iphone/publication` tree, excluding failed
-and superseded attempts.
-
-On the E15, make the decision from captured ABI/userspace evidence. Try
-Rapidsnark only if that target is supported. Otherwise use Mopro Arkworks plus
-`rust-witness`. The CSV fields `prover_backend` and `witness_backend` preserve
-that difference; results are not normalized into a generic “Circom” backend.
-
-The completed E15 campaign records `armeabi-v7a`/`zygote32` identity and the
-qualified native backend for every row. Circom OPRF combines the two World ID
-variants; Passport combines disclosure and RSA-4096 registration. Each
-component independently passed the proof/tamper and 1+5 gates before it entered
-the CSV. `iden3/circom-witnesscalc@0.3.0` remains a compatibility fallback, not
-a publication backend.
-
-For the input-to-proof successor, 23 E15 logical series are successful. The
-remaining cold Circom WebAuthn series is intentionally a structured gap, not a
-zero or an estimate. The final helper-unmap canary reached Rapidsnark and failed
-with `mmap failed: Out of memory` on the attested 32-bit E15; the 1,733,145,772
-byte zkey plus 109,218,412 byte WTNS could not be mapped. See
-[`input-to-proof-data/e15-webauthn-cold-gap.json`](input-to-proof-data/e15-webauthn-cold-gap.json)
-for the null metrics and SHA-256-linked report/logcat evidence. Do not merge
-this gap with the passing warm WebAuthn result or substitute an iPhone/Mac
-measurement.
-
-### Analysis environment
-
-The canonical Marimo notebook is `analysis/input_to_proof_analysis.py` and
-reads only `input-to-proof-data/input-to-proof-samples.csv`. The historical
-proof-only notebook `analysis/benchmark_analysis.py` is retained for the
-legacy semantic-parity export.
-Its Python 3.12
-environment is locked by `analysis/pyproject.toml` and `analysis/uv.lock`:
-Marimo 0.23.15, Pandas 2.3.3, Matplotlib 3.10.8, and Seaborn 0.13.2.
-
-```bash
-cd benchmarks/v1/analysis
-uv sync --frozen
-uv run marimo check input_to_proof_analysis.py
-uv run marimo export html input_to_proof_analysis.py \
-  --no-include-code --force \
-  -o ../../../target/v1-benchmarks/analysis/benchmark-analysis.html
-```
-
-## 7. Smoke before timing
-
-```bash
-benchmarks/v1/scripts/run-reproducibility.sh --stage smoke \
-  --campaign provekit-v1-cross-device
-```
-
-Every measured lane must first:
-
-1. build/load the exact frozen artifacts;
-2. generate or load the expected witness;
-3. prove and accept a valid proof;
-4. mutate proof bytes or a public input and reject it;
-5. retain public outputs, circuit identity, adapter/backend identity, and the
-   smoke evidence path.
-
-A proof that cannot be verified, or a verifier that accepts the tampered
-case, is never timed.
-
-## 8. Measure
-
-Run physical/local measurement:
-
-```bash
-benchmarks/v1/scripts/run-reproducibility.sh --stage measure \
-  --campaign provekit-v1-cross-device
-```
-
-BrowserStack is paid and must additionally require credentials from the
-environment and the runner's explicit paid-confirmation flag. Never put the
-credential values on a command line or in a retained command log.
-
-For each expected cell, execute exactly one warmup then five sequential
-measured samples. Write one row per attempt, including the warmup. Record:
-
-- campaign, target, device, OS, ABI, runtime, and browser;
-- stack, frontend, prover backend, witness backend, circuit, and circuit
-  commit;
-- sample index, warmup flag, status, failure class, and failure message;
-- initialization, witness, prove, verify, and end-to-end nanoseconds;
-- exact serialized proof bytes, primary circuit bytes, and deduplicated proving
-  payload bytes;
-- peak process memory and constraint count;
-- source commit, package versions, artifact hashes, and session/result
-  provenance.
-
-Successful measured rows require positive durations. Missing metrics remain
-blank. Failed or unsupported cells use one of `unsupported`, `build_failed`,
-`crashed`, `timed_out`, or `zero_samples`; zero is never a sentinel for
-missing data.
-
-Mobench executes native warmups but deliberately excludes them from
-`BenchReport.samples`. The iOS normalizer therefore emits an attested
-`status=ok`, `sample_kind=warmup`, `sample_index=0` row with blank timing
-fields, followed by the five retained measured samples. It never copies a
-measured duration into the warmup row or invents a warmup time.
-
-For every published cell, `peak_memory_mib` is mandatory. Native rows use the
-benchmark worker/application process peak. Mac browser rows poll the unique
-Chrome renderer PID at 100 ms and report renderer RSS; JavaScript heap is not a
-substitute.
-
-`artifact_size_bytes` and `bundle_size_bytes` both carry the deduplicated
-per-cell proving payload for schema compatibility: PKP plus input for ProveKit,
-ACIR/circuit plus frozen witness plus SRS for browser Barretenberg, and WASM
-plus zkey plus input for browser Circom. Native adapters report their exact
-equivalent inputs. IPA, APK, XCUITest, verifier-only assets, and duplicate
-uploads are never counted. `artifact_hashes` contains hashes of those proving
-inputs, not hashes of transport containers.
-
-## 9. Export and validate
-
-```bash
-benchmarks/v1/scripts/run-reproducibility.sh --stage export \
-  --campaign provekit-v1-cross-device
-```
-
-Export regenerates the canonical sample-level CSV from the committed,
-hash-locked V1 evidence and retains secret-free provenance. It must fail on:
-
-- a missing required column;
-- a duplicate campaign/target/stack/workload/circuit/sample key;
-- an unknown status;
-- a missing value encoded as zero;
-- a successful sample without correctness evidence;
-- a runtime/surface mismatch;
-- a ProveKit cell without one warmup and five measured samples;
-- an expected Noir/Circom cell which has neither samples nor an explicit
-  failure row.
-
-The publication export path is `input-to-proof-data/export.ts`. It verifies
-every committed V1 evidence hash, enforces the 72-series input-to-proof matrix,
-and writes only `input-to-proof-data/input-to-proof-samples.csv`. Raw
-`measure` outputs remain in the campaign directory and are never substituted
-into the publication file without an explicit evidence and manifest update.
-
-When BrowserStack rejects an immutable iOS artifact before a session can
-start, set `V1_IOS_GAPS_JSON` to an array of structured, evidence-backed gap
-records. The normalizer accepts a gap only for a lane whose required result or
-manifest entry is absent; it still rejects unexplained missing lanes. The
-input-to-proof freeze has one explicit E15 Circom/WebAuthn cold gap; all of its
-metrics are blank and its failure evidence is hash-linked.
-
-The Marimo notebook reads only this master CSV. It independently validates
-coverage and units, derives median and dispersion from measured (non-warmup)
-rows, and renders missing cells distinctly. Titles, captions, and legends must
-state that circuit counterparts are non-equivalent.
-
-At the final V1 evidence freeze, the canonical file has **427 records**:
-**355 measured rows**, **71 attested warmups**, and one explicit E15
-out-of-memory gap. Successful series have the four requested publication
-fields: input-to-proof time, deduplicated proving payload size, serialized
-proof size, and peak process memory. The legacy proof-only export remains
-available for historical comparisons but is not merged into these metrics.
-
-## 10. Evidence and publication rules
-
-Raw command streams, device logs, proof/tamper evidence, and immutable bundle
-manifests stay beneath the campaign result directory. The exported evidence
-contains no secrets.
-
-Historical benchmark data may guide debugging, but may enter the master CSV
-only if all of the following match this campaign:
-
-- repository and circuit source commits;
-- compiler/package/adapter versions;
-- circuit semantics and public-output schema;
-- exact bundle hashes;
-- target, OS, ABI, runtime, and browser;
-- one-warmup/five-sample protocol;
-- valid-proof acceptance and tampered-proof rejection.
-
-Unsupported and failed cells are findings, not values. Never estimate a timing,
-copy another target's value, or silently omit a failure. Historical payload
-estimates remain disclosed only in the legacy CSV notes; the canonical
-input-to-proof export contains no estimates.
-# Browser execution policies
-
-The published Mac baseline is single-thread WASM. A separate multithreaded
-campaign can be run with the instructions in
-[`MULTITHREADED_WASM.md`](./MULTITHREADED_WASM.md). It requires Chrome
-cross-origin isolation and records whether workers actually initialized. Noir
-and Circom witness generation remains single-threaded in the pinned browser
-libraries; only the proving backend is worker-enabled.
+The canonical CSV retains stable columns for target identity, circuit/backend
+identity, timing phases, serialized proof bytes, deduplicated proving payload,
+peak process RSS, constraints, source/package versions, artifact hashes,
+session provenance, status, and structured failure details. Missing metrics are
+blank. APK/IPA upload size is transport evidence and is never counted as
+proving payload.
+
+The Marimo notebook at
+[`analysis/input_to_proof_analysis.py`](analysis/input_to_proof_analysis.py)
+reads only the canonical CSV. It validates 72-series coverage, derives medians
+and dispersion from the five measured samples, and renders missing cells
+visibly instead of interpreting them as zero.
+
+Historical proof-only, semantic-parity, TACEO, automatic-thread, and diagnostic
+material is documented under [`legacy/`](legacy/README.md) and is deliberately
+excluded from the publication path.

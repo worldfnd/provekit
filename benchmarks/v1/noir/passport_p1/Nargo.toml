@@ -1,7 +1,7 @@
 [package]
 name = "passport_p1"
 type = "bin"
-description = "P1 semantic-parity Passport benchmark: Self SHA256/RSA-4096/registry statement"
+description = "P1 Passport input-to-proof benchmark: Self SHA256/RSA-4096/registry statement"
 authors = ["World Foundation"]
 license = "MIT"
 compiler_version = ">=1.0.0"

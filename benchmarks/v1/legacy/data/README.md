@@ -7,7 +7,7 @@ for publication. Generate this historical format from normalized JSON attempt
 records:
 
 ```sh
-bun benchmarks/v1/data/export-benchmark-csv.ts \
+bun benchmarks/v1/legacy/data/export-benchmark-csv.ts \
   path/to/attempts.json \
   benchmarks/v1/legacy/data/benchmark-samples.csv
 ```

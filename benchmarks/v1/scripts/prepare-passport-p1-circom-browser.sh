@@ -8,7 +8,7 @@ repo_root="$(cd "${benchmark_root}/../.." && pwd)"
 web_root="${benchmark_root}/circom/web"
 circom_root="${V1_BENCHMARK_CIRCOM_ROOT:-${repo_root}/target/v1-benchmarks/circom}/passport_p1"
 groth16_root="${V1_BENCHMARK_GROTH16_ROOT:-${repo_root}/target/v1-benchmarks/groth16}/passport_p1"
-output_root="${P1_CIRCOM_BROWSER_ROOT:-${repo_root}/target/v1-benchmarks/semantic-parity/passport-p1/browser}"
+output_root="${P1_CIRCOM_BROWSER_ROOT:-${repo_root}/target/v1-benchmarks/circom-browser-p1}"
 fixture_root="${output_root}/fixtures"
 dist="${output_root}/dist"
 

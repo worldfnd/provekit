@@ -1,10 +1,9 @@
-# Native Rapidsnark WebAuthn Mobench adapter
+# Native Circom WebAuthn adapter
 
-This adapter proves the pinned `privacy-ethereum/webauth-circom` assertion
-fixture with the standard SnarkJS Groth16 zkey and the pinned
-`zkmopro/rust-rapidsnark`-derived native wrapper.
+This package wraps the pinned `privacy-ethereum/webauth-circom` fixture with
+the native Rapidsnark backend. Its witness and prover phases are recorded in
+the canonical input-to-proof boundary, with proof verification and tamper
+rejection as mandatory gates.
 
-It registers prove, verify, and end-to-end functions. Circom witness
-generation is measured once by the matching Mopro Arkworks adapter; it is
-shared circuit work and is not attributed to Rapidsnark.
-
+The E15 32-bit cold lane is retained as a structured OOM gap when the zkey and
+WTNS cannot be mapped. It is never replaced with a browser or iPhone timing.

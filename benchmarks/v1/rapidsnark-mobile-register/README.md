@@ -1,6 +1,7 @@
-# Self passport registration mobile target
+# Native Self Passport registration adapter
 
-This package selects the `passport-register` feature of the shared native
-Rapidsnark Mobench adapter. It exists as a separate package because Mobench
-0.1.48 does not expose Cargo feature selection; a separate package keeps the
-499.11 MB registration zkey out of the smaller disclosure app.
+This package is the registration half of the historical Self Passport
+counterpart. It is paired with the disclosure adapter for the named
+`passport_complete_age_check` product-flow rows; it is not a monolithic Noir
+age-check proof. The exact zkey, witness, and source commit are retained in
+the row provenance and lock files.

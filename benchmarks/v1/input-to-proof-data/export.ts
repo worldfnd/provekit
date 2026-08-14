@@ -15,13 +15,18 @@ type RawSeries = {
   timing_mode: TimingMode;
   created_at: string;
   environment: { device_model: string; os_version: string; abi: string; browser: string };
+  status?: string;
+  failure_code?: string;
+  failure_message?: string;
+  execution?: Record<string, any>;
+  process_memory?: { peak_rss_kib?: number | null };
   attempts: Array<{ attempt_index: number; warmup: boolean | null; report: any }>;
 };
 
 const repoRoot = resolve(import.meta.dir, "../../..");
-const executionPolicy = process.env.INPUT_TO_PROOF_EXECUTION_POLICY === "multithread"
-  ? "multithread"
-  : "singlethread";
+const executionPolicy = process.env.INPUT_TO_PROOF_EXECUTION_POLICY === "singlethread"
+  ? "singlethread"
+  : "multithread";
 const rawRoot = resolve(
   process.env.INPUT_TO_PROOF_RAW_ROOT ??
     resolve(repoRoot, executionPolicy === "multithread"
@@ -31,6 +36,10 @@ const rawRoot = resolve(
 const output = resolve(import.meta.dir, "input-to-proof-samples.csv");
 const outputPath = resolve(process.env.INPUT_TO_PROOF_OUTPUT_CSV ?? output);
 const campaignId = process.env.INPUT_TO_PROOF_CAMPAIGN_ID ?? CAMPAIGN_ID;
+const macCampaignId = process.env.INPUT_TO_PROOF_MAC_CAMPAIGN_ID ??
+  (executionPolicy === "multithread"
+    ? "input-to-proof-v1-mac-multithread-16-20260812"
+    : campaignId);
 const iphoneRawRoot = resolve(
   process.env.INPUT_TO_PROOF_IPHONE_RAW_ROOT ??
     resolve(repoRoot, "target/v1-benchmarks/input-to-proof/iphone/publication"),
@@ -41,6 +50,8 @@ const e15RawRoot = resolve(
 );
 const e15GapPath = resolve(import.meta.dir, "e15-webauthn-cold-gap.json");
 const E15_OOM_GAP_SERIES = "webauthn_closest_analogue__motorola_e15__circom_groth16__cold_local";
+const MAC_FIXED16_CIRCOM_WEBAUTHN_COLD_GAP = "webauthn_closest_analogue__mac_chrome__circom_groth16__cold_local";
+const MAC_FIXED16_CIRCOM_WEBAUTHN_WARM_GAP = "webauthn_closest_analogue__mac_chrome__circom_groth16__warm_reuse";
 
 const circuitIdentity: Record<Profile, { circuit: string; variant: string; commit: string; note: string }> = {
   passport_complete_age_check: {
@@ -369,7 +380,11 @@ export function validateRows(rows: CsvRow[], expected = expectedSeries(["mac_chr
     duplicates.add(key);
     grouped.set(id, [...(grouped.get(id) ?? []), row]);
     if (row.sample_kind === "gap") {
-      if (id !== E15_OOM_GAP_SERIES || row.status !== "runtime_failed" || row.failure_code !== "out_of_memory" || !row.failure_detail) {
+      const validGap =
+        (id === E15_OOM_GAP_SERIES && row.status === "runtime_failed" && row.failure_code === "out_of_memory")
+        || (id === MAC_FIXED16_CIRCOM_WEBAUTHN_COLD_GAP && row.status === "runtime_failed" && row.failure_code === "out_of_memory")
+        || (id === MAC_FIXED16_CIRCOM_WEBAUTHN_WARM_GAP && row.status === "not_run" && row.failure_code === "blocked_by_cold_failure");
+      if (!validGap || !row.failure_detail) {
         throw new Error(`${id}: invalid gap status`);
       }
       for (const metric of ["prover_time_ms", "total_time_ms", "input_to_proof_time_ms", "proof_size_bytes", "circuit_size_bytes", "peak_memory_mib"] as const) {
@@ -408,8 +423,62 @@ export async function buildMacRows() {
     const path = resolve(rawRoot, `${id}.json`);
     if (!(await Bun.file(path).exists())) throw new Error(`missing raw series ${path}`);
     const series = await Bun.file(path).json() as RawSeries;
-    if (series.campaign_id !== campaignId || series.series_id !== id) throw new Error(`${id}: identity mismatch`);
+    if (series.campaign_id !== macCampaignId || series.series_id !== id) throw new Error(`${id}: identity mismatch`);
     const evidenceHash = await sha256(path);
+    if (series.status) {
+      const validGap =
+        (id === MAC_FIXED16_CIRCOM_WEBAUTHN_COLD_GAP && series.status === "runtime_failed" && series.failure_code === "out_of_memory")
+        || (id === MAC_FIXED16_CIRCOM_WEBAUTHN_WARM_GAP && series.status === "not_run" && series.failure_code === "blocked_by_cold_failure");
+      if (!validGap || !series.failure_message) throw new Error(`${id}: invalid fixed-16 gap evidence`);
+      const [frontend, proverBackend, witnessBackend] = identity(stack);
+      const circuit = circuitIdentity[profile];
+      const requested = series.execution?.prover_threads_requested ?? series.execution?.wasm_thread_request ?? 16;
+      const effective = series.execution?.prover_threads_effective ?? series.execution?.wasm_thread_count ?? 16;
+      rows.push({
+        campaign_id: macCampaignId,
+        attempt_id: `${id}-gap`,
+        recorded_at_utc: series.created_at,
+        hardware: "macbook_m4",
+        device_model: series.environment.device_model,
+        os_version: series.environment.os_version,
+        abi: series.environment.abi,
+        runtime: "browser_wasm",
+        browser: series.environment.browser,
+        circuit: circuit.circuit,
+        circuit_variant: circuit.variant,
+        circuit_commit: circuit.commit,
+        prover: stack,
+        frontend,
+        prover_backend: proverBackend,
+        witness_backend: witnessBackend,
+        sample_kind: "gap",
+        sample_index: null,
+        status: series.status,
+        initialization_time_ms: null,
+        witness_time_ms: null,
+        prover_time_ms: null,
+        verify_time_ms: null,
+        total_time_ms: null,
+        peak_memory_mib: null,
+        proof_size_bytes: null,
+        circuit_size_bytes: null,
+        artifact_size_bytes: null,
+        bundle_size_bytes: null,
+        constraint_count: null,
+        artifact_version: `input-to-proof-v1-${executionPolicy}`,
+        source_commit: circuit.commit,
+        package_versions: `${packages(stack)};execution_policy=${executionPolicy};threads_requested=${requested};threads_effective=${effective}`,
+        artifact_hashes: JSON.stringify({ raw_evidence_sha256: evidenceHash }),
+        session_id: "",
+        non_equivalence_note: `${circuit.note} Fixed-16 SnarkJS WebAuthn gap; no prior four-worker timing was substituted.`,
+        failure_code: series.failure_code,
+        failure_detail: series.failure_message,
+        evidence_path: path,
+        timing_mode: mode,
+        input_to_proof_time_ms: null,
+      });
+      continue;
+    }
     const execution = browserExecution(series.attempts[0]?.report ?? {});
     const extracted = series.attempts.flatMap((attempt) =>
       reportSamples(profile, stack, attempt.report).map((sample: any) => ({ attempt, sample })),
@@ -421,7 +490,7 @@ export async function buildMacRows() {
       const warmup = mode === "cold_local" ? attempt.warmup === true : sample.warmup === true;
       const peakKib = attempt.report.process_memory?.peak_rss_kib;
       const row: CsvRow = {
-        campaign_id: campaignId,
+        campaign_id: macCampaignId,
         attempt_id: `${id}-${index}`,
         recorded_at_utc: series.created_at,
         hardware: "macbook_m4",
