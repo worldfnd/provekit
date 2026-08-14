@@ -52,10 +52,8 @@ fn hash(val: Field, salt: Field) -> Field {
 }
 
 fn expand_position(position: Field) -> (u8, u8) {
-    let pos: u16 = position as u16;
-    let px = (pos >> 8) as u8;
-    let py = (pos & 0xff) as u8;
-    (px, py)
+    let pos_bytes: [u8; 2] = position.to_be_bytes();
+    (pos_bytes[0], pos_bytes[1])
 }
 
 fn compress_position(x: u8, y: u8) -> Field {

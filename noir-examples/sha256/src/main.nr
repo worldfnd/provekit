@@ -2,7 +2,7 @@ use sha256::{digest as sha256, sha256_var};
 
 // Sha256 example
 //
-// Calls Sha256 from the standard library.
+// Calls Sha256 from the noir-lang sha256 library.
 //
 // The Compiler sees this special function and creates an ACIR gate
 //

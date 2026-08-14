@@ -580,13 +580,26 @@ impl NoirToR1CSCompiler {
                     // Noir blackbox AND/XOR operate on 32-bit values. We decompose into 4 bytes
                     // and add byte-level ops to leverage the combined byte-level lookup table.
                     BlackBoxFuncCall::AND {
-                        lhs, rhs, output, ..
+                        lhs,
+                        rhs,
+                        output,
+                        num_bits,
                     } => {
+                        // The byte pipeline decomposes operands into 4 bytes, which
+                        // is sound for any width up to 32 (inputs are range-checked
+                        // to `num_bits` by separate RANGE opcodes), but silently
+                        // truncates wider operands.
+                        assert!(*num_bits <= 32, "AND: binop pipeline caps at 32 bits");
                         self.process_binop_opcode(*lhs, *rhs, *output, &mut and_ops);
                     }
                     BlackBoxFuncCall::XOR {
-                        lhs, rhs, output, ..
+                        lhs,
+                        rhs,
+                        output,
+                        num_bits,
                     } => {
+                        // See the AND arm: sound up to 32 bits, truncates beyond.
+                        assert!(*num_bits <= 32, "XOR: binop pipeline caps at 32 bits");
                         self.process_binop_opcode(*lhs, *rhs, *output, &mut xor_ops);
                     }
                     BlackBoxFuncCall::Poseidon2Permutation { inputs, outputs } => {
