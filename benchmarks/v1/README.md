@@ -80,11 +80,10 @@ bun benchmarks/v1/input-to-proof-data/export.ts
 bun test benchmarks/v1/input-to-proof-data/export.test.ts
 ```
 
-The Marimo analysis at
-[`analysis/input_to_proof_analysis.py`](analysis/input_to_proof_analysis.py)
-reads only the canonical CSV. It keeps coverage, latency, witness/prover
-phases, payload, proof-size, and memory figures in separate cells and renders
-missing series as gaps.
+The `analysis/` directory is intentionally empty in this freeze. Remco will
+add the publication Marimo notebook there; it must read only the canonical CSV
+and keep coverage, latency, witness/prover phases, payload, proof-size, and
+memory figures separate while rendering missing series as gaps.
 
 ## Layout policy
 

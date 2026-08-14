@@ -188,11 +188,11 @@ session provenance, status, and structured failure details. Missing metrics are
 blank. APK/IPA upload size is transport evidence and is never counted as
 proving payload.
 
-The Marimo notebook at
-[`analysis/input_to_proof_analysis.py`](analysis/input_to_proof_analysis.py)
-reads only the canonical CSV. It validates 72-series coverage, derives medians
-and dispersion from the five measured samples, and renders missing cells
-visibly instead of interpreting them as zero.
+The `analysis/` directory is intentionally empty in this freeze. Remco will
+add the publication Marimo notebook there. The notebook must read only the
+canonical CSV, validate 72-series coverage, derive medians and dispersion from
+the five measured samples, and render missing cells visibly instead of
+interpreting them as zero.
 
 Historical proof-only, semantic-parity, TACEO, automatic-thread, and diagnostic
 material is documented under [`legacy/`](legacy/README.md) and is deliberately
