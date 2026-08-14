@@ -5,7 +5,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 benchmark_root="$(cd "${script_dir}/.." && pwd)"
 repo_root="$(cd "${benchmark_root}/../.." && pwd)"
-crate="${benchmark_root}/rapidsnark-mobile-oprf"
+crate="${benchmark_root}/rapidsnark/rapidsnark-mobile-oprf"
 scaffold_crate="${benchmark_root}/mobench-ios-scaffold"
 prebuilt_root="${V1_RAPIDSNARK_OPRF_IOS_PREBUILT_ROOT:-${repo_root}/target/v1-benchmarks/rapidsnark-oprf-ios-prebuilt}"
 build_parent="${repo_root}/target/v1-benchmarks"
@@ -28,8 +28,8 @@ compute_content_sha256() {
     "${crate}/Cargo.toml" \
     "${crate}/src/lib.rs" \
     "${crate}/src/wasmi_witness.rs" \
-    "${benchmark_root}/rapidsnark-mobile/build.rs" \
-    "${benchmark_root}/rapidsnark-mobile/src/rapidsnark.rs" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/build.rs" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/src/rapidsnark.rs" \
     "${scaffold_crate}/Cargo.toml" \
     "${scaffold_crate}/src/main.rs" \
     "${BASH_SOURCE[0]}" \

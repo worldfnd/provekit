@@ -18,12 +18,12 @@ repo_root="$(cd "${benchmark_root}/../.." && pwd)"
 
 case "${workload}" in
   passport-disclose)
-    crate="${benchmark_root}/rapidsnark-mobile"
+    crate="${benchmark_root}/rapidsnark/rapidsnark-mobile"
     fixture="${repo_root}/target/v1-benchmarks/mobile-fixtures/groth16/vc_and_disclose"
     output="${repo_root}/target/v1-benchmarks/rapidsnark-disclose-ios"
     ;;
   passport-register)
-    crate="${benchmark_root}/rapidsnark-mobile-register"
+    crate="${benchmark_root}/rapidsnark/rapidsnark-mobile-register"
     fixture="${repo_root}/target/v1-benchmarks/mobile-fixtures/groth16/register_sha256_sha256_sha256_rsa_65537_4096"
     output="${repo_root}/target/v1-benchmarks/rapidsnark-register-ios"
     ;;

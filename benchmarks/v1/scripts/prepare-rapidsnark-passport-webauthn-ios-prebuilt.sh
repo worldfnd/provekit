@@ -47,14 +47,14 @@ done
 
 compute_content_sha256() {
   shasum -a 256 \
-    "${benchmark_root}/rapidsnark-mobile/Cargo.toml" \
-    "${benchmark_root}/rapidsnark-mobile/src/lib.rs" \
-    "${benchmark_root}/rapidsnark-mobile/src/rapidsnark.rs" \
-    "${benchmark_root}/rapidsnark-mobile/src/live_witness.rs" \
-    "${benchmark_root}/rapidsnark-mobile-register/Cargo.toml" \
-    "${benchmark_root}/rapidsnark-mobile-webauthn/Cargo.toml" \
-    "${benchmark_root}/rapidsnark-mobile-webauthn/Cargo.lock" \
-    "${benchmark_root}/rapidsnark-mobile-webauthn/src/lib.rs" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/Cargo.toml" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/src/lib.rs" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/src/rapidsnark.rs" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/src/live_witness.rs" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile-register/Cargo.toml" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile-webauthn/Cargo.toml" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile-webauthn/Cargo.lock" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile-webauthn/src/lib.rs" \
     "${scaffold_crate}/Cargo.toml" \
     "${scaffold_crate}/src/main.rs" \
     "${BASH_SOURCE[0]}" \
@@ -335,7 +335,7 @@ prepare_workload() {
 if workload_selected passport-disclose; then
   prepare_workload \
     passport-disclose \
-    "${benchmark_root}/rapidsnark-mobile" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile" \
     provekit_v1_rapidsnark_mobile \
     bench_passport_rapidsnark \
     "${passport_assets}/vc_and_disclose.zkey" \
@@ -346,7 +346,7 @@ fi
 if workload_selected passport-register; then
   prepare_workload \
     passport-register \
-    "${benchmark_root}/rapidsnark-mobile-register" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile-register" \
     provekit_v1_rapidsnark_mobile_register \
     bench_passport_rapidsnark \
     "${passport_assets}/register_sha256_sha256_sha256_rsa_65537_4096.zkey" \
@@ -361,7 +361,7 @@ if workload_selected passport-p1; then
   }
   prepare_workload \
     passport-p1 \
-    "${benchmark_root}/rapidsnark-mobile" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile" \
     provekit_v1_rapidsnark_mobile \
     bench_passport_p1_rapidsnark \
     "${passport_p1_zkey}" \
@@ -372,7 +372,7 @@ fi
 if workload_selected webauthn; then
   prepare_workload \
     webauthn \
-    "${benchmark_root}/rapidsnark-mobile-webauthn" \
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile-webauthn" \
     provekit_v1_rapidsnark_mobile_webauthn \
     bench_webauthn_rapidsnark \
     "${webauthn_assets}/webauthn_default.zkey" \

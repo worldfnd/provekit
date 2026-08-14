@@ -31,13 +31,13 @@ fi
 
 content_digest() {
   local files=(
-    "${benchmark_root}/rapidsnark-mobile/Cargo.lock"
-    "${benchmark_root}/rapidsnark-mobile/Cargo.toml"
-    "${benchmark_root}/rapidsnark-mobile/build.rs"
-    "${benchmark_root}/rapidsnark-mobile/src/lib.rs"
-    "${benchmark_root}/rapidsnark-mobile/src/rapidsnark.rs"
-    "${benchmark_root}/rapidsnark-mobile-register/Cargo.toml"
-    "${benchmark_root}/rapidsnark-mobile-register/src/lib.rs"
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/Cargo.lock"
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/Cargo.toml"
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/build.rs"
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/src/lib.rs"
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile/src/rapidsnark.rs"
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile-register/Cargo.toml"
+    "${benchmark_root}/rapidsnark/rapidsnark-mobile-register/src/lib.rs"
     "${repo_root}/target/v1-benchmarks/native-libs/rapidsnark/aarch64-linux-android/SHA256SUMS"
   )
   local hashes=()
@@ -148,9 +148,9 @@ prepare_workload() {
 
 prepare_workload \
   passport-disclose \
-  "${benchmark_root}/rapidsnark-mobile" \
+  "${benchmark_root}/rapidsnark/rapidsnark-mobile" \
   "${repo_root}/target/v1-benchmarks/rapidsnark-disclose-android"
 prepare_workload \
   passport-register \
-  "${benchmark_root}/rapidsnark-mobile-register" \
+  "${benchmark_root}/rapidsnark/rapidsnark-mobile-register" \
   "${repo_root}/target/v1-benchmarks/rapidsnark-register-android"
