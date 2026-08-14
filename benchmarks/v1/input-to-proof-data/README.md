@@ -31,8 +31,18 @@ accepted:
 
 ```bash
 bun benchmarks/v1/input-to-proof-data/export.ts
+bun benchmarks/v1/input-to-proof-data/replace-taceo-oprf.ts
 bun test benchmarks/v1/input-to-proof-data/export.test.ts
 ```
+
+The second command is an intentional post-export replacement step for the six
+native Circom OPRF series (`oprf_nullifier` × three targets × cold/warm). It
+loads only the retained, proof-gated TACEO evidence and replaces those rows
+with `circom-helpers` main `8aacd73ed6ab0a2b9b2158e613acfa920860865a` plus
+`circom-witness-rs` `e11206a9f453145dcd6b814523cbfba4f60cf5c6` from
+`codex/remove-cxx-bridge-and-grep`. The zkey, regenerated witness graph, and
+frozen input JSON are hashed separately; the payload is their sum and never
+includes an APK, IPA, or XCUITest upload.
 
 `merge-mac-fixed16.ts` is the idempotent provenance helper used to replace the
 Mac portion with the fixed-16 campaign while retaining the mobile rows. Its

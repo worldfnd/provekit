@@ -1,0 +1,13 @@
+diff --git a/groth16-material/src/circom.rs b/groth16-material/src/circom.rs
+--- a/groth16-material/src/circom.rs
++++ b/groth16-material/src/circom.rs
+@@ -542,7 +542,7 @@ impl<'a> CircomGroth16MaterialSerializer<'a> {
+         postcard::to_io(
+             &(
+-                &self.material.graph.nodes,
+-                &self.material.graph.signals,
++                self.material.graph.nodes(),
++                self.material.graph.signals(),
+                 &self.material.graph.input_mapping,
+             ),
+             &mut graph_writer,

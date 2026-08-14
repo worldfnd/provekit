@@ -115,22 +115,27 @@ provenance is retained with every successful iPhone lane.
 | Mopro | `0.3.7`, commit `10871f02e365c478cb4b61016e4034f7e74f076b` |
 | Circom | `2.2.2` |
 | SnarkJS | `0.7.6` |
-| Native Rapidsnark | `rust-rapidsnark` `0.1.4` |
+| Native Rapidsnark | `rust-rapidsnark` `0.1.4` for qualified non-OPRF Circom lanes |
 | Native witness adapter | `witnesscalc-adapter` `0.1.7` where qualified |
 | Native Rust witness | `rust-witness` `0.1.6` where the target-specific fallback is required |
 | Compatibility fallback | `iden3/circom-witnesscalc` `0.3.0`, fallback only |
 | iPhone OPRF witness | `wasmi` `0.46.0` interpreting the exact Circom witness Wasm |
+| Canonical native OPRF helper | `TaceoLabs/circom-helpers` `8aacd73ed6ab0a2b9b2158e613acfa920860865a` (main) |
+| Canonical native OPRF witness | `circom-witness-rs` `e11206a9f453145dcd6b814523cbfba4f60cf5c6` (`codex/remove-cxx-bridge-and-grep`) |
+| Canonical native OPRF prover | `taceo-groth16` `0.2.1` / `taceo-groth16-material` `0.4.2` (latest TACEO Groth16 proving path used here) |
 | Mobench / E15 ABI bridge | `0.1.48`, commit `e992596a786cc18047102a318d40131c953e57b8` |
 
 The reference npm package `@worldcoin/provekit@0.1.0` is retained as a
 compatibility record only. It is not the measured V1 browser runtime.
 
-For native Circom, arm64 pilots prefer `witnesscalc-adapter@0.1.7` with
-`rust-rapidsnark@0.1.4`. The iPhone lane uses Rapidsnark only after the exact
-circuit passes build, proof-verification, tamper-rejection, warmup, and sample
-gates. The E15 lane first records its ABI and userspace bitness; if Rapidsnark
-is unsupported there, the row uses the Mopro Arkworks plus Rust-witness
-fallback and keeps that backend difference explicit.
+For native Circom, arm64 pilots use `witnesscalc-adapter@0.1.7` with
+`rust-rapidsnark@0.1.4` where the baseline lane is qualified. The canonical
+`oprf_nullifier` replacement uses TACEO's current `circom-helpers` main with
+the pinned `circom-witness-rs` branch above on all three targets, because that
+path produced proof-gated evidence for every OPRF target/mode series. The
+replacement is not silently applied to Passport or WebAuthn. Their native
+backend policy remains Rapidsnark-first with a target-specific Arkworks/Rust
+witness fallback where required.
 
 ## 6. Entrypoint and stages
 
@@ -213,6 +218,16 @@ raw structured input → witness generation → proof generation → serialized 
 - `peak_memory_mib` is peak process RSS when measurable.
 - APK/IPA/XCUITest upload size is transport evidence, never proving payload.
 
+For the canonical TACEO OPRF replacement, the proving payload is fixed to
+`26,812,268` bytes: `OPRFNullifier.arks.zkey` is `26,645,680` bytes
+(SHA-256 `4247e6bfe1af211e72d3657346802e1af00e6071fb32429a200f9fc0a25a36f9`),
+the regenerated `OPRFNullifierGraph.bin` is `160,978` bytes (SHA-256
+`785a946147ed5d6f349aed1833dc9de11b16e4d6a88a5403b1c66ece0a289081`), and
+the frozen input JSON is `5,610` bytes (SHA-256
+`662a0242fd4a36ad71d565a51d5ecc4e70b764fd884d41902911e30a85764d40`). The
+graph is the TACEO/circom-witness-rs artifact, not the larger World ID
+Protocol graph used by the historical Rapidsnark lane.
+
 Missing measurements remain blank and are accompanied by an explicit status,
 failure code, and failure detail. They are never encoded as zero.
 
@@ -226,6 +241,7 @@ schema.
 
 ```bash
 bun benchmarks/v1/input-to-proof-data/export.ts
+bun benchmarks/v1/input-to-proof-data/replace-taceo-oprf.ts
 bun test benchmarks/v1/input-to-proof-data/export.test.ts
 bun test benchmarks/v1/input-to-proof-data/native/*.test.ts
 bash benchmarks/v1/scripts/run-reproducibility.test.sh
@@ -237,6 +253,15 @@ checks. The canonical CSV has stable columns for target identity,
 circuit/backend identity, timing phases, proof/payload/artifact sizes, peak
 RSS, constraints, source/package versions, hashes, session provenance, status,
 and structured failure details.
+
+`replace-taceo-oprf.ts` is an intentional, idempotent post-export step. It
+replaces exactly six existing `oprf_nullifier`/`circom_groth16` series: three
+targets × cold/warm. It accepts only retained TACEO reports whose valid-proof
+and tampered-proof gates passed, and fails if any series does not contain one
+warmup plus five measured rows. The payload is the exact zkey plus regenerated
+witness graph plus frozen input JSON; APK/IPA/XCUITest upload size is excluded.
+Each replacement row records the helper/witness commits, per-artifact hashes,
+report hashes, device/session provenance, exact proof size, and peak RSS.
 
 ## 10. Credentials, evidence, and legacy boundaries
 

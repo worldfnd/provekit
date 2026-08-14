@@ -1,0 +1,31 @@
+[package]
+name = "zk_mobile_bench"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[workspace]
+
+[dependencies]
+ark-bn254 = "0.6"
+ark-serialize = "0.6"
+inventory = "0.3"
+libc = "0.2"
+mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs.git", rev = "e992596a786cc18047102a318d40131c953e57b8" }
+rand = "0.8"
+ruint = "1.19"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+taceo-groth16-material = { package = "taceo-groth16-material", path = "../../../../target/v1-benchmarks/taceo-v021/sources/circom-helpers/groth16-material", features = ["circom"] }
+thiserror = "2"
+uniffi = { version = "=0.31.1", features = ["cli"] }
+
+[patch.crates-io]
+circom-witness-rs = { path = "../../../../target/v1-benchmarks/taceo-v021/sources/circom-witness-rs" }

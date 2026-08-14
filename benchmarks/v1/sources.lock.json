@@ -140,6 +140,28 @@
       "purpose": "Generated native Rust Circom witness calculation"
     },
     {
+      "name": "circom-helpers",
+      "url": "https://github.com/TaceoLabs/circom-helpers.git",
+      "revision": "8aacd73ed6ab0a2b9b2158e613acfa920860865a",
+      "branch": "main",
+      "license": "MIT OR Apache-2.0",
+      "packages": {
+        "taceo-groth16": "0.2.1",
+        "taceo-groth16-material": "0.4.2"
+      },
+      "sparse_paths": [],
+      "purpose": "TACEO Groth16 material and prover used for the replacement Circom OPRF series"
+    },
+    {
+      "name": "circom-witness-rs-taceo-oprf",
+      "url": "https://github.com/philsippl/circom-witness-rs.git",
+      "revision": "e11206a9f453145dcd6b814523cbfba4f60cf5c6",
+      "branch": "codex/remove-cxx-bridge-and-grep",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Witness generator patched into circom-helpers for the replacement Circom OPRF series"
+    },
+    {
       "name": "circom-compat",
       "url": "https://github.com/arkworks-rs/circom-compat.git",
       "revision": "d677f28b216fcc39ee8440d152cc9217850f5d4c",

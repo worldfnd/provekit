@@ -122,6 +122,14 @@
       "adapter": "iden3/circom-witnesscalc@0.3.0",
       "status": "fallback-only",
       "warning": "Known documented feature gaps include RSA-related circuits."
+    },
+    "oprf_o2_canonical_override": {
+      "scope": "oprf_nullifier / O2-world-id-nullifier on Mac, iPhone, and Motorola E15",
+      "helper_source": "TaceoLabs/circom-helpers@8aacd73ed6ab0a2b9b2158e613acfa920860865a (main)",
+      "witness_source": "philsippl/circom-witness-rs@e11206a9f453145dcd6b814523cbfba4f60cf5c6 (codex/remove-cxx-bridge-and-grep)",
+      "prover": "taceo-groth16 0.2.1 / taceo-groth16-material 0.4.2",
+      "measurement_boundary": "raw frozen input through circom-witness-rs graph execution and TACEO Groth16 proof serialization",
+      "reason": "The TACEO helper path is the qualified replacement for the prior Rapidsnark/Rust-witness OPRF rows; all six cold/warm target series are measured with the same frozen zkey, graph, and input bundle."
     }
   },
   "noir_native_gate": {
@@ -172,7 +180,8 @@
     "campaign_id": "input-to-proof-v1-20260807",
     "campaign_ids": [
       "input-to-proof-v1-20260807",
-      "input-to-proof-v1-mac-multithread-16-20260812"
+      "input-to-proof-v1-mac-multithread-16-20260812",
+      "input-to-proof-v1-taceo-oprf-20260814"
     ],
     "canonical_mac_campaign_id": "input-to-proof-v1-mac-multithread-16-20260812",
     "headline_metric": "input_to_proof_time_ms",
@@ -245,18 +254,20 @@
       "circom_source": "benchmarks/v1/circom/passport_p1/passport_p1.circom",
       "identity": "P1-matched monolithic RSA-4096 passport integrity, registry authorization, DG1 validity, and minimum-age assertion"
     },
-    "iphone_circom_oprf": {
-      "witness_backend": "wasmi 0.46.0 interpreting the exact Circom witness Wasm",
-      "prover_backend": "rust-rapidsnark 0.1.4",
-      "measurement_boundary": "raw input through interpreted Wasm witness generation, WTNS serialization, and Rapidsnark proof serialization",
-      "qualification": "witness byte equality with frozen SnarkJS WTNS plus valid-proof acceptance and tampered-proof rejection"
+    "circom_oprf_taceo_replacement": {
+      "witness_backend": "circom-witness-rs@e11206a9f453145dcd6b814523cbfba4f60cf5c6 (codex/remove-cxx-bridge-and-grep)",
+      "prover_backend": "taceo-groth16 0.2.1 / taceo-groth16-material 0.4.2 from circom-helpers@8aacd73ed6ab0a2b9b2158e613acfa920860865a",
+      "measurement_boundary": "raw frozen input through generated Circom witness graph, Groth16 proof generation, and exact proof serialization",
+      "qualification": "valid-proof acceptance and tampered-proof rejection on every target and timing mode; exact graph, zkey, input, proof, and process-memory hashes are retained"
     },
     "timing_modes": {
       "cold_local": "fresh process and proof runtime per attempt with locked assets already local",
       "warm_reuse": "initialized runtime is reused while witness and proof are regenerated"
     },
     "expected_series": 72,
-    "expected_rows": 432,
+    "expected_rows": 417,
+    "successful_series": 69,
+    "gap_series": 3,
     "samples_per_series": {
       "warmup": 1,
       "measured": 5

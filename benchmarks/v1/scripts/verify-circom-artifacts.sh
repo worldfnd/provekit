@@ -32,7 +32,14 @@ jq -c '.artifacts[]' "${lock_file}" | while IFS= read -r artifact; do
   relative_path="$(jq -r '.source' <<<"${artifact}")"
   expected_size="$(jq -r '.size' <<<"${artifact}")"
   expected_sha="$(jq -r '.sha256' <<<"${artifact}")"
-  path="${source_root}/${relative_path}"
+  # Upstream source snapshots live below target/v1-benchmarks/sources. The
+  # TACEO OPRF graph/input bundle is an immutable checked-in campaign asset,
+  # so its lock entry is rooted at the repository instead.
+  if [[ "${relative_path}" == benchmarks/v1/* ]]; then
+    path="${repo_root}/${relative_path}"
+  else
+    path="${source_root}/${relative_path}"
+  fi
 
   if [[ ! -f "${path}" ]]; then
     echo "error: missing pinned Circom artifact ${path}" >&2

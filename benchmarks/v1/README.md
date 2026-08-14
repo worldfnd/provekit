@@ -32,7 +32,7 @@ gates, and gap policy are in
 | --- | --- | --- | --- |
 | ProveKit V1 | Native Mobench / WHIR | Native Mobench / WHIR | Chrome/WASM, fixed 16 workers |
 | Noir + Barretenberg | Mopro native | Mopro native where qualified | Chrome/WASM, 16 effective workers |
-| Circom + Groth16 | Mopro native / Rapidsnark | Mopro native with target-specific evidence | Chrome/WASM / SnarkJS, 16 workers |
+| Circom + Groth16 | Native Rapidsnark baseline; TACEO 0.2.1 for OPRF O2 | Native target-specific backend; TACEO 0.2.1 for OPRF O2 | Chrome/WASM / SnarkJS, 16 workers |
 
 The Mac publication surface is Chrome/WASM. Mac-native runs are diagnostic
 only. BrowserStack credentials and paid-session confirmation stay outside the
@@ -66,12 +66,19 @@ and `non_equivalence_note` together when interpreting results.
 | --- | --- | --- | --- |
 | Passport historical | Monolithic `complete_age_check` | Self registration plus `vc_and_disclose` | A staged product flow, not one monolithic statement |
 | Passport P1 | [`noir/passport_p1/src/main.nr`](noir/passport_p1/src/main.nr) | [`circom/passport_p1/passport_p1.circom`](circom/passport_p1/passport_p1.circom) | Closest matched integrity, registry, DG1, and age assertion |
-| OPRF O2 | World-ID-aligned Noir nullifier statement | World ID Protocol nullifier circuit | Same named profile and public nullifier; implementation details differ |
+| OPRF O2 | World-ID-aligned Noir nullifier statement | World ID Protocol nullifier circuit | Same named profile and public nullifier; implementation details differ. Native Circom rows use the qualified TACEO helper replacement described below |
 | WebAuthn | ES256 assertion binding challenge, type, origin, RP-ID, flags, and key | Pinned `privacy-ethereum/webauth-circom` analogue | Circom omits several Noir bindings |
 
-TACEO's primitive OPRF example and other experimental candidates are retained
-under [`legacy/`](legacy/README.md), not silently mixed into the publication
-matrix.
+The older TACEO primitive OPRF example and superseded production-backend
+experiments are retained under [`legacy/`](legacy/README.md). The canonical
+`oprf_nullifier` Circom rows use TACEO `circom-helpers` main at
+`8aacd73ed6ab0a2b9b2158e613acfa920860865a`, patched with
+`circom-witness-rs` branch commit
+`e11206a9f453145dcd6b814523cbfba4f60cf5c6`. This replaces only the six
+Circom OPRF target/mode series; all other rows retain their original backend.
+The prover is pinned to `taceo-groth16 0.2.1` with
+`taceo-groth16-material 0.4.2`, the latest Groth16 implementation used by
+this campaign; older `0.1.x` TACEO candidate rows remain under `legacy/`.
 
 ## Reproduce
 
@@ -111,6 +118,7 @@ To validate retained evidence or regenerate the canonical CSV:
 
 ```bash
 bun benchmarks/v1/input-to-proof-data/export.ts
+bun benchmarks/v1/input-to-proof-data/replace-taceo-oprf.ts
 bun test benchmarks/v1/input-to-proof-data/export.test.ts
 bun test benchmarks/v1/input-to-proof-data/native/*.test.ts
 ```

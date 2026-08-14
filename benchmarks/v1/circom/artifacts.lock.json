@@ -23,9 +23,32 @@
       "sha256": "c1d951716e3b74b72e4ea0429986849cadc43cccc630a7ee44a56a6199a66b9a"
     },
     {
+      "workload": "world_id_oprf_nullifier_taceo",
+      "kind": "witness_graph",
+      "source": "benchmarks/v1/circom/taceo-mobile/assets/OPRFNullifierGraph.bin",
+      "size": 160978,
+      "sha256": "785a946147ed5d6f349aed1833dc9de11b16e4d6a88a5403b1c66ece0a289081",
+      "source_commit": "8aacd73ed6ab0a2b9b2158e613acfa920860865a",
+      "witness_source_commit": "e11206a9f453145dcd6b814523cbfba4f60cf5c6"
+    },
+    {
+      "workload": "world_id_oprf_nullifier_taceo",
+      "kind": "proving_input",
+      "source": "benchmarks/v1/circom/taceo-mobile/assets/oprf_nullifier.input.json",
+      "size": 5610,
+      "sha256": "662a0242fd4a36ad71d565a51d5ecc4e70b764fd884d41902911e30a85764d40"
+    },
+    {
       "workload": "world_id_oprf_nullifier",
       "kind": "arkworks_proving_key",
       "source": "world-id-protocol/circom/OPRFNullifier.arks.zkey",
+      "size": 26645680,
+      "sha256": "4247e6bfe1af211e72d3657346802e1af00e6071fb32429a200f9fc0a25a36f9"
+    },
+    {
+      "workload": "world_id_oprf_nullifier_taceo",
+      "kind": "arkworks_proving_key",
+      "source": "benchmarks/v1/circom/taceo-mobile/assets/OPRFNullifier.arks.zkey",
       "size": 26645680,
       "sha256": "4247e6bfe1af211e72d3657346802e1af00e6071fb32429a200f9fc0a25a36f9"
     }

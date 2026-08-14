@@ -24,7 +24,7 @@
   },
   "final_export": {
     "path": "benchmarks/v1/input-to-proof-data/input-to-proof-samples.csv",
-    "sha256": "dfe1bc00604f363e091870ffe8350c1095841efb87964c393f0215af8eb1e0ea",
+    "sha256": "0a51e5b75a5cbdf40e1752d60d5f8b1da586a85b5be19d41d1aa602536d05795",
     "logical_series": 72,
     "successful_series": 69,
     "gap_series": 3,
@@ -33,7 +33,8 @@
     "gap_rows": 3,
     "campaign_ids": [
       "input-to-proof-v1-20260807",
-      "input-to-proof-v1-mac-multithread-16-20260812"
+      "input-to-proof-v1-mac-multithread-16-20260812",
+      "input-to-proof-v1-taceo-oprf-20260814"
     ]
   },
   "headline": "input_to_proof_time_ms",
@@ -50,7 +51,11 @@
     "rust_witness": "0.1.6",
     "rust_rapidsnark": "0.1.4",
     "rust_rapidsnark_commit": "fcf92e7454600109e4eab4a0c907e8d59649fd9c",
-    "wasmi_iphone_oprf": "0.46.0"
+    "wasmi_iphone_oprf": "0.46.0",
+    "taceo_circom_helpers_commit": "8aacd73ed6ab0a2b9b2158e613acfa920860865a",
+    "taceo_circom_witness_rs_commit": "e11206a9f453145dcd6b814523cbfba4f60cf5c6",
+    "taceo_groth16": "0.2.1",
+    "taceo_groth16_material": "0.4.2"
   },
   "publication_boundaries": {
     "mac_chrome": "browser_wasm",
