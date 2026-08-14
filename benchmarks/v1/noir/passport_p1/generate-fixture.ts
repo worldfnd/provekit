@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dir, "../../../..");
-const canonicalPath = resolve(repoRoot, "benchmarks/v1/passport_p1/canonical-record.json");
+const canonicalPath = resolve(repoRoot, "benchmarks/v1/noir/passport_p1/canonical-record.json");
 const circomInputPath = resolve(repoRoot, "benchmarks/v1/circom/fixtures/passport_p1/input.json");
 const outputPath = resolve(import.meta.dir, "Prover.toml");
 

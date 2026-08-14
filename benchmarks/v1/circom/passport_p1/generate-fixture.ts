@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 const repoRoot = resolve(import.meta.dir, "../../../..");
 const canonicalPath = resolve(
   process.env.P1_CANONICAL_RECORD ??
-    `${repoRoot}/benchmarks/v1/passport_p1/canonical-record.json`,
+    `${repoRoot}/benchmarks/v1/noir/passport_p1/canonical-record.json`,
 );
 const outputPath = resolve(
   process.env.P1_CIRCOM_FIXTURE ??
@@ -60,7 +60,7 @@ const manifest = {
   schema_version: 1,
   profile: "P1",
   canonical_record: {
-    path: "benchmarks/v1/passport_p1/canonical-record.json",
+    path: "benchmarks/v1/noir/passport_p1/canonical-record.json",
     sha256: new Bun.CryptoHasher("sha256")
       .update(await Bun.file(canonicalPath).text())
       .digest("hex"),

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "profile": "P1",
   "canonical_record": {
-    "path": "benchmarks/v1/passport_p1/canonical-record.json",
+    "path": "benchmarks/v1/noir/passport_p1/canonical-record.json",
     "sha256": "e0501fb0551860cf3f5a34d1c86b4b2af53014bc4bec7cde4f1f285d3c54d0bf"
   },
   "source": {
