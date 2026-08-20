@@ -325,8 +325,21 @@ impl NoirToR1CSCompiler {
         lhs: ConstantOrACIRWitness<NoirElement>,
         rhs: ConstantOrACIRWitness<NoirElement>,
         output: NoirWitness,
+        num_bits: u32,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
         target_ops: &mut Vec<(ConstantOrR1CSWitness, ConstantOrR1CSWitness, usize)>,
     ) {
+        // ACVM may remove separate RANGE opcodes because AND/XOR are expected
+        // to constrain their operands to `num_bits`.
+        if num_bits < 32 {
+            for operand in [lhs, rhs] {
+                if let ConstantOrACIRWitness::Witness(witness) = operand {
+                    let witness = self.fetch_r1cs_witness_index(witness);
+                    range_checks.entry(num_bits).or_default().push(witness);
+                }
+            }
+        }
+
         // Get the 32-bit witness indices
         let lhs_witness = match lhs {
             ConstantOrACIRWitness::Witness(w) => self.fetch_r1cs_witness_index(w),
@@ -577,20 +590,28 @@ impl NoirToR1CSCompiler {
 
                     // Binary operations:
                     // The inputs and outputs will have already been solved for by the ACIR solver.
-                    // Noir blackbox AND/XOR operate on 32-bit values. We decompose into 4 bytes
-                    // and add byte-level ops to leverage the combined byte-level lookup table.
+                    // Noir blackbox AND/XOR carry the operand width in `num_bits`. We decompose
+                    // into 4 bytes and add byte-level ops to leverage the combined byte-level
+                    // lookup table.
                     BlackBoxFuncCall::AND {
                         lhs,
                         rhs,
                         output,
                         num_bits,
                     } => {
-                        // The byte pipeline decomposes operands into 4 bytes, which
-                        // is sound for any width up to 32 (inputs are range-checked
-                        // to `num_bits` by separate RANGE opcodes), but silently
-                        // truncates wider operands.
+                        // The byte pipeline decomposes operands into 4 bytes, so it
+                        // covers any width up to 32 but silently truncates wider
+                        // operands. `process_binop_opcode` restores the operand
+                        // constraints the blackbox is expected to carry.
                         assert!(*num_bits <= 32, "AND: binop pipeline caps at 32 bits");
-                        self.process_binop_opcode(*lhs, *rhs, *output, &mut and_ops);
+                        self.process_binop_opcode(
+                            *lhs,
+                            *rhs,
+                            *output,
+                            *num_bits,
+                            &mut range_checks,
+                            &mut and_ops,
+                        );
                     }
                     BlackBoxFuncCall::XOR {
                         lhs,
@@ -598,9 +619,16 @@ impl NoirToR1CSCompiler {
                         output,
                         num_bits,
                     } => {
-                        // See the AND arm: sound up to 32 bits, truncates beyond.
+                        // See the AND arm: covers widths up to 32, truncates beyond.
                         assert!(*num_bits <= 32, "XOR: binop pipeline caps at 32 bits");
-                        self.process_binop_opcode(*lhs, *rhs, *output, &mut xor_ops);
+                        self.process_binop_opcode(
+                            *lhs,
+                            *rhs,
+                            *output,
+                            *num_bits,
+                            &mut range_checks,
+                            &mut xor_ops,
+                        );
                     }
                     BlackBoxFuncCall::Poseidon2Permutation { inputs, outputs } => {
                         assert_eq!(
