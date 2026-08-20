@@ -18,10 +18,39 @@ use {
     },
     serde::{Deserialize, Serialize},
     whir::{
-        algebra::embedding::Identity, engines::EngineId, parameters::ProtocolParameters,
-        protocols::whir::Config as GenericWhirConfig, transcript,
+        algebra::embedding::Identity,
+        engines::EngineId,
+        parameters::ProtocolParameters,
+        protocols::{
+            params::{
+                DecodingRegime, FoldingFactor, KneeWeight, Mode, PowBudget, RateSchedule,
+                SecuritySpec, TuningSpec,
+            },
+            whir::Config as GenericWhirConfig,
+            zook::ProtocolConfig as ZookConfig,
+        },
+        transcript,
     },
 };
+
+/// Zook mode for the witness commitment; [`Mode::ZeroKnowledge`] makes it
+/// hiding.
+const ZOOK_MODE: Mode = Mode::Standard;
+
+/// Adaptive per-round rate schedule at the balanced (0.5) prover-time /
+/// proof-size knee.
+const ZOOK_RATE_SCHEDULE: RateSchedule = RateSchedule::Adaptive {
+    knee_weight: KneeWeight::DEFAULT,
+};
+
+/// Target security level for the witness and blinding commitments, in bits.
+const WHIR_SECURITY_BITS: u32 = 128;
+
+/// Per-slot proof-of-work budget for both commitments, in bits.
+const WHIR_POW_BITS: u32 = 10;
+
+/// Starting log inverse rate shared by both commitments.
+const WHIR_STARTING_LOG_INV_RATE: u32 = 2;
 
 /// WHIR witness-domain floor: prover work is flat at or below `2^13` variables,
 /// so smaller commitments are padded up to this many variables.
@@ -82,11 +111,13 @@ impl R1csHash {
 ///
 /// # Zero-knowledge
 ///
-/// The ZK posture is fixed, not configurable:
 /// - Sumcheck ZK is always on: the Spartan sumcheck rounds are masked by a
 ///   blinding polynomial `g`, committed separately in `whir_blinding`.
-/// - Witness ZK is off: the witness is committed non-hiding in `whir_witness`,
-///   whose WHIR openings leak witness values. It will be enabled by zkWHIR 3.0.
+/// - Witness ZK follows the [`Mode`] recorded in `whir_witness` (new schemes
+///   use `ZOOK_MODE`): [`Mode::Standard`] is non-hiding,
+///   [`Mode::ZeroKnowledge`] hiding. A hiding commitment alone is not full
+///   proof ZK — the alpha, public-input, and challenge evaluations are still
+///   sent in the clear.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct WhirR1CSScheme<P: ProofField> {
@@ -97,10 +128,8 @@ pub struct WhirR1CSScheme<P: ProofField> {
     pub num_challenges:    usize,
     pub challenge_offsets: Vec<usize>,
     pub has_public_inputs: bool,
-    /// Base-field witness commitment. Non-hiding — WHIR openings leak witness
-    /// values, so this provides sumcheck ZK only, not witness ZK.
-    /// TODO: make the witness commitment hiding for full witness ZK.
-    pub whir_witness:      GenericWhirConfig<P::Embedding>,
+    /// Base-field witness commitment, via zook.
+    pub whir_witness:      ZookConfig<P::Embedding>,
     /// Separate ext-field commitment to the Spartan blinding polynomial `g`;
     /// masking the ext-valued sumcheck rounds needs ext randomness, so `g`
     /// cannot ride on the base witness commitment.
@@ -152,7 +181,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self {
+    ) -> anyhow::Result<Self> {
         let mut scheme = Self::new_from_dimensions(
             r1cs.num_witnesses(),
             r1cs.num_constraints(),
@@ -162,9 +191,9 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             challenge_offsets,
             has_public_inputs,
             hash_config,
-        );
+        )?;
         scheme.r1cs_hash = r1cs.hash();
-        scheme
+        Ok(scheme)
     }
 
     /// Build a scheme from raw dimensions, leaving `r1cs_hash` unset (the
@@ -179,14 +208,13 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self {
-        assert_eq!(
-            num_challenges,
-            challenge_offsets.len(),
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            num_challenges == challenge_offsets.len(),
             "num_challenges ({num_challenges}) != challenge_offsets.len() ({})",
             challenge_offsets.len()
         );
-        assert!(w1_size <= num_witnesses, "w1_size exceeds total witnesses");
+        anyhow::ensure!(w1_size <= num_witnesses, "w1_size exceeds total witnesses");
         let w2_size = num_witnesses - w1_size;
 
         let m1_raw = next_power_of_two(w1_size);
@@ -196,11 +224,11 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         let m = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
-        Self {
+        Ok(Self {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
-            whir_witness: Self::new_witness_config_for_size(m, hash_config.engine_id()),
+            whir_witness: Self::new_witness_config_for_size(m, hash_config.engine_id())?,
             whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             w1_size,
             num_challenges,
@@ -208,18 +236,36 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             has_public_inputs,
             r1cs_hash: R1csHash::UNSET,
             hash_config,
-        }
+        })
     }
 
-    /// Build the non-ZK witness WHIR config: commits in `P`'s base field, opens
-    /// at extension-field points.
+    /// Build the zook witness config: commits in `P`'s base field, opens at
+    /// extension-field points.
     pub fn new_witness_config_for_size(
         num_variables: usize,
         hash_id: EngineId,
-    ) -> GenericWhirConfig<P::Embedding> {
+    ) -> anyhow::Result<ZookConfig<P::Embedding>> {
         P::register();
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
-        GenericWhirConfig::<P::Embedding>::new(1 << nv, &whir_protocol_params(hash_id, 1))
+        let security = SecuritySpec {
+            mode: ZOOK_MODE,
+            decoding_regime: DecodingRegime::Johnson,
+            target_security_bits: WHIR_SECURITY_BITS,
+            pow_budget: PowBudget::per_slot(WHIR_POW_BITS),
+            hash_id,
+        };
+        let tuning = TuningSpec {
+            vector_size:           1 << nv,
+            starting_log_inv_rate: WHIR_STARTING_LOG_INV_RATE,
+            folding_factor:        FoldingFactor::ConstantFromSecondRound {
+                initial: WHIR_INITIAL_FOLDING_FACTOR,
+                rest:    WHIR_FOLDING_FACTOR,
+            },
+            rate_schedule:         ZOOK_RATE_SCHEDULE,
+        };
+        ZookConfig::<P::Embedding>::derive(security, tuning).map_err(|e| {
+            anyhow::anyhow!("zook witness config derivation failed at {nv} variables: {e}")
+        })
     }
 
     /// Build the WHIR config for the blinding polynomial `g`: its `4 * m_0`
