@@ -237,6 +237,10 @@ where
     Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     ensure!(!commitments.is_empty(), "Need at least one commitment");
+    ensure!(
+        !produce_spark_query,
+        "SPARK queries are not supported with the zook witness commitment"
+    );
 
     let (a, b, c) = calculate_witness_bounds(&r1cs, &full_witness);
     drop(full_witness);
@@ -286,8 +290,8 @@ pub struct ProveFromAlphasCtx<P: ProofField> {
     pub blinding_eval:    Ext<P>,
     pub blinding_weights: Vec<Ext<P>>,
     pub commitments:      Vec<WhirR1CSCommitment<P>>,
-    /// When set, SPARK query data is produced with this Spartan sumcheck
-    /// point as the shared row axis.
+    /// Reserved SPARK row axis; must be `None` — SPARK is unsupported with
+    /// the zook witness commitment.
     pub spark_row:        Option<Vec<Ext<P>>>,
 }
 
@@ -336,6 +340,13 @@ where
         mut commitments,
         spark_row,
     } = ctx;
+
+    // TODO: restore SPARK once zook's `prove` exposes its final evaluation
+    // point.
+    ensure!(
+        spark_row.is_none(),
+        "SPARK queries are not supported with the zook witness commitment"
+    );
 
     let public_inputs_hash = P::hash_public_inputs(scheme.hash_config, &public_inputs.0);
     let public_inputs_len = public_inputs.len();
