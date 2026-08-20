@@ -144,7 +144,9 @@ reqwest = "0.12.23"
 ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
 seq-macro = "0.3.6"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# `float_roundtrip`: zook configs carry f64s; the default fast parser is off
+# by one ULP on read-back, breaking scheme JSON roundtrips.
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
 # Pinned: blake3 1.8.4+ depends on digest 0.11, but the `whir` crate's
 # blake3 engine is built against digest 0.10. Bumping breaks compilation.
 blake3 = "=1.8.3"
