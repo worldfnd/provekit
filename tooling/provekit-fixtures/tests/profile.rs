@@ -40,7 +40,7 @@ where
     let public_inputs = PublicInputs::from_vec(vec![w[1]]);
 
     // Only commit + prove_noir are timed (setup excluded above).
-    let inp = prove_setup::<P>(&r1cs, &w);
+    let inp = prove_setup::<P>(&r1cs, &w).expect("prove setup");
     let (prove_t, proof, scheme) = time_prove_core::<P>(inp, &public_inputs).expect("prove");
 
     let t = Instant::now();
@@ -141,7 +141,8 @@ fn flamegraph_2pow20_bf() {
     let depth = (1usize << log_size) - 2;
     let (r1cs, w) = squaring_chain::<Base<provekit_backend_goldilocks::GoldilocksField>>(2, depth);
     let public_inputs = PublicInputs::from_vec(vec![w[1]]);
-    let inp = prove_setup::<provekit_backend_goldilocks::GoldilocksField>(&r1cs, &w);
+    let inp = prove_setup::<provekit_backend_goldilocks::GoldilocksField>(&r1cs, &w)
+        .expect("prove setup");
 
     // Global subscriber required: prove() uses rayon, and only the global
     // default captures spans created on rayon worker threads.
