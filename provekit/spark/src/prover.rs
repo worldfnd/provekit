@@ -23,7 +23,7 @@ use {
                 sumcheck_fold_map_reduce,
             },
         },
-        HashConfig, WhirR1CSProof,
+        whir_protocol_params, HashConfig, WhirR1CSProof,
     },
     rayon::{join, prelude::*},
     tracing::instrument,
@@ -31,7 +31,6 @@ use {
         algebra::{linear_form::MultilinearExtension, multilinear_extend},
         buffer::Buffer,
         engines::EngineId,
-        parameters::ProtocolParameters,
         transcript::{DomainSeparator, ProverState, VerifierMessage},
     },
 };
@@ -50,16 +49,7 @@ pub fn new_whir_config_for_size(
 
     let nv = log_size.max(4);
 
-    let whir_params = ProtocolParameters {
-        decoding_regime: whir::protocols::params::DecodingRegime::Johnson,
-        initial_folding_factor: 3,
-        security_level: 128,
-        pow_bits: 10,
-        folding_factor: 3,
-        starting_log_inv_rate: 2,
-        batch_size,
-        hash_id,
-    };
+    let whir_params = whir_protocol_params(hash_id, batch_size);
 
     WhirConfig::new(1 << nv, &whir_params)
 }
