@@ -107,8 +107,8 @@ impl CircuitStats {
             Opcode::BlackBoxFuncCall(call) => self.process_blackbox_call(call),
 
             Opcode::MemoryOp { block_id, op } => match op.operation {
-                MemOpKind::Read => self.memory.record_read(block_id.0, op.index),
-                MemOpKind::Write => self.memory.record_write(block_id.0, op.index),
+                MemOpKind::Read => self.memory.record_read(block_id.as_u32(), op.index),
+                MemOpKind::Write => self.memory.record_write(block_id.as_u32(), op.index),
             },
 
             Opcode::MemoryInit {
@@ -116,7 +116,8 @@ impl CircuitStats {
                 init,
                 block_type,
             } => {
-                self.memory.record_init(block_id.0, block_type, init.len());
+                self.memory
+                    .record_init(block_id.as_u32(), block_type, init.len());
             }
 
             Opcode::BrilligCall { id, .. } => {

@@ -511,7 +511,7 @@ impl NoirToR1CSCompiler {
                     if *block_type != BlockType::Memory {
                         panic!("MemoryInit block type must be Memory")
                     }
-                    let block_id = block_id.0 as usize;
+                    let block_id = block_id.as_u32() as usize;
                     assert!(
                         !memory_blocks.contains_key(&block_id),
                         "Memory block {} already initialized",
@@ -527,7 +527,7 @@ impl NoirToR1CSCompiler {
                     memory_blocks.insert(block_id, block);
                 }
                 Opcode::MemoryOp { block_id, op } => {
-                    let block_id = block_id.0 as usize;
+                    let block_id = block_id.as_u32() as usize;
                     assert!(
                         memory_blocks.contains_key(&block_id),
                         "Memory block {} not initialized before read",
