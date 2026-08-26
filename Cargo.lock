@@ -7049,7 +7049,7 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
-source = "git+https://github.com/worldfnd/whir.git?rev=33fbecf6ef883054ce8d93ad1bf1ef6f20b47e4f#33fbecf6ef883054ce8d93ad1bf1ef6f20b47e4f"
+source = "git+https://github.com/worldfnd/whir.git?rev=8804e80e8e890d01bb585f2bd5e5b564ac0fd80d#8804e80e8e890d01bb585f2bd5e5b564ac0fd80d"
 dependencies = [
  "ark-ff",
  "ark-serialize",
@@ -7074,6 +7074,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "zerocopy",
+ "zeroize",
 ]
 
 [[package]]

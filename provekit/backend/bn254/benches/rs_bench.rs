@@ -4,7 +4,7 @@ use {
     divan::{black_box, Bencher},
     provekit_backend_bn254::RSFr,
     whir::{
-        algebra::ntt::{Messages, NttEngine, ReedSolomon},
+        algebra::ntt::{NttEngine, PolynomialSegment, Polynomials, ReedSolomon},
         buffer::{Buffer, BufferOps},
     },
 };
@@ -56,9 +56,15 @@ fn rs_fr(bencher: Bencher, case: &(usize, usize, usize)) {
         .bench_values(|coeffs| {
             let vector_refs: Vec<&Buffer<Fr>> = coeffs.iter().collect();
             let message_length = coeffs[0].len();
-            let rs_messages = Messages::new(&vector_refs, message_length, 1);
+            let mask_refs = [&mask];
+            let segments = [
+                PolynomialSegment::from_rows(&vector_refs, 1),
+                PolynomialSegment::from_rows(&mask_refs, vector_refs.len()),
+            ];
             let codeword_length = message_length * expansion;
-            black_box(RSFr.interleaved_encode(rs_messages, &mask, codeword_length))
+            black_box(
+                RSFr.interleaved_encode(Polynomials::from_segments(&segments), codeword_length),
+            )
         });
 }
 
@@ -72,9 +78,16 @@ fn whir_ntt_engine(bencher: Bencher, case: &(usize, usize, usize)) {
         .bench_values(|coeffs| {
             let vector_refs: Vec<&Buffer<Fr>> = coeffs.iter().collect();
             let message_length = coeffs[0].len();
-            let rs_messages = Messages::new(&vector_refs, message_length, 1);
+            let mask_refs = [&mask];
+            let segments = [
+                PolynomialSegment::from_rows(&vector_refs, 1),
+                PolynomialSegment::from_rows(&mask_refs, vector_refs.len()),
+            ];
             let codeword_length = message_length * expansion;
-            black_box(reference.interleaved_encode(rs_messages, &mask, codeword_length))
+            black_box(
+                reference
+                    .interleaved_encode(Polynomials::from_segments(&segments), codeword_length),
+            )
         });
 }
 

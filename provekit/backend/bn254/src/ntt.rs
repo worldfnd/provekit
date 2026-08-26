@@ -4,7 +4,7 @@ use {
     ntt::ntt_nr,
     tracing::instrument,
     whir::{
-        algebra::ntt::{Messages, ReedSolomon},
+        algebra::ntt::{Polynomials, ReedSolomon},
         buffer::{Buffer, BufferOps},
     },
 };
@@ -44,65 +44,49 @@ impl ReedSolomon<Fr> for RSFr {
             .collect()
     }
 
-    #[instrument(skip(self, messages, masks), fields(
-        num_messages = messages.vectors.len() * messages.interleaving_depth,
-        message_len = messages.message_length,
+    #[instrument(skip(self, polynomials), fields(
+        num_polynomials = polynomials.len(),
+        polynomial_len = polynomials.polynomial_length(),
         codeword_length = codeword_length,
-        mask_len = masks.len().checked_div(messages.vectors.len() * messages.interleaving_depth)
     ))]
     fn interleaved_encode(
         &self,
-        messages: Messages<'_, Fr>,
-        masks: &Buffer<Fr>,
+        polynomials: Polynomials<'_, Fr>,
         codeword_length: usize,
     ) -> Buffer<Fr> {
-        let masks = masks.to_slice();
-        let messages = messages
-            .vectors
-            .iter()
-            .flat_map(|message| {
-                message
-                    .to_slice()
-                    .chunks_exact(messages.message_length)
-                    .take(messages.interleaving_depth)
-            })
-            .collect::<Vec<_>>();
-        if messages.is_empty() {
+        let num_polynomials = polynomials.len();
+        if num_polynomials == 0 {
             return Buffer::from(vec![]);
         }
 
-        let num_messages = messages.len();
-
-        let message_length = messages[0].len();
-        for message in &messages {
-            assert_eq!(message_length, message.len())
-        }
-
-        let total_size = num_messages * codeword_length;
+        let polynomial_length = polynomials.polynomial_length();
+        assert!(polynomial_length <= codeword_length);
+        let total_size = num_polynomials * codeword_length;
 
         let mut result = vec![Fr::ZERO; total_size];
-
-        (0..message_length).for_each(|column| {
-            let base = column * num_messages;
-            for row in 0..num_messages {
-                result[base + row] = messages[row][column];
+        let mut column_offset = 0;
+        for segment in polynomials.segments() {
+            let row_width = segment.row_width();
+            let rows_per_buffer = segment.rows_per_buffer();
+            for polynomial in 0..num_polynomials {
+                let buffer = segment.buffer(polynomial / rows_per_buffer).to_slice();
+                let row = polynomial % rows_per_buffer;
+                let start = row * row_width;
+                for column in 0..row_width {
+                    result[(column_offset + column) * num_polynomials + polynomial] =
+                        buffer[start + column];
+                }
             }
-        });
+            column_offset += row_width;
+        }
 
-        result[message_length * num_messages..message_length * num_messages + masks.len()]
-            .copy_from_slice(masks);
-
-        let mask_length = masks.len() / num_messages;
-
-        let masked_message_length = message_length + mask_length;
-
-        let mut coset_size = self.next_order(masked_message_length).unwrap();
+        let mut coset_size = self.next_order(polynomial_length).unwrap();
         while !codeword_length.is_multiple_of(coset_size) {
             coset_size = self.next_order(coset_size + 1).unwrap();
         }
         let num_cosets = codeword_length / coset_size;
 
-        let chunk_size = coset_size * num_messages;
+        let chunk_size = coset_size * num_polynomials;
         for k in 1..num_cosets {
             result.copy_within(0..chunk_size, k * chunk_size);
         }
@@ -152,35 +136,33 @@ mod tests {
             let messages: Vec<Buffer<Fr>> = data.chunks(message_length).map(|c| Buffer::from(c)).collect();
             let messages_refs: Vec<&Buffer<Fr>> = messages.iter().collect();
 
-            // Our masks are interleaved: num_messages x mask_length in row-major order
-            // i.e. [m0_c0, m1_c0, m0_c1, m1_c1, ...]
             let mask_total = num_messages * mask_length;
             let mut masks = masks_flat;
             masks.resize(mask_total, Fr::ZERO);
 
-            // Whir expects masks per-message (column-major from our perspective):
-            // [m0_c0, m0_c1, ..., m1_c0, m1_c1, ...]
-            // Transpose the num_messages x mask_length matrix.
-            let mut masks_transposed = vec![Fr::ZERO; mask_total];
-            for row in 0..num_messages {
-                for col in 0..mask_length {
-                    masks_transposed[row * mask_length + col] = masks[col * num_messages + row];
-                }
-            }
-
-            let messages = Messages::new(&messages_refs, message_length, 1);
             let masks = Buffer::from(masks);
-            let masks_transposed = Buffer::from(masks_transposed);
+            let mask_refs = [&masks];
+            let segments = [
+                whir::algebra::ntt::PolynomialSegment::from_rows(&messages_refs, 1),
+                whir::algebra::ntt::PolynomialSegment::from_rows(&mask_refs, num_messages),
+            ];
 
             let indices: Vec<usize> = (0..codeword_length).collect();
 
             let reference = NttEngine::<Fr>::new_from_fftfield();
-            let our_codeword = RSFr.interleaved_encode(messages.clone(), &masks, codeword_length);
-            let ref_codeword =
-                reference.interleaved_encode(messages, &masks_transposed, codeword_length);
+            let our_codeword = RSFr.interleaved_encode(
+                Polynomials::from_segments(&segments),
+                codeword_length,
+            );
+            let ref_codeword = reference.interleaved_encode(
+                Polynomials::from_segments(&segments),
+                codeword_length,
+            );
 
-            let our_points = RSFr.evaluation_points(message_length, codeword_length, &indices);
-            let ref_points = reference.evaluation_points(message_length, codeword_length, &indices);
+            let our_points =
+                RSFr.evaluation_points(masked_message_length, codeword_length, &indices);
+            let ref_points =
+                reference.evaluation_points(masked_message_length, codeword_length, &indices);
 
             // Pair each evaluation point with its num_messages-wide slice, then sort
             // by point so that ordering differences between implementations don't matter.
