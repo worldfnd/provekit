@@ -240,7 +240,7 @@ where
     let blinding = commitments[0]
         .blinding
         .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("c1 must carry blinding state"))?;
+        .ok_or_else(|| anyhow::anyhow!("first commitment must carry blinding state"))?;
 
     // The witness bounds stay in the base field for the first sumcheck
     // round; the fold at the first challenge lifts them into the
@@ -334,13 +334,19 @@ where
     let public_inputs_hash = P::hash_public_inputs(scheme.hash_config, &public_inputs.0);
     let public_inputs_len = public_inputs.len();
 
-    // The ext blinding commitment lives on c0; pull it out before the base
-    // commitments are consumed below. It is opened at the very end, after all
-    // base-witness opens (mirrored in the verifier).
+    ensure!(
+        commitments.len() == 1 || commitments.len() == 2,
+        "expected one or two commitments, got {}",
+        commitments.len()
+    );
+
+    // The ext blinding commitment lives on the first witness commitment; pull
+    // it out before the base commitments are consumed below. It is opened at
+    // the very end, after all base-witness opens (mirrored in the verifier).
     let blinding_state = commitments[0]
         .blinding
         .take()
-        .ok_or_else(|| anyhow::anyhow!("c0 must carry blinding state"))?;
+        .ok_or_else(|| anyhow::anyhow!("first commitment must carry blinding state"))?;
 
     let is_single = commitments.len() == 1;
     let (x, public_weight) =
@@ -355,7 +361,7 @@ where
         let commitment = commitments
             .into_iter()
             .next()
-            .expect("single-commitment path requires at least one commitment");
+            .ok_or_else(|| anyhow::anyhow!("single-commitment path requires one commitment"))?;
         let (mut weights, evals) = create_weights_and_evaluations::<3, _>(
             &embedding,
             scheme.m,
@@ -420,10 +426,10 @@ where
         let mut commitments = commitments.into_iter();
         let c1 = commitments
             .next()
-            .expect("dual-commitment path requires first commitment");
+            .ok_or_else(|| anyhow::anyhow!("dual-commitment path requires first commitment"))?;
         let c2 = commitments
             .next()
-            .expect("dual-commitment path requires second commitment");
+            .ok_or_else(|| anyhow::anyhow!("dual-commitment path requires second commitment"))?;
 
         let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
             .into_iter()
@@ -435,10 +441,10 @@ where
 
         let alphas_1: [Vec<Ext<P>>; 3] = alphas_1
             .try_into()
-            .expect("alphas_1 must have exactly 3 elements");
+            .map_err(|_| anyhow::anyhow!("alphas_1 must have exactly 3 elements"))?;
         let alphas_2: [Vec<Ext<P>>; 3] = alphas_2
             .try_into()
-            .expect("alphas_2 must have exactly 3 elements");
+            .map_err(|_| anyhow::anyhow!("alphas_2 must have exactly 3 elements"))?;
 
         let evals_1 = compute_alpha_evals(&embedding, &c1.polynomial, &alphas_1);
         let evals_2 = compute_alpha_evals(&embedding, &c2.polynomial, &alphas_2);

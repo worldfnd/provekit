@@ -5,16 +5,16 @@
   "type": "module",
   "scripts": {
     "setup": "node scripts/setup.mjs",
+    "wasm:build": "node scripts/build-provekit-wasm.mjs",
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "eslint src tests vitest.config.ts",
     "test": "vitest run",
-    "demo:web": "npm run build && node scripts/serve.mjs",
-    "serve": "npm run build && node scripts/serve.mjs",
-    "clean": "rm -rf dist artifacts vendor pkg pkg-web"
+    "demo:web": "npm run wasm:build && npm run build && node scripts/serve.mjs",
+    "serve": "npm run wasm:build && npm run build && node scripts/serve.mjs",
+    "clean": "rm -rf dist artifacts vendor pkg pkg-web pkg-local"
   },
   "dependencies": {
-    "@atheonxyz/verity": "0.3.2-beta",
     "@noir-lang/acvm_js": "1.0.0-beta.19",
     "@noir-lang/noir_js": "1.0.0-beta.19",
     "@noir-lang/noirc_abi": "1.0.0-beta.19",

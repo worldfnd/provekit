@@ -1,6 +1,5 @@
-import type { Proof } from "@atheonxyz/verity";
-
 import type { CircuitMetadata, LogWriter } from "./types.js";
+import type { Proof } from "./proof-types.js";
 
 interface ProofOutputDom {
   totalTime: HTMLElement;

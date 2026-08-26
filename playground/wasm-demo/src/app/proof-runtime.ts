@@ -1,5 +1,8 @@
-import { Backend, Verity } from "@atheonxyz/verity";
-import initProvekitInspector, { Prover as ProvekitInspectorProver } from "provekit-inspector";
+import initProvekitInspector, {
+  initThreadPool,
+  initPanicHook,
+  Prover as ProvekitInspectorProver,
+} from "provekit-inspector";
 
 import type { LogWriter } from "./types.js";
 
@@ -30,11 +33,30 @@ export async function readCircuitStatsFromPkp(proverBytes: Uint8Array): Promise<
   }
 }
 
-export async function initializeRuntime(logSink: LogWriter): Promise<Verity> {
+let runtimeReady: Promise<void> | null = null;
+
+export async function initializeRuntime(logSink: LogWriter): Promise<void> {
+  if (runtimeReady) {
+    await runtimeReady;
+    return;
+  }
+
+  runtimeReady = initializeLocalRuntime(logSink).catch((error) => {
+    runtimeReady = null;
+    throw error;
+  });
+  await runtimeReady;
+}
+
+async function initializeLocalRuntime(logSink: LogWriter): Promise<void> {
+  await ensureInspectorReady();
+  initPanicHook();
+
   const isIos = /iPhone|iPad|iPod/.test(navigator.userAgent);
   const isAndroid = /Android/.test(navigator.userAgent);
   const isMobile = isIos || isAndroid;
   const hasSharedArrayBuffer = typeof SharedArrayBuffer !== "undefined";
+  const isCrossOriginIsolated = globalThis.crossOriginIsolated === true;
   const maxThreads = navigator.hardwareConcurrency || 4;
 
   let threadSetting: number | false = false;
@@ -48,6 +70,10 @@ export async function initializeRuntime(logSink: LogWriter): Promise<Verity> {
     } else {
       logSink.log("Mobile: running in single-threaded mode");
     }
+  } else if (!isCrossOriginIsolated) {
+    throw new Error(
+      "Threaded ProveKit WASM requires cross-origin isolation. Serve the demo with COOP/COEP headers via scripts/serve.mjs."
+    );
   } else if (isAndroid) {
     threadSetting = Math.min(maxThreads, 4);
     logSink.log(`📱 Android detected, requesting ${threadSetting} worker threads...`);
@@ -56,7 +82,8 @@ export async function initializeRuntime(logSink: LogWriter): Promise<Verity> {
     logSink.log(`Requesting ${threadSetting} worker threads...`);
   }
 
-  const runtime = await Verity.create(Backend.ProveKit, { threads: threadSetting });
+  if (threadSetting !== false) {
+    await initThreadPool(threadSetting);
+  }
   logSink.log("Proof runtime initialized", "success");
-  return runtime;
 }

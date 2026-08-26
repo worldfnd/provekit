@@ -8,6 +8,7 @@
 !**/csca_registry/**/*.json
 # Allow package.json files
 !**/package.json
+!**/tsconfig*.json
 *.gz
 *.bin
 *.nps
@@ -61,3 +62,9 @@ tooling/provekit-wasm/pkg/*
 # logs for passport circuit benchmarks
 noir-examples/noir-passport/merkle_age_check/benchmark-inputs/logs/
 .omx/
+
+# Scratch output from local prove/verify runs
+output.txt
+*.out
+**/Untitled
+.tmp-tools/

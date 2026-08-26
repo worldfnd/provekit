@@ -33,7 +33,7 @@ Reference for this implementation
 ### Pack $A$, $B$, $C$ into one block matrix Z:
 This is a result from Marcin (https://gist.github.com/kustosz/14b62de666f721ab855536e575891bd1)
 
-**The trick:** 
+**The trick:**
 
 $$Z = \begin{bmatrix} A & B \\ 0 & C \end{bmatrix}$$
 
@@ -92,9 +92,9 @@ cargo run --release --bin provekit-cli -- prove \
   --produce-spark-query
 
 # 3. Generate one batched SPARK proof covering every query written in step 2.
-#    The prover reads all `spark_query_*.json` files in --spark-dir plus the
-#    SPARK prover context from --spctx, batches the queries, and writes a
-#    single ./spark_proofs/spark_proof.sp.
+#    The prover reads the `spark_queries.json` batch in --spark-dir plus the
+#    SPARK prover context from --spctx, and writes a single
+#    ./spark_proofs/spark_proof.sp.
 cargo run --release --bin provekit-cli -- prove-spark ./spark-artifacts/range-check-u8.pkp \
   --spark-dir ./spark_proofs \
   --spctx ./spark-artifacts/range-check-u8.spctx
@@ -105,19 +105,12 @@ cargo run --release --bin provekit-cli -- verify \
   --proof ./spark-artifacts/range-check-u8-proof.np
 
 # 5. Verify the batched SPARK proof. The verifier pulls the SPARK setup from
-#    the trusted .pkv. Pass every query that the prover saw, in index order
-#    (`_0`, `_1`, ...) — the transcript instance is bound to the postcard-
-#    serialized query slice, so order matters.
+#    the trusted .pkv. The transcript instance is bound to the serialized query
+#    batch, so its contents and order must match the batch used by prove-spark.
 cargo run --release --bin provekit-cli -- verify-spark \
   ./spark_proofs/spark_proof.sp \
   ./spark-artifacts/range-check-u8.pkv \
   ./spark_proofs/spark_queries.json
-
-# Or, equivalently, with a glob (single-digit indices sort lexically):
-# cargo run --release --bin provekit-cli -- verify-spark \
-#   ./spark_proofs/spark_proof.sp \
-#   ./spark-artifacts/range-check-u8.pkv \
-#   ./spark_proofs/spark_query_*.json
 
 # TODO: 6. Recursively verify the Noir proof and SPARK.
 ```

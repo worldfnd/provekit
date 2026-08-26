@@ -103,6 +103,7 @@ Swift, Kotlin, troubleshooting, and deployment checklists, see
 | Verifier | `provekit/verifier/` | `provekit-verifier` | Fiat–Shamir replay, sumcheck verification, and public input binding |
 | CLI | `tooling/cli/` | `provekit-cli` | Commands for prepare, prove, verify, inspection, and gnark input generation |
 | Benchmarks | `tooling/provekit-bench/` | `provekit-bench` | Benchmark utilities and regression coverage for proving workflows |
+| JS SDK | `tooling/provekit-js/` | `provekit-sdk` | Browser TypeScript interface for ProveKit WASM proving and verification |
 | FFI | `tooling/provekit-ffi/` | `provekit-ffi` | C ABI bindings for Swift/iOS, Kotlin/Android, Python, JavaScript, and other FFI hosts |
 | Gnark export | `tooling/provekit-gnark/` | `provekit-gnark` | Rust-side export/config bridge for recursive verification artifacts |
 | Verifier server | `tooling/verifier-server/` | `verifier-server` | HTTP server that orchestrates Rust proof handling and Go verifier execution |
@@ -114,6 +115,7 @@ Swift, Kotlin, troubleshooting, and deployment checklists, see
 ## Advanced Usage
 
 - **Direct R1CS frontend:** after generating Mavros artifacts, call `provekit-cli prepare --compiler mavros <artifacts.json> --r1cs <r1cs.bin>`.
+- **Browser SDK:** use [`tooling/provekit-js/`](tooling/provekit-js/) to load ProveKit WASM bindings and prove or verify from client apps.
 - **Recursive verifier inputs:** `provekit-cli generate-gnark-inputs <verifier.pkv> <proof.np>` writes `params_for_recursive_verifier` and `r1cs.json` by default; use `--params` and `--r1cs` to override those paths.
 - **Inspection commands:** use `circuit-stats` for Noir ACIR/R1CS structure, `analyze-pkp` for Noir prover-key size breakdowns, and `show-inputs` for public inputs.
 - **FFI integration:** start in [`tooling/provekit-ffi/`](tooling/provekit-ffi/) for C ABI headers, mobile build targets, and host-language examples.

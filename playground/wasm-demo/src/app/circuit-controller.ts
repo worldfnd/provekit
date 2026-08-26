@@ -34,6 +34,8 @@ interface CircuitControllerDeps {
 }
 
 export class CircuitController {
+  private acceptedCustomMavrosWasmRisk = false;
+
   constructor(private readonly deps: CircuitControllerDeps) {}
 
   bind(): void {
@@ -111,6 +113,7 @@ export class CircuitController {
       this.resetCustomState();
     } else {
       state.customFiles = {};
+      this.acceptedCustomMavrosWasmRisk = false;
     }
 
     this.refreshRunButton();
@@ -125,17 +128,35 @@ export class CircuitController {
 
   private resetCustomState(): void {
     this.deps.state.customFiles = {};
+    this.acceptedCustomMavrosWasmRisk = false;
     this.deps.checklist.reset();
   }
 
   private handleUploadedFiles(files: File[]): void {
     const { logs, checklist, state } = this.deps;
+    const classified = files.map((file) => ({ file, key: classifyUpload(file.name) }));
+    const hasMavrosWasm = classified.some(
+      ({ key }) => key === "programWasm" || key === "witgenWasm" || key === "adWasm",
+    );
+    let allowMavrosWasm = this.acceptedCustomMavrosWasmRisk;
 
-    for (const file of files) {
+    if (hasMavrosWasm && !allowMavrosWasm) {
+      allowMavrosWasm = globalThis.confirm(
+        "Uploaded Mavros program WASM modules will be executed in this page while proving. Only continue with artifacts you trust."
+      );
+      this.acceptedCustomMavrosWasmRisk = allowMavrosWasm;
+      if (!allowMavrosWasm) {
+        logs.log("Skipped uploaded Mavros WASM artifacts", "warn");
+      }
+    }
+
+    for (const { file, key } of classified) {
       logs.log(`File uploaded: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
-      const key = classifyUpload(file.name);
       if (!key) {
         logs.log(`Unrecognized file: ${file.name}`, "error");
+        continue;
+      }
+      if ((key === "programWasm" || key === "witgenWasm" || key === "adWasm") && !allowMavrosWasm) {
         continue;
       }
 

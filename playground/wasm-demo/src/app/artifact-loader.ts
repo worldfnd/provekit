@@ -5,6 +5,9 @@ import type { CircuitMetadata, CircuitName, CustomFiles, DiagnosticsWriter } fro
 export interface ArtifactBundle {
   proverBytes: Uint8Array;
   verifierBytes: Uint8Array;
+  programWasmBytes?: Uint8Array;
+  witgenWasmBytes?: Uint8Array;
+  adWasmBytes?: Uint8Array;
   metadata: CircuitMetadata | null;
 }
 
@@ -26,6 +29,14 @@ async function loadInputsJson(base: string): Promise<Record<string, unknown>> {
     throw new Error("inputs.json not found. Run setup first.");
   }
   return (await response.json()) as Record<string, unknown>;
+}
+
+async function loadOptionalBytes(path: string): Promise<Uint8Array | undefined> {
+  const response = await fetch(path);
+  if (!response.ok) {
+    return undefined;
+  }
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 function logBinarySize(logs: DiagnosticsWriter, label: string, bytes: Uint8Array): void {
@@ -94,9 +105,12 @@ export class ArtifactLoader {
     this.logs.log("Loading prover (.pkp) and verifier (.pkv) artifacts...");
     this.logs.logMemory("Before loading artifacts");
 
-    const [proverResponse, verifierResponse] = await Promise.all([
+    const [proverResponse, verifierResponse, programWasmBytes, witgenWasmBytes, adWasmBytes] = await Promise.all([
       fetch(`${base}prover.pkp`),
       fetch(`${base}verifier.pkv`),
+      loadOptionalBytes(`${base}program.wasm`),
+      loadOptionalBytes(`${base}witgen.wasm`),
+      loadOptionalBytes(`${base}ad.wasm`),
     ]);
 
     if (!proverResponse.ok || !verifierResponse.ok) {
@@ -106,12 +120,15 @@ export class ArtifactLoader {
     return {
       proverBytes: new Uint8Array(await proverResponse.arrayBuffer()),
       verifierBytes: new Uint8Array(await verifierResponse.arrayBuffer()),
+      programWasmBytes,
+      witgenWasmBytes,
+      adWasmBytes,
       metadata,
     };
   }
 
   private async loadCustomArtifacts(customFiles: CustomFiles): Promise<ArtifactBundle> {
-    const { prover, verifier } = customFiles;
+    const { prover, verifier, programWasm, witgenWasm, adWasm } = customFiles;
     if (!prover || !verifier) {
       throw new Error("Upload prover and verifier artifacts before running the custom circuit.");
     }
@@ -122,6 +139,9 @@ export class ArtifactLoader {
     return {
       proverBytes: new Uint8Array(await prover.arrayBuffer()),
       verifierBytes: new Uint8Array(await verifier.arrayBuffer()),
+      programWasmBytes: programWasm ? new Uint8Array(await programWasm.arrayBuffer()) : undefined,
+      witgenWasmBytes: witgenWasm ? new Uint8Array(await witgenWasm.arrayBuffer()) : undefined,
+      adWasmBytes: adWasm ? new Uint8Array(await adWasm.arrayBuffer()) : undefined,
       metadata: null,
     };
   }

@@ -5,9 +5,9 @@
  * Usage:
  *   node scripts/setup.mjs
  *
- * Installs browser dependencies, builds the native CLI once, then prepares
- * both SHA256 and Poseidon circuits
- * into artifacts/sha256/ and artifacts/poseidon/ respectively.
+ * Installs browser dependencies, builds the browser WASM package and native
+ * CLI once, then prepares both SHA256 and Poseidon circuits into
+ * artifacts/sha256/ and artifacts/poseidon/ respectively.
  */
 
 import { execSync, spawnSync } from "child_process";
@@ -101,7 +101,7 @@ async function buildShared() {
   log("\n🔧 ProveKit Browser Demo Setup\n", colors.bright);
 
   // Check prerequisites
-  logStep("1/4", "Checking prerequisites...");
+  logStep("1/5", "Checking prerequisites...");
 
   if (!checkCommand("nargo", "Noir (nargo)")) {
     log(
@@ -118,13 +118,13 @@ async function buildShared() {
   }
   logSuccess("cargo found");
 
-  logStep("2/4", "Installing browser dependencies...");
+  logStep("2/5", "Installing browser dependencies...");
   if (!run("npm install --legacy-peer-deps", { cwd: DEMO_DIR })) {
     process.exit(1);
   }
 
-  // Verity loads @noir-lang/* from node_modules directly; the old demo-local
-  // vendor/pkg staging directories are no longer needed.
+  // The browser demo loads @noir-lang/* from node_modules directly; the old
+  // demo-local vendor/pkg staging directories are no longer needed.
   for (const dir of ["vendor", "pkg", "pkg-web"]) {
     const fullPath = join(DEMO_DIR, dir);
     if (existsSync(fullPath)) {
@@ -133,8 +133,14 @@ async function buildShared() {
   }
   logSuccess("Removed stale demo-local runtime asset directories");
 
+  logStep("3/5", "Building browser WASM package...");
+  if (!run("node scripts/build-provekit-wasm.mjs", { cwd: DEMO_DIR })) {
+    process.exit(1);
+  }
+  logSuccess("Browser WASM package built");
+
   // Build native CLI
-  logStep("3/4", "Building native CLI...");
+  logStep("4/5", "Building native CLI...");
   if (!run("cargo build --profile release-fast --bin provekit-cli", { cwd: ROOT_DIR })) {
     process.exit(1);
   }
@@ -224,7 +230,7 @@ async function prepareCircuit({ name, path: circuitDir }) {
 async function main() {
   await buildShared();
 
-  logStep("4/4", `Preparing ${CIRCUITS.length} circuits...`);
+  logStep("5/5", `Preparing ${CIRCUITS.length} circuits...`);
   for (const circuit of CIRCUITS) {
     await prepareCircuit(circuit);
   }

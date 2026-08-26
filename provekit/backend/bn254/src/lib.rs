@@ -19,8 +19,15 @@ mod solver;
 pub mod spark;
 mod transcript_sponge;
 mod verify;
+#[cfg(target_arch = "wasm32")]
+mod wasm_mavros_prove;
 pub mod witness;
 
+#[cfg(target_arch = "wasm32")]
+pub use wasm_mavros_prove::{
+    prove_mavros_with_wasm_driver, MavrosPhase1Result, MavrosTableInfo, MavrosTableKind,
+    MavrosWasmDriver,
+};
 pub use {
     acir::FieldElement as NoirElement,
     ark_bn254::Fr as FieldElement,
@@ -31,8 +38,8 @@ pub use {
     prove::Prove,
     provekit_common::{ec_arith::ec_scalar_mul, ProvekitProof},
     scheme::{
-        MavrosProver, MavrosSchemeData, NoirProofScheme, NoirProver, NoirSchemeData, Prover,
-        Verifier,
+        ConstraintsLayout, MavrosProver, MavrosSchemeData, NoirProofScheme, NoirProver,
+        NoirSchemeData, Prover, Verifier, WitnessLayout,
     },
     skyscraper::SkyscraperPoW,
     solver::solve_witness_vec,

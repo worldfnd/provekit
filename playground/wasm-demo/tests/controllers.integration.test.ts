@@ -1,10 +1,10 @@
-import type { Proof, VerifierScheme } from "@atheonxyz/verity";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChecklistPresenter } from "../src/app/checklist.js";
 import { CircuitController } from "../src/app/circuit-controller.js";
 import { collectDom } from "../src/app/dom.js";
 import { ProofOutputPresenter } from "../src/app/proof-output.js";
+import type { Proof, VerifierScheme } from "../src/app/proof-types.js";
 import { StepPresenter } from "../src/app/steps.js";
 import type { AppState, CircuitName, LogType } from "../src/app/types.js";
 import { VerifyController } from "../src/app/verify-controller.js";
@@ -37,7 +37,7 @@ function renderFixture(): void {
         <div id="step${step}-status" class="step-status">Waiting...</div>
       </div>
     `).join("")}
-    ${["prover", "verifier", "inputs"].map((key) => `
+    ${["prover", "verifier", "inputs", "programWasm", "witgenWasm", "adWasm"].map((key) => `
       <div id="check-${key}" class="checklist-item pending">
         <div class="item-icon">-</div>
         <span class="item-name">${key}</span>
@@ -52,7 +52,6 @@ function createState(activeCircuit: CircuitName = "sha256"): AppState {
     activeCircuit,
     customFiles: {},
     wasmReady: true,
-    runtime: null,
     lastProof: null,
     activeVerifier: null,
   };
@@ -141,6 +140,33 @@ describe("CircuitController", () => {
     expect(state.customFiles.verifier?.name).toBe("verifier.pkv");
     expect(state.customFiles.inputs?.name).toBe("Prover.toml");
     expect(dom.runButton.disabled).toBe(false);
+  });
+
+  it("requires confirmation before accepting custom Mavros WASM artifacts", () => {
+    const confirmSpy = vi.spyOn(globalThis, "confirm").mockReturnValue(false);
+    const { controller, dom, logs, state } = setupCircuitHarness("sha256");
+    controller.bind();
+    controller.applyCircuit("custom", false);
+
+    const dropEvent = new Event("drop", { bubbles: true, cancelable: true });
+    Object.defineProperty(dropEvent, "dataTransfer", {
+      value: {
+        files: [
+          new File(["witgen"], "witgen.wasm"),
+          new File(["ad"], "ad.wasm"),
+        ],
+      },
+    });
+
+    dom.dropzone.dispatchEvent(dropEvent);
+
+    expect(confirmSpy).toHaveBeenCalledOnce();
+    expect(state.customFiles.witgenWasm).toBeUndefined();
+    expect(state.customFiles.adWasm).toBeUndefined();
+    expect(logs.entries.some(({ message }) => message.includes("Skipped uploaded Mavros WASM")))
+      .toBe(true);
+
+    confirmSpy.mockRestore();
   });
 });
 

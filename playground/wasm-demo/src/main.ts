@@ -1,10 +1,12 @@
-import type { ProverScheme, VerifierScheme } from "@atheonxyz/verity";
+import * as ProvekitInspector from "provekit-inspector";
+import { createProveKit, type ProveKit, type ProveKitScheme, type WitnessProvider, type Proof as SdkProof } from "provekit-sdk";
 
 import { ArtifactLoader } from "./app/artifact-loader.js";
 import { ChecklistPresenter } from "./app/checklist.js";
 import { CircuitController } from "./app/circuit-controller.js";
 import { collectDom } from "./app/dom.js";
 import { LogRenderer } from "./app/logs.js";
+import { Proof, type ProverScheme, type VerifierScheme } from "./app/proof-types.js";
 import { ProofOutputPresenter } from "./app/proof-output.js";
 import { initializeRuntime, readCircuitStatsFromPkp } from "./app/proof-runtime.js";
 import { RunController } from "./app/run-controller.js";
@@ -16,17 +18,85 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+class BrowserWitnessProvider implements WitnessProvider {
+  async generateWitness(inputs: Record<string, unknown>, circuit: unknown): Promise<Record<string, unknown>> {
+    const [{ decompressWitnessStack }, { Noir }] = await Promise.all([
+      import("@noir-lang/acvm_js"),
+      import("@noir-lang/noir_js"),
+    ]);
+    const noir = new Noir(circuit as never);
+    const { witness: compressedWitness } = await noir.execute(inputs as never);
+    const witnessStack = decompressWitnessStack(compressedWitness);
+    const witnessMap = witnessStack[0]?.witness;
+    if (!witnessMap) {
+      throw new Error("Circuit execution produced an empty witness stack");
+    }
+
+    const converted: Record<string, unknown> = {};
+    for (const [witness, value] of witnessMap.entries()) {
+      const index = typeof witness === "number"
+        ? witness
+        : typeof (witness as { inner?: unknown })?.inner === "number"
+          ? (witness as { inner: number }).inner
+          : Number(witness);
+      if (Number.isNaN(index)) {
+        throw new Error(`Failed to extract witness index from key: ${String(witness)}`);
+      }
+      converted[index] = value;
+    }
+    return converted;
+  }
+}
+
+function toLocalProof(sdkProof: SdkProof): Proof {
+  return Proof.fromBytes(sdkProof.bytes);
+}
+
+class SdkProverScheme implements ProverScheme {
+  constructor(private readonly scheme: ProveKitScheme) {}
+
+  async prove(inputs: Record<string, unknown>): Promise<Proof> {
+    return toLocalProof(await this.scheme.prove(inputs));
+  }
+
+  async serialize(): Promise<Uint8Array> {
+    return this.scheme.serializeProver();
+  }
+
+  dispose(): void {
+    // No-op: the SDK consumes the prover handle during prove(); the paired
+    // SdkVerifierScheme owns final disposal of the scheme.
+  }
+}
+
+class SdkVerifierScheme implements VerifierScheme {
+  constructor(private readonly scheme: ProveKitScheme) {}
+
+  async verify(proof: Proof): Promise<boolean> {
+    return this.scheme.tryVerify(proof.data);
+  }
+
+  async serialize(): Promise<Uint8Array> {
+    return this.scheme.serializeVerifier() ?? new Uint8Array();
+  }
+
+  dispose(): void {
+    this.scheme.dispose();
+  }
+}
+
 class DemoApp {
   private readonly dom = collectDom(document);
   private readonly logs = new LogRenderer(this.dom.logContainer);
   private readonly steps = new StepPresenter(this.dom.steps);
   private readonly checklist = new ChecklistPresenter(this.dom.checklist);
   private readonly proofOutput = new ProofOutputPresenter(this.dom, this.logs);
+  private readonly witnessProvider = new BrowserWitnessProvider();
+  private provekit: ProveKit | null = null;
   private readonly state: AppState = {
     activeCircuit: "sha256",
     customFiles: {},
     wasmReady: false,
-    runtime: null,
     lastProof: null,
     activeVerifier: null,
   };
@@ -54,7 +124,7 @@ class DemoApp {
     steps: this.steps,
     proofOutput: this.proofOutput,
     artifacts: this.artifacts,
-    loadSchemes: (proverBytes, verifierBytes) => this.loadSchemes(proverBytes, verifierBytes),
+    loadSchemes: (proverBytes, verifierBytes, mavrosArtifacts) => this.loadSchemes(proverBytes, verifierBytes, mavrosArtifacts),
     waitForUi: () => this.waitForUi(),
     disposeActiveVerifier: () => this.disposeActiveVerifier(),
     refreshRunButton: () => this.circuits.refreshRunButton(),
@@ -90,7 +160,12 @@ class DemoApp {
     try {
       this.steps.setStatus(1, stepStatus.running("Loading..."));
       this.logs.log("Initializing proof runtime...");
-      this.state.runtime = await initializeRuntime(this.logs);
+      await initializeRuntime(this.logs);
+      this.provekit = await createProveKit({
+        bindings: ProvekitInspector,
+        threads: false,
+        panicHook: false,
+      });
       this.state.wasmReady = true;
       this.steps.setStatus(1, stepStatus.success("Loaded"));
       this.circuits.refreshRunButton();
@@ -131,38 +206,42 @@ class DemoApp {
     await new Promise((resolve) => window.setTimeout(resolve, 50));
   }
 
-  private async loadSchemes(proverBytes: Uint8Array, verifierBytes: Uint8Array): Promise<{
-    prover: ProverScheme;
-    verifier: VerifierScheme;
-  }> {
-    if (!this.state.runtime) {
+  private async loadSchemes(
+    proverBytes: Uint8Array,
+    verifierBytes: Uint8Array,
+    provingModules?: { programBytes?: Uint8Array; witnessBytes?: Uint8Array; derivativesBytes?: Uint8Array },
+  ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }> {
+    if (!this.state.wasmReady || !this.provekit) {
       throw new Error("Proof runtime is not initialized yet.");
     }
 
     this.logs.log("Loading prover and verifier...");
     const loadStart = performance.now();
 
-    // Use allSettled so we can dispose the resolved scheme if the other load
-    // rejects — a bare Promise.all would leak the fulfilled side's WASM handle.
-    const [proverResult, verifierResult] = await Promise.allSettled([
-      this.state.runtime.loadProver(proverBytes),
-      this.state.runtime.loadVerifier(verifierBytes),
-    ]);
-
-    if (proverResult.status === "rejected" || verifierResult.status === "rejected") {
-      if (proverResult.status === "fulfilled") {
-        proverResult.value.dispose();
-      }
-      if (verifierResult.status === "fulfilled") {
-        verifierResult.value.dispose();
-      }
-      throw proverResult.status === "rejected"
-        ? proverResult.reason
-        : (verifierResult as PromiseRejectedResult).reason;
+    const hasProgram = Boolean(provingModules?.programBytes);
+    const hasLegacyModules = Boolean(provingModules?.witnessBytes || provingModules?.derivativesBytes);
+    if (!hasProgram && hasLegacyModules && (!provingModules?.witnessBytes || !provingModules.derivativesBytes)) {
+      throw new Error("Legacy proving modules require both witness and derivatives WASM artifacts.");
     }
 
+    const scheme = await this.provekit.loadArtifacts({
+      prover: proverBytes,
+      verifier: verifierBytes,
+      witnessProvider: this.witnessProvider,
+      provingModules: hasProgram || hasLegacyModules
+        ? {
+            program: provingModules?.programBytes,
+            witness: provingModules?.witnessBytes,
+            derivatives: provingModules?.derivativesBytes,
+          }
+        : undefined,
+    });
+
     this.logs.log(`Scheme load time: ${(performance.now() - loadStart).toFixed(0)}ms`);
-    return { prover: proverResult.value, verifier: verifierResult.value };
+    return {
+      prover: new SdkProverScheme(scheme),
+      verifier: new SdkVerifierScheme(scheme),
+    };
   }
 
   private async copyLogs(): Promise<void> {

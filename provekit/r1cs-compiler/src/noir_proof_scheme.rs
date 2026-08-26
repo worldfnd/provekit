@@ -62,6 +62,12 @@ fn convert_mavros_r1cs_to_provekit(
                 .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
         );
 
+        // SparseMatrix serializes column indices as per-row deltas, so rows
+        // must be ordered before using the bulk push path.
+        a_buf.sort_unstable_by_key(|(idx, _)| *idx);
+        b_buf.sort_unstable_by_key(|(idx, _)| *idx);
+        c_buf.sort_unstable_by_key(|(idx, _)| *idx);
+
         r1cs.push_constraint(
             a_buf.iter().copied(),
             b_buf.iter().copied(),

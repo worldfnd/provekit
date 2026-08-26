@@ -9,7 +9,7 @@ mod prover;
 mod verifier;
 
 pub use {
-    mavros::{MavrosProver, MavrosSchemeData},
+    mavros::{ConstraintsLayout, MavrosProver, MavrosSchemeData, WitnessLayout},
     proof_scheme::{NoirProofScheme, NoirSchemeData},
     prover::{NoirProver, Prover},
     verifier::Verifier,

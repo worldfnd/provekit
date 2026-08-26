@@ -1,8 +1,7 @@
-import type { ProverScheme, VerifierScheme } from "@atheonxyz/verity";
-
 import { ArtifactLoader } from "./artifact-loader.js";
 import type { DemoDom } from "./dom.js";
 import { ProofOutputPresenter } from "./proof-output.js";
+import type { ProverScheme, VerifierScheme } from "./proof-types.js";
 import { StepPresenter, stepStatus } from "./steps.js";
 import type { AppState, DiagnosticsWriter } from "./types.js";
 
@@ -13,10 +12,11 @@ interface RunControllerDeps {
   steps: StepPresenter;
   proofOutput: ProofOutputPresenter;
   artifacts: ArtifactLoader;
-  loadSchemes(proverBytes: Uint8Array, verifierBytes: Uint8Array): Promise<{
-    prover: ProverScheme;
-    verifier: VerifierScheme;
-  }>;
+  loadSchemes(
+    proverBytes: Uint8Array,
+    verifierBytes: Uint8Array,
+    provingModules?: { programBytes?: Uint8Array; witnessBytes?: Uint8Array; derivativesBytes?: Uint8Array },
+  ): Promise<{ prover: ProverScheme; verifier: VerifierScheme }>;
   waitForUi(): Promise<void>;
   disposeActiveVerifier(): void;
   refreshRunButton(): void;
@@ -26,7 +26,7 @@ export class RunController {
   constructor(private readonly deps: RunControllerDeps) {}
 
   async run(): Promise<void> {
-    if (!this.deps.state.runtime) {
+    if (!this.deps.state.wasmReady) {
       this.deps.logs.log("Proof runtime is not initialized yet.", "error");
       return;
     }
@@ -39,12 +39,16 @@ export class RunController {
 
     try {
       this.deps.steps.setStatus(2, stepStatus.running("Loading artifacts..."));
-      const { proverBytes, verifierBytes, metadata } = await this.deps.artifacts.loadArtifacts(
+      const { proverBytes, verifierBytes, programWasmBytes, witgenWasmBytes, adWasmBytes, metadata } = await this.deps.artifacts.loadArtifacts(
         this.deps.state.activeCircuit,
         this.deps.state.customFiles,
       );
 
-      ({ prover, verifier } = await this.deps.loadSchemes(proverBytes, verifierBytes));
+      ({ prover, verifier } = await this.deps.loadSchemes(proverBytes, verifierBytes, {
+        programBytes: programWasmBytes,
+        witnessBytes: witgenWasmBytes,
+        derivativesBytes: adWasmBytes,
+      }));
       this.deps.steps.setStatus(2, stepStatus.success("Loaded"));
 
       failingStep = 3;
@@ -96,7 +100,7 @@ export class RunController {
     dom.verifyButton.disabled = true;
     logs.clear();
     // Reset steps 2–5 only; step 1 ("Load Proof Runtime") has already
-    // completed and is tied to the long-lived Verity runtime, not per-run.
+    // completed and is tied to the long-lived local WASM runtime, not per-run.
     steps.reset(2);
     proofOutput.reset();
     state.lastProof = null;
