@@ -57,10 +57,6 @@ pub struct Args {
     #[argh(switch)]
     skip_brillig_constraints_check: bool,
 
-    /// force a full recompilation, ignoring cached artifacts
-    #[argh(switch)]
-    force: bool,
-
     /// output path for the prover key (default: `<circuit>.pkp`)
     #[argh(option, long = "pkp", short = 'p')]
     pkp_path: Option<PathBuf>,
@@ -163,7 +159,6 @@ impl Args {
             print_acir: self.print_acir,
             skip_underconstrained_check: self.skip_underconstrained_check,
             skip_brillig_constraints_check: self.skip_brillig_constraints_check,
-            force_compile: self.force,
             ..CompileOptions::default()
         }
     }

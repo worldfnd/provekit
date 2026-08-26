@@ -57,7 +57,7 @@ jobs:
         run: |
           for circuit in t_add_dsc_720 t_add_id_data_720 t_add_integrity_commit t_attest; do
             echo "Preparing $circuit"
-            cargo run --release --bin provekit-cli prepare ./target/$circuit.json \
+            cargo run --release --bin provekit-cli prepare --package "$circuit" \
               --pkp ./benchmark-inputs/$circuit-prover.pkp \
               --pkv ./benchmark-inputs/$circuit-verifier.pkv
             echo "Prepared $circuit"

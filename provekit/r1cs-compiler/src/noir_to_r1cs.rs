@@ -104,9 +104,6 @@ pub(crate) struct NoirToR1CSCompiler {
     /// Cache for deduplicating product witnesses: (min(a,b), max(a,b)) →
     /// product witness index
     product_cache: std::collections::HashMap<(usize, usize), usize>,
-
-    /// The ACIR witness indices of the initial values of the memory blocks
-    pub initial_memories: BTreeMap<usize, Vec<usize>>,
 }
 
 /// Compile a Noir circuit to an R1CS relation.
@@ -153,7 +150,6 @@ impl NoirToR1CSCompiler {
             ))],
             acir_to_r1cs_witness_map: BTreeMap::new(),
             product_cache: std::collections::HashMap::new(),
-            initial_memories: BTreeMap::new(),
         }
     }
 
@@ -517,8 +513,6 @@ impl NoirToR1CSCompiler {
                         "Memory block {} already initialized",
                         block_id
                     );
-                    let acir_indices: Vec<usize> = init.iter().map(|w| w.0 as usize).collect();
-                    self.initial_memories.insert(block_id, acir_indices);
                     let mut block = MemoryBlock::new();
                     init.iter().for_each(|acir_witness| {
                         let r1cs_witness = self.fetch_r1cs_witness_index(*acir_witness);
@@ -530,7 +524,7 @@ impl NoirToR1CSCompiler {
                     let block_id = block_id.as_u32() as usize;
                     assert!(
                         memory_blocks.contains_key(&block_id),
-                        "Memory block {} not initialized before read",
+                        "Memory block {} not initialized before use",
                         block_id
                     );
                     let block = memory_blocks.get_mut(&block_id).unwrap();
