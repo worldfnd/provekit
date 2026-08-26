@@ -4,15 +4,15 @@ version = 4
 
 [[package]]
 name = "acir"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acir_field",
  "base64",
  "brillig",
  "flate2",
  "msgpack_tagged",
- "num-bigint",
+ "num-bigint 0.5.1",
  "num-traits",
  "num_enum",
  "rmp-serde",
@@ -25,23 +25,23 @@ dependencies = [
 
 [[package]]
 name = "acir_field"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "ark-bn254 0.6.0",
  "ark-ff 0.6.0",
  "cfg-if",
  "hex",
  "msgpack_tagged",
- "num-bigint",
+ "num-bigint 0.5.1",
  "serde",
  "serde_bytes",
 ]
 
 [[package]]
 name = "acvm"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acir",
  "acvm_blackbox_solver",
@@ -56,8 +56,8 @@ dependencies = [
 
 [[package]]
 name = "acvm_blackbox_solver"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acir",
  "aes",
@@ -283,7 +283,7 @@ dependencies = [
  "fnv",
  "hashbrown 0.15.5",
  "itertools 0.13.0",
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-integer",
  "num-traits",
  "zeroize",
@@ -304,7 +304,7 @@ dependencies = [
  "fnv",
  "hashbrown 0.17.1",
  "itertools 0.14.0",
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-integer",
  "num-traits",
  "zeroize",
@@ -321,7 +321,7 @@ dependencies = [
  "ark-serialize 0.3.0",
  "ark-std 0.3.0",
  "derivative",
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-traits",
  "paste",
  "rustc_version 0.3.3",
@@ -341,7 +341,7 @@ dependencies = [
  "derivative",
  "digest 0.10.7",
  "itertools 0.10.5",
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-traits",
  "paste",
  "rustc_version 0.4.1",
@@ -362,7 +362,7 @@ dependencies = [
  "digest 0.10.7",
  "educe",
  "itertools 0.13.0",
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-traits",
  "paste",
  "zeroize",
@@ -380,7 +380,7 @@ dependencies = [
  "ark-std 0.6.0",
  "digest 0.10.7",
  "educe",
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-traits",
  "zeroize",
 ]
@@ -431,7 +431,7 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db2fd794a08ccb318058009eefdf15bcaaaaf6f8161eb3345f907222bac38b20"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-traits",
  "quote",
  "syn 1.0.109",
@@ -443,7 +443,7 @@ version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7abe79b0e4288889c4574159ab790824d0033b9fdcb2a112a3182fac2e514565"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-traits",
  "proc-macro2",
  "quote",
@@ -456,7 +456,7 @@ version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09be120733ee33f7693ceaa202ca41accd5653b779563608f1234f78ae07c4b3"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-traits",
  "proc-macro2",
  "quote",
@@ -469,7 +469,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a0691ed21ef00ef89c1e9bda832eba493dda3ec2f8d892fb25b705f73f06bb8"
 dependencies = [
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-traits",
  "proc-macro2",
  "quote",
@@ -536,7 +536,7 @@ checksum = "adb7b85a02b83d2f22f89bd5cac66c9c89474240cb6207cb1efc16d098e822a5"
 dependencies = [
  "ark-std 0.4.0",
  "digest 0.10.7",
- "num-bigint",
+ "num-bigint 0.4.6",
 ]
 
 [[package]]
@@ -549,7 +549,7 @@ dependencies = [
  "ark-std 0.5.0",
  "arrayvec",
  "digest 0.10.7",
- "num-bigint",
+ "num-bigint 0.4.6",
 ]
 
 [[package]]
@@ -561,7 +561,7 @@ dependencies = [
  "ark-serialize-derive 0.6.0",
  "ark-std 0.6.0",
  "digest 0.10.7",
- "num-bigint",
+ "num-bigint 0.4.6",
 ]
 
 [[package]]
@@ -920,8 +920,8 @@ dependencies = [
 
 [[package]]
 name = "bn254_blackbox_solver"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acir",
  "acvm_blackbox_solver",
@@ -945,8 +945,8 @@ dependencies = [
 
 [[package]]
 name = "brillig"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acir_field",
  "itertools 0.15.0",
@@ -956,13 +956,13 @@ dependencies = [
 
 [[package]]
 name = "brillig_vm"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acir",
  "acvm_blackbox_solver",
  "itertools 0.15.0",
- "num-bigint",
+ "num-bigint 0.5.1",
  "num-traits",
  "thiserror 2.0.18",
 ]
@@ -2041,8 +2041,8 @@ dependencies = [
 
 [[package]]
 name = "fm"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "codespan-reporting",
  "iter-extended",
@@ -2793,8 +2793,8 @@ checksum = "a6cb138bb79a146c1bd460005623e142ef0181e3d0219cb493e02f7d08a35695"
 
 [[package]]
 name = "iter-extended"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 
 [[package]]
 name = "itertools"
@@ -3343,8 +3343,8 @@ dependencies = [
 
 [[package]]
 name = "msgpack_tagged"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "msgpack_tagged_derive",
  "rmp",
@@ -3355,8 +3355,8 @@ dependencies = [
 
 [[package]]
 name = "msgpack_tagged_derive"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3365,8 +3365,8 @@ dependencies = [
 
 [[package]]
 name = "nargo"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acvm",
  "fm",
@@ -3392,8 +3392,8 @@ dependencies = [
 
 [[package]]
 name = "nargo_cli"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acvm",
  "async-lsp",
@@ -3445,8 +3445,8 @@ dependencies = [
 
 [[package]]
 name = "nargo_doc"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "fm",
  "iter-extended",
@@ -3461,8 +3461,8 @@ dependencies = [
 
 [[package]]
 name = "nargo_expand"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "fm",
  "nargo_fmt",
@@ -3472,8 +3472,8 @@ dependencies = [
 
 [[package]]
 name = "nargo_fmt"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "noirc_errors",
  "noirc_frontend",
@@ -3484,8 +3484,8 @@ dependencies = [
 
 [[package]]
 name = "nargo_toml"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "dirs",
  "fm",
@@ -3543,8 +3543,8 @@ dependencies = [
 
 [[package]]
 name = "noir_artifact_cli"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acir",
  "acvm",
@@ -3569,8 +3569,8 @@ dependencies = [
 
 [[package]]
 name = "noir_ast_fuzzer"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acir",
  "acvm",
@@ -3598,8 +3598,8 @@ dependencies = [
 
 [[package]]
 name = "noir_debugger"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acvm",
  "bn254_blackbox_solver",
@@ -3618,8 +3618,8 @@ dependencies = [
 
 [[package]]
 name = "noir_greybox_fuzzer"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acvm",
  "build-data",
@@ -3639,8 +3639,8 @@ dependencies = [
 
 [[package]]
 name = "noir_lsp"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acvm",
  "async-lsp",
@@ -3657,27 +3657,27 @@ dependencies = [
  "noirc_driver",
  "noirc_errors",
  "noirc_frontend",
- "num-bigint",
+ "num-bigint 0.5.1",
  "rayon",
  "rustc-hash",
  "serde",
  "serde_json",
  "strum",
  "thiserror 2.0.18",
+ "tokio",
  "tower",
- "wasm-bindgen",
 ]
 
 [[package]]
 name = "noirc_abi"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acvm",
  "iter-extended",
  "itertools 0.15.0",
  "noirc_printable_type",
- "num-bigint",
+ "num-bigint 0.5.1",
  "num-traits",
  "serde",
  "serde_json",
@@ -3687,13 +3687,13 @@ dependencies = [
 
 [[package]]
 name = "noirc_arena"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 
 [[package]]
 name = "noirc_artifacts"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acir",
  "acvm",
@@ -3712,8 +3712,8 @@ dependencies = [
 
 [[package]]
 name = "noirc_artifacts_info"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acir",
  "acvm",
@@ -3727,8 +3727,8 @@ dependencies = [
 
 [[package]]
 name = "noirc_driver"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acvm",
  "build-data",
@@ -3747,8 +3747,8 @@ dependencies = [
 
 [[package]]
 name = "noirc_errors"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "codespan-reporting",
  "fm",
@@ -3760,8 +3760,8 @@ dependencies = [
 
 [[package]]
 name = "noirc_evaluator"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acvm",
  "bit-vec 0.9.1",
@@ -3777,7 +3777,7 @@ dependencies = [
  "noirc_errors",
  "noirc_frontend",
  "noirc_printable_type",
- "num-bigint",
+ "num-bigint 0.5.1",
  "num-integer",
  "num-traits",
  "petgraph",
@@ -3794,8 +3794,8 @@ dependencies = [
 
 [[package]]
 name = "noirc_frontend"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acvm",
  "bn254_blackbox_solver",
@@ -3809,7 +3809,7 @@ dependencies = [
  "noirc_artifacts",
  "noirc_errors",
  "noirc_printable_type",
- "num-bigint",
+ "num-bigint 0.5.1",
  "num-traits",
  "petgraph",
  "rangemap",
@@ -3827,8 +3827,8 @@ dependencies = [
 
 [[package]]
 name = "noirc_printable_type"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "acvm",
  "iter-extended",
@@ -3839,8 +3839,8 @@ dependencies = [
 
 [[package]]
 name = "noirc_span"
-version = "1.0.0-beta.23"
-source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.23#bd01f81e8a51a161d9c50aa24cc64d7e42209570"
+version = "1.0.0-beta.24"
+source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.24#5021a7196dc49d8e515177624f8759568f3360c0"
 dependencies = [
  "codespan",
  "serde",
@@ -3900,6 +3900,16 @@ name = "num-bigint"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93e7820bc0a80a0238e650327316f929ba18d5be054b647490a3a6a339f3e7c0"
 dependencies = [
  "num-integer",
  "num-traits",
@@ -4094,7 +4104,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4819a3e4c1882431a63d4847ffa10d110017aee4cb9cf4319ca6dca191930969"
 dependencies = [
  "itertools 0.14.0",
- "num-bigint",
+ "num-bigint 0.4.6",
  "p3-maybe-rayon",
  "p3-util",
  "paste",
@@ -4158,7 +4168,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9fe0be661891af1f703ceaf57334fcbd540804988984dc2b500dd99740e7c81"
 dependencies = [
  "itertools 0.14.0",
- "num-bigint",
+ "num-bigint 0.4.6",
  "p3-dft",
  "p3-field",
  "p3-matrix",
@@ -5100,7 +5110,7 @@ dependencies = [
  "bytes",
  "fastrlp 0.3.1",
  "fastrlp 0.4.0",
- "num-bigint",
+ "num-bigint 0.4.6",
  "num-integer",
  "num-traits",
  "parity-scale-codec",
@@ -6769,8 +6779,6 @@ dependencies = [
  "cfg-if",
  "once_cell",
  "rustversion",
- "serde",
- "serde_json",
  "wasm-bindgen-macro",
  "wasm-bindgen-shared",
 ]
