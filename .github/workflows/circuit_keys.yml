@@ -43,7 +43,7 @@ jobs:
             - name: Setup Noir toolchain
               uses: noir-lang/noirup@v0.1.2
               with:
-                  toolchain: v1.0.0-beta.21
+                  toolchain: v1.0.0-beta.22
 
             - name: Compile and execute Nargo circuit
               working-directory: ${{ env.CIRCUIT_DIR }}

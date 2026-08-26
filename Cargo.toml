@@ -173,15 +173,15 @@ wasm-bindgen = "0.2"
 wasm-bindgen-rayon = "1.2"
 
 # Noir language dependencies
-acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.21" }
-bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.21" }
-nargo = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.21" }
-nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.21" }
-nargo_toml = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.21" }
-noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.21" }
-noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.21" }
-noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.21" }
-noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.21" }
+acir = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.22" }
+bn254_blackbox_solver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.22" }
+nargo = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.22" }
+nargo_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.22" }
+nargo_toml = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.22" }
+noir_artifact_cli = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.22" }
+noirc_abi = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.22" }
+noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.22" }
+noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.22" }
 
 # Cryptography and proof systems
 ark-bn254 = { version = "0.5.0", default-features = false, features = [
