@@ -513,6 +513,7 @@ where
             (final_claim, claimed)
         };
         drop(p1);
+        drop(w1);
 
         let WhirR1CSCommitment {
             witness: w2,
