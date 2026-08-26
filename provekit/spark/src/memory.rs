@@ -20,7 +20,7 @@ use {
 
 pub struct AxisConfig<'a> {
     pub eq_memory:       &'a [FieldElement],
-    pub final_timestamp: &'a [FieldElement],
+    pub final_timestamp: Vec<FieldElement>,
     pub whir_config:     &'a WhirConfig,
 }
 
@@ -65,7 +65,7 @@ pub fn prove_axis_init_final_product(
     let gpa_randomness = run_gpa2(merlin, gpa_leaves)?;
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
 
-    let final_ts_eval = multilinear_extend(config.final_timestamp, evaluation_randomness);
+    let final_ts_eval = multilinear_extend(&config.final_timestamp, evaluation_randomness);
     merlin.prover_hint_ark(&final_ts_eval);
 
     produce_whir_proof(

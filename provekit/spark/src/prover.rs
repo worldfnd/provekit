@@ -297,26 +297,24 @@ fn memory_checking(
         merlin,
         AxisConfig {
             eq_memory:       &memory.eq_rx,
-            final_timestamp: &final_row_field,
+            final_timestamp: final_row_field,
             whir_config:     &whir_configs.row,
         },
         &data.witnesses.final_row_ts_witness,
         &challenges,
     )?;
-    drop(final_row_field);
 
     let final_col_field = data.matrix.timestamps.final_col_field();
     prove_axis_init_final_product(
         merlin,
         AxisConfig {
             eq_memory:       &memory.eq_ry,
-            final_timestamp: &final_col_field,
+            final_timestamp: final_col_field,
             whir_config:     &whir_configs.col,
         },
         &data.witnesses.final_col_ts_witness,
         &challenges,
     )?;
-    drop(final_col_field);
 
     Ok(())
 }
