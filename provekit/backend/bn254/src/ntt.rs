@@ -81,7 +81,7 @@ impl ReedSolomon<Fr> for RSFr {
         }
 
         let mut coset_size = self.next_order(polynomial_length).unwrap();
-        while !codeword_length.is_multiple_of(coset_size) {
+        while codeword_length % coset_size != 0 {
             coset_size = self.next_order(coset_size + 1).unwrap();
         }
         let num_cosets = codeword_length / coset_size;
@@ -133,7 +133,10 @@ mod tests {
             let mut data = messages_flat;
             data.resize(total, Fr::ZERO);
 
-            let messages: Vec<Buffer<Fr>> = data.chunks(message_length).map(|c| Buffer::from(c)).collect();
+            let messages: Vec<Buffer<Fr>> = data
+                .chunks(message_length)
+                .map(Buffer::from)
+                .collect();
             let messages_refs: Vec<&Buffer<Fr>> = messages.iter().collect();
 
             let mask_total = num_messages * mask_length;
