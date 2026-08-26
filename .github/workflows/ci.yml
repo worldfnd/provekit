@@ -42,7 +42,7 @@ jobs:
       - name: Setup Noir
         uses: noir-lang/noirup@v0.1.2
         with:
-          toolchain: v1.0.0-beta.20
+          toolchain: v1.0.0-beta.21
       - name: Generate mobile benchmark Noir artifacts
         run: bench-mobile/scripts/generate-fixtures.sh
         env:

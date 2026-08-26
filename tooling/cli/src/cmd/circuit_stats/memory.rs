@@ -4,7 +4,7 @@
 //! computing R1CS constraint and witness costs.
 
 use {
-    acir::{circuit::opcodes::BlockType, native_types::Expression, FieldElement},
+    acir::{circuit::opcodes::BlockType, native_types::Witness},
     std::collections::{HashMap, HashSet},
 };
 
@@ -15,7 +15,7 @@ pub(super) struct MemoryBlockStats {
     pub initial_size:     usize,
     pub reads:            usize,
     pub writes:           usize,
-    read_indices:         HashSet<String>,
+    read_indices:         HashSet<Witness>,
     pub write_after_read: bool,
 }
 
@@ -25,15 +25,14 @@ impl MemoryBlockStats {
         self.initial_size = size;
     }
 
-    pub fn record_read(&mut self, index: &Expression<FieldElement>) {
+    pub fn record_read(&mut self, index: Witness) {
         self.reads += 1;
-        self.read_indices.insert(expression_key(index));
+        self.read_indices.insert(index);
     }
 
-    pub fn record_write(&mut self, index: &Expression<FieldElement>) {
+    pub fn record_write(&mut self, index: Witness) {
         self.writes += 1;
-        let key = expression_key(index);
-        if self.read_indices.contains(&key) {
+        if self.read_indices.contains(&index) {
             self.write_after_read = true;
         }
     }
@@ -115,11 +114,11 @@ impl MemoryStats {
             .record_init(block_type, init_len);
     }
 
-    pub fn record_read(&mut self, block_id: u32, index: &Expression<FieldElement>) {
+    pub fn record_read(&mut self, block_id: u32, index: Witness) {
         self.blocks.entry(block_id).or_default().record_read(index);
     }
 
-    pub fn record_write(&mut self, block_id: u32, index: &Expression<FieldElement>) {
+    pub fn record_write(&mut self, block_id: u32, index: Witness) {
         self.blocks.entry(block_id).or_default().record_write(index);
     }
 
@@ -189,11 +188,6 @@ pub(super) struct MemoryAggregation {
     pub rom_witnesses:                usize,
     pub range_checks:                 HashMap<u32, usize>,
     pub blocks_with_write_after_read: Vec<u32>,
-}
-
-/// Helper to convert expressions to unique keys for tracking.
-fn expression_key(expr: &Expression<FieldElement>) -> String {
-    format!("{:?}", expr)
 }
 
 /// Formats block type for display.

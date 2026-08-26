@@ -10,7 +10,9 @@ use {
     },
     acir::{
         circuit::{
-            opcodes::{BlackBoxFuncCall, BlockType, FunctionInput as ConstantOrACIRWitness},
+            opcodes::{
+                BlackBoxFuncCall, BlockType, FunctionInput as ConstantOrACIRWitness, MemOpKind,
+            },
             Circuit, Opcode,
         },
         native_types::{Expression, Witness as NoirWitness},
@@ -533,36 +535,21 @@ impl NoirToR1CSCompiler {
                     );
                     let block = memory_blocks.get_mut(&block_id).unwrap();
 
-                    // `op.index` is _always_ just a single ACIR witness, not a more complicated
-                    // expression, and not a constant. See [here](https://discord.com/channels/1113924620781883405/1356865341065531446)
                     // Static reads are hard-wired into the circuit, or instead rendered as a
                     // dummy dynamic read by introducing a new witness constrained to have the value
                     // of the static address.
-                    let addr = op.index.to_witness().map_or_else(
-                        || {
-                            unimplemented!(
-                                "MemoryOp index must be a single witness, not a more general \
-                                 Expression"
-                            )
-                        },
-                        |acir_witness| self.fetch_r1cs_witness_index(acir_witness),
-                    );
-                    let op = if op.operation.is_zero() {
-                        // Create a new (as yet unconstrained) witness `result_of_read` for the
-                        // result of the read; it will be constrained by later memory block
-                        // processing.
-                        // "In read operations, [op.value] corresponds to the witness index at which
-                        // the value from memory will be written." (from the Noir codebase)
-                        // At R1CS solving time, only need to map over the value of the
-                        // corresponding ACIR witness, whose value is already determined by the ACIR
-                        // solver.
-                        let result_of_read =
-                            self.fetch_r1cs_witness_index(op.value.to_witness().unwrap());
-                        MemoryOperation::Load(addr, result_of_read)
-                    } else {
-                        let new_value =
-                            self.fetch_r1cs_witness_index(op.value.to_witness().unwrap());
-                        MemoryOperation::Store(addr, new_value)
+                    let addr = self.fetch_r1cs_witness_index(op.index);
+                    let op = match op.operation {
+                        MemOpKind::Read => {
+                            // `op.value` is the witness the read result lands in; it is
+                            // constrained by the later memory block processing.
+                            let result_of_read = self.fetch_r1cs_witness_index(op.value);
+                            MemoryOperation::Load(addr, result_of_read)
+                        }
+                        MemOpKind::Write => {
+                            let new_value = self.fetch_r1cs_witness_index(op.value);
+                            MemoryOperation::Store(addr, new_value)
+                        }
                     };
                     block.operations.push(op);
                 }

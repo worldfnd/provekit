@@ -16,7 +16,6 @@ pub(super) fn print_io_summary(circuit: &Circuit<FieldElement>) {
     println!("│  Private inputs:  {}", circuit.private_parameters.len());
     println!("│  Public inputs:   {}", circuit.public_parameters.0.len());
     println!("│  Return values:   {}", circuit.return_values.0.len());
-    println!("│  ACIR witnesses:  {}", circuit.current_witness_index);
     println!("└{}", SUBSECTION);
 }
 
@@ -201,7 +200,7 @@ fn print_call_stats(stats: &CircuitStats) {
 
 pub(super) fn print_r1cs_breakdown(
     stats: &CircuitStats,
-    circuit: &Circuit<FieldElement>,
+    num_acir_witnesses: usize,
     r1cs: &R1CS,
     breakdown: &R1CSBreakdown,
 ) {
@@ -215,7 +214,7 @@ pub(super) fn print_r1cs_breakdown(
         *combined_range_checks.entry(*bits).or_insert(0) += *count;
     }
 
-    let components = collect_r1cs_components(stats, circuit, breakdown);
+    let components = collect_r1cs_components(stats, num_acir_witnesses, breakdown);
     for component in &components {
         println!("{}", component);
     }
@@ -230,12 +229,12 @@ pub(super) fn print_r1cs_breakdown(
 
 fn collect_r1cs_components(
     stats: &CircuitStats,
-    circuit: &Circuit<FieldElement>,
+    num_acir_witnesses: usize,
     breakdown: &R1CSBreakdown,
 ) -> Vec<String> {
     let mut components = Vec::new();
 
-    let base_witnesses = (circuit.current_witness_index as usize) + 1;
+    let base_witnesses = num_acir_witnesses + 1;
     components.push(format!(
         "Base witnesses:                      {:>8} witnesses  (ACIR + constant)",
         base_witnesses

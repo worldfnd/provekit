@@ -86,10 +86,11 @@ fn analyze_circuit(program: Program<FieldElement>, path: &Path) -> Result<()> {
 
     display::print_acir_stats(&stats);
 
-    let (r1cs, _witness_map, _witness_builders, breakdown) =
+    let (r1cs, witness_map, _witness_builders, breakdown) =
         noir_to_r1cs_with_breakdown(&circuit).context("Failed to compile circuit to R1CS")?;
 
-    display::print_r1cs_breakdown(&stats, &circuit, &r1cs, &breakdown);
+    let num_acir_witnesses = witness_map.iter().flatten().count();
+    display::print_r1cs_breakdown(&stats, num_acir_witnesses, &r1cs, &breakdown);
 
     Ok(())
 }
