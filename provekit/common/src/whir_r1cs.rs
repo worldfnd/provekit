@@ -216,6 +216,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         num_variables: usize,
         hash_id: EngineId,
     ) -> GenericWhirConfig<P::Embedding> {
+        P::register();
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
         GenericWhirConfig::<P::Embedding>::new(1 << nv, &Self::whir_protocol_params(hash_id))
     }
@@ -226,6 +227,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         m_0: usize,
         hash_id: EngineId,
     ) -> GenericWhirConfig<Identity<Ext<P>>> {
+        P::register();
         let nv_blind = next_power_of_two(4 * m_0).max(MIN_BLINDING_NUM_VARIABLES);
         GenericWhirConfig::<Identity<Ext<P>>>::new(
             1 << nv_blind,

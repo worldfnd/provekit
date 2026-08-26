@@ -23,6 +23,10 @@ impl ProofField for Bn254Field {
 }
 
 impl FieldHash for Bn254Field {
+    fn register() {
+        crate::register();
+    }
+
     fn hash_public_inputs(config: HashConfig, inputs: &[Base<Self>]) -> Ext<Self> {
         crate::field_hash::hash_field_elements(config, inputs)
     }

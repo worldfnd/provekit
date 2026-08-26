@@ -34,8 +34,6 @@ impl MavrosSchemeBuilder for WhirR1CSScheme<Bn254Field> {
         has_public_inputs: bool,
         hash_config: HashConfig,
     ) -> Self {
-        provekit_backend_bn254::register();
-
         let num_witnesses = r1cs.witness_layout.size();
         let num_constraints = r1cs.constraints.len();
         let a_num_entries: usize = r1cs.constraints.iter().map(|c| c.a.len()).sum();
@@ -75,8 +73,6 @@ mod tests {
         expected_m: usize,
         expected_m_0: usize,
     ) {
-        provekit_backend_bn254::register();
-
         let from_dimensions = WhirR1CSScheme::<Bn254Field>::new_from_dimensions(
             num_witnesses,
             num_constraints,
@@ -111,9 +107,6 @@ mod tests {
     /// Assert both WHIR commitments reach 128-bit security for field `P`.
 
     fn assert_configs_secure<P: FieldHash>(size: usize) {
-        provekit_backend_bn254::register();
-        provekit_backend_goldilocks::register();
-
         let field = std::any::type_name::<P>();
         let witness = WhirR1CSScheme::<P>::new_witness_config_for_size(size, whir::hash::SHA2);
         let blinding = WhirR1CSScheme::<P>::new_blinding_config_for_size(size, whir::hash::SHA2);
@@ -143,8 +136,6 @@ mod tests {
 
     #[test]
     fn mavros_dimensions_use_largest_commitment_not_total_witnesses() {
-        provekit_backend_bn254::register();
-
         let scheme = WhirR1CSScheme::<Bn254Field>::new_from_dimensions(
             600_000,
             8,
