@@ -13,10 +13,10 @@ use {
         HashConfig, WhirR1CSProof,
     },
     serde::{Deserialize, Serialize},
-    whir::protocols::irs_commit,
+    whir::{algebra::embedding::Identity, protocols::whir::Witness},
 };
 
-pub type WhirWitness = irs_commit::Witness<FieldElement, FieldElement>;
+pub type WhirWitness = Witness<FieldElement, Identity<FieldElement>>;
 
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]

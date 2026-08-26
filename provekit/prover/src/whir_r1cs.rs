@@ -23,7 +23,6 @@ use {
         Base, Ext, FieldHash, PrefixCovector, ProofField, PublicInputs, WhirR1CSProof,
         WhirR1CSScheme, R1CS,
     },
-    std::borrow::Cow,
     whir::{
         algebra::{
             dot,
@@ -31,6 +30,7 @@ use {
             linear_form::LinearForm,
             mixed_dot,
         },
+        buffer::{Buffer, BufferOps},
         protocols::whir::Witness as WhirWitness,
         transcript::{Codec, DuplexSpongeInterface, ProverState, VerifierMessage},
     },
@@ -42,14 +42,14 @@ pub struct BlindingState<P: ProofField> {
     pub polynomial: Vec<[Ext<P>; 4]>,
     /// `polynomial` flattened (length `4 * m_0`) and zero-padded to the
     /// blinding commitment domain — the vector actually committed.
-    pub vector:     Vec<Ext<P>>,
+    pub vector:     Buffer<Ext<P>>,
     /// WHIR witness for the ext blinding commitment.
     pub witness:    WhirWitness<Ext<P>, Identity<Ext<P>>>,
 }
 
 pub struct WhirR1CSCommitment<P: ProofField> {
     pub witness:    WhirWitness<Ext<P>, P::Embedding>,
-    pub polynomial: Vec<Base<P>>,
+    pub polynomial: Buffer<Base<P>>,
     pub blinding:   Option<BlindingState<P>>,
 }
 
@@ -145,6 +145,7 @@ where
 
         // Commit the base-field witness directly (non-hiding — openings leak
         // witness values; see the `whir_witness` field docs).
+        let padded_witness = Buffer::from(padded_witness);
         let witness_commitment = self.whir_witness.commit(merlin, &[&padded_witness]);
 
         // Commit the Spartan sumcheck blinding `g` separately, natively in the
@@ -155,6 +156,7 @@ where
             let blind_len = self.blinding_domain_size();
             let mut g_vector: Vec<Ext<P>> = g.iter().flatten().copied().collect();
             g_vector.resize(blind_len, <Ext<P>>::zero());
+            let g_vector = Buffer::from(g_vector);
             let blinding_witness = self.whir_blinding.commit(merlin, &[&g_vector]);
             Some(BlindingState {
                 polynomial: g,
@@ -396,10 +398,10 @@ where
 
         let final_claim = scheme.whir_witness.prove(
             &mut merlin,
-            vec![Cow::Borrowed(commitment.polynomial.as_slice())],
-            vec![Cow::Owned(commitment.witness)],
+            &[&commitment.polynomial],
+            vec![&commitment.witness],
             boxed_weights,
-            Cow::Borrowed(&evaluations),
+            Buffer::from(evaluations),
         );
 
         spark_row.zip(spark_weights).map(|(row, spark_weights)| {
@@ -500,10 +502,10 @@ where
 
             let final_claim = scheme.whir_witness.prove(
                 &mut merlin,
-                vec![Cow::Borrowed(p1.as_slice())],
-                vec![Cow::Owned(w1)],
+                &[&p1],
+                vec![&w1],
                 boxed_weights,
-                Cow::Borrowed(&evaluations),
+                Buffer::from(evaluations),
             );
 
             let claimed =
@@ -511,6 +513,7 @@ where
             (final_claim, claimed)
         };
         drop(p1);
+        drop(w1);
 
         let WhirR1CSCommitment {
             witness: w2,
@@ -544,10 +547,10 @@ where
 
             let final_claim = scheme.whir_witness.prove(
                 &mut merlin,
-                vec![Cow::Borrowed(p2.as_slice())],
-                vec![Cow::Owned(w2)],
+                &[&p2],
+                vec![&w2],
                 boxed_weights,
-                Cow::Borrowed(&evaluations),
+                Buffer::from(evaluations),
             );
 
             let claimed =
@@ -594,10 +597,10 @@ where
         let blinding_covector = OffsetCovector::new(blinding_weights, 0, blind_domain);
         let _ = scheme.whir_blinding.prove(
             &mut merlin,
-            vec![Cow::Borrowed(blinding_state.vector.as_slice())],
-            vec![Cow::Owned(blinding_state.witness)],
+            &[&blinding_state.vector],
+            vec![&blinding_state.witness],
             vec![Box::new(blinding_covector) as Box<dyn LinearForm<Ext<P>>>],
-            Cow::Borrowed(&[blinding_eval]),
+            Buffer::from(vec![blinding_eval]),
         );
     }
 
@@ -727,13 +730,14 @@ pub fn run_zk_sumcheck_prover<M, S>(
     merlin: &mut ProverState<S>,
     m_0: usize,
     blinding_polynomial: &[[M::Target; 4]],
-    blinding_vector: &[M::Target],
+    blinding_vector: &Buffer<M::Target>,
 ) -> (Vec<M::Target>, M::Target)
 where
     M: Embedding,
     M::Target: Codec,
     S: DuplexSpongeInterface<U = u8>,
 {
+    let blinding_vector = blinding_vector.to_slice();
     let [mut a, mut b, mut c] = mles;
     let r: Vec<M::Target> = merlin.verifier_message_vec(m_0);
     let mut eq = calculate_evaluations_over_boolean_hypercube_for_eq(&r, 1 << r.len());
@@ -887,9 +891,10 @@ fn combined_round_message<F: Field + Codec, S: DuplexSpongeInterface<U = u8>>(
 fn create_weights_and_evaluations<const N: usize, M: Embedding>(
     embedding: &M,
     m: usize,
-    polynomial: &[M::Source],
+    polynomial: &Buffer<M::Source>,
     alphas: [Vec<M::Target>; N],
 ) -> (Vec<PrefixCovector<M::Target>>, Vec<M::Target>) {
+    let polynomial = polynomial.to_slice();
     let domain_size = 1usize << m;
 
     let mut weights = Vec::with_capacity(N);
@@ -909,8 +914,9 @@ fn create_weights_and_evaluations<const N: usize, M: Embedding>(
 fn compute_evaluations<M: Embedding>(
     embedding: &M,
     weights: &[PrefixCovector<M::Target>],
-    polynomial: &[M::Source],
+    polynomial: &Buffer<M::Source>,
 ) -> Vec<M::Target> {
+    let polynomial = polynomial.to_slice();
     weights
         .iter()
         .map(|w| mixed_dot(embedding, w.vector(), &polynomial[..w.vector().len()]))
@@ -920,10 +926,11 @@ fn compute_evaluations<M: Embedding>(
 fn compute_public_weight_evaluation<M: Embedding>(
     embedding: &M,
     weights: &mut Vec<PrefixCovector<M::Target>>,
-    polynomial: &[M::Source],
+    polynomial: &Buffer<M::Source>,
     public_weights: PrefixCovector<M::Target>,
 ) -> M::Target {
     let n = public_weights.vector().len();
+    let polynomial = polynomial.to_slice();
     let eval = mixed_dot(embedding, public_weights.vector(), &polynomial[..n]);
     weights.insert(0, public_weights);
     eval

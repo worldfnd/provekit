@@ -110,8 +110,8 @@ mod tests {
         let field = std::any::type_name::<P>();
         let witness = WhirR1CSScheme::<P>::new_witness_config_for_size(size, whir::hash::SHA2);
         let blinding = WhirR1CSScheme::<P>::new_blinding_config_for_size(size, whir::hash::SHA2);
-        let sec_witness = witness.security_level(witness.initial_committer.num_vectors, 1);
-        let sec_blinding = blinding.security_level(blinding.initial_committer.num_vectors, 1);
+        let sec_witness = witness.security_level(witness.initial_committer.num_vectors(), 1);
+        let sec_blinding = blinding.security_level(blinding.initial_committer.num_vectors(), 1);
         assert!(
             sec_witness >= 128.0,
             "Witness commitment security {sec_witness:.2} < 128 bits at size {size} for {field}"

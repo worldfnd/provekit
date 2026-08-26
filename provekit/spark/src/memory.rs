@@ -9,18 +9,18 @@ use {
     ark_std::One,
     provekit_backend_bn254::{FieldElement, TranscriptSponge, WhirConfig},
     rayon::prelude::*,
-    std::borrow::Cow,
     tracing::instrument,
     whir::{
         algebra::{linear_form::MultilinearExtension, multilinear_extend},
-        protocols::irs_commit::Commitment,
+        buffer::{Buffer, BufferOps},
+        protocols::whir::Commitment,
         transcript::{ProverState, VerifierState},
     },
 };
 
 pub struct AxisConfig<'a> {
     pub eq_memory:       &'a [FieldElement],
-    pub final_timestamp: &'a [FieldElement],
+    pub final_timestamp: Vec<FieldElement>,
     pub whir_config:     &'a WhirConfig,
 }
 
@@ -65,13 +65,13 @@ pub fn prove_axis_init_final_product(
     let gpa_randomness = run_gpa2(merlin, gpa_leaves)?;
     let (_combination_randomness, evaluation_randomness) = gpa_randomness.split_at(1);
 
-    let final_ts_eval = multilinear_extend(config.final_timestamp, evaluation_randomness);
+    let final_ts_eval = multilinear_extend(&config.final_timestamp, evaluation_randomness);
     merlin.prover_hint_ark(&final_ts_eval);
 
     produce_whir_proof(
         merlin,
         evaluation_randomness,
-        &[config.final_timestamp],
+        &[&Buffer::from(config.final_timestamp)],
         config.whir_config,
         final_ts_witness,
     )?;
@@ -138,7 +138,7 @@ pub fn verify_axis(
 pub fn produce_whir_proof(
     merlin: &mut ProverState<TranscriptSponge>,
     evaluation_point: &[FieldElement],
-    vectors: &[&[FieldElement]],
+    vectors: &[&Buffer<FieldElement>],
     config: &WhirConfig,
     witness: &WhirWitness,
 ) -> Result<()> {
@@ -146,18 +146,18 @@ pub fn produce_whir_proof(
 
     let evaluations: Vec<FieldElement> = vectors
         .iter()
-        .map(|v| multilinear_extend(v, evaluation_point))
+        .map(|v| multilinear_extend(v.to_slice(), evaluation_point))
         .collect();
 
     _ = config.prove(
         merlin,
-        vectors.iter().map(|v| Cow::Borrowed(*v)).collect(),
-        vec![Cow::Borrowed(witness)],
+        vectors,
+        vec![witness],
         vec![Box::new(lf)
             as Box<
                 dyn whir::algebra::linear_form::LinearForm<FieldElement>,
             >],
-        Cow::Borrowed(&evaluations),
+        Buffer::from(evaluations),
     );
 
     Ok(())

@@ -1,6 +1,9 @@
 use {
     ark_ff::{Field, One, Zero},
-    whir::algebra::{embedding::Embedding, linear_form::LinearForm, mixed_dot, multilinear_extend},
+    whir::{
+        algebra::{embedding::Embedding, linear_form::LinearForm, mixed_dot, multilinear_extend},
+        buffer::{Buffer, BufferOps},
+    },
 };
 
 /// A covector that stores only a power-of-two prefix, with the rest
@@ -209,9 +212,10 @@ pub fn build_prefix_covectors<const N: usize, F: Field>(
 #[must_use]
 pub fn compute_alpha_evals<const N: usize, M: Embedding>(
     embedding: &M,
-    polynomial: &[M::Source],
+    polynomial: &Buffer<M::Source>,
     alphas: &[Vec<M::Target>; N],
 ) -> Vec<M::Target> {
+    let polynomial = polynomial.to_slice();
     alphas
         .iter()
         .map(|w| mixed_dot(embedding, w, &polynomial[..w.len()]))
@@ -226,8 +230,9 @@ pub fn compute_public_eval<M: Embedding>(
     embedding: &M,
     x: M::Target,
     num_public_inputs: usize,
-    polynomial: &[M::Source],
+    polynomial: &Buffer<M::Source>,
 ) -> M::Target {
+    let polynomial = polynomial.to_slice();
     let n = num_public_inputs + 1;
     let mut eval = M::Target::zero();
     let mut x_pow = M::Target::one();
@@ -331,8 +336,9 @@ pub fn compute_challenge_eval<M: Embedding>(
     embedding: &M,
     x: M::Target,
     challenge_offsets: &[usize],
-    polynomial: &[M::Source],
+    polynomial: &Buffer<M::Source>,
 ) -> M::Target {
+    let polynomial = polynomial.to_slice();
     let mut eval = M::Target::zero();
     let mut x_pow = M::Target::one();
     for &offset in challenge_offsets {
@@ -615,6 +621,7 @@ mod tests {
         poly[1] = fe(42);
         poly[5] = fe(99);
         poly[11] = fe(17);
+        let poly = Buffer::from(poly);
 
         let embedding = whir::algebra::embedding::Identity::<FieldElement>::new();
         let eval = compute_challenge_eval(&embedding, x, &offsets, &poly);

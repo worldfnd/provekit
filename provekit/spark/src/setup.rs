@@ -8,7 +8,8 @@ use {
     provekit_common::{HashConfig, WhirR1CSProof},
     tracing::instrument,
     whir::{
-        protocols::irs_commit::Commitment,
+        buffer::Buffer,
+        protocols::whir::Commitment,
         transcript::{codecs::Empty, DomainSeparator, Proof, ProverState, VerifierState},
     },
 };
@@ -40,26 +41,22 @@ pub fn preprocess_spark(
         .whir_configs
         .num_terms_5batched
         .commit(&mut merlin, &[
-            &matrix.coo.val,
-            &row_field,
-            &read_row_field,
-            &col_field,
-            &read_col_field,
+            &Buffer::from(matrix.coo.val.as_slice()),
+            &Buffer::from(row_field),
+            &Buffer::from(read_row_field),
+            &Buffer::from(col_field),
+            &Buffer::from(read_col_field),
         ]);
-    drop((row_field, col_field, read_row_field, read_col_field));
     let final_row_field = matrix.timestamps.final_row_field();
     let final_row_ts_witness = scheme
         .whir_configs
         .row
-        .commit(&mut merlin, &[&final_row_field]);
-    drop(final_row_field);
+        .commit(&mut merlin, &[&Buffer::from(final_row_field)]);
     let final_col_field = matrix.timestamps.final_col_field();
     let final_col_ts_witness = scheme
         .whir_configs
         .col
-        .commit(&mut merlin, &[&final_col_field]);
-    drop(final_col_field);
-
+        .commit(&mut merlin, &[&Buffer::from(final_col_field)]);
     let proof = merlin.proof();
     let setup = SparkSetup {
         whir_configs: scheme.whir_configs,

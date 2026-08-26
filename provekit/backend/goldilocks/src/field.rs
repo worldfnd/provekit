@@ -51,6 +51,10 @@ impl ProofField for GoldilocksEfField {
 macro_rules! impl_goldilocks_field_hash {
     ($field:ty) => {
         impl FieldHash for $field {
+            fn register() {
+                crate::register();
+            }
+
             fn hash_public_inputs(config: HashConfig, inputs: &[Base<Self>]) -> Ext<Self> {
                 hash_field_elements(config, inputs)
             }

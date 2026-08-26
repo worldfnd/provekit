@@ -212,4 +212,4 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "sha2",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { git = "https://github.com/WizardOfMenlo/whir/", rev = "0aeaa7f337c743d9ddfcb9d909628d6491e3355c", features = ["tracing", "rs_in_order"] }
+whir = { git = "https://github.com/worldfnd/whir.git", rev = "8804e80e8e890d01bb585f2bd5e5b564ac0fd80d", features = ["tracing", "rs_in_order"] }

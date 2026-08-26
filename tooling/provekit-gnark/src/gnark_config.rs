@@ -75,29 +75,29 @@ impl WHIRConfigGnark {
     pub fn new(whir_params: &WhirConfig) -> Self {
         let n_rounds = whir_params.n_rounds();
         let n_vars = whir_params.initial_num_variables();
-        let message_length = whir_params.initial_committer.vector_size
-            / whir_params.initial_committer.interleaving_depth;
+        let message_length = whir_params.initial_committer.vector_size()
+            / whir_params.initial_committer.interleaving_depth();
         let rate =
-            (whir_params.initial_committer.codeword_length / message_length).ilog2() as usize;
+            (whir_params.initial_committer.codeword_length() / message_length).ilog2() as usize;
 
         // Folding factor: initial round uses initial_sumcheck.num_rounds,
         // subsequent rounds use round_configs[i].sumcheck.num_rounds
         let mut folding_factor = Vec::with_capacity(n_rounds + 1);
-        folding_factor.push(whir_params.initial_sumcheck.num_rounds);
+        folding_factor.push(whir_params.initial_sumcheck.num_rounds());
         for rc in &whir_params.round_configs {
-            folding_factor.push(rc.sumcheck.num_rounds);
+            folding_factor.push(rc.sumcheck.num_rounds());
         }
 
         let ood_samples: Vec<usize> = whir_params
             .round_configs
             .iter()
-            .map(|rc| rc.irs_committer.out_domain_samples)
+            .map(|rc| rc.out_domain_samples)
             .collect();
 
         let num_queries: Vec<usize> = whir_params
             .round_configs
             .iter()
-            .map(|rc| rc.irs_committer.in_domain_samples)
+            .map(|rc| rc.irs_committer.in_domain_samples())
             .collect();
 
         let pow_bits: Vec<i32> = whir_params
@@ -115,9 +115,9 @@ impl WHIRConfigGnark {
         let sumcheck_pow_thresholds: Vec<u64> = whir_params
             .round_configs
             .iter()
-            .map(|rc| rc.sumcheck.round_pow.threshold)
+            .map(|rc| rc.sumcheck.round_pow().threshold)
             .collect();
-        let initial_sumcheck_pow_threshold = whir_params.initial_sumcheck.round_pow.threshold;
+        let initial_sumcheck_pow_threshold = whir_params.initial_sumcheck.round_pow().threshold;
         let initial_skip_pow_threshold = whir_params.initial_skip_pow.threshold;
 
         // If there are no folding rounds, fall back to the initial commitment's
@@ -125,14 +125,14 @@ impl WHIRConfigGnark {
         let final_queries = whir_params
             .round_configs
             .last()
-            .map_or(whir_params.initial_committer.in_domain_samples, |rc| {
-                rc.irs_committer.in_domain_samples
+            .map_or(whir_params.initial_committer.in_domain_samples(), |rc| {
+                rc.irs_committer.in_domain_samples()
             });
         let final_pow_bits = f64::from(whir::protocols::proof_of_work::difficulty(
             whir_params.final_pow.threshold,
         )) as i32;
         let final_folding_pow_bits = f64::from(whir::protocols::proof_of_work::difficulty(
-            whir_params.final_sumcheck.round_pow.threshold,
+            whir_params.final_sumcheck.round_pow().threshold,
         )) as i32;
 
         // Reconstruct the starting domain to get its generator
@@ -140,8 +140,8 @@ impl WHIRConfigGnark {
             .expect("Should have found an appropriate domain");
         let domain_generator = format!("{}", domain.group_gen());
 
-        let batch_size = whir_params.initial_committer.num_vectors;
-        let initial_in_domain_samples = whir_params.initial_committer.in_domain_samples;
+        let batch_size = whir_params.initial_committer.num_vectors();
+        let initial_in_domain_samples = whir_params.initial_committer.in_domain_samples();
 
         WHIRConfigGnark {
             n_rounds,
@@ -159,7 +159,7 @@ impl WHIRConfigGnark {
             final_pow_bits,
             final_pow_threshold: whir_params.final_pow.threshold,
             final_folding_pow_bits,
-            final_folding_pow_threshold: whir_params.final_sumcheck.round_pow.threshold,
+            final_folding_pow_threshold: whir_params.final_sumcheck.round_pow().threshold,
             domain_generator,
             batch_size,
             initial_in_domain_samples,

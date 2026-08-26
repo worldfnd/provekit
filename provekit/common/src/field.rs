@@ -34,6 +34,11 @@ pub type Ext<P> = <<P as ProofField>::Embedding as Embedding>::Target;
 /// Hash and byte-bridge glue, kept out of [`ProofField`]'s algebra surface and
 /// composed as a supertrait so [`Ext<Self>`] is nameable.
 pub trait FieldHash: ProofField {
+    /// Register this field's engines in WHIR's global registries.
+    ///
+    /// Implementations must be idempotent.
+    fn register();
+
     /// Instance-binding hash of base-field public inputs to an extension
     /// transcript element.
     fn hash_public_inputs(config: crate::HashConfig, inputs: &[Base<Self>]) -> Ext<Self>;

@@ -39,6 +39,23 @@ const MIN_BLINDING_NUM_VARIABLES: usize = WHIR_INITIAL_FOLDING_FACTOR + WHIR_FOL
 /// non-trivial.
 const MIN_SUMCHECK_NUM_VARIABLES: usize = 1;
 
+/// Shared WHIR security profile for ProveKit commitments.
+///
+/// Uses 128-bit security under the Johnson bound, rate 2, folding factor 3,
+/// and 10 proof-of-work bits.
+pub fn whir_protocol_params(hash_id: EngineId, batch_size: usize) -> ProtocolParameters {
+    ProtocolParameters {
+        decoding_regime: whir::protocols::params::DecodingRegime::Johnson,
+        security_level: 128,
+        pow_bits: 10,
+        initial_folding_factor: WHIR_INITIAL_FOLDING_FACTOR,
+        folding_factor: WHIR_FOLDING_FACTOR,
+        starting_log_inv_rate: 2,
+        batch_size,
+        hash_id,
+    }
+}
+
 /// Type alias for the whir domain separator used in provekit's outer protocol.
 type WhirDomainSeparator = transcript::DomainSeparator<'static, ()>;
 
@@ -194,30 +211,15 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         }
     }
 
-    /// Shared WHIR parameters for the witness and blinding commitments: 128-bit
-    /// security under the Johnson bound, rate 2, folding factor 3, pow_bits 10
-    /// (≈118-bit algebraic hardness plus light per-round PoW).
-    fn whir_protocol_params(hash_id: EngineId) -> ProtocolParameters {
-        ProtocolParameters {
-            unique_decoding: false,
-            security_level: 128,
-            pow_bits: 10,
-            initial_folding_factor: WHIR_INITIAL_FOLDING_FACTOR,
-            folding_factor: WHIR_FOLDING_FACTOR,
-            starting_log_inv_rate: 2,
-            batch_size: 1,
-            hash_id,
-        }
-    }
-
     /// Build the non-ZK witness WHIR config: commits in `P`'s base field, opens
     /// at extension-field points.
     pub fn new_witness_config_for_size(
         num_variables: usize,
         hash_id: EngineId,
     ) -> GenericWhirConfig<P::Embedding> {
+        P::register();
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
-        GenericWhirConfig::<P::Embedding>::new(1 << nv, &Self::whir_protocol_params(hash_id))
+        GenericWhirConfig::<P::Embedding>::new(1 << nv, &whir_protocol_params(hash_id, 1))
     }
 
     /// Build the WHIR config for the blinding polynomial `g`: its `4 * m_0`
@@ -226,11 +228,9 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         m_0: usize,
         hash_id: EngineId,
     ) -> GenericWhirConfig<Identity<Ext<P>>> {
+        P::register();
         let nv_blind = next_power_of_two(4 * m_0).max(MIN_BLINDING_NUM_VARIABLES);
-        GenericWhirConfig::<Identity<Ext<P>>>::new(
-            1 << nv_blind,
-            &Self::whir_protocol_params(hash_id),
-        )
+        GenericWhirConfig::<Identity<Ext<P>>>::new(1 << nv_blind, &whir_protocol_params(hash_id, 1))
     }
 }
 

@@ -91,6 +91,8 @@ impl NoirCompiler {
         program: ProgramArtifact,
         hash_config: provekit_common::HashConfig,
     ) -> Result<NoirProofScheme> {
+        provekit_backend_bn254::register();
+
         info!("Program noir version: {}", program.noir_version);
         info!("Program entry point: fn main{};", PrintAbi(&program.abi));
         ensure!(

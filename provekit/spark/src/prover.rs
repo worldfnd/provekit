@@ -23,15 +23,14 @@ use {
                 sumcheck_fold_map_reduce,
             },
         },
-        HashConfig, WhirR1CSProof,
+        whir_protocol_params, HashConfig, WhirR1CSProof,
     },
     rayon::{join, prelude::*},
-    std::borrow::Cow,
     tracing::instrument,
     whir::{
         algebra::{linear_form::MultilinearExtension, multilinear_extend},
+        buffer::Buffer,
         engines::EngineId,
-        parameters::ProtocolParameters,
         transcript::{DomainSeparator, ProverState, VerifierMessage},
     },
 };
@@ -46,18 +45,11 @@ pub fn new_whir_config_for_size(
     batch_size: usize,
     hash_id: EngineId,
 ) -> WhirConfig {
+    provekit_backend_bn254::register();
+
     let nv = log_size.max(4);
 
-    let whir_params = ProtocolParameters {
-        unique_decoding: false,
-        initial_folding_factor: 3,
-        security_level: 128,
-        pow_bits: 10,
-        folding_factor: 3,
-        starting_log_inv_rate: 2,
-        batch_size,
-        hash_id,
-    };
+    let whir_params = whir_protocol_params(hash_id, batch_size);
 
     WhirConfig::new(1 << nv, &whir_params)
 }
@@ -295,26 +287,24 @@ fn memory_checking(
         merlin,
         AxisConfig {
             eq_memory:       &memory.eq_rx,
-            final_timestamp: &final_row_field,
+            final_timestamp: final_row_field,
             whir_config:     &whir_configs.row,
         },
         &data.witnesses.final_row_ts_witness,
         &challenges,
     )?;
-    drop(final_row_field);
 
     let final_col_field = data.matrix.timestamps.final_col_field();
     prove_axis_init_final_product(
         merlin,
         AxisConfig {
             eq_memory:       &memory.eq_ry,
-            final_timestamp: &final_col_field,
+            final_timestamp: final_col_field,
             whir_config:     &whir_configs.col,
         },
         &data.witnesses.final_col_ts_witness,
         &challenges,
     )?;
-    drop(final_col_field);
 
     Ok(())
 }
@@ -457,21 +447,21 @@ fn prove_combined_rs_ws_product(
     ];
     let _ = whir_configs.num_terms_5batched.prove(
         merlin,
-        vec![
-            Cow::Borrowed(&matrix.coo.val),
-            Cow::Borrowed(&row_field),
-            Cow::Borrowed(&read_row_field),
-            Cow::Borrowed(&col_field),
-            Cow::Borrowed(&read_col_field),
+        &[
+            &Buffer::from(matrix.coo.val.as_slice()),
+            &Buffer::from(row_field),
+            &Buffer::from(read_row_field),
+            &Buffer::from(col_field),
+            &Buffer::from(read_col_field),
         ],
-        vec![Cow::Borrowed(vals_rs_ws_witness)],
+        vec![vals_rs_ws_witness],
         vec![
             Box::new(fold_lf_for_vals_rs_ws)
                 as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
             Box::new(eval_lf_for_vals_rs_ws)
                 as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
         ],
-        Cow::Borrowed(&vals_rs_ws_evaluations),
+        Buffer::from(Vec::from(vals_rs_ws_evaluations)),
     );
 
     let (row_value_eval, col_value_eval) = tracing::info_span!("multilinear_extend_e_values")
@@ -494,13 +484,16 @@ fn prove_combined_rs_ws_product(
     ];
     let _ = whir_configs.num_terms_2batched.prove(
         merlin,
-        vec![Cow::Borrowed(&e_values.e_rx), Cow::Borrowed(&e_values.e_ry)],
-        vec![Cow::Borrowed(e_values_witness)],
+        &[
+            &Buffer::from(e_values.e_rx.as_slice()),
+            &Buffer::from(e_values.e_ry.as_slice()),
+        ],
+        vec![e_values_witness],
         vec![
             Box::new(fold_lf) as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
             Box::new(eval_lf) as Box<dyn whir::algebra::linear_form::LinearForm<FieldElement>>,
         ],
-        Cow::Borrowed(&evaluations),
+        Buffer::from(Vec::from(evaluations)),
     );
 
     Ok(())
@@ -512,9 +505,10 @@ fn commit_e_values(
     whir_configs: &SparkWhirConfigs,
     e_values: &EValuesForMatrix,
 ) -> WhirWitness {
-    whir_configs
-        .num_terms_2batched
-        .commit(merlin, &[&e_values.e_rx, &e_values.e_ry])
+    whir_configs.num_terms_2batched.commit(merlin, &[
+        &Buffer::from(e_values.e_rx.as_slice()),
+        &Buffer::from(e_values.e_ry.as_slice()),
+    ])
 }
 
 pub fn run_parallel_sumchecks(
