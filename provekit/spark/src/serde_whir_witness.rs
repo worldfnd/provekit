@@ -41,7 +41,7 @@ struct ArkVecRef<'a>(&'a [FieldElement]);
 
 impl Serialize for ArkVecRef<'_> {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        serde_ark_vec::serialize(&Vec::from(self.0), s)
+        serde_ark_vec::serialize(self.0, s)
     }
 }
 

@@ -8,7 +8,7 @@ use {
     std::{fmt, marker::PhantomData},
 };
 
-pub fn serialize<T, S>(vec: &Vec<T>, serializer: S) -> Result<S::Ok, S::Error>
+pub fn serialize<T, S>(vec: &[T], serializer: S) -> Result<S::Ok, S::Error>
 where
     T: CanonicalSerialize,
     S: Serializer,
