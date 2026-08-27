@@ -237,10 +237,6 @@ where
     Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
     ensure!(!commitments.is_empty(), "Need at least one commitment");
-    ensure!(
-        !produce_spark_query,
-        "SPARK queries are not supported with the zook witness commitment"
-    );
 
     let (a, b, c) = calculate_witness_bounds(&r1cs, &full_witness);
     drop(full_witness);
@@ -290,8 +286,8 @@ pub struct ProveFromAlphasCtx<P: ProofField> {
     pub blinding_eval:    Ext<P>,
     pub blinding_weights: Vec<Ext<P>>,
     pub commitments:      Vec<WhirR1CSCommitment<P>>,
-    /// Reserved SPARK row axis; must be `None` — SPARK is unsupported with
-    /// the zook witness commitment.
+    /// When set, SPARK query data is produced with this Spartan sumcheck
+    /// point as the shared row axis.
     pub spark_row:        Option<Vec<Ext<P>>>,
 }
 
@@ -341,13 +337,6 @@ where
         spark_row,
     } = ctx;
 
-    // TODO: restore SPARK once zook's `prove` exposes its final evaluation
-    // point.
-    ensure!(
-        spark_row.is_none(),
-        "SPARK queries are not supported with the zook witness commitment"
-    );
-
     let public_inputs_hash = P::hash_public_inputs(scheme.hash_config, &public_inputs.0);
     let public_inputs_len = public_inputs.len();
 
@@ -367,7 +356,7 @@ where
     // products through this embedding (a no-op under `Identity`).
     let embedding = <P::Embedding>::default();
 
-    if is_single {
+    let spark_queries: Option<SparkQueryData<P>> = if is_single {
         // Single commitment path
         let commitment = commitments
             .into_iter()
@@ -383,6 +372,16 @@ where
         for eval in &evals {
             merlin.prover_message(eval);
         }
+
+        // Snapshot the three alpha covectors (A, B, C) before the public
+        // weight is inserted; they are re-evaluated at the final WHIR point
+        // to form the SPARK query.
+        let spark_weights: Option<Vec<(Vec<Ext<P>>, usize)>> = spark_row.as_ref().map(|_| {
+            weights
+                .iter()
+                .map(|w| (w.vector().to_vec(), w.size()))
+                .collect()
+        });
 
         if public_inputs_len > 0 {
             let public_eval = compute_public_weight_evaluation(
@@ -400,9 +399,23 @@ where
 
         let form_refs = linear_form_refs(&weights);
 
-        scheme
+        let final_claim = scheme
             .whir_witness
             .prove(&mut merlin, witness, &form_refs, &evaluations);
+
+        spark_row.zip(spark_weights).map(|(row, spark_weights)| {
+            let [claimed_a, claimed_b, claimed_c] =
+                evaluate_spark_weights(spark_weights, &final_claim.evaluation_point);
+            SparkQueryData {
+                row,
+                queries: vec![SparkColQueryData {
+                    col: final_claim.evaluation_point,
+                    claimed_a,
+                    claimed_b,
+                    claimed_c,
+                }],
+            }
+        })
     } else {
         // Dual commitment path
         let mut commitments = commitments.into_iter();
@@ -459,8 +472,18 @@ where
         let WhirR1CSCommitment { witness: w1, .. } = c1;
         let WhirR1CSCommitment { witness: w2, .. } = c2;
 
-        {
+        let (final_claim_1, claimed_1) = {
             let mut weights = build_prefix_covectors(scheme.m, alphas_1);
+
+            // Snapshot the three alpha covectors (A, B, C) before the public
+            // weight is inserted; they are re-evaluated at the final WHIR
+            // point to form the SPARK query.
+            let spark_weights: Option<Vec<(Vec<Ext<P>>, usize)>> = spark_row.as_ref().map(|_| {
+                weights
+                    .iter()
+                    .map(|w| (w.vector().to_vec(), w.size()))
+                    .collect()
+            });
 
             let mut evaluations: Vec<Ext<P>> = Vec::new();
             if let Some(pe) = public_1 {
@@ -471,13 +494,26 @@ where
 
             let form_refs = linear_form_refs(&weights);
 
-            scheme
+            let final_claim = scheme
                 .whir_witness
                 .prove(&mut merlin, w1, &form_refs, &evaluations);
-        }
 
-        {
+            let claimed =
+                spark_weights.map(|sw| evaluate_spark_weights(sw, &final_claim.evaluation_point));
+            (final_claim, claimed)
+        };
+
+        let (final_claim_2, claimed_2) = {
             let weights = build_prefix_covectors(scheme.m, alphas_2);
+
+            // The first three weights are the alpha covectors (A, B, C); the
+            // challenge weight, if any, is appended after them.
+            let spark_weights: Option<Vec<(Vec<Ext<P>>, usize)>> = spark_row.as_ref().map(|_| {
+                weights
+                    .iter()
+                    .map(|w| (w.vector().to_vec(), w.size()))
+                    .collect()
+            });
 
             let mut evaluations: Vec<Ext<P>> = evals_2;
 
@@ -491,11 +527,44 @@ where
                 form_refs.push(cw as &dyn LinearForm<Ext<P>>);
             }
 
-            scheme
+            let final_claim = scheme
                 .whir_witness
                 .prove(&mut merlin, w2, &form_refs, &evaluations);
-        }
-    }
+
+            let claimed =
+                spark_weights.map(|sw| evaluate_spark_weights(sw, &final_claim.evaluation_point));
+            (final_claim, claimed)
+        };
+
+        // The SPARK column axis spans w1 | w2: prefix the per-commitment WHIR
+        // points with a selector coordinate (0 selects w1, 1 selects w2).
+        spark_row
+            .zip(claimed_1.zip(claimed_2))
+            .map(|(row, ([a1, b1, c1], [a2, b2, c2]))| {
+                let mut col_1 = final_claim_1.evaluation_point;
+                col_1.insert(0, <Ext<P>>::zero());
+                let query_1 = SparkColQueryData {
+                    col:       col_1,
+                    claimed_a: a1,
+                    claimed_b: b1,
+                    claimed_c: c1,
+                };
+
+                let mut col_2 = final_claim_2.evaluation_point;
+                col_2.insert(0, <Ext<P>>::one());
+                let query_2 = SparkColQueryData {
+                    col:       col_2,
+                    claimed_a: a2,
+                    claimed_b: b2,
+                    claimed_c: c2,
+                };
+
+                SparkQueryData {
+                    row,
+                    queries: vec![query_1, query_2],
+                }
+            })
+    };
 
     // Open the ext blinding commitment: prove `blinding_eval` is the evaluation
     // of the committed blinding vector (g flattened at offset 0) against the
@@ -521,8 +590,27 @@ where
             #[cfg(debug_assertions)]
             pattern: proof.pattern,
         },
-        None,
+        spark_queries,
     ))
+}
+
+/// Re-evaluate snapshotted alpha covectors (as `(prefix, domain_size)` pairs)
+/// at the final WHIR evaluation point, yielding the claimed A, B, C matrix
+/// evaluations for a SPARK query.
+fn evaluate_spark_weights<F: Field>(
+    spark_weights: Vec<(Vec<F>, usize)>,
+    evaluation_point: &[F],
+) -> [F; 3] {
+    let evals: Vec<F> = spark_weights
+        .into_iter()
+        .take(3)
+        .map(|(vector, domain_size)| {
+            PrefixCovector::new(vector, domain_size).mle_evaluate(evaluation_point)
+        })
+        .collect();
+    evals
+        .try_into()
+        .unwrap_or_else(|_| panic!("exactly 3 alpha-weight evaluations"))
 }
 
 pub fn compute_blinding_coefficients_for_round<F: Field>(

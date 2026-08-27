@@ -120,10 +120,6 @@ fn prove_mavros_inner(
     produce_spark_query: bool,
 ) -> Result<(WhirR1CSProof, Option<SparkQueryData<Bn254Field>>)> {
     ensure!(!commitments.is_empty(), "Need at least one commitment");
-    ensure!(
-        !produce_spark_query,
-        "SPARK queries are not supported with the zook witness commitment"
-    );
 
     let blinding = commitments[0]
         .blinding
