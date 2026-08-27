@@ -9,8 +9,8 @@ use {
     provekit_common::{
         prefix_covector::{
             build_prefix_covectors, compute_alpha_evals, compute_challenge_eval,
-            compute_public_eval, expand_powers, make_challenge_weight, make_public_weight,
-            OffsetCovector,
+            compute_public_eval, expand_powers, linear_form_refs, make_challenge_weight,
+            make_public_weight, OffsetCovector,
         },
         utils::{
             pad_to_power_of_two,
@@ -31,7 +31,7 @@ use {
             mixed_dot,
         },
         buffer::{Buffer, BufferOps},
-        protocols::whir::Witness as WhirWitness,
+        protocols::{whir::Witness as WhirWitness, zook::CommittedWitness as ZookCommittedWitness},
         transcript::{Codec, DuplexSpongeInterface, ProverState, VerifierMessage},
     },
 };
@@ -48,7 +48,7 @@ pub struct BlindingState<P: ProofField> {
 }
 
 pub struct WhirR1CSCommitment<P: ProofField> {
-    pub witness:    WhirWitness<Ext<P>, P::Embedding>,
+    pub witness:    ZookCommittedWitness<P::Embedding>,
     pub polynomial: Buffer<Base<P>>,
     pub blinding:   Option<BlindingState<P>>,
 }
@@ -135,18 +135,22 @@ where
             "R1CS constraints exceed scheme capacity"
         );
 
-        let num_vars = self.whir_witness.initial_num_variables();
-        let target_len = 1usize << num_vars;
+        let target_len = self.whir_witness.tuning().vector_size;
 
         let mut padded_witness = pad_to_power_of_two(witness);
         if padded_witness.len() < target_len {
             padded_witness.resize(target_len, <Base<P>>::zero());
         }
+        ensure!(
+            padded_witness.len() == target_len,
+            "witness length exceeds the zook commitment size; scheme dimensions and witness \
+             config are inconsistent"
+        );
 
-        // Commit the base-field witness directly (non-hiding — openings leak
-        // witness values; see the `whir_witness` field docs).
+        // zook's `commit` consumes the buffer; the prove stage still needs
+        // the message for the covector evaluations, so pass a clone.
         let padded_witness = Buffer::from(padded_witness);
-        let witness_commitment = self.whir_witness.commit(merlin, &[&padded_witness]);
+        let witness_commitment = self.whir_witness.commit(merlin, padded_witness.clone());
 
         // Commit the Spartan sumcheck blinding `g` separately, natively in the
         // extension field. Transcript order: this commitment is absorbed
@@ -391,18 +395,13 @@ where
 
         let evaluations = compute_evaluations(&embedding, &weights, &commitment.polynomial);
 
-        let boxed_weights: Vec<Box<dyn LinearForm<Ext<P>>>> = weights
-            .into_iter()
-            .map(|w| Box::new(w) as Box<dyn LinearForm<Ext<P>>>)
-            .collect();
+        let WhirR1CSCommitment { witness, .. } = commitment;
 
-        let final_claim = scheme.whir_witness.prove(
-            &mut merlin,
-            &[&commitment.polynomial],
-            vec![&commitment.witness],
-            boxed_weights,
-            Buffer::from(evaluations),
-        );
+        let form_refs = linear_form_refs(&weights);
+
+        let final_claim = scheme
+            .whir_witness
+            .prove(&mut merlin, witness, &form_refs, &evaluations);
 
         spark_row.zip(spark_weights).map(|(row, spark_weights)| {
             let [claimed_a, claimed_b, claimed_c] =
@@ -470,11 +469,9 @@ where
             None
         };
 
-        let WhirR1CSCommitment {
-            witness: w1,
-            polynomial: p1,
-            ..
-        } = c1;
+        let WhirR1CSCommitment { witness: w1, .. } = c1;
+        let WhirR1CSCommitment { witness: w2, .. } = c2;
+
         let (final_claim_1, claimed_1) = {
             let mut weights = build_prefix_covectors(scheme.m, alphas_1);
 
@@ -495,31 +492,17 @@ where
             }
             evaluations.extend_from_slice(&evals_1);
 
-            let boxed_weights: Vec<Box<dyn LinearForm<Ext<P>>>> = weights
-                .into_iter()
-                .map(|w| Box::new(w) as Box<dyn LinearForm<Ext<P>>>)
-                .collect();
+            let form_refs = linear_form_refs(&weights);
 
-            let final_claim = scheme.whir_witness.prove(
-                &mut merlin,
-                &[&p1],
-                vec![&w1],
-                boxed_weights,
-                Buffer::from(evaluations),
-            );
+            let final_claim = scheme
+                .whir_witness
+                .prove(&mut merlin, w1, &form_refs, &evaluations);
 
             let claimed =
                 spark_weights.map(|sw| evaluate_spark_weights(sw, &final_claim.evaluation_point));
             (final_claim, claimed)
         };
-        drop(p1);
-        drop(w1);
 
-        let WhirR1CSCommitment {
-            witness: w2,
-            polynomial: p2,
-            ..
-        } = c2;
         let (final_claim_2, claimed_2) = {
             let weights = build_prefix_covectors(scheme.m, alphas_2);
 
@@ -534,24 +517,19 @@ where
 
             let mut evaluations: Vec<Ext<P>> = evals_2;
 
-            let mut boxed_weights: Vec<Box<dyn LinearForm<Ext<P>>>> = weights
-                .into_iter()
-                .map(|w| Box::new(w) as Box<dyn LinearForm<Ext<P>>>)
-                .collect();
-
-            if let Some(ce) = challenge_eval {
-                let cw = make_challenge_weight(x, &scheme.challenge_offsets, scheme.m);
+            let challenge_covector = challenge_eval.map(|ce| {
                 evaluations.push(ce);
-                boxed_weights.push(Box::new(cw));
+                make_challenge_weight(x, &scheme.challenge_offsets, scheme.m)
+            });
+
+            let mut form_refs = linear_form_refs(&weights);
+            if let Some(ref cw) = challenge_covector {
+                form_refs.push(cw as &dyn LinearForm<Ext<P>>);
             }
 
-            let final_claim = scheme.whir_witness.prove(
-                &mut merlin,
-                &[&p2],
-                vec![&w2],
-                boxed_weights,
-                Buffer::from(evaluations),
-            );
+            let final_claim = scheme
+                .whir_witness
+                .prove(&mut merlin, w2, &form_refs, &evaluations);
 
             let claimed =
                 spark_weights.map(|sw| evaluate_spark_weights(sw, &final_claim.evaluation_point));

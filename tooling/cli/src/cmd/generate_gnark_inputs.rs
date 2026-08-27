@@ -1,13 +1,4 @@
-use {
-    crate::Command,
-    anyhow::{Context, Result},
-    argh::FromArgs,
-    provekit_backend_bn254::{Bn254Field, ProvekitProof, Verifier},
-    provekit_common::file::read,
-    provekit_gnark::write_gnark_parameters_to_file,
-    std::{fs::File, io::Write, path::PathBuf},
-    tracing::{info, instrument},
-};
+use {crate::Command, anyhow::Result, argh::FromArgs, std::path::PathBuf, tracing::instrument};
 
 /// Generate input compatible with gnark.
 #[derive(FromArgs, PartialEq, Eq, Debug)]
@@ -37,43 +28,12 @@ pub struct Args {
 impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
-        let verifier: Verifier =
-            read(&self.verifier_path).context("while reading Verifier data")?;
-        let (constraints, witnesses) = (
-            verifier.r1cs.num_constraints(),
-            verifier.r1cs.num_witnesses(),
+        // The gnark exporter cannot describe zook's `ProtocolConfig`; the Go
+        // recursive verifier needs a paired update first.
+        anyhow::bail!(
+            "cannot write gnark parameters to {}: gnark parameter export is not supported with \
+             the zook witness commitment; the Go recursive verifier needs a paired update",
+            self.params_for_recursive_verifier
         );
-        info!(constraints, witnesses, "Read verifier data");
-
-        // Read the proof
-        let proof: ProvekitProof<Bn254Field> =
-            read(&self.proof_path).context("while reading proof")?;
-
-        let wfw = verifier
-            .whir_for_witness
-            .as_ref()
-            .context("verifier is missing whir_for_witness config")?;
-
-        write_gnark_parameters_to_file(
-            &verifier.whir_for_witness.clone().unwrap(),
-            &wfw.whir_witness,
-            &wfw.whir_blinding,
-            &proof.whir_r1cs_proof,
-            wfw.m_0,
-            wfw.m,
-            wfw.a_num_terms,
-            wfw.num_challenges,
-            wfw.w1_size,
-            &proof.public_inputs,
-            &self.params_for_recursive_verifier,
-        );
-
-        let json =
-            serde_json::to_string(&verifier.r1cs).context("while serializing R1CS to JSON")?;
-        let mut file = File::create(&self.r1cs_path).context("while creating R1CS file")?;
-        file.write_all(json.as_bytes())
-            .context("while writing R1CS file")?;
-
-        Ok(())
     }
 }
