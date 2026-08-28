@@ -105,7 +105,7 @@ text += (
 bench_manifest.write_text(text)
 PY
 
-# The Mobench 0.2.0 browser control plane uses the wasm-bindgen 0.2.106 family.
+# Mobench 0.1.48's browser runtime uses the wasm-bindgen 0.2.113 family.
 # Removing unrelated server/tooling workspace members above releases their
-# older exact js-sys pins so the browser crate can resolve its matching family.
+# older exact js-sys pins so the browser crate can resolve the matching family.
 cargo update -p js-sys --precise 0.3.90

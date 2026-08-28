@@ -18,7 +18,7 @@ passport-p1 = []
 [dependencies]
 anyhow = "1"
 inventory = "0.3"
-mobench-sdk = "0.2.0"
+mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs.git", rev = "e992596a786cc18047102a318d40131c953e57b8" }
 uniffi = { version = "0.31", features = ["cli"] }
 num-bigint = "0.4"
 rust-witness = "=0.1.6"

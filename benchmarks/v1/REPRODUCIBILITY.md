@@ -123,8 +123,7 @@ provenance is retained with every successful iPhone lane.
 | Canonical native OPRF helper | `TaceoLabs/circom-helpers` `8aacd73ed6ab0a2b9b2158e613acfa920860865a` (main) |
 | Canonical native OPRF witness | `circom-witness-rs` `e11206a9f453145dcd6b814523cbfba4f60cf5c6` (`codex/remove-cxx-bridge-and-grep`) |
 | Canonical native OPRF prover | `taceo-groth16` `0.2.1` / `taceo-groth16-material` `0.4.2` (latest TACEO Groth16 proving path used here) |
-| Current Mobench / E15 ABI bridge | `0.2.0`, commit `cf4416db0cd356a4434a524512de7e3716bd0799` |
-| Published-row Mobench provenance | Retained measurements were captured with Mobench `0.1.48` and remain labelled as such; a `0.2.0` rerun is a new campaign |
+| Mobench / E15 ABI bridge | `0.1.48`, commit `e992596a786cc18047102a318d40131c953e57b8` |
 
 The reference npm package `@worldcoin/provekit@0.1.0` is retained as a
 compatibility record only. It is not the measured V1 browser runtime.

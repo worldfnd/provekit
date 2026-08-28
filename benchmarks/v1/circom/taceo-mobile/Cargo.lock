@@ -1579,9 +1579,8 @@ checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
 name = "mobench-macros"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9292a29a0a348a45a2dffdd17b1314b72753d86f3982573cbcd27e2e7a45a753"
+version = "0.1.48"
+source = "git+https://github.com/worldcoin/mobile-bench-rs.git?rev=e992596a786cc18047102a318d40131c953e57b8#e992596a786cc18047102a318d40131c953e57b8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1589,33 +1588,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "mobench-process"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d41aaad14d702725b6b79f390958da19a36a7c111a7944c6c71cba0b58d5edf4"
-dependencies = [
- "libc",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "mobench-runtime"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "576579c727954c9f7f384e33c0602a8c49ef9634a7c91aa2d33e2fd17010c085"
-
-[[package]]
 name = "mobench-sdk"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4032d49ec97aab649d1a4d3f973631b7279b38ed91db8e595c7a3135dae3841"
+version = "0.1.48"
+source = "git+https://github.com/worldcoin/mobile-bench-rs.git?rev=e992596a786cc18047102a318d40131c953e57b8#e992596a786cc18047102a318d40131c953e57b8"
 dependencies = [
  "include_dir",
  "inventory",
  "libc",
  "mobench-macros",
- "mobench-process",
- "mobench-runtime",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
