@@ -17,10 +17,10 @@
   --pk-mute:             #74818D;
   --pk-mute-soft:        #A8B4BE;
 
-  --pk-canvas:           #F5F8FB;
+  --pk-canvas:           #FAFBFC;
   --pk-surface:          #FFFFFF;
   --pk-surface-elevated: #FFFFFF;
-  --pk-surface-tint:     #F1F6FA;
+  --pk-surface-tint:     #F6F9FB;
 
   --pk-line:             #D9E6EE;
   --pk-line-soft:        #EAF2F7;
@@ -31,7 +31,7 @@
   --pk-brand-ink:        #075CC7;
   --pk-accent-surface:   #E8F2FF;
 
-  --pk-paper-canvas:     #EEF3F7;
+  --pk-paper-canvas:     #F8FAFC;
   --pk-paper-sheet:      #FFFFFF;
   --pk-paper-ink:        #202830;
   --pk-paper-muted:      #5A6670;
@@ -380,15 +380,17 @@ body {
 
 .pk-equation {
   max-width: 100%;
-  margin: 1.35rem 0;
+  margin: 0.85rem 0;
   overflow-x: auto;
   border-block: 1px solid var(--pk-line-soft);
-  padding: 1.25rem 0.8rem;
+  padding: 0.55rem 0.75rem;
   background: var(--pk-surface-tint);
+  font-size: 1.12rem;
   text-align: center;
 }
 
 .pk-equation span { white-space: pre; }
+.pk-equation mjx-container[display='true'] { margin-block: 0 !important; }
 .pk-inline-math { white-space: nowrap; }
 .pk-citation, .pk-reference { color: var(--pk-brand); font: 0.82em var(--pk-font-mono); }
 .pk-footnote { color: var(--pk-ink-soft); font-size: 0.9em; }
@@ -567,10 +569,12 @@ body {
 }
 
 :root[data-whitepaper-view='latex'] .pk-whitepaper .pk-equation {
+  margin-block: 0.8rem;
   border: 0;
+  padding-block: 0.35rem;
   background: transparent;
   color: var(--pk-paper-ink);
-  font-size: 0.98rem;
+  font-size: 1.08rem;
 }
 
 :root[data-whitepaper-view='latex'] .pk-whitepaper .pk-citation,
