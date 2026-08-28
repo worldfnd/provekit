@@ -131,7 +131,7 @@ M_1 | M_2
 
 <h3 id="notation">Notation</h3>
 
-<p>Boolean Hypercube <span class="pk-inline-math" data-tex="H_n = \lbrace0,1\rbrace^n\subset \mathbb F_q^n"></span>, indexing in natural order via <span class="pk-inline-math" data-tex="[0,2^n)"></span>, multivariate and multilinear polynomials, Lagrange polynomial</p>
+<p>Boolean Hypercube <span class="pk-inline-math" data-tex="H_n = \lbrace 0,1\rbrace ^n\subset \mathbb F_q^n"></span>, indexing in natural order via <span class="pk-inline-math" data-tex="[0,2^n)"></span>, multivariate and multilinear polynomials, Lagrange polynomial</p>
 
 <div class="pk-equation"><span data-display-math="true" data-tex="eq(\vec y, \vec\rho) = \prod_{i=1}^n (y_i \cdot \rho_i + (1 - y_i)\cdot (1-\rho_i))"></span></div>
 
@@ -166,11 +166,11 @@ M_1 | M_2
 
 <p>In alignment with the sumcheck protocol, we will often think of a multilinear <span class="pk-inline-math" data-tex="f(X_1,\ldots, X_n)"></span> decomposed into its <span class="pk-inline-math" data-tex="k"></span>-prefix functions</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="f(X_1,\ldots,X_n) =  \sum_{i = 0}^{2^{k}-1} eq_{i}(X_{1},\ldots, X_k) \cdot f_i(X_{k+1},\ldots, X_{n}) \cdot"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}f(X_1,\ldots,X_n) =  \sum_{i = 0}^{2^{k}-1} eq_{i}(X_{1},\ldots, X_k) \cdot f_i(X_{k+1},\ldots, X_{n}) \cdot\end{aligned}"></span></div>
 
 <p>Here we again used the identification <span class="pk-inline-math" data-tex="H_k = [0,2^k)"></span>, by each index <span class="pk-inline-math" data-tex="i"></span> specifying the prefix <span class="pk-inline-math" data-tex="(i_{1},\ldots, i_{k})\in H_{k}"></span> via its bits. We call <span class="pk-inline-math" data-tex="(f_0, \ldots, f_{2^{n-k}-1})"></span> the <em>interleaved representation</em> of <span class="pk-inline-math" data-tex="f"></span>, with interleaving depth <span class="pk-inline-math" data-tex="e = 2^{k}"></span>. In terms of their univariate polynomials,</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="u_f(X) = \sum_{i=0}^{2^k-1}  X^{i} \cdot u_{f_i}(X^{2^k}),"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}u_f(X) = \sum_{i=0}^{2^k-1}  X^{i} \cdot u_{f_i}(X^{2^k}),\end{aligned}"></span></div>
 
 <p>which is the FFT decomposition of <span class="pk-inline-math" data-tex="u_f(X)"></span>.</p>
 
@@ -188,7 +188,7 @@ M_1 | M_2
 
 <p>its <em>lifting</em> to <span class="pk-inline-math" data-tex="n"></span> variables. In terms of the values over the hypercube, lifting simply places the original vector (the values over <span class="pk-inline-math" data-tex="H_k"></span>) on the prefix cube</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\lbrace0^{n-k}\rbrace\times H_{k} \subset H_n,"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\lbrace 0^{n-k}\rbrace \times H_{k} \subset H_n,"></span></div>
 
 <p>and pads it with zero on the remainder of <span class="pk-inline-math" data-tex="H_n"></span>. In terms univariate representations,</p>
 
@@ -208,26 +208,26 @@ M_1 | M_2
 
 <p>We consider the R1CS witness vectors padded to their next power of two, i.e. as functions</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="w_i: \lbrace0,1\rbrace^{m_i} \longrightarrow \mathbb F_q, \quad i=1,2,"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="w_i: \lbrace 0,1\rbrace ^{m_i} \longrightarrow \mathbb F_q, \quad i=1,2,"></span></div>
 
 <p>and we denote their multilinear extensions again by the same letters. Likewise, the number of overall constraints are padded to a power of two, say <span class="pk-inline-math" data-tex="2^m"></span>, and we view the R1CS matrices as functions</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="A_i, B_i, C_i: \lbrace0,1\rbrace^m \times \lbrace0,1\rbrace^{m_i} \longrightarrow \mathbb F_q, \quad i =1,2,"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="A_i, B_i, C_i: \lbrace 0,1\rbrace ^m \times \lbrace 0,1\rbrace ^{m_i} \longrightarrow \mathbb F_q, \quad i =1,2,"></span></div>
 
 <p>with the same notation for their multilinear extensions.</p>
 
 <p>Throughout the following we assume that <span class="pk-inline-math" data-tex="m_1\geq m_2"></span>. We lift <span class="pk-inline-math" data-tex="w_2"></span> to the same number of variables as <span class="pk-inline-math" data-tex="w_1"></span>, and likewise we do for the second stage matrix polynomials <span class="pk-inline-math" data-tex="A_2, B_2, C_2"></span>. The resulting system has</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="w(X_0,X_1,\ldots, X_{m_1}) =
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{gathered}w(X_0,X_1,\ldots, X_{m_1}) =
 \\
-(1- X_0) \cdot w_1(X_1, \ldots, X_{m_1}) + X_0 \cdot w_2^*(X_{1},\ldots, X_{m_1}),"></span></div>
+(1- X_0) \cdot w_1(X_1, \ldots, X_{m_1}) + X_0 \cdot w_2^*(X_{1},\ldots, X_{m_1}),\end{gathered}"></span></div>
 
 <p>as the combined witness polynomial, and</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="M(\vec Y,X_0,X_1,\ldots, X_{m_1}) =
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{gathered}M(\vec Y,X_0,X_1,\ldots, X_{m_1}) =
 \\
 (1- X_0) \cdot M_1(\vec Y, X_1, \ldots, X_{m_1}) +
- X_0 \cdot  M_2^*(\vec Y, X_1,\ldots, X_{m_1}),"></span></div>
+ X_0 \cdot  M_2^*(\vec Y, X_1,\ldots, X_{m_1}),\end{gathered}"></span></div>
 
 <p>for <span class="pk-inline-math" data-tex="M=A,B,C"></span>, as the combined matrix polynomials.</p>
 
@@ -241,7 +241,7 @@ M_1 | M_2
 
 <div class="pk-equation"><span data-display-math="true" data-tex="f_1, f_2^* \in C^{e},"></span></div>
 
-<p>the interleaved Reed--Solomon code of interleaving depth <span class="pk-inline-math" data-tex="e = 2^{m_1-k_1}"></span>, where <span class="pk-inline-math" data-tex="f_2^*"></span> has only <span class="pk-inline-math" data-tex="d = 2^{\max\lbracem_2-k_1,0\rbrace}"></span> non-zero components. (These are the prefix embeddings of the <span class="pk-inline-math" data-tex="d"></span> components of <span class="pk-inline-math" data-tex="w_2"></span>.) Thus committing to the lifted <span class="pk-inline-math" data-tex="w_2^*"></span> causes no overhead compared to <span class="pk-inline-math" data-tex="w_2"></span>, given that <span class="pk-inline-math" data-tex="m_2 \geq k"></span>.</p>
+<p>the interleaved Reed--Solomon code of interleaving depth <span class="pk-inline-math" data-tex="e = 2^{m_1-k_1}"></span>, where <span class="pk-inline-math" data-tex="f_2^*"></span> has only <span class="pk-inline-math" data-tex="d = 2^{\max\lbrace m_2-k_1,0\rbrace }"></span> non-zero components. (These are the prefix embeddings of the <span class="pk-inline-math" data-tex="d"></span> components of <span class="pk-inline-math" data-tex="w_2"></span>.) Thus committing to the lifted <span class="pk-inline-math" data-tex="w_2^*"></span> causes no overhead compared to <span class="pk-inline-math" data-tex="w_2"></span>, given that <span class="pk-inline-math" data-tex="m_2 \geq k"></span>.</p>
 
 <h4 id="lifting-small-commitments">Lifting small commitments.</h4>
 
@@ -281,7 +281,7 @@ M_1 | M_2
     \\
     (c_1,\ldots,c_{t_1}) = \vec{in}
     \end{matrix}
-\right\rbrace,"></span></div>
+\right\rbrace ,"></span></div>
 
 <p>where <span class="pk-inline-math" data-tex="d(p,f)"></span> refers to the interleaved representation of <span class="pk-inline-math" data-tex="p(X)"></span> as <span class="pk-inline-math" data-tex="e = 2^{m_1-k}"></span> component polynomials of degree <span class="pk-inline-math" data-tex="&lt; 2^{k}"></span>. The protocol is divided into three phases.</p>
 
@@ -293,12 +293,12 @@ M_1 | M_2
 
 <p>The Spartan zero-check. We prove constraint satisfaction of the multilinears</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="w_M(\vec Y) &amp;=
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}w_M(\vec Y) &amp;=
 \sum_{\vec x\in H_{m_1+1}} M(\vec Y, \vec x)\cdot w(\vec x),
 \\
 &amp;= \sum_{\vec x\in H_{m_1}} M_1(\vec Y, \vec x)\cdot w_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec Y,\vec x) \cdot w_2^*(\vec x)
 \\
-&amp;= \sum_{\vec x\in H_{m_2}} M_1(\vec Y, \vec x)\cdot w_1(\vec x) + \sum_{\vec x\in H_{m_2}} M_2(\vec Y,\vec x) \cdot w_2(\vec x),"></span></div>
+&amp;= \sum_{\vec x\in H_{m_2}} M_1(\vec Y, \vec x)\cdot w_1(\vec x) + \sum_{\vec x\in H_{m_2}} M_2(\vec Y,\vec x) \cdot w_2(\vec x),\end{aligned}"></span></div>
 
 <p>for <span class="pk-inline-math" data-tex="M=A,B,C"></span>. For showing that</p>
 
@@ -314,10 +314,10 @@ M_1 | M_2
 
 <p>The third phase of the protocol is devoted to proving the linear claims <span class="pk-reference">[e:image:polys:evals]</span>, which is done by WHIR on the combined witness <span class="pk-inline-math" data-tex="w"></span>. For public input and challenge consistency, we further add the constraints</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="in_j &amp;= \sum_{\vec x\in H_{m_1}} eq(j,\vec x)\cdot w_1(\vec x), \quad j=0,\ldots, t_1,
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}in_j &amp;= \sum_{\vec x\in H_{m_1}} eq(j,\vec x)\cdot w_1(\vec x), \quad j=0,\ldots, t_1,
 \\
 
-\xi_j &amp; = \sum_{\vec x\in H_{m_1}} eq^*(j,\vec x)\cdot w_2^*(\vec x), \quad j=0,\ldots, t_2,"></span></div>
+\xi_j &amp; = \sum_{\vec x\in H_{m_1}} eq^*(j,\vec x)\cdot w_2^*(\vec x), \quad j=0,\ldots, t_2,\end{aligned}"></span></div>
 
 <p>where <span class="pk-inline-math" data-tex="\vec\xi = (\xi_1,\ldots, \xi_{t_2})"></span> are the challenges drawn in the second stage of the R1CS. The WHIR proof of proximity eventually reduces the linear claims on <span class="pk-inline-math" data-tex="w"></span> to claims on the combined matrix polynomials, which need to be checked by the verifier at full expense.</p>
 
@@ -351,7 +351,7 @@ M_1 | M_2
 
 <p>and both prover and verifier engage in the sumcheck protocol for</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\sum_{\vec x\in H_m} \left(w_A(\vec x)\cdot w_B(\vec x) - w_C(\vec x)\right)\cdot eq(\vec x, \vec\rho) = 0,"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\sum_{\vec x\in H_m} \left(w_A(\vec x)\cdot w_B(\vec x) - w_C(\vec x)\right)\cdot eq(\vec x, \vec\rho) = 0,\end{aligned}"></span></div>
 
 <p>where <span class="pk-inline-math" data-tex="w_A(\vec x), w_B(\vec x), w_C(\vec x)"></span> are the multilinears as specified in <span class="pk-reference">[e:a:poly]</span>. After the last round of the sumcheck, the prover sends</p>
 
@@ -365,13 +365,13 @@ M_1 | M_2
 
 <p>WHIR: Both prover and verifier run WHIR for the following linear constraints on the combined witness polynomial <span class="pk-inline-math" data-tex="w"></span>:</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="v_M = \sum_{\vec x\in H_{m_1}} M_1(\vec\alpha, \vec x) \cdot w_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec\alpha,\vec x)\cdot w_2^*(\vec x)"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}v_M = \sum_{\vec x\in H_{m_1}} M_1(\vec\alpha, \vec x) \cdot w_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec\alpha,\vec x)\cdot w_2^*(\vec x)\end{aligned}"></span></div>
 
 <p>with <span class="pk-inline-math" data-tex="M = A,B,C"></span>, and</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="in_i = \sum_{\vec x \in H_{m_1}} eq(i, \vec x) \cdot w_1(\vec x),
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}in_i = \sum_{\vec x \in H_{m_1}} eq(i, \vec x) \cdot w_1(\vec x),
 \quad
-\xi_i = \sum_{\vec x \in H_{m_2}} eq^*(i, \vec x) \cdot w_2^*(\vec x),"></span></div>
+\xi_i = \sum_{\vec x \in H_{m_2}} eq^*(i, \vec x) \cdot w_2^*(\vec x),\end{aligned}"></span></div>
 
 <p>for <span class="pk-inline-math" data-tex="i = 0,\ldots, t"></span>. (This phase reduces the validity of the linear constraints to claims on the combined matrix polynomials</p>
 
@@ -415,14 +415,14 @@ C(\vec\alpha,\vec\beta),"></span></div>
 
 <p>For proximity parameters <span class="pk-inline-math" data-tex="\theta_i\in \left(0, 1 - \sqrt{1-\delta_i} \right)"></span>, <span class="pk-inline-math" data-tex="i=1,2,\ldots, r"></span>, where <span class="pk-inline-math" data-tex="\delta_i"></span> are the minimum distances of the Reed--Solomon codes <span class="pk-inline-math" data-tex="C_1"></span>, \ldots, <span class="pk-inline-math" data-tex="C_r"></span>. Protocol <span class="pk-reference">[prot:main]</span> is a round-by-round knowledge sound interactive oracle proof for that <span class="pk-inline-math" data-tex="f_1\in \mathcal R_{\theta_1}"></span> as specified in <span class="pk-reference">[e:IOPP:main:R:0]</span>, with the following overall soundness error for the three phases:</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\varepsilon_\text{phase 1}
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\varepsilon_\text{phase 1}
 &amp;\leq
     \ell_1(\theta_1) \cdot \varepsilon_\text{R1CS}
 \\\intertext{
 where \varepsilon_{R1CS} is the soundness error of the randomized AIR,
 }
 \varepsilon_\text{phase 2}
-&amp;\leq \ell_1(\theta_1) \cdot \max\left\lbrace\frac{m}{|F|}, \frac{3}{|F|}\right\rbrace,"></span></div>
+&amp;\leq \ell_1(\theta_1) \cdot \max\left\lbrace \frac{m}{|F|}, \frac{3}{|F|}\right\rbrace ,\end{aligned}"></span></div>
 
 <p>and <span class="pk-inline-math" data-tex="\varepsilon_\text{phase 3} \leq \varepsilon_\text{WHIR}(\theta_1,\ldots, \theta_r)"></span> for the overall soundness error of WHIR with <span class="pk-inline-math" data-tex="r"></span> rounds on the inner product claims <span class="pk-reference">[e:phase3:claim:vM]</span> and <span class="pk-reference">[e:phase3:claim:inputs]</span>.</p>
 
@@ -432,7 +432,7 @@ where \varepsilon_{R1CS} is the soundness error of the randomized AIR,
 
 <p>This is the reason why Phase 1 is a randomized reduction from the main claim <span class="pk-inline-math" data-tex="f_1\in \mathcal R_{\theta_1}"></span> to that the extended prover transcript <span class="pk-inline-math" data-tex="(f_1, f_2^*)"></span> belongs to</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\mathcal R_\text{phase 1}
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\mathcal R_\text{phase 1}
 &amp;=
 \left\lbrace
     \begin{matrix}
@@ -452,7 +452,7 @@ where \varepsilon_{R1CS} is the soundness error of the randomized AIR,
         \\
         \text{on inputs }\vec{in} , \vec\xi
     \end{matrix}
-\right\rbrace."></span></div>
+\right\rbrace .\end{aligned}"></span></div>
 
 <p>(Here, the distance refers to the interleaved representation of <span class="pk-inline-math" data-tex="p_1"></span> and <span class="pk-inline-math" data-tex="p_2"></span>.) Note, that the proximate <span class="pk-inline-math" data-tex="p_2(X)"></span> is not demanded of lifted form, in other words, it is not asked to stem from a <span class="pk-inline-math" data-tex="\theta_1"></span>-proximate of the non-lifted word <span class="pk-inline-math" data-tex="f_2"></span> on <span class="pk-inline-math" data-tex="D'"></span>. (In fact, we do not rule out that <span class="pk-inline-math" data-tex="f_2"></span> is not as close to <span class="pk-inline-math" data-tex="C'"></span>.) A usual pigeon-hole argument on the number of <span class="pk-inline-math" data-tex="\theta_1"></span>-proximates of <span class="pk-inline-math" data-tex="(f_1,f_2^*)"></span> bounds the soundness error of this reduction by</p>
 
@@ -474,7 +474,7 @@ where \varepsilon_{R1CS} is the soundness error of the randomized AIR,
         v_A, v_B, v_C \in F
     \end{matrix}
     \::\:
-    \hspace*{-10mm}
+
     \begin{matrix}
         \exists (p_1(X),p_2(X)) \in \mathscr P_{m_1}^2
         \\
@@ -489,7 +489,7 @@ where \varepsilon_{R1CS} is the soundness error of the randomized AIR,
         \\
         q_m(\alpha_m) = (v_A \cdot v_B - v_C)\cdot eq(\vec\alpha, \vec\rho)
     \end{matrix}
-\right\rbrace."></span></div>
+\right\rbrace ."></span></div>
 
 <p>The first term of the soundness error <span class="pk-reference">[e:phase2:soundness:error]</span>,</p>
 
@@ -520,7 +520,7 @@ where \varepsilon_{R1CS} is the soundness error of the randomized AIR,
 
 <p>The mechanics of WHIR is in alignment with a specified sequence of univariate spaces</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\mathscr P_{k_0} \supset \mathscr P_{k_1} \supset \ldots \supset \mathscr P_{k_r},"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\mathscr P_{k_0} \supset \mathscr P_{k_1} \supset \ldots \supset \mathscr P_{k_r},\end{aligned}"></span></div>
 
 <p>with <span class="pk-inline-math" data-tex="k_{0} &gt; k_1 &gt; \ldots &gt; k_{r}\geq 0"></span>. (These will correspond to the number of remaining variables after each round.) As before, we commit polynomials in interleaved representation, using the linear isomorphism</p>
 
@@ -598,12 +598,12 @@ where \varepsilon_{R1CS} is the soundness error of the randomized AIR,
 
 <p>Aggregation. The verifier samples <span class="pk-inline-math" data-tex="\gamma_i\mathrel{\leftarrow} F"></span> for combining the specialized sumcheck claim</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="q_{i, r_i}(\beta_{i,r_i}) &amp;= \langle P_{i}, K_{i-1}(\vec \beta_{i},\:.\:) \rangle_{H_{k_i}}"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}q_{i, r_i}(\beta_{i,r_i}) &amp;= \langle P_{i}, K_{i-1}(\vec \beta_{i},\:.\:) \rangle_{H_{k_i}}\end{aligned}"></span></div>
 
 <p>and the evaluation claims</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="v_{j} &amp;= \langle P_{i}, L_{x_i}\rangle_{H_{k_i}},
-    \quad j = 0,\ldots, s_i,"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}v_{j} &amp;= \langle P_{i}, L_{x_i}\rangle_{H_{k_i}},
+    \quad j = 0,\ldots, s_i,\end{aligned}"></span></div>
 
 <p>into a the new inner product claim <span class="pk-inline-math" data-tex="c_i = \langle P_{i}, K_{i}\rangle_{H_{k_i}}"></span> with the new <span class="pk-inline-math" data-tex="c_i"></span> and kernel <span class="pk-inline-math" data-tex="K_{i}"></span> as clarified below.</p>
 
@@ -617,7 +617,7 @@ where \varepsilon_{R1CS} is the soundness error of the randomized AIR,
 
 <p>In the aggregation step, the combined kernel is</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="K_{i} &amp;=  K_{i-1,i,1}(\vec\beta_{i},X_1,\ldots, X_{k_i}) + \sum_{j=0}^{s_i} \gamma_i^{j+1} \cdot L_{x_{j}}(X_1,\ldots, X_{k_i}),"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}K_{i} &amp;=  K_{i-1,i,1}(\vec\beta_{i},X_1,\ldots, X_{k_i}) + \sum_{j=0}^{s_i} \gamma_i^{j+1} \cdot L_{x_{j}}(X_1,\ldots, X_{k_i}),\end{aligned}"></span></div>
 
 <p>and <span class="pk-inline-math" data-tex="c_i = q_{i,r_i}(\beta_{i,r_i}) + \sum_{j=0}^{s_i} \gamma_i^{j+1}\cdot v_{j}"></span>.</p>
 
@@ -637,7 +637,7 @@ d(g_i,p_i)\leq \theta_i,
 \\
 \langle P_i, K_i\rangle_{H_{k_i}} = c_i
 \end{matrix}
-\right\rbrace."></span></div>
+\right\rbrace ."></span></div>
 
 <p>(Again, <span class="pk-inline-math" data-tex="P_i"></span> is the multilinear representation of <span class="pk-inline-math" data-tex="p_i"></span>, and the distance refers to the interleaved representation of <span class="pk-inline-math" data-tex="p_i"></span>.) We use somewhat lazy notation here, hiding the dependency of <span class="pk-inline-math" data-tex="\mathcal R_i"></span> on the previous messages: The inner product kernel <span class="pk-inline-math" data-tex="K_i"></span> incorporates the specialized sumcheck claim on the previous oracle <span class="pk-inline-math" data-tex="g_{i-1}"></span>, its values at the <span class="pk-inline-math" data-tex="s_i"></span> in-domain queries, and the claimed value for <span class="pk-inline-math" data-tex="p_i"></span> at the single out-of-domain point <span class="pk-inline-math" data-tex="x_{i,0}"></span>. We note that in the case <span class="pk-inline-math" data-tex="i=r"></span>, since <span class="pk-inline-math" data-tex="p_r(X)\in \mathscr P_{k_r}"></span> is revealed in plain, <span class="pk-inline-math" data-tex="g_r = p_r"></span>, the distance condition in <span class="pk-reference">[e:WHIR:round:relation]</span> becomes vacuous.</p>
 
@@ -653,7 +653,7 @@ d(g_i,p_i)\leq \theta_i,
 
 <p>Sumcheck phase: For each of the <span class="pk-inline-math" data-tex="r_i"></span> steps,</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\varepsilon_{S,i} &amp;= \varepsilon_{\text{CA}}(C_{i-1},2,\theta_{i-1}),"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\varepsilon_{S,i} &amp;= \varepsilon_{\text{CA}}(C_{i-1},2,\theta_{i-1}),\end{aligned}"></span></div>
 
 <p>where <span class="pk-inline-math" data-tex="\varepsilon_\text{CA}(C_{i-1},2,\theta_{i-1})"></span> is the soundness error of the constrained correlated agreement theorem (Theorem <span class="pk-reference">[thm:CAT:constrained]</span>) for <span class="pk-inline-math" data-tex="C_{i-1}"></span>, under degree-<span class="pk-inline-math" data-tex="2"></span> constraints, using proximity parameter <span class="pk-inline-math" data-tex="\theta_{i-1}"></span>.</p>
 
@@ -663,7 +663,7 @@ d(g_i,p_i)\leq \theta_i,
 
 <p>Query phase:</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\varepsilon_{Q,i} = \frac{\ell_i(\theta_i)^2}{2} \cdot \frac{2^{n-k_{i}}}{|F\setminus D_i|} + (1 -\theta_{i-1})^{s_i},"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\varepsilon_{Q,i} = \frac{\ell_i(\theta_i)^2}{2} \cdot \frac{2^{n-k_{i}}}{|F\setminus D_i|} + (1 -\theta_{i-1})^{s_i},\end{aligned}"></span></div>
 
 <p>where <span class="pk-inline-math" data-tex="\ell_i(\theta_i)"></span> is the list size bound for <span class="pk-inline-math" data-tex="C_i"></span> at distance <span class="pk-inline-math" data-tex="\theta_i"></span>.</p>
 
@@ -673,7 +673,7 @@ d(g_i,p_i)\leq \theta_i,
 
 <p>Aggregation step:</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\varepsilon_{A,i} = \ell_i(\theta_i) \cdot \frac{s_{i}}{|F|},"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\varepsilon_{A,i} = \ell_i(\theta_i) \cdot \frac{s_{i}}{|F|},\end{aligned}"></span></div>
 
 <p>again with the same list size bound as above.</p>
 
@@ -709,10 +709,10 @@ d(g_i,p_i)\leq \theta_i,
 
 <p>located at arbitrary row indices <span class="pk-inline-math" data-tex="\vec x_A, \vec x_B \in H_m"></span>. Then</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="w_A(\vec Y) &amp;= w_A'(\vec Y)  + r_A \cdot eq(\vec x_A,\vec Y),
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}w_A(\vec Y) &amp;= w_A'(\vec Y)  + r_A \cdot eq(\vec x_A,\vec Y),
 \\
 
-w_B(\vec Y) &amp;= w_B'(\vec Y) + r_B \cdot eq(\vec x_B, \vec Y)"></span></div>
+w_B(\vec Y) &amp;= w_B'(\vec Y) + r_B \cdot eq(\vec x_B, \vec Y)\end{aligned}"></span></div>
 
 <p>with <span class="pk-inline-math" data-tex="w_A'"></span>, <span class="pk-inline-math" data-tex="w_B'"></span>, not depending on the two random witnesses <span class="pk-inline-math" data-tex="r_A"></span>, <span class="pk-inline-math" data-tex="r_B"></span>.</p>
 
@@ -724,7 +724,7 @@ w_B(\vec Y) &amp;= w_B'(\vec Y) + r_B \cdot eq(\vec x_B, \vec Y)"></span></div>
 (v_A, v_B, v_C) \in F^3
 \::\:
 q_m(\alpha_m) = (v_A\cdot v_B - v_C)\cdot eq(\vec\alpha,\vec\rho)
-\right\rbrace."></span></div>
+\right\rbrace ."></span></div>
 
 </Aside>
 
@@ -742,7 +742,7 @@ q_m(\alpha_m) = (v_A\cdot v_B - v_C)\cdot eq(\vec\alpha,\vec\rho)
 
 <Aside type="note" title="Lemma">
 
-<p>Choose <span class="pk-inline-math" data-tex="\Omega =\lbrace\vec x_1, \ldots, \vec x_k\rbrace"></span> a set of <span class="pk-inline-math" data-tex="k\geq 1"></span> distinct points on the Boolean hypercube <span class="pk-inline-math" data-tex="H_n"></span>. Then, except with probability of at most <span class="pk-inline-math" data-tex="\varepsilon = \frac{k\cdot n}{|F|}"></span> in <span class="pk-inline-math" data-tex="\vec \alpha_1, \ldots, \vec \alpha_k \in F^n"></span>, the multi-point evaluation matrix</p>
+<p>Choose <span class="pk-inline-math" data-tex="\Omega =\lbrace \vec x_1, \ldots, \vec x_k\rbrace"></span> a set of <span class="pk-inline-math" data-tex="k\geq 1"></span> distinct points on the Boolean hypercube <span class="pk-inline-math" data-tex="H_n"></span>. Then, except with probability of at most <span class="pk-inline-math" data-tex="\varepsilon = \frac{k\cdot n}{|F|}"></span> in <span class="pk-inline-math" data-tex="\vec \alpha_1, \ldots, \vec \alpha_k \in F^n"></span>, the multi-point evaluation matrix</p>
 
 <div class="pk-equation"><span data-display-math="true" data-tex="E_{\vec\alpha_1,\ldots,\vec\alpha_k} =
 \begin{pmatrix}
@@ -767,7 +767,7 @@ eq(\vec x_k,\vec \alpha_1) &amp; eq(\vec x_k, \vec\alpha_2) &amp; \ldots &amp; e
 
 <Aside type="note" title="Lemma">
 
-<p>Let <span class="pk-inline-math" data-tex="F"></span> be a degree <span class="pk-inline-math" data-tex="e"></span> extension of a prime field <span class="pk-inline-math" data-tex="\mathbb F_q"></span>, and <span class="pk-inline-math" data-tex="\Omega =\lbrace\vec x_1, \ldots, \vec x_e\rbrace"></span> a set of <span class="pk-inline-math" data-tex="e"></span> distinct points on the Boolean hypercube <span class="pk-inline-math" data-tex="H_m\subset \mathbb F_q^m"></span>. Then, except for a fraction of at most <span class="pk-inline-math" data-tex="\varepsilon = \frac{m}{q-1}"></span> points <span class="pk-inline-math" data-tex="\vec \alpha \in F^m"></span>, the elements</p>
+<p>Let <span class="pk-inline-math" data-tex="F"></span> be a degree <span class="pk-inline-math" data-tex="e"></span> extension of a prime field <span class="pk-inline-math" data-tex="\mathbb F_q"></span>, and <span class="pk-inline-math" data-tex="\Omega =\lbrace \vec x_1, \ldots, \vec x_e\rbrace"></span> a set of <span class="pk-inline-math" data-tex="e"></span> distinct points on the Boolean hypercube <span class="pk-inline-math" data-tex="H_m\subset \mathbb F_q^m"></span>. Then, except for a fraction of at most <span class="pk-inline-math" data-tex="\varepsilon = \frac{m}{q-1}"></span> points <span class="pk-inline-math" data-tex="\vec \alpha \in F^m"></span>, the elements</p>
 
 <div class="pk-equation"><span data-display-math="true" data-tex="eq(\vec x_1, \vec \alpha), \ldots, eq(\vec x_e, \vec \alpha) \in F"></span></div>
 
@@ -806,7 +806,7 @@ f_q^{q^{k-1}} &amp; f_2^{q^{k-1}} &amp; \ldots &amp; f_k^{q^{k-1}}
 
 <p>as an element of <span class="pk-inline-math" data-tex="K"></span>. Moreover, since all matrix entries are polynomials, we conclude that the Moore determinant is a non-zero <em>polynomial</em>. The <span class="pk-inline-math" data-tex="(i,j)"></span>-th entry in the Moore matrix is has total degree at most <span class="pk-inline-math" data-tex="m\cdot q^{i-1}"></span>, and the total degree the determinant is at most</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="m + m q + \ldots + m  q^{e-1} = m \cdot \frac{q^e - 1}{q - 1}."></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}m + m q + \ldots + m  q^{e-1} = m \cdot \frac{q^e - 1}{q - 1}.\end{aligned}"></span></div>
 
 <p>By Schwartz-Zippel, the fraction of <span class="pk-inline-math" data-tex="\vec\alpha\in F^m"></span> for which the determinant evaluates zero is at most</p>
 
@@ -830,7 +830,7 @@ f_q^{q^{k-1}} &amp; f_2^{q^{k-1}} &amp; \ldots &amp; f_k^{q^{k-1}}
 
 <p>with its free part touching the variables <span class="pk-inline-math" data-tex="Y_{i_j(1)}, \ldots, Y_{i_j(t)}"></span> only, meaning that its points do not vary outside these <span class="pk-inline-math" data-tex="t"></span> coordinates. We further require that the free variables are disjoint between the sets, i.e.</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\big\lbraceY_{i_j(1)},\ldots, Y_{i_j(t)} \big\rbrace \cap \big\lbraceY_{i_{j'}(1)},\ldots, Y_{i_{j'}(t)} \big\rbrace = \varnothing,"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\big\lbrace Y_{i_j(1)},\ldots, Y_{i_j(t)} \big\rbrace  \cap \big\lbrace Y_{i_{j'}(1)},\ldots, Y_{i_{j'}(t)} \big\rbrace  = \varnothing,"></span></div>
 
 <p>whenever <span class="pk-inline-math" data-tex="j\neq j'"></span>. The crux is that for each such set <span class="pk-inline-math" data-tex="\Omega_j"></span>, we can drop its fixed variables in the proof of Lemma <span class="pk-reference">[lem:Lagrange:random:eval]</span>, as long as their <span class="pk-inline-math" data-tex="eq"></span>-terms are not zero, since a common non-zero factor does not change <span class="pk-inline-math" data-tex="\mathbb F_q"></span>-linear independence. The exceptional set for <span class="pk-inline-math" data-tex="\Omega_j"></span> is only in the variables <span class="pk-inline-math" data-tex="Y_{i_j(1)}, \ldots, Y_{i_j(t)}"></span>, independent of the other variables, and we arrive at the following statement.</p>
 
@@ -864,10 +864,10 @@ f_q^{q^{k-1}} &amp; f_2^{q^{k-1}} &amp; \ldots &amp; f_k^{q^{k-1}}
 
 <p>which is overlaid with the hypercube sum <span class="pk-reference">[e:R1CS:zerocheck]</span>. The prover claims the sum <span class="pk-inline-math" data-tex="c' = \sum_{\vec x \in H_m} h_m(X_m)"></span>, the computation of which is almost for free via the succinct representation</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\frac{1}{2^m}\sum_{\vec x\in H_m} h(\vec x)
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\frac{1}{2^m}\sum_{\vec x\in H_m} h(\vec x)
 =  h_0 + \frac{1}{2}\left(
 h_1(1) + \ldots + h_m(1)
-\right)."></span></div>
+\right).\end{aligned}"></span></div>
 
 <p>Then both run the sumcheck on the combined claim</p>
 
@@ -897,7 +897,7 @@ c_0 = \hat q_1(0) + \hat q_1(1),
 \\
 k=1,\ldots n-1
 \end{matrix}
-\right\rbrace,"></span></div>
+\right\rbrace ,"></span></div>
 
 <p>independent of <span class="pk-inline-math" data-tex="G"></span>.</p>
 
@@ -909,17 +909,17 @@ k=1,\ldots n-1
 
 <p>Fix <span class="pk-inline-math" data-tex="G"></span>, <span class="pk-inline-math" data-tex="\alpha\in F"></span> and <span class="pk-inline-math" data-tex="(\alpha_1,\ldots,\alpha_n)\in F^n"></span>, and choose any set <span class="pk-inline-math" data-tex="S\subset F"></span> of <span class="pk-inline-math" data-tex="d"></span> distinct points, containing the element <span class="pk-inline-math" data-tex="1"></span>, but not <span class="pk-inline-math" data-tex="0"></span>. Using the consistency equations it is easily seen that the linear mapping, which sends <span class="pk-inline-math" data-tex="(c_0,\hat q_1(X),\ldots, \hat q_n(X))"></span> to the values</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="(\vec v_1,\ldots, \vec v_n) = (\hat q_1|_{S\cup\lbrace0\rbrace},\hat q_1|_S, \ldots, \hat q_n|_S)"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="(\vec v_1,\ldots, \vec v_n) = (\hat q_1|_{S\cup\lbrace 0\rbrace },\hat q_1|_S, \ldots, \hat q_n|_S)"></span></div>
 
 <p>is a bijection between <span class="pk-inline-math" data-tex="\mathcal R"></span> and <span class="pk-inline-math" data-tex="F^{dn + 1}"></span>. We leave this to the reader.</p>
 
 <p>To prove the lemma, it suffices to show that the values <span class="pk-reference">[e:zk:zerocheck:polys:by:value]</span> are in one-to-one correspondence with <span class="pk-inline-math" data-tex="h_0\in F, h_1,\ldots, h_n\in F[X]^{&lt;d}"></span>. But this is evident from the concrete form</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\hat q_{k}(X) = \sum_{\vec x \in H_{n-k}} \alpha \cdot G(\alpha_1,\ldots, \alpha_{k-1}, X,\vec x)
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{gathered}\hat q_{k}(X) = \sum_{\vec x \in H_{n-k}} \alpha \cdot G(\alpha_1,\ldots, \alpha_{k-1}, X,\vec x)
 \\
 + 2^{n-k} (h_0 + \alpha_1 h_1(\alpha_1) +\ldots +\alpha_{k-1} h_{k-1}(\alpha_{k-1})+ X h_{k}(X))
 \\+ \sum_{\vec x \in H_{n-k}} x_{k+1} h_{k+1}(x_{k+1}) + \ldots + x_n
-h_n(x_n),"></span></div>
+h_n(x_n),\end{gathered}"></span></div>
 
 <p>in which the other <span class="pk-inline-math" data-tex="h_0,\ldots, h_{k-1}, h_{k+1},\ldots, h_n"></span> impact only the constant part of the polynomial. (The representation partially collapses in the two edge cases. For <span class="pk-inline-math" data-tex="k=1"></span> there are no terms except <span class="pk-inline-math" data-tex="h_0"></span> preceding <span class="pk-inline-math" data-tex="X h_1(X)"></span>, and for <span class="pk-inline-math" data-tex="k=n"></span>, there are no terms following <span class="pk-inline-math" data-tex="X h_n(X)"></span>.) <span class="pk-inline-math" data-tex="\Box"></span></p>
 
@@ -927,11 +927,11 @@ h_n(x_n),"></span></div>
 
 <p>The sumcheck reduces the claim <span class="pk-reference">[e:zk:zerocheck:combined:claim]</span> to that</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\hat q_m(\alpha_m) = G(\alpha_1,\ldots, \alpha_m) + h_1(\alpha_1) + \ldots + h_m(\alpha_m),"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\hat q_m(\alpha_m) = G(\alpha_1,\ldots, \alpha_m) + h_1(\alpha_1) + \ldots + h_m(\alpha_m),\end{aligned}"></span></div>
 
 <p>where</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="G(\vec\alpha) =  (w_A(\vec\alpha)\cdot w_B(\vec\alpha) - w_C(\vec\alpha))\cdot eq(\vec\alpha,\vec\rho),"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}G(\vec\alpha) =  (w_A(\vec\alpha)\cdot w_B(\vec\alpha) - w_C(\vec\alpha))\cdot eq(\vec\alpha,\vec\rho),\end{aligned}"></span></div>
 
 <p>for which the prover sends the values <span class="pk-inline-math" data-tex="w_A(\vec\alpha)"></span>, <span class="pk-inline-math" data-tex="w_B(\vec\alpha)"></span>, <span class="pk-inline-math" data-tex="w_C(\vec\alpha)"></span>. The complementary term</p>
 
@@ -979,8 +979,8 @@ h_n(x_n),"></span></div>
 
 <p>The sumcheck rounds are randomized using the sparse Libra mask explained in Section <span class="pk-reference">[s:zk:zerocheck]</span>, and information leakage via commitment openings is mitigated through the commitment masks as described above. In this multi-polynomial regime, ZO0K considers WHIR as a sumcheck prover, which gradually reduces composite claims of the form</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="c_{i}  &amp;= \left\langle \hat p_{i}, K^{(i)} \right\rangle_{H_{k_{i}}}
-+ \sum_{j=0}^{i} \Gamma_j^{(i)}(\msk_j) + \sum_{j=1}^{i} \Lambda_{j}^{(i)} (h_{j}),"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}c_{i}  &amp;= \left\langle \hat p_{i}, K^{(i)} \right\rangle_{H_{k_{i}}}
++ \sum_{j=0}^{i} \Gamma_j^{(i)}(\msk_j) + \sum_{j=1}^{i} \Lambda_{j}^{(i)} (h_{j}),\end{aligned}"></span></div>
 
 <p>involving a costly part, the inner product <span class="pk-inline-math" data-tex="\left\langle \hat p_{i}, K^{(i)} \right\rangle"></span> of a large (masked) witness polynomial <span class="pk-inline-math" data-tex="\hat p_i"></span> with a public kernel <span class="pk-inline-math" data-tex="K^{(i)}"></span>, and a cheap part, certain public linear functionals <span class="pk-inline-math" data-tex="\Lambda_j^{(i)}"></span>, <span class="pk-inline-math" data-tex="\Gamma_j^{(i)}"></span> on the (small) masks committed by the prover so far:</p>
 
@@ -996,15 +996,15 @@ h_n(x_n),"></span></div>
 
 <p>from <span class="pk-inline-math" data-tex="h_{i,0}\mathrel{\leftarrow} F"></span>, and <span class="pk-inline-math" data-tex="h_{i,j}\mathrel{\leftarrow} F[X]^{&lt;2}"></span>, appended by the coefficients of the commitment masks</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="msk_i \in F^{q_i},  \quad i=0,\ldots,r,"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}msk_i \in F^{q_i},  \quad i=0,\ldots,r,\end{aligned}"></span></div>
 
 <p>from <span class="pk-inline-math" data-tex="\msk_i \mathrel{\leftarrow} F[X]^{&lt; q_i}"></span>, where <span class="pk-inline-math" data-tex="msk_0"></span> can be taken from the subfield <span class="pk-inline-math" data-tex="\mathbb F_q"></span>, assuming that the first witness polynomial <span class="pk-inline-math" data-tex="p_0"></span> is over <span class="pk-inline-math" data-tex="\mathbb F_q"></span>. (In our application, our <span class="pk-inline-math" data-tex="p_0"></span> is the composite witness polynomial, both of which have their own basefield mask.) The number of coefficients is chosen according to how often the commitment of <span class="pk-inline-math" data-tex="p_i + \msk_i"></span> is queried in the course of WHIR:</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="q_0 &amp;= s_{1},
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}q_0 &amp;= s_{1},
 \\
 q_i &amp;= s_{i+1} + 1 \text{ for } 1\leq i\leq r-1,
 \\\intertext{assuming a single DEEP query in each of the rounds, and}
-q_r &amp;= s_\text{zk},"></span></div>
+q_r &amp;= s_\text{zk},\end{aligned}"></span></div>
 
 <p>the number of queries on <span class="pk-inline-math" data-tex="\hat p_r"></span> in the final opening protocol, Protocol <span class="pk-reference">[prot:zook:final:opening]</span>. The concatenated coefficient vectors <span class="pk-reference">[e:zook:sumcheck:mask:coeffs]</span> and <span class="pk-reference">[e:zook:commitment:mask:coeffs]</span> are encoded in zero-knowlege manner, by appending to the message another <span class="pk-inline-math" data-tex="q_{zk}"></span> random coefficients</p>
 
@@ -1036,13 +1036,13 @@ q_r &amp;= s_\text{zk},"></span></div>
 
 <p>Let us describe the changes of round <span class="pk-inline-math" data-tex="i"></span> in Protocol <span class="pk-reference">[prot:WHIR]</span>, <span class="pk-inline-math" data-tex="i=1,\ldots, r"></span>. At the beginning of the round, the prover has already committed to <span class="pk-inline-math" data-tex="\hat p_{i-1}"></span>, <span class="pk-inline-math" data-tex="\msk_0,\ldots, \msk_{i-1}"></span>, <span class="pk-inline-math" data-tex="h_1,\ldots h_{i-1}"></span>, satisfying the linear constraint</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="c_{i-1}  &amp;= \left\langle \hat p_{i-1}, K^{(i-1)} \right\rangle_{H_{k_{i-1}}}
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}c_{i-1}  &amp;= \left\langle \hat p_{i-1}, K^{(i-1)} \right\rangle_{H_{k_{i-1}}}
  + \sum_{j=0}^{i-1} \Gamma_j^{(i-1)}(\msk_j)
-+ \sum_{j=1}^{i-1} \Lambda_{j}^{(i-1)} (h_{j})"></span></div>
++ \sum_{j=1}^{i-1} \Lambda_{j}^{(i-1)} (h_{j})\end{aligned}"></span></div>
 
 <p>We think of the claim as <span class="pk-inline-math" data-tex="c_{i-1} = \sum_{\vec x\in H_{k_{i-1}}} G_{i-1}(\vec x)"></span> for the quadratic expression</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="G_{i-1}(\vec x) = \hat p_{i-1}(\vec x) \cdot K^{(i-1)}(\vec x) - 2^{-k_{i-1}}\cdot B_{i-1},"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}G_{i-1}(\vec x) = \hat p_{i-1}(\vec x) \cdot K^{(i-1)}(\vec x) - 2^{-k_{i-1}}\cdot B_{i-1},\end{aligned}"></span></div>
 
 <p>where <span class="pk-inline-math" data-tex="B_{i-1}"></span> is the sum of the mask functionals in <span class="pk-reference">[e:zook:prev:claim]</span>.</p>
 
@@ -1058,21 +1058,21 @@ q_r &amp;= s_\text{zk},"></span></div>
 
 <p>The verifier sends a random <span class="pk-inline-math" data-tex="\lambda_i\mathrel{\leftarrow} F"></span>, which reduces <span class="pk-reference">[e:zook:prev:claim]</span> to the combined claim</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\lambda_i\cdot c_{i-1} + d_i = \sum_{\vec x\in H_{k_{i-1}}}
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\lambda_i\cdot c_{i-1} + d_i = \sum_{\vec x\in H_{k_{i-1}}}
 \left(\lambda_i \cdot G_{i-1}(\vec x) + h_i(x_1,\ldots, x_{r_i})
-\right)."></span></div>
+\right).\end{aligned}"></span></div>
 
 <h5 id="step-2-sumcheck-phase">Step 2: Sumcheck phase.</h5>
 
 <p>Both prover and verifier proceed with the <span class="pk-inline-math" data-tex="r_i"></span> sumcheck rounds on the combined claim <span class="pk-reference">[e:zook:claim:combined]</span>. In the course of it, the prover provides the quadratic refinement polynomials <span class="pk-inline-math" data-tex="\hat q_{i,1}(X), \ldots, \hat q_{i,r_i}(X),"></span> the verifier has sent <span class="pk-inline-math" data-tex="\vec\beta_i = (\beta_{i,1},\ldots, \beta_{i,r_i})"></span>. After the last sumcheck round, the claim <span class="pk-reference">[e:zook:combined:sumcheck:claim]</span> is reduced to</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\hat q_{i,r_i}(\beta_{i,r_i})
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{gathered}\hat q_{i,r_i}(\beta_{i,r_i})
 = \sum_{\vec x'\in H_{k_i}} \left(
 \lambda_ i \cdot G_{i-1}(
 \vec\beta_i,\vec x') + h_i(\vec\beta_{i})
 \right)
 \\
-= \lambda_i\cdot \left\langle \hat p_{i-1}(\vec \beta_i, \:.\:), K^{(i-1)}(\vec\beta_i,\:.\:)\right\rangle_{H_{k_i}} + 2^{k_i - k_{i-1}}\cdot \lambda_i\cdot B_i + 2^{k_i}\cdot h_i(\vec\beta_i)"></span></div>
+= \lambda_i\cdot \left\langle \hat p_{i-1}(\vec \beta_i, \:.\:), K^{(i-1)}(\vec\beta_i,\:.\:)\right\rangle_{H_{k_i}} + 2^{k_i - k_{i-1}}\cdot \lambda_i\cdot B_i + 2^{k_i}\cdot h_i(\vec\beta_i)\end{gathered}"></span></div>
 
 <p>which linear in <span class="pk-inline-math" data-tex="\hat p_{i-1}(\vec\beta_{i},\:.\:)"></span> and the masks, now including <span class="pk-inline-math" data-tex="h_i"></span>.</p>
 
@@ -1084,10 +1084,10 @@ q_r &amp;= s_\text{zk},"></span></div>
 
 <p>as a word from <span class="pk-inline-math" data-tex="\mathscr P_{k_{i}}^{e_i}"></span>. This masked commitment is required also in the last round <span class="pk-inline-math" data-tex="i=r"></span>. The new ensemble of polynomials, <span class="pk-inline-math" data-tex="\hat p_i, \msk_i"></span>, and <span class="pk-inline-math" data-tex="\msk_0,\ldots, \msk_{i-1}"></span>, <span class="pk-inline-math" data-tex="h_1,\ldots, h_i"></span>, is subject to the linear constraint</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\hat q_{i,r_i}(\beta_{i,r_i}) =
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{gathered}\hat q_{i,r_i}(\beta_{i,r_i}) =
 \left\langle \hat p_i - \msk_i,  \lambda_i\cdot K^{(i-1)}(\vec\beta_i, \:.\:) \right\rangle_{H_{k_i}}
 \\
-+ 2^{-r_i} \cdot \lambda_i \cdot B_{i-1} + 2^{k_i}\cdot h_i(\vec\beta_i),"></span></div>
++ 2^{-r_i} \cdot \lambda_i \cdot B_{i-1} + 2^{k_i}\cdot h_i(\vec\beta_i),\end{gathered}"></span></div>
 
 <p>which are of the form <span class="pk-reference">[e:zook:claim]</span>.</p>
 
@@ -1095,10 +1095,10 @@ q_r &amp;= s_\text{zk},"></span></div>
 
 <p>In the query phase, the verifier asks the masked polynomial <span class="pk-inline-math" data-tex="\hat p_i"></span> for the value at the out-of-domain sample <span class="pk-inline-math" data-tex="x_{i,0}\mathrel{\leftarrow} F"></span> and uses the values of the previous <span class="pk-inline-math" data-tex="\hat p_{i-1}"></span> to constrain <span class="pk-inline-math" data-tex="\hat p_i - \msk_i"></span> at the points <span class="pk-inline-math" data-tex="x_{i,1},\ldots, x_{i,s_i}\mathrel{\leftarrow} D_i"></span>. In terms of the new ensemble, these claims are the linear constraints</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\sum_{\vec x' \in H_{k_i}} \hat p_i(\vec x') \cdot L_{x_{i,0}}(\vec x') &amp;= v_0,
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\sum_{\vec x' \in H_{k_i}} \hat p_i(\vec x') \cdot L_{x_{i,0}}(\vec x') &amp;= v_0,
 \\
 
-\sum_{\vec x'\in H_{k_i}} \left(\hat p_i(\vec x') - \msk_{i}(\vec x')\right)\cdot L_{x_{i,k}}(\vec x') &amp;= v_{k},"></span></div>
+\sum_{\vec x'\in H_{k_i}} \left(\hat p_i(\vec x') - \msk_{i}(\vec x')\right)\cdot L_{x_{i,k}}(\vec x') &amp;= v_{k},\end{aligned}"></span></div>
 
 <p>for <span class="pk-inline-math" data-tex="k= 1,\ldots, s_i"></span>, where <span class="pk-inline-math" data-tex="L_{x_{i_k}}"></span> are the univariate Lagrangians of degree <span class="pk-inline-math" data-tex="2^{k_{i-1}}"></span>. These constraints are again of the form <span class="pk-reference">[e:zook:claim]</span>.</p>
 
@@ -1106,7 +1106,7 @@ q_r &amp;= s_\text{zk},"></span></div>
 
 <p>The verifier samples a random <span class="pk-inline-math" data-tex="\gamma_i\mathrel{\leftarrow} F"></span> for combining the above claims <span class="pk-reference">[e:zook:specialized:claim]</span>, <span class="pk-reference">[e:zook:out:domain:constraint]</span> and <span class="pk-reference">[e:zook:in:domain:constraint]</span> on the new ensemble into a single claim of the form <span class="pk-reference">[e:zook:claim]</span>, with the following linear functionals:</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="K^{(i)} &amp;=  \lambda_i\cdot K^{(i-1)}(\vec\beta_i,\:.\:) + \sum_{k=0}^{s_i} \gamma_i^{k+1} \cdot L_{x_{i,k}}(\:.\:),
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}K^{(i)} &amp;=  \lambda_i\cdot K^{(i-1)}(\vec\beta_i,\:.\:) + \sum_{k=0}^{s_i} \gamma_i^{k+1} \cdot L_{x_{i,k}}(\:.\:),
 \\
 \Gamma_{j}^{(i)}  &amp;=  2^{r_i}\cdot\lambda_i\cdot \Lambda_j^{(i-1)}, \quad j=1,\ldots,i-1,
 \\
@@ -1115,7 +1115,7 @@ q_r &amp;= s_\text{zk},"></span></div>
 \Lambda_{j}^{(i)}
 &amp;=  2^{r_i}\cdot\lambda_i\cdot \Lambda_j^{(i-1)}, \quad j=1,\ldots, i-1,
 \\
-\Lambda_i^{(i)}(h_i) &amp; = 2^{-k_i}\cdot h_i(\vec \beta_i)."></span></div>
+\Lambda_i^{(i)}(h_i) &amp; = 2^{-k_i}\cdot h_i(\vec \beta_i).\end{aligned}"></span></div>
 
 <p>As before, the inner product <span class="pk-reference">[e:zook:new:Gamma]</span> on <span class="pk-inline-math" data-tex="\msk_i"></span> and the evaluation <span class="pk-reference">[e:zook:new:Lambda]</span> on <span class="pk-inline-math" data-tex="h_i"></span> are inexpensive to compute.</p>
 
@@ -1123,12 +1123,12 @@ q_r &amp;= s_\text{zk},"></span></div>
 
 <p>In closer alignment with <span class="pk-citation">[cryptoeprint:2026/391]</span>, one may think of the claims <span class="pk-reference">[e:zook:claim]</span> in terms of the unmasked polynomial <span class="pk-inline-math" data-tex="p_i = \hat p_i - \msk_i"></span>, rather than of the masked one, i.e.</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="c_{i}  &amp;= \left\langle p_{i}, K^{(i)} \right\rangle_{H_{k_{i}}}
-+ \sum_{j=0}^{i} \Gamma_j^{(i)}(\msk_j) + \sum_{j=1}^{i} \Lambda_{j}^{(i)} (h_{j})."></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}c_{i}  &amp;= \left\langle p_{i}, K^{(i)} \right\rangle_{H_{k_{i}}}
++ \sum_{j=0}^{i} \Gamma_j^{(i)}(\msk_j) + \sum_{j=1}^{i} \Lambda_{j}^{(i)} (h_{j}).\end{aligned}"></span></div>
 
 <p>In Step 3, the prover commits to <span class="pk-inline-math" data-tex="\hat p_i = p_{i-1}(\vec\beta_i,\:.\:) + \msk_i(\:.\:)"></span> instead of <span class="pk-inline-math" data-tex="\hat p_i = \hat p_{i-1}(\vec\beta_i,\:.\:) + \msk_i(\:.\:)"></span>, and the consistency relation for the <span class="pk-inline-math" data-tex="s_i"></span> in-domain queries would then be</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\sum_{\vec x'\in H_{k_i}} \left(\hat p_i(\vec x') - \msk_{i}(\vec x') + \msk_{i-1}(\vec\beta_i, \:.\:) \right)\cdot L_{x_{i,j}}(\vec x') &amp;= v_{j},"></span></div>
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\sum_{\vec x'\in H_{k_i}} \left(\hat p_i(\vec x') - \msk_{i}(\vec x') + \msk_{i-1}(\vec\beta_i, \:.\:) \right)\cdot L_{x_{i,j}}(\vec x') &amp;= v_{j},\end{aligned}"></span></div>
 
 <p>instead of <span class="pk-reference">[e:zook:in:domain:constraint]</span>, leading to a different update rule of <span class="pk-inline-math" data-tex="\Gamma_{i-1}^{(i)}"></span>.</p>
 
@@ -1187,7 +1187,7 @@ q_r &amp;= s_\text{zk},"></span></div>
 
 <p>For <span class="pk-inline-math" data-tex="C = \mathsf{RS}[F, D, k]"></span> any Reed--Solomon code over an arbitrary finite field <span class="pk-inline-math" data-tex="F"></span>, with minimum distance <span class="pk-inline-math" data-tex="\delta"></span>, and <span class="pk-inline-math" data-tex="\Gamma:\mathscr P_k\times F\longrightarrow F"></span> as above. Then, for any <span class="pk-inline-math" data-tex="\theta \in \left[\frac{\delta}{2}, 1 -\sqrt{1-\delta}\right)"></span>, the following holds. If the set</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="S = \left\lbracez \in F\::\:
+<div class="pk-equation"><span data-display-math="true" data-tex="S = \left\lbrace z \in F\::\:
     \begin{matrix}
     \exists p_z(X) \in \mathscr P_k,
         d((1-z)\cdot f_0 + z\cdot f_1, p_z) \leq \theta
@@ -1223,7 +1223,7 @@ q_r &amp;= s_\text{zk},"></span></div>
 
 <p>The first phase is a reduction <span class="pk-inline-math" data-tex="\mathcal R_\theta \longrightarrow \mathcal R_\text{phase 1}"></span> depending on the verifier challenges <span class="pk-inline-math" data-tex="\vec\xi\mathrel{\leftarrow} \mathbb F_q^{t}"></span>, where</p>
 
-<div class="pk-equation"><span data-display-math="true" data-tex="\mathcal R_\text{phase 1}
+<div class="pk-equation"><span data-display-math="true" data-tex="\begin{aligned}\mathcal R_\text{phase 1}
 &amp;=
 \left\lbrace
     \begin{matrix}
@@ -1245,7 +1245,7 @@ q_r &amp;= s_\text{zk},"></span></div>
         \\
         \text{on input }\vec{in}
     \end{matrix}
-\right\rbrace,"></span></div>
+\right\rbrace ,\end{aligned}"></span></div>
 
 <p>where as before, the distance refers to the interleaved representations of the polynomials. The phase is a single-step reduction, and its soundness error is as follows.</p>
 
@@ -1304,7 +1304,7 @@ d(p_{1,i}(X),f_1)\leq \theta_1,
         v_A, v_B, v_C \in F
     \end{matrix}
     \::\:
-    \hspace*{-10mm}
+
     \begin{matrix}
         \exists (p_1(X),p_2(X)) \in \mathscr L_{m_1} \times \mathscr L_{m_2}
         \\
@@ -1319,7 +1319,7 @@ d(p_{1,i}(X),f_1)\leq \theta_1,
         \\
         q_m(\alpha_m) = (v_A \cdot v_B - v_C)\cdot eq(\vec\alpha, \vec\rho)
     \end{matrix}
-\right\rbrace,"></span></div>
+\right\rbrace ,"></span></div>
 
 <p>depends on the verifier challenges <span class="pk-inline-math" data-tex="\vec\rho,\vec\alpha"></span> (and the preceding <span class="pk-inline-math" data-tex="\vec\xi"></span>). The soundness error of this reduction is</p>
 
@@ -1376,7 +1376,7 @@ d(p_{1,i}(X),f_1)\leq \theta_1,
         \\
         M=A,B,C, \: i=1,2
     \end{matrix}
-\right\rbrace,"></span></div>
+\right\rbrace ,"></span></div>
 
 <p>where <span class="pk-inline-math" data-tex="g_2"></span>, \ldots, <span class="pk-inline-math" data-tex="g_{r-1}"></span>, are the folding proposals committed by in the first <span class="pk-inline-math" data-tex="r-1"></span> rounds of WHIR, together with their values <span class="pk-inline-math" data-tex="u_2"></span>, \ldots, <span class="pk-inline-math" data-tex="u_{r-1}"></span> at the verifier DEEP queries <span class="pk-inline-math" data-tex="z_2,\ldots, z_{r-1}"></span>, and <span class="pk-inline-math" data-tex="g_r"></span> is the final folding proposal revealed in plain.</p>
 

@@ -111,14 +111,25 @@ const texForMath = (value) => value
   .replace(/\\notag\b/g, '')
   .replace(/(?<!\\)\$/g, '')
   .replace(/\\textcolor\{[^}]*\}\{([^{}]*)\}/g, '$1')
-  .replace(/\\\{/g, '\\lbrace')
-  .replace(/\\\}/g, '\\rbrace')
+  // Keep a token boundary: `\\lbracez` is parsed as an unknown command,
+  // whereas `\\lbrace z` is the intended delimiter followed by a variable.
+  .replace(/\\\{/g, '\\lbrace ')
+  .replace(/\\\}/g, '\\rbrace ')
   .replace(/\\sample\b/g, '\\mathrel{\\leftarrow}')
+  // Page-layout spacing has no semantic value in the web rendering and can
+  // produce MathJax errors (especially negative or malformed dimensions).
+  .replace(/\\(?:hspace|vspace)\*?\s*\{[^{}]*\}/g, ' ')
   .replace(/[ \t]+$/gm, '')
   .trim();
 
-const mathMarkup = (value, inline = false) => {
-  const formula = htmlAttributeEscape(texForMath(value));
+const mathMarkup = (value, inline = false, environment = '') => {
+  let tex = texForMath(value);
+  if (!inline && /^(?:align|align\*)$/.test(environment)) {
+    tex = '\\begin{aligned}' + tex + '\\end{aligned}';
+  } else if (!inline && /^(?:gather|gather\*|multline|multline\*)$/.test(environment)) {
+    tex = '\\begin{gathered}' + tex + '\\end{gathered}';
+  }
+  const formula = htmlAttributeEscape(tex);
   if (inline) return '<span class="pk-inline-math" data-tex="' + formula + '"></span>';
   return '<div class="pk-equation"><span data-display-math="true" data-tex="' + formula + '"></span></div>';
 };
@@ -159,7 +170,7 @@ const extractBlocks = (value) => {
       end = endIndex + 2;
     }
 
-    const token = addBlock(mathMarkup(content), 'MATH');
+    const token = addBlock(mathMarkup(content, false, environment), 'MATH');
     result = result.slice(0, start) + token + result.slice(end);
     pattern.lastIndex = start + token.length;
     match = pattern.exec(result);
@@ -393,6 +404,21 @@ if (startIndex === -1 || endIndex === -1 || endIndex < startIndex) {
 const output = template.slice(0, startIndex + startMarker.length)
   + '\n\n' + rendered + '\n\n'
   + template.slice(endIndex);
+
+const generatedMath = [...output.matchAll(/data-tex="([\s\S]*?)"/g)].map((match) => match[1]);
+const invalidMath = generatedMath.filter((formula) => {
+  const decoded = formula
+    .replaceAll('&lt;', '<')
+    .replaceAll('&gt;', '>')
+    .replaceAll('&quot;', '"')
+    .replaceAll('&amp;', '&');
+  const hasAlignmentContainer = /\\begin\{(?:aligned|gathered|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\}/.test(decoded);
+  const hasUnwrappedAlignment = decoded.includes('&') && !hasAlignmentContainer;
+  return hasUnwrappedAlignment || /\\(?:hspace|vspace)\*?\s*\{/.test(decoded);
+});
+if (invalidMath.length) {
+  throw new Error('Generated whitepaper contains unsupported MathJax input:\n' + invalidMath.join('\n---\n'));
+}
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, output, 'utf8');
 console.log('Rendered whitepaper to ' + path.relative(repoRoot, outputPath));

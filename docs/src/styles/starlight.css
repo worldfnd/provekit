@@ -271,6 +271,15 @@ body {
 
 .pk-paper-button--primary:hover { background: var(--pk-brand-hover); color: #FFFFFF; }
 
+/* Starlight's global prose-link rule is declared later and otherwise wins. */
+.sl-markdown-content .pk-whitepaper a.pk-paper-button--primary,
+.sl-markdown-content .pk-whitepaper a.pk-paper-button--primary:visited,
+.sl-markdown-content .pk-whitepaper a.pk-paper-button--primary:hover,
+.sl-markdown-content .pk-whitepaper a.pk-paper-button--primary:focus-visible {
+  color: #F7FAFC;
+  text-decoration-color: transparent;
+}
+
 .pk-view-toggle {
   display: flex;
   align-items: center;
@@ -706,6 +715,12 @@ body {
     );
     --sl-content-margin-inline: var(--pk-docs-content-gutter) var(--pk-docs-content-gutter) !important;
     width: calc(100% - var(--pk-toc-column-width)) !important;
+  }
+
+  /* The whitepaper uses the full reading canvas and must not inherit the
+     normal docs page's left-anchored content margin. */
+  [data-has-sidebar][data-has-toc]:has(.pk-whitepaper) .main-pane {
+    --sl-content-margin-inline: auto !important;
   }
 
   .right-sidebar-panel .sl-container {
