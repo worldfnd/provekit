@@ -385,16 +385,19 @@ body {
 
 .pk-equation {
   max-width: 100%;
-  margin: 0.85rem 0;
+  margin: 0.55rem 0;
   overflow-x: auto;
+  overflow-y: hidden;
   border-block: 1px solid var(--pk-line-soft);
-  padding: 0.55rem 0.75rem;
+  padding: 0.1rem 0.5rem;
   background: var(--pk-surface-tint);
   font-size: 1.12rem;
+  scrollbar-width: none;
   text-align: center;
 }
 
-.pk-equation span { white-space: pre; }
+.pk-equation::-webkit-scrollbar { display: none; }
+.pk-equation span[data-display-math='true'] { display: block; width: 100%; white-space: normal; }
 .pk-equation mjx-container[display='true'] { margin-block: 0 !important; }
 .pk-inline-math { white-space: nowrap; }
 .pk-citation, .pk-reference { color: var(--pk-brand); font: 0.82em var(--pk-font-mono); }
@@ -574,9 +577,9 @@ body {
 }
 
 :root[data-whitepaper-view='latex'] .pk-whitepaper .pk-equation {
-  margin-block: 0.8rem;
+  margin-block: 0.5rem;
   border: 0;
-  padding-block: 0.35rem;
+  padding-block: 0.15rem;
   background: transparent;
   color: var(--pk-paper-ink);
   font-size: 1.08rem;
