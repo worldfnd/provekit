@@ -596,6 +596,10 @@ body {
 :root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list ol { list-style-type: lower-alpha; }
 :root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list ol ol { list-style-type: lower-roman; }
 :root[data-whitepaper-view='latex'] .pk-whitepaper ul.pk-paper-list { list-style-type: disc; }
+:root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list > li::marker {
+  color: inherit;
+  font-variant-numeric: tabular-nums;
+}
 
 :root[data-whitepaper-view='latex'] .pk-whitepaper .pk-equation {
   display: grid;

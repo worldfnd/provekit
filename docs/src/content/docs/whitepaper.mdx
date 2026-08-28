@@ -338,7 +338,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <p>and both prover and verifier engage in the sumcheck protocol for</p>
 
-<div class="pk-equation" id="e:R1CS:zerocheck"><span class="not-content" data-display-math="true" data-tex="\begin{aligned}\sum_{\vec x\in H_m} \left(w_A(\vec x)\cdot w_B(\vec x) - w_C(\vec x)\right)\cdot eq(\vec x, \vec\rho) = 0,\end{aligned}"></span><span class="pk-equation-number" aria-hidden="true">(1)</span></div>
+<div class="pk-equation" id="e:R1CS:zerocheck"><span class="not-content" data-display-math="true" data-tex="\begin{aligned}\sum_{\vec x\in H_m} \left(w_A(\vec x)\cdot w_B(\vec x) - w_C(\vec x)\right)\cdot eq(\vec x, \vec\rho) = 0,\end{aligned}"></span><span class="pk-equation-number" aria-hidden="true">(18)</span></div>
 
 <p>where <span class="pk-inline-math not-content" data-tex="w_A(\vec x), w_B(\vec x), w_C(\vec x)"></span> are the multilinears as specified in <a class="pk-reference" href="#e:a:poly">(14)</a>. After the last round of the sumcheck, the prover sends</p>
 
@@ -352,15 +352,15 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <p><span class="pk-reference-anchor" id="i:main:phase:3"></span> WHIR: Both prover and verifier run WHIR for the following linear constraints on the combined witness polynomial <span class="pk-inline-math not-content" data-tex="w"></span>:</p>
 
-<div class="pk-equation" id="e:phase3:claim:vM"><span class="not-content" data-display-math="true" data-tex="\begin{aligned}v_M = \sum_{\vec x\in H_{m_1}} M_1(\vec\alpha, \vec x) \cdot w_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec\alpha,\vec x)\cdot w_2^*(\vec x)\end{aligned}"></span><span class="pk-equation-number" aria-hidden="true">(1)</span></div>
+<div class="pk-equation" id="e:phase3:claim:vM"><span class="not-content" data-display-math="true" data-tex="\begin{aligned}v_M = \sum_{\vec x\in H_{m_1}} M_1(\vec\alpha, \vec x) \cdot w_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec\alpha,\vec x)\cdot w_2^*(\vec x)\end{aligned}"></span><span class="pk-equation-number" aria-hidden="true">(19)</span></div>
 
 <p>with <span class="pk-inline-math not-content" data-tex="M = A,B,C"></span>, and</p>
 
-<div class="pk-equation" id="e:phase3:claim:inputs"><span class="not-content" data-display-math="true" data-tex="\begin{aligned}in_i = \sum_{\vec x \in H_{m_1}} eq(i, \vec x) \cdot w_1(\vec x),&#10;\quad&#10;\xi_i = \sum_{\vec x \in H_{m_2}} eq^*(i, \vec x) \cdot w_2^*(\vec x),\end{aligned}"></span><span class="pk-equation-number" aria-hidden="true">(1)</span></div>
+<div class="pk-equation" id="e:phase3:claim:inputs"><span class="not-content" data-display-math="true" data-tex="\begin{aligned}in_i = \sum_{\vec x \in H_{m_1}} eq(i, \vec x) \cdot w_1(\vec x),&#10;\quad&#10;\xi_i = \sum_{\vec x \in H_{m_2}} eq^*(i, \vec x) \cdot w_2^*(\vec x),\end{aligned}"></span><span class="pk-equation-number" aria-hidden="true">(20)</span></div>
 
 <p>for <span class="pk-inline-math not-content" data-tex="i = 0,\ldots, t"></span>. (This phase reduces the validity of the linear constraints to claims on the combined matrix polynomials</p>
 
-<div class="pk-equation" id="e:split:matrix:values"><span class="not-content" data-display-math="true" data-tex="A(\vec\alpha,\vec\beta),&#10;\quad&#10;B(\vec\alpha,\vec\beta),&#10;\quad&#10;C(\vec\alpha,\vec\beta),"></span><span class="pk-equation-number" aria-hidden="true">(1)</span></div>
+<div class="pk-equation" id="e:split:matrix:values"><span class="not-content" data-display-math="true" data-tex="A(\vec\alpha,\vec\beta),&#10;\quad&#10;B(\vec\alpha,\vec\beta),&#10;\quad&#10;C(\vec\alpha,\vec\beta),"></span><span class="pk-equation-number" aria-hidden="true">(21)</span></div>
 
 <p>where <span class="pk-inline-math not-content" data-tex="\vec\beta \in F^{m_1}"></span> are the folding randomnesses drawn in the course of WHIR.)</p>
 
@@ -368,11 +368,11 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 </ol>
 
-<p>If all verifier checks in Phase <a class="pk-reference" href="#i:main:phase:2">Protocol 1</a> and Phase <a class="pk-reference" href="#i:main:phase:3">Protocol 1</a>, including that of the final matrix values <a class="pk-reference" href="#e:split:matrix:values">(1)</a>, pass, then the verifier accepts. Otherwise, it rejects.</p>
+<p>If all verifier checks in Phase <a class="pk-reference" href="#i:main:phase:2">Step 2</a> and Phase <a class="pk-reference" href="#i:main:phase:3">Step 3</a>, including that of the final matrix values <a class="pk-reference" href="#e:split:matrix:values">(21)</a>, pass, then the verifier accepts. Otherwise, it rejects.</p>
 
 </Aside>
 
-<p>Note that computing the matrix values <a class="pk-reference" href="#e:split:matrix:values">(1)</a> requires <span class="pk-inline-math not-content" data-tex="O(n)"></span> field operations, where <span class="pk-inline-math not-content" data-tex="n"></span> is the maximum number of non-zero entries in the R1CS matrices. While these values can be proven via the SPARK polynomial commitment scheme for sparse multilinears <span class="pk-citation">[Spartan]</span>, our main use case pivots for letting the verifier take the burden of matrix evaluation.</p>
+<p>Note that computing the matrix values <a class="pk-reference" href="#e:split:matrix:values">(21)</a> requires <span class="pk-inline-math not-content" data-tex="O(n)"></span> field operations, where <span class="pk-inline-math not-content" data-tex="n"></span> is the maximum number of non-zero entries in the R1CS matrices. While these values can be proven via the SPARK polynomial commitment scheme for sparse multilinears <span class="pk-citation">[Spartan]</span>, our main use case pivots for letting the verifier take the burden of matrix evaluation.</p>
 
 <Aside type="note" title="Remark 3.">
 
@@ -396,9 +396,9 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <p><span class="pk-reference-anchor" id="thm:main:soundness:informal"></span> For proximity parameters <span class="pk-inline-math not-content" data-tex="\theta_i\in \left(0, 1 - \sqrt{1-\delta_i} \right)"></span>, <span class="pk-inline-math not-content" data-tex="i=1,2,\ldots, r"></span>, where <span class="pk-inline-math not-content" data-tex="\delta_i"></span> are the minimum distances of the Reed--Solomon codes <span class="pk-inline-math not-content" data-tex="C_1"></span>, <span class="pk-inline-math not-content" data-tex="\ldots"></span>, <span class="pk-inline-math not-content" data-tex="C_r"></span>. <a class="pk-reference" href="#prot:main">Protocol 1</a> is a round-by-round knowledge sound interactive oracle proof for that <span class="pk-inline-math not-content" data-tex="f_1\in \mathcal R_{\theta_1}"></span> as specified in <a class="pk-reference" href="#e:IOPP:main:R:0">(13)</a>, with the following overall soundness error for the three phases:</p>
 
-<div class="pk-equation" id="e:phase1:soundness:error"><span class="pk-reference-anchor" id="e:phase2:soundness:error"></span><span class="not-content" data-display-math="true" data-tex="\begin{aligned}\varepsilon_\text{phase 1}&#10;&amp;\leq&#10;    \ell_1(\theta_1) \cdot \varepsilon_\text{R1CS}&#10;\\&amp; \text{where }\varepsilon_{R1CS}\text{ is the soundness error of the randomized AIR,} \\&#10;\varepsilon_\text{phase 2}&#10;&amp;\leq \ell_1(\theta_1) \cdot \max\left\lbrace \frac{m}{|F|}, \frac{3}{|F|}\right\rbrace ,\end{aligned}"></span><span class="pk-equation-number" aria-hidden="true">(1)</span></div>
+<div class="pk-equation" id="e:phase1:soundness:error"><span class="pk-reference-anchor" id="e:phase2:soundness:error"></span><span class="not-content" data-display-math="true" data-tex="\begin{aligned}\varepsilon_\text{phase 1}&#10;&amp;\leq&#10;    \ell_1(\theta_1) \cdot \varepsilon_\text{R1CS}&#10;\\&amp; \text{where }\varepsilon_{R1CS}\text{ is the soundness error of the randomized AIR,} \\&#10;\varepsilon_\text{phase 2}&#10;&amp;\leq \ell_1(\theta_1) \cdot \max\left\lbrace \frac{m}{|F|}, \frac{3}{|F|}\right\rbrace ,\end{aligned}"></span><span class="pk-equation-number" aria-hidden="true">(22)</span></div>
 
-<p>and <span class="pk-inline-math not-content" data-tex="\varepsilon_\text{phase 3} \leq \varepsilon_\text{WHIR}(\theta_1,\ldots, \theta_r)"></span> for the overall soundness error of WHIR with <span class="pk-inline-math not-content" data-tex="r"></span> rounds on the inner product claims <a class="pk-reference" href="#e:phase3:claim:vM">(1)</a> and <a class="pk-reference" href="#e:phase3:claim:inputs">(1)</a>.</p>
+<p>and <span class="pk-inline-math not-content" data-tex="\varepsilon_\text{phase 3} \leq \varepsilon_\text{WHIR}(\theta_1,\ldots, \theta_r)"></span> for the overall soundness error of WHIR with <span class="pk-inline-math not-content" data-tex="r"></span> rounds on the inner product claims <a class="pk-reference" href="#e:phase3:claim:vM">(19)</a> and <a class="pk-reference" href="#e:phase3:claim:inputs">(20)</a>.</p>
 
 </Aside>
 
@@ -418,7 +418,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="\mathcal R_\text{phase 2} =&#10;\left\lbrace&#10;    \begin{matrix}&#10;        f_1 \in \left(\mathbb F_q^{D}\right)^{e},&#10;        \\&#10;        f_2^* \in \left(\mathbb F_q^{D}\right)^{e_2},&#10;        \\&#10;        q_1(X), \ldots, q_m(X) \in F[X]^{\leq 3}&#10;        \\&#10;        v_A, v_B, v_C \in F&#10;    \end{matrix}&#10;    \::\:&#10;&#10;    \begin{matrix}&#10;        \exists (p_1(X),p_2(X)) \in \mathscr P_{m_1}^2&#10;        \\&#10;        d((p_1,p_2), (f_1,f_2^*)) \leq \theta_1,&#10;        \\\text{and}&#10;        \\&#10;        0 = q_1(0) + q_1(1),&#10;        \\&#10;        q_i(\alpha_i) = q_{i+1}(0) + q_{i+1}(1),&#10;        \\&#10;        \text{for }i = 1,\ldots, m-1,&#10;        \\&#10;        q_m(\alpha_m) = (v_A \cdot v_B - v_C)\cdot eq(\vec\alpha, \vec\rho)&#10;    \end{matrix}&#10;\right\rbrace ."></span></div>
 
-<p>The first term of the soundness error <a class="pk-reference" href="#e:phase2:soundness:error">(1)</a>,</p>
+<p>The first term of the soundness error <a class="pk-reference" href="#e:phase2:soundness:error">(23)</a>,</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="\ell_1(\theta_1) \cdot \frac{m}{|F|}"></span></div>
 
@@ -432,7 +432,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="\exists (p_1(X),p_2(X)) \in \mathscr P_{m_1}^2, \quad&#10;        d((p_1,p_2), (f_1,f_2^*)) \leq \theta_1,"></span></div>
 
-<p>for consistency checks on the WHIR sumcheck polynomials and the aggregated WHIR claim on the final polynomial revealed in plain. (The latter claim involves the evaluation claims on the matrix polynomials <span class="pk-inline-math not-content" data-tex="M(\vec\alpha, \vec \beta)"></span>.) Its soundness error is <span class="pk-inline-math not-content" data-tex="\varepsilon_\text{WHIR}(\theta_1,\ldots, \theta_r)"></span>, the overall error of WHIR with <span class="pk-inline-math not-content" data-tex="r"></span> rounds on the five claims <a class="pk-reference" href="#e:phase3:claim:vM">(1)</a> and <a class="pk-reference" href="#e:phase3:claim:inputs">(1)</a>. We describe the protocol in the next section.</p>
+<p>for consistency checks on the WHIR sumcheck polynomials and the aggregated WHIR claim on the final polynomial revealed in plain. (The latter claim involves the evaluation claims on the matrix polynomials <span class="pk-inline-math not-content" data-tex="M(\vec\alpha, \vec \beta)"></span>.) Its soundness error is <span class="pk-inline-math not-content" data-tex="\varepsilon_\text{WHIR}(\theta_1,\ldots, \theta_r)"></span>, the overall error of WHIR with <span class="pk-inline-math not-content" data-tex="r"></span> rounds on the five claims <a class="pk-reference" href="#e:phase3:claim:vM">(19)</a> and <a class="pk-reference" href="#e:phase3:claim:inputs">(20)</a>. We describe the protocol in the next section.</p>
 
 <h2 id="whir"><span class="pk-heading-number" aria-hidden="true">4</span>WHIR</h2>
 
@@ -608,7 +608,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <h3 id="randomizing-w-m-vec-alpha"><span class="pk-heading-number" aria-hidden="true">5.1</span>Randomizing <span class="pk-inline-math not-content" data-tex="w_M(\vec\alpha)"></span>.</h3>
 
-<p>Recall that in the end of Phase <a class="pk-reference" href="#i:main:phase:2">Protocol 1</a> of <a class="pk-reference" href="#prot:main">Protocol 1</a>, the prover reveals the values <span class="pk-inline-math not-content" data-tex="w_A(\vec\alpha)"></span>, <span class="pk-inline-math not-content" data-tex="w_B(\vec\alpha)"></span>, <span class="pk-inline-math not-content" data-tex="w_C(\vec\alpha)"></span>, which are subject to</p>
+<p>Recall that in the end of Phase <a class="pk-reference" href="#i:main:phase:2">Step 2</a> of <a class="pk-reference" href="#prot:main">Protocol 1</a>, the prover reveals the values <span class="pk-inline-math not-content" data-tex="w_A(\vec\alpha)"></span>, <span class="pk-inline-math not-content" data-tex="w_B(\vec\alpha)"></span>, <span class="pk-inline-math not-content" data-tex="w_C(\vec\alpha)"></span>, which are subject to</p>
 
 <div class="pk-equation" id="e:zerocheck:last:check"><span class="not-content" data-display-math="true" data-tex="q_{m}(\alpha_m) = (w_A(\vec\alpha)\cdot w_B(\vec\alpha) - w_C(\vec \alpha))\cdot eq(\vec\alpha,\vec\rho),"></span><span class="pk-equation-number" aria-hidden="true">(27)</span></div>
 
@@ -728,7 +728,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <p>With <span class="pk-inline-math not-content" data-tex="\Omega_1,\ldots, \Omega_s \subset H_{m}"></span> as above. Then except for an <span class="pk-inline-math not-content" data-tex="\varepsilon"></span>-fraction of points <span class="pk-inline-math not-content" data-tex="\vec\alpha\in F^m"></span>, where</p>
 
-<div class="pk-equation" id="e:basefield:randomization:error"><span class="not-content" data-display-math="true" data-tex="\varepsilon &lt; s\cdot \frac{m-t}{|F|} + \left(\frac{t}{q-1}\right)^s,"></span><span class="pk-equation-number" aria-hidden="true">(5)</span></div>
+<div class="pk-equation" id="e:basefield:randomization:error"><span class="not-content" data-display-math="true" data-tex="\varepsilon &lt; s\cdot \frac{m-t}{|F|} + \left(\frac{t}{q-1}\right)^s,"></span><span class="pk-equation-number" aria-hidden="true">(30)</span></div>
 
 <p>at least one of the sets <span class="pk-inline-math not-content" data-tex="\Omega = \Omega_j"></span> is such that its values <span class="pk-inline-math not-content" data-tex="eq(\vec x, \vec\alpha)"></span>, <span class="pk-inline-math not-content" data-tex="\vec x\in \Omega"></span>, are <span class="pk-inline-math not-content" data-tex="\mathbb F_q"></span>-linearly independent.</p>
 
@@ -740,21 +740,21 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 </Aside>
 
-<p>In our application we would use <span class="pk-inline-math not-content" data-tex="s = e"></span>, to make the second term in <a class="pk-reference" href="#e:basefield:randomization:error">(5)</a> of order <span class="pk-inline-math not-content" data-tex="O(1/|F|)"></span>. That is, we would require <span class="pk-inline-math not-content" data-tex="e^2"></span> random witnesses over <span class="pk-inline-math not-content" data-tex="\mathbb F_q"></span> to randomize <span class="pk-inline-math not-content" data-tex="w_A(\alpha)"></span>, and another <span class="pk-inline-math not-content" data-tex="e^2"></span> random witnesses for <span class="pk-inline-math not-content" data-tex="w_B(\alpha)"></span>. They can be placed at arbitrary positions in the witness, yet their constraints (as before of the form <span class="pk-inline-math not-content" data-tex="R_j \cdot 1 = R_j"></span>, or <span class="pk-inline-math not-content" data-tex="1\cdot R_j = R_j"></span>) have to respect the positioning described above.</p>
+<p>In our application we would use <span class="pk-inline-math not-content" data-tex="s = e"></span>, to make the second term in <a class="pk-reference" href="#e:basefield:randomization:error">(30)</a> of order <span class="pk-inline-math not-content" data-tex="O(1/|F|)"></span>. That is, we would require <span class="pk-inline-math not-content" data-tex="e^2"></span> random witnesses over <span class="pk-inline-math not-content" data-tex="\mathbb F_q"></span> to randomize <span class="pk-inline-math not-content" data-tex="w_A(\alpha)"></span>, and another <span class="pk-inline-math not-content" data-tex="e^2"></span> random witnesses for <span class="pk-inline-math not-content" data-tex="w_B(\alpha)"></span>. They can be placed at arbitrary positions in the witness, yet their constraints (as before of the form <span class="pk-inline-math not-content" data-tex="R_j \cdot 1 = R_j"></span>, or <span class="pk-inline-math not-content" data-tex="1\cdot R_j = R_j"></span>) have to respect the positioning described above.</p>
 
 <h3 id="zero-check-masking"><span class="pk-heading-number" aria-hidden="true">5.2</span>Zero-check masking</h3>
 
 <p><span class="pk-reference-anchor" id="s:zk:zerocheck"></span></p>
 
-<p>The zero-check, Phase <a class="pk-reference" href="#i:main:phase:2">Protocol 1</a> in <a class="pk-reference" href="#prot:main">Protocol 1</a>, is turned into zero-knowledge by using the sumcheck randomization from Libra <span class="pk-citation">[cryptoeprint:2019/317]</span>. The prover commits to the univariate polynomials</p>
+<p>The zero-check, Phase <a class="pk-reference" href="#i:main:phase:2">Step 2</a> in <a class="pk-reference" href="#prot:main">Protocol 1</a>, is turned into zero-knowledge by using the sumcheck randomization from Libra <span class="pk-citation">[cryptoeprint:2019/317]</span>. The prover commits to the univariate polynomials</p>
 
 <div class="pk-equation" id="e:zk:zerocheck:randomizers"><span class="not-content" data-display-math="true" data-tex="h_0\mathrel{\leftarrow} F, \quad h_1(X),\ldots, h_m(X)\mathrel{\leftarrow} F[X]^{&lt;d},"></span><span class="pk-equation-number" aria-hidden="true">(31)</span></div>
 
-<p>where <span class="pk-inline-math not-content" data-tex="d=3"></span> is the degree of the sumcheck <a class="pk-reference" href="#e:R1CS:zerocheck">(1)</a>. These polynomials define the sparse mask</p>
+<p>where <span class="pk-inline-math not-content" data-tex="d=3"></span> is the degree of the sumcheck <a class="pk-reference" href="#e:R1CS:zerocheck">(18)</a>. These polynomials define the sparse mask</p>
 
 <div class="pk-equation" id="e:zk:zerocheck:sparse:mask"><span class="not-content" data-display-math="true" data-tex="h(X_1,\ldots, X_n) = h_0 + X_1\cdot h_1(X_1) + \ldots + X_m\cdot h_n(X_m),"></span><span class="pk-equation-number" aria-hidden="true">(32)</span></div>
 
-<p>which is overlaid with the hypercube sum <a class="pk-reference" href="#e:R1CS:zerocheck">(1)</a>. The prover claims the sum <span class="pk-inline-math not-content" data-tex="c' = \sum_{\vec x \in H_m} h_m(X_m)"></span>, the computation of which is almost for free via the succinct representation</p>
+<p>which is overlaid with the hypercube sum <a class="pk-reference" href="#e:R1CS:zerocheck">(18)</a>. The prover claims the sum <span class="pk-inline-math not-content" data-tex="c' = \sum_{\vec x \in H_m} h_m(X_m)"></span>, the computation of which is almost for free via the succinct representation</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="\begin{aligned}\frac{1}{2^m}\sum_{\vec x\in H_m} h(\vec x)&#10;=  h_0 + \frac{1}{2}\left(&#10;h_1(1) + \ldots + h_m(1)&#10;\right).\end{aligned}"></span></div>
 
@@ -932,7 +932,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <h5 id="step-2-sumcheck-phase">Step 2: Sumcheck phase.</h5>
 
-<p>Both prover and verifier proceed with the <span class="pk-inline-math not-content" data-tex="r_i"></span> sumcheck rounds on the combined claim <a class="pk-reference" href="#e:zook:claim:combined">(3)</a>. In the course of it, the prover provides the quadratic refinement polynomials <span class="pk-inline-math not-content" data-tex="\hat q_{i,1}(X), \ldots, \hat q_{i,r_i}(X),"></span> the verifier has sent <span class="pk-inline-math not-content" data-tex="\vec\beta_i = (\beta_{i,1},\ldots, \beta_{i,r_i})"></span>. After the last sumcheck round, the claim <a class="pk-reference" href="#e:zook:combined:sumcheck:claim">(44)</a> is reduced to</p>
+<p>Both prover and verifier proceed with the <span class="pk-inline-math not-content" data-tex="r_i"></span> sumcheck rounds on the combined claim <a class="pk-reference" href="#e:zook:claim:combined">(55)</a>. In the course of it, the prover provides the quadratic refinement polynomials <span class="pk-inline-math not-content" data-tex="\hat q_{i,1}(X), \ldots, \hat q_{i,r_i}(X),"></span> the verifier has sent <span class="pk-inline-math not-content" data-tex="\vec\beta_i = (\beta_{i,1},\ldots, \beta_{i,r_i})"></span>. After the last sumcheck round, the claim <a class="pk-reference" href="#e:zook:combined:sumcheck:claim">(44)</a> is reduced to</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="\begin{gathered}\hat q_{i,r_i}(\beta_{i,r_i})&#10;= \sum_{\vec x'\in H_{k_i}} \left(&#10;\lambda_ i \cdot G_{i-1}(&#10;\vec\beta_i,\vec x') + h_i(\vec\beta_{i})&#10;\right)&#10;\\&#10;= \lambda_i\cdot \left\langle \hat p_{i-1}(\vec \beta_i, \:.\:), K^{(i-1)}(\vec\beta_i,\:.\:)\right\rangle_{H_{k_i}} + 2^{k_i - k_{i-1}}\cdot \lambda_i\cdot B_i + 2^{k_i}\cdot h_i(\vec\beta_i)\end{gathered}"></span></div>
 
@@ -992,13 +992,13 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <p><span class="pk-reference-anchor" id="prot:zook:final:opening"></span> The prover commits to a full entropy mask <span class="pk-inline-math not-content" data-tex="H \mathrel{\leftarrow} \mathscr P_r^{e_r}"></span>, <span class="pk-inline-math not-content" data-tex="M\mathrel{\leftarrow} F^{m_{zk}}"></span>, the latter parsed as <span class="pk-inline-math not-content" data-tex="H_1\|\ldots\|H_r\|M_0\|\ldots\|M_r\|M_{zk}"></span>, and claims</p>
 
-<div class="pk-equation" id="e:zook:claim:H"><span class="not-content" data-display-math="true" data-tex="d  = \langle  H, K^{(r)} \rangle_{H_{k_r}}&#10;+ \sum_{j=0}^r \Gamma_j^{(r)}(M_j) + \sum_{j=1}^r \Lambda_j^{(r)}(H_j)."></span><span class="pk-equation-number" aria-hidden="true">(3)</span></div>
+<div class="pk-equation" id="e:zook:claim:H"><span class="not-content" data-display-math="true" data-tex="d  = \langle  H, K^{(r)} \rangle_{H_{k_r}}&#10;+ \sum_{j=0}^r \Gamma_j^{(r)}(M_j) + \sum_{j=1}^r \Lambda_j^{(r)}(H_j)."></span><span class="pk-equation-number" aria-hidden="true">(54)</span></div>
 
 <p>The verifier replies with <span class="pk-inline-math not-content" data-tex="\lambda\mathrel{\leftarrow} F"></span>. The prover reveals the combined words <span class="pk-inline-math not-content" data-tex="H' = \lambda\cdot \hat p_r + H"></span>, <span class="pk-inline-math not-content" data-tex="M' = \lambda\cdot \mathsf m + M"></span>, the latter parsed as <span class="pk-inline-math not-content" data-tex="H_1'\|\ldots\|H_r'\|M_0'\|\ldots\|M_r'\|M_{zk}'"></span>.</p>
 
 <p>The verifier queries the commitments of <span class="pk-inline-math not-content" data-tex="\hat p_r"></span> and <span class="pk-inline-math not-content" data-tex="\mathsf m"></span> independently at random points <span class="pk-inline-math not-content" data-tex="x_{1}, \ldots x_{s}\mathrel{\leftarrow} D_r"></span> and <span class="pk-inline-math not-content" data-tex="y_1,\ldots, y_s\mathrel{\leftarrow} D_{zk}"></span>, respectively, and checks collinearity of the revealed values with those of <span class="pk-inline-math not-content" data-tex="H'"></span> and <span class="pk-inline-math not-content" data-tex="M'"></span>. If the collinearity checks hold, and if</p>
 
-<div class="pk-equation" id="e:zook:claim:combined"><span class="not-content" data-display-math="true" data-tex="\lambda \cdot c_r + d  = \langle  H', K \rangle_{H_{k_r}}&#10;+ \sum_{j=0}^r \Gamma_j(M_j') + \sum_{j=1}^r \Lambda_j(H_j'),"></span><span class="pk-equation-number" aria-hidden="true">(3)</span></div>
+<div class="pk-equation" id="e:zook:claim:combined"><span class="not-content" data-display-math="true" data-tex="\lambda \cdot c_r + d  = \langle  H', K \rangle_{H_{k_r}}&#10;+ \sum_{j=0}^r \Gamma_j(M_j') + \sum_{j=1}^r \Lambda_j(H_j'),"></span><span class="pk-equation-number" aria-hidden="true">(55)</span></div>
 
 <p>then the verifier accepts.</p>
 
@@ -1056,7 +1056,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <p>for the Johnson list size bound on the number of proximates from <span class="pk-inline-math not-content" data-tex="C_1"></span> at distance <span class="pk-inline-math not-content" data-tex="\theta_1"></span>.</p>
 
-<h5 id="phase-ref-i-main-phase-1">Phase <a class="pk-reference" href="#i:main:phase:1">Protocol 1</a>:</h5>
+<h5 id="phase-ref-i-main-phase-1">Phase <a class="pk-reference" href="#i:main:phase:1">Step 1</a>:</h5>
 
 <p>The first phase is a reduction <span class="pk-inline-math not-content" data-tex="\mathcal R_\theta \longrightarrow \mathcal R_\text{phase 1}"></span> depending on the verifier challenges <span class="pk-inline-math not-content" data-tex="\vec\xi\mathrel{\leftarrow} \mathbb F_q^{t}"></span>, where</p>
 
@@ -1066,7 +1066,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <Aside type="note" title="Lemma 7.">
 
-<p>Phase <a class="pk-reference" href="#i:main:phase:1">Protocol 1</a> in <a class="pk-reference" href="#prot:main">Protocol 1</a> is a round-by-round sound oracle reduction <span class="pk-inline-math not-content" data-tex="\mathscr R_{\theta_1}\longrightarrow R_\text{phase 1}"></span> with soundness error</p>
+<p>Phase <a class="pk-reference" href="#i:main:phase:1">Step 1</a> in <a class="pk-reference" href="#prot:main">Protocol 1</a> is a round-by-round sound oracle reduction <span class="pk-inline-math not-content" data-tex="\mathscr R_{\theta_1}\longrightarrow R_\text{phase 1}"></span> with soundness error</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="\varepsilon_\text{phase 1} \leq&#10;\ell_1\cdot \varepsilon_\text{R1CS},"></span></div>
 
@@ -1090,7 +1090,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 </Aside>
 
-<h5 id="phase-ref-i-main-phase-2">Phase <a class="pk-reference" href="#i:main:phase:2">Protocol 1</a>:</h5>
+<h5 id="phase-ref-i-main-phase-2">Phase <a class="pk-reference" href="#i:main:phase:2">Step 2</a>:</h5>
 
 <p>The second phase, the zero-check, reduces <span class="pk-inline-math not-content" data-tex="\mathcal R_\text{phase 1}"></span> to <span class="pk-inline-math not-content" data-tex="\mathcal R_\text{phase 2}"></span>, where</p>
 
@@ -1102,7 +1102,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <p>again scaled by the number of joint <span class="pk-inline-math not-content" data-tex="\theta_1"></span>- and <span class="pk-inline-math not-content" data-tex="\theta_2"></span>-proximates of <span class="pk-inline-math not-content" data-tex="f_1"></span> and <span class="pk-inline-math not-content" data-tex="f_2"></span>. The components correspond to the roundwise soundness errors of that phase. The first term is the probability of that <span class="pk-inline-math not-content" data-tex="\vec \rho"></span> is a zero of the multilinear extension of <span class="pk-inline-math not-content" data-tex="a(\vec x)\cdot b(\vec x) - c(\vec x)"></span>, <span class="pk-inline-math not-content" data-tex="\vec x \in H_m"></span>, despite being non-trivial. The second term is for the <span class="pk-inline-math not-content" data-tex="m"></span> rounds of the sumcheck. Each <span class="pk-inline-math not-content" data-tex="\frac{3}{|F|}"></span> stands for the probability that the specialization of the sumcheck claim to the random <span class="pk-inline-math not-content" data-tex="\alpha_i"></span> is satisfied by a joint proximate <span class="pk-inline-math not-content" data-tex="(p_1(X), p_2(X))"></span>, although not both claims for <span class="pk-inline-math not-content" data-tex="X_i = 0"></span> and <span class="pk-inline-math not-content" data-tex="X_i= 1"></span> hold.</p>
 
-<h5 id="phase-ref-i-main-phase-3">Phase <a class="pk-reference" href="#i:main:phase:3">Protocol 1</a>:</h5>
+<h5 id="phase-ref-i-main-phase-3">Phase <a class="pk-reference" href="#i:main:phase:3">Step 3</a>:</h5>
 
 <p>The third phase reduces <span class="pk-inline-math not-content" data-tex="\mathscr R_{phase 2}"></span> to the final verifier relation <span class="pk-inline-math not-content" data-tex="\mathscr R_V"></span> of the protocol. This is</p>
 
@@ -1138,7 +1138,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 </ul>
 
-<p>Then, with the help of line decodability, all intermediate foldings are proximate to polys, the mv rep of which satisfy the specialized claim, up to that <span class="pk-inline-math not-content" data-tex="\hat f_{i-1}"></span> has a close poly <span class="pk-inline-math not-content" data-tex="\hat p_{i-1}"></span>, satisfying the combined claim <a class="pk-reference" href="#e:zook:claim:combined">(3)</a>.</p>
+<p>Then, with the help of line decodability, all intermediate foldings are proximate to polys, the mv rep of which satisfy the specialized claim, up to that <span class="pk-inline-math not-content" data-tex="\hat f_{i-1}"></span> has a close poly <span class="pk-inline-math not-content" data-tex="\hat p_{i-1}"></span>, satisfying the combined claim <a class="pk-reference" href="#e:zook:claim:combined">(55)</a>.</p>
 
 <h3 id="the-complete-protocol-tbc"><span class="pk-heading-number" aria-hidden="true">B.3</span>The complete protocol (tbc)</h3>
 
@@ -1176,7 +1176,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
-<p>After we combined <a class="pk-reference" href="#e:phase3:claim:vM">(1)</a> and <a class="pk-reference" href="#e:phase3:claim:inputs">(1)</a> into a single inner product claim <span class="pk-inline-math not-content" data-tex="\langle K, w\rangle_{H_{m_1 + 1}}"></span> on the combined witness poly, the prover reveals</p>
+<p>After we combined <a class="pk-reference" href="#e:phase3:claim:vM">(19)</a> and <a class="pk-reference" href="#e:phase3:claim:inputs">(20)</a> into a single inner product claim <span class="pk-inline-math not-content" data-tex="\langle K, w\rangle_{H_{m_1 + 1}}"></span> on the combined witness poly, the prover reveals</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="v = \langle K, H \rangle_{H_{m_1 + 1}}"></span></div>
 

@@ -116,6 +116,16 @@ const indexReferences = (value) => {
   }
 
   const environmentCounters = new Map();
+  const environmentLabelPrefixes = {
+    thm: new Set(['thm']),
+    cor: new Set(['cor']),
+    lem: new Set(['lem']),
+    prop: new Set(['prop']),
+    protocol: new Set(['prot']),
+    defn: new Set(['defn']),
+    conj: new Set(['conj']),
+    rem: new Set(['rem']),
+  };
   for (const environment of theoremEnvironments) {
     if (environment === 'proof' || environment === 'thm*') continue;
     const escapedEnvironment = environment.replace('*', '\\*');
@@ -128,7 +138,10 @@ const indexReferences = (value) => {
       environmentCounters.set(environment, number);
       const kind = theoremLabels[environment] || 'Reference';
       for (const label of match[1].matchAll(/\\label\{([^}]*)\}/g)) {
-        labels.set(label[1], { kind, number });
+        const prefix = label[1].split(':', 1)[0];
+        if (environmentLabelPrefixes[environment]?.has(prefix)) {
+          labels.set(label[1], { kind, number });
+        }
       }
     }
   }
