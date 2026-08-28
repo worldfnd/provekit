@@ -296,6 +296,7 @@ body {
 
 .pk-view-toggle-control {
   display: inline-flex;
+  align-items: stretch;
   border: 1px solid var(--pk-line-mid);
   background: var(--pk-surface);
 }
@@ -305,6 +306,7 @@ body {
   align-items: center;
   justify-content: center;
   min-width: 4.4rem;
+  margin: 0;
   border: 0;
   border-inline-end: 1px solid var(--pk-line-mid);
   padding: 0.55rem 0.8rem;
