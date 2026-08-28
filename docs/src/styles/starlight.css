@@ -147,6 +147,185 @@ body {
 :root[data-theme='dark'] .sl-markdown-content .lead {
   color: #C5D6EE;
 }
+/* ============================================================
+   4b. Whitepaper reading surface
+   ============================================================ */
+
+.pk-paper-hero,
+.pk-paper-overview,
+.pk-paper-map,
+.pk-paper-body,
+.pk-paper-footer {
+  max-width: 76rem;
+  margin-inline: auto;
+}
+
+.pk-paper-hero {
+  padding: clamp(2.5rem, 8vw, 7rem) clamp(1rem, 4vw, 3rem) 3.25rem;
+  border-bottom: 1px solid var(--pk-line);
+  background:
+    linear-gradient(135deg, rgba(13, 116, 255, 0.08), transparent 48%),
+    radial-gradient(circle at 90% 16%, rgba(190, 225, 255, 0.36), transparent 26%);
+}
+
+.pk-paper-kicker {
+  color: var(--pk-brand);
+  font: 500 0.72rem/1.3 var(--pk-font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.pk-paper-hero h1 {
+  max-width: 12ch;
+  margin: 0.75rem 0 1rem;
+  font-size: clamp(3rem, 8vw, 6.8rem);
+  line-height: 0.94;
+  letter-spacing: -0.07em;
+}
+
+.pk-paper-dek {
+  max-width: 43rem;
+  margin: 0;
+  color: var(--pk-ink-soft);
+  font-size: clamp(1.15rem, 1rem + 0.65vw, 1.55rem);
+  line-height: 1.45;
+}
+
+.pk-paper-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-top: 2rem;
+}
+
+.pk-paper-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1px solid var(--pk-line-mid);
+  padding: 0.72rem 0.95rem;
+  color: var(--pk-ink);
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.pk-paper-button:hover { border-color: var(--pk-brand); color: var(--pk-brand); }
+
+.pk-paper-button--primary {
+  border-color: var(--pk-brand);
+  background: var(--pk-brand);
+  color: #fff;
+}
+
+.pk-paper-button--primary:hover { background: var(--pk-brand-hover); color: #fff; }
+
+.pk-paper-notice {
+  max-width: 76rem;
+  margin: 1.4rem auto 0;
+  border-inline-start: 3px solid var(--pk-brand);
+  padding: 0.8rem 1rem;
+  background: var(--pk-line-soft);
+  color: var(--pk-ink-soft);
+  font-size: 0.92rem;
+}
+
+.pk-paper-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(14rem, 0.7fr);
+  gap: clamp(2rem, 6vw, 6rem);
+  padding: 4rem clamp(1rem, 4vw, 3rem);
+}
+
+.pk-paper-overview h2 { margin: 0.65rem 0 1rem; font-size: clamp(1.8rem, 3vw, 3rem); }
+.pk-paper-overview p { max-width: 48rem; color: var(--pk-ink-soft); line-height: 1.7; }
+
+.pk-paper-facts { border-top: 1px solid var(--pk-line-mid); }
+.pk-paper-facts div { display: flex; flex-direction: column; gap: 0.25rem; border-bottom: 1px solid var(--pk-line-mid); padding: 1rem 0; }
+.pk-paper-facts span { color: var(--pk-mute); font: 0.7rem var(--pk-font-mono); letter-spacing: 0.06em; text-transform: uppercase; }
+.pk-paper-facts strong { font-size: 1.2rem; font-weight: 500; }
+
+.pk-paper-map {
+  margin-bottom: 4rem;
+  border-block: 1px solid var(--pk-line);
+  padding: 2rem clamp(1rem, 4vw, 3rem);
+}
+
+.pk-paper-map-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; margin-top: 1rem; background: var(--pk-line); }
+.pk-paper-map-grid a { display: flex; flex-direction: column; gap: 0.35rem; min-height: 9rem; padding: 1.1rem; background: var(--pk-surface); color: var(--pk-ink); text-decoration: none; }
+.pk-paper-map-grid a:hover { background: var(--pk-line-soft); }
+.pk-paper-map-grid span { color: var(--pk-brand); font: 0.72rem var(--pk-font-mono); }
+.pk-paper-map-grid strong { font-weight: 500; }
+.pk-paper-map-grid small { color: var(--pk-ink-soft); line-height: 1.45; }
+
+.pk-paper-body { padding: 0 clamp(1rem, 4vw, 3rem) 4rem; }
+.pk-paper-body > .pk-paper-kicker { margin-bottom: 1rem; }
+.pk-paper-body h2 { margin-top: 3.5rem; border-top: 1px solid var(--pk-line); padding-top: 1.25rem; font-size: clamp(1.8rem, 3vw, 2.5rem); }
+.pk-paper-body h3 { margin-top: 2.3rem; }
+.pk-paper-body h4 { margin-top: 1.8rem; color: var(--pk-brand); font-size: 1.05rem; }
+.pk-paper-body h5 { margin-top: 1.25rem; font-size: 1rem; }
+.pk-paper-body p { max-width: 54rem; line-height: 1.72; }
+.pk-paper-list { max-width: 54rem; padding-left: 1.35rem; line-height: 1.7; }
+.pk-paper-list li { margin: 0.55rem 0; padding-left: 0.25rem; }
+
+.pk-equation {
+  max-width: 100%;
+  margin: 1.35rem 0;
+  overflow-x: auto;
+  border-block: 1px solid var(--pk-line-soft);
+  padding: 1.25rem 0.8rem;
+  background: var(--pk-surface-tint);
+  text-align: center;
+}
+
+.pk-equation span { white-space: pre; }
+.pk-inline-math { white-space: nowrap; }
+.pk-citation, .pk-reference { color: var(--pk-brand); font: 0.82em var(--pk-font-mono); }
+.pk-footnote { color: var(--pk-ink-soft); font-size: 0.9em; }
+
+.pk-theorem {
+  max-width: 56rem;
+  margin: 1.5rem 0;
+  border: 1px solid var(--pk-line-mid);
+  border-inline-start: 3px solid var(--pk-brand);
+  padding: 1rem 1.15rem;
+  background: var(--pk-surface-tint);
+}
+
+.pk-theorem-title { margin-bottom: 0.6rem; color: var(--pk-brand); font: 500 0.78rem var(--pk-font-mono); letter-spacing: 0.05em; text-transform: uppercase; }
+.pk-theorem-title span { color: var(--pk-ink); font-family: var(--pk-font-sans); font-size: 1rem; letter-spacing: 0; text-transform: none; }
+.pk-theorem p { margin-block: 0.7rem; }
+
+.pk-paper-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 1rem;
+  border-top: 1px solid var(--pk-line);
+  padding: 1.5rem clamp(1rem, 4vw, 3rem) 3rem;
+  color: var(--pk-ink-soft);
+  font-size: 0.88rem;
+}
+.pk-paper-footer strong { color: var(--pk-ink); }
+.pk-paper-footer a { margin-left: auto; }
+
+:root[data-theme='dark'] .pk-paper-dek,
+:root[data-theme='dark'] .pk-paper-overview p,
+:root[data-theme='dark'] .pk-paper-map-grid small,
+:root[data-theme='dark'] .pk-paper-notice,
+:root[data-theme='dark'] .pk-paper-footer { color: #BFC9D8; }
+:root[data-theme='dark'] .pk-paper-notice { background: #102542; }
+:root[data-theme='dark'] .pk-paper-map-grid a { background: #1A1E25; color: #EAF4FF; }
+:root[data-theme='dark'] .pk-paper-map-grid a:hover { background: #102542; }
+:root[data-theme='dark'] .pk-theorem { background: rgba(16, 37, 66, 0.5); }
+:root[data-theme='dark'] .pk-theorem-title span { color: #EAF4FF; }
+
+@media (max-width: 48rem) {
+  .pk-paper-overview { grid-template-columns: 1fr; }
+  .pk-paper-map-grid { grid-template-columns: 1fr; }
+  .pk-paper-footer a { margin-left: 0; }
+}
+
 
 /* ============================================================
    5. Sidebar: group labels in Geist Mono ALL CAPS

@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
+    "precheck": "bun scripts/render-whitepaper.mjs",
     "build": "astro build",
+    "prebuild": "bun scripts/render-whitepaper.mjs",
     "check": "astro sync && tsc --noEmit",
     "preview": "astro preview"
   },

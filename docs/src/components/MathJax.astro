@@ -1,0 +1,47 @@
+---
+---
+
+<script is:inline>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['\\(', '\\)']],
+      displayMath: [['\\[', '\\]']],
+      macros: {
+        sample: '\\mathrel{\\leftarrow}',
+        msk: '\\mathsf{msk}',
+        comm: '\\mathsf{Comm}',
+        fold: '\\mathsf{fold}',
+        RS: '\\mathsf{RS}'
+      }
+    },
+    options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'] },
+    startup: {
+      typeset: false,
+      ready() {
+        window.MathJax.startup.defaultReady();
+        window.dispatchEvent(new Event('provekit-mathjax-ready'));
+      }
+    }
+  };
+</script>
+<script is:inline src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+<script is:inline>
+  const typesetProveKitMath = () => {
+    const nodes = [...document.querySelectorAll('[data-tex]')];
+    nodes.forEach((node) => {
+      if (node.dataset.mathReady === 'true') return;
+      const delimiter = node.dataset.displayMath === 'true' ? ['\\[', '\\]'] : ['\\(', '\\)'];
+      node.textContent = delimiter[0] + node.dataset.tex + delimiter[1];
+      node.dataset.mathReady = 'true';
+    });
+    window.MathJax?.typesetPromise?.(nodes);
+  };
+
+  window.addEventListener('provekit-mathjax-ready', typesetProveKitMath);
+  document.addEventListener('astro:page-load', typesetProveKitMath);
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', typesetProveKitMath, { once: true });
+  } else {
+    typesetProveKitMath();
+  }
+</script>

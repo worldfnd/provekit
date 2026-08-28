@@ -1,8 +1,11 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
+const isGitHubPages = process.env.GITHUB_ACTIONS === 'true';
+
 export default defineConfig({
-  site: 'https://docs.provekit.dev',
+  site: isGitHubPages ? 'https://worldfnd.github.io/provekit' : 'https://docs.provekit.dev',
+  base: isGitHubPages ? '/provekit' : '/',
   publicDir: '../assets',
   integrations: [
     starlight({
@@ -75,6 +78,7 @@ export default defineConfig({
           label: 'Reference',
           items: [
             { slug: 'cli/overview', label: 'CLI reference' },
+            { slug: 'whitepaper', label: 'Whitepaper' },
             { slug: 'reference/performance' },
             { slug: 'reference/examples', label: 'Examples catalog' },
             { slug: 'reference/error-codes', label: 'FFI error codes' },
