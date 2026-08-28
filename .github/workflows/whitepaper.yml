@@ -1,0 +1,41 @@
+name: Build whitepaper
+
+on:
+  push:
+    branches:
+      - feature/whitepaper
+    paths:
+      - "whitepaper/**"
+      - ".github/workflows/whitepaper.yml"
+  pull_request:
+    branches:
+      - feature/whitepaper
+    paths:
+      - "whitepaper/**"
+      - ".github/workflows/whitepaper.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Compile whitepaper
+        uses: xu-cheng/latex-action@v4
+        with:
+          root_file: main.tex
+          working_directory: whitepaper
+
+      - name: Upload PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: provekit-whitepaper
+          path: whitepaper/main.pdf
+          if-no-files-found: error
