@@ -1,0 +1,37 @@
+\section{Correlated agreement}
+\label{s:CAT}
+
+Let $\mathbb F$ be an arbitrary finite field, 
+\[
+\Gamma: \mathscr P_k(\mathbb F) \times \mathbb F \longrightarrow \mathbb F, %\in F[X_1,\ldots, X_n , Z],
+\]
+be a polynomial (in the coordinates of an arbitrary basis) of total degree $d = \deg \Gamma = 2$.
+
+
+\begin{thm}[\cite{ProximityGaps,ProximityGaps:improved}] 
+\label{thm:CAT:constrained}
+For $C = \mathsf{RS}[F, D, k]$ any Reed--Solomon code over an arbitrary finite field $F$, with minimum distance $\delta$, and  $\Gamma:\mathscr P_k\times F\longrightarrow F$ as above.
+Then, for any $\theta \in \left[\frac{\delta}{2}, 1 -\sqrt{1-\delta}\right)$, the following holds.
+If the set
+\[
+S = \left\{z \in F\::\:  
+    \begin{matrix}
+    \exists p_z(X) \in \mathscr P_k,
+        d((1-z)\cdot f_0 + z\cdot f_1, p_z) \leq \theta 
+        \\
+        \wedge \:\Gamma(p_z, z) = 0
+    \end{matrix}
+\right\}
+\]
+is of size 
+\[
+|S| \geq  \ell_{GS}(\theta)\cdot \left( 
+\frac{2\ell_{GS}(\theta)^4}{3}\cdot (1 - \delta) %+ \frac{\theta_m |D| + 1}{|D|} 
++ 1
+\right) \cdot |D|,
+\]
+then there exist polynomials $q_0(X)$, $q_1(X)\in\mathscr P_k$ with $d((q_0,q_1),(f_0,f_1))\leq \theta$, and $\Gamma(q_0,0)= \Gamma(q_1,1) = 0$. 
+\end{thm}
+
+The theorem is direct consequence of line decodability \cite{}, also called collinearity of proximates property in \cite{Basefold:LDR}.
+Given a of proximates of the random linear combinations, one for each, then a notable fraction of it lies on a line. 

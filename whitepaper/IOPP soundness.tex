@@ -1,0 +1,238 @@
+\section{Proofs: IOPP soundness \textcolor{red}{(tbc)}}
+
+\subsection{Protocol \ref{prot:main}}
+Let us outline the soundness properties of the protocol.
+In the following we write
+\begin{equation}
+\ell_1 = \ell_1(\theta_1)
+\end{equation}
+for the Johnson list size bound on the number of proximates from $C_1$ at distance $\theta_1$.
+% For both $f_1$ and $f_2$, we define $S(f_1)$ and $S(f_2)$ to be the set of $z\in F$, which distinguish all $\theta_1$- and $\theta_2$ proximates by value. 
+% Note that the exceptional set 
+% \begin{equation}
+% \left|F\setminus S(f_i)\right| \leq \binom{\ell_i}{2} \cdot 2^{m_i},
+% \end{equation} 
+% %contains at most $\ell_{\theta_i}^2 \cdot 2^{m_1}$ many points, 
+% the union bound of common zeros of any pair of proximates.
+% We define
+% \begin{equation*}
+% \mathscr L_{k}\big|_{z,v} = \left\{p(X)\in \mathscr L_k \::\: p(z) = v\right\}.
+% \end{equation*}
+% % \begin{equation*}
+% % E_z: \mathscr L_{m_1} \cap B_\theta(f_1) \longrightarrow F, \quad p(X) \mapsto p(z)
+% % \end{equation*}
+
+\paragraph{Phase \ref{i:main:phase:1}:}
+The first phase is a reduction $\mathcal R_\theta \longrightarrow \mathcal R_\text{phase 1}$ depending on the verifier challenges $\vec\xi\sample \mathbb F_q^{t}$, where
+\begin{align*}
+\mathcal R_\text{phase 1} 
+&=
+\left\{
+    \begin{matrix}
+        f_1 \in \left(\mathbb F_q^{D}\right)^{e},% v_1\in F 
+        \\
+        f_2^* \in \left(\mathbb F_q^{D}\right)^{e}%, v_2\in F 
+    \end{matrix}
+    \::\:
+    % \hspace*{-0.25cm}
+    \begin{matrix}
+        \exists (p_1(X),p_2(X)) \in \mathscr P_{m_1}^2 %\times \mathscr P_{m_1}
+        \\
+        d((p_1,p_2), (f_1,f_2^*)) \leq \theta_1,
+        \\
+        \text{and}
+        \\
+        (p_{1}(X), \vec\xi, p_{2}(X))
+        \\
+        \text{satisfy the lifted R1CS} 
+        \\
+        \text{on input }\vec{in}
+        % \text{and their coefficient vectors}
+        % \\
+        % (\vec c_1, \vec c_2) \text{ satisfy the lifted R1CS }
+        % \\
+        % \text{on inputs }\vec{in} , \vec\xi 
+    \end{matrix}
+\right\},
+\end{align*}
+where as before, the distance refers to the interleaved representations of the polynomials.
+The phase is a single-step reduction, and its soundness error is as follows.
+
+\begin{lem}
+Phase \ref{i:main:phase:1} in Protocol \ref{prot:main} is a round-by-round sound oracle reduction $\mathscr R_{\theta_1}\longrightarrow R_\text{phase 1}$ with soundness error
+\[
+\varepsilon_\text{phase 1} \leq 
+\ell_1\cdot \varepsilon_\text{R1CS}, 
+\]
+where $\varepsilon_\text{R1CS}$ is the soundness error of the randomized R1CS.
+\end{lem}
+
+\begin{proof}
+Assume that for more than $\kappa = \ell_1(\theta )\varepsilon_\text{R1CS}\cdot |\mathbb F_q|^t$ distinct verifier challenges $\vec\xi$, there exists a potential prover answer $f_2\in \mathbb F_q^{D'}$ which extends $f_1$ to a pair $(f_1,f_2^*)$ in $\mathscr R_\text{phase 1}$.
+For each such challenge $\vec\xi_i$, $i=1,\ldots, \kappa$, we select one of the $\theta_1$-proximates $(p_{1}(X), p_{2}(X))$ stated by $\mathscr R_\text{phase 1}$, and obtain a list 
+%$\mathscr L$ of more than $\kappa$ many $(p_{1,i}(X),\vec\xi_i, p_{2,i}(X))$.
+\[
+\mathscr L = \left\{
+(p_{1,i}(X),\vec\xi_i , p_{2,i}(X))) \::\: 
+\begin{matrix}
+d(p_{1,i}(X),f_1)\leq \theta_1,
+\\\text{and}
+\\
+(p_{1,i}(X), \vec\xi_i, p_{2,i}(X))
+\\
+\text{satisfy the lifted R1CS} 
+\\
+\text{on input }\vec{in}
+\end{matrix}
+\right\}
+\]
+with more than $\kappa$ entries. 
+
+By the list size bound, there at most $\ell_1$ distinct $p_{1,i}(X)$ mentioned in $\mathscr L$.
+One of them, $p_1(X) = p_{1,i_0}(X)$, appears more than  
+\[
+\kappa' = \frac{\kappa}{\ell_1} = \varepsilon_\text{R1CS}\cdot |\mathbb F_q|^t
+\]
+many times in the list. 
+This $p_1(X)$ has more than $\kappa'$ many $\vec\xi_i, p_{2,i}(X)$ satisfying answers for the lifted randomized R1CS on input $\vec{in}$. 
+Since the soundness error of the lifted R1CS equals that of the original R1CS,  $p_1(X)$ is a solution of the first stage R1CS. 
+This proves that $f_1\in \mathscr R_{\theta_1}$.
+$\Box$
+\end{proof}
+
+\paragraph{Phase \ref{i:main:phase:2}:}
+The second phase, the zero-check, reduces $\mathcal R_\text{phase 1}$ to 
+$\mathcal R_\text{phase 2}$, where 
+\begin{equation*}
+\mathcal R_\text{phase 2} =
+\left\{
+    \begin{matrix}
+        f_1 \in \left(\mathbb F_q^{D_1}\right)^{e_1}, %v_1\in F 
+        \\
+        f_2 \in \left(\mathbb F_q^{D_k}\right)^{e_k}, %v_2\in F 
+        \\
+        q_1(X), \ldots, q_m(X) \in F[X]^{\leq 3}
+        \\
+        v_A, v_B, v_C \in F
+    \end{matrix}
+    \::\:
+    \hspace*{-10mm}
+    \begin{matrix}
+        \exists (p_1(X),p_2(X)) \in \mathscr L_{m_1} \times \mathscr L_{m_2}
+        \\
+        d(p_1, f_1) \leq \theta_1, d(p_2, f_2)\leq \theta_2
+        % \\
+        % p_1(z_1) = v_1, p_2(z_2) = v_2,
+        \\\text{and}
+        \\
+        0 = q_1(0) + q_1(1),
+        \\
+        q_i(\alpha_i) = q_{i+1}(0) + q_{i+1}(1),
+        \\
+        \text{for }i = 1,\ldots, m-1,
+        \\
+        q_m(\alpha_m) = (v_A \cdot v_B - v_C)\cdot eq(\vec\alpha, \vec\rho)
+    \end{matrix}
+\right\},
+\end{equation*}
+depends on the verifier challenges $\vec\rho,\vec\alpha$ (and the preceding $\vec\xi$). 
+The soundness error of this reduction is 
+\[
+\varepsilon_\text{phase 2}  \leq \ell_1\cdot \ell_2 \cdot
+    \left(
+    \frac{m}{|F|}
+    + m\cdot \frac{3}{|F|}
+    \right), 
+\]
+again scaled by the number of joint $\theta_1$- and $\theta_2$-proximates of $f_1$ and $f_2$.
+The components correspond to the roundwise soundness errors of that phase. 
+The first term is the probability of that $\vec \rho$ is a zero of the multilinear extension of $a(\vec x)\cdot b(\vec x) - c(\vec x)$, $\vec x \in H_m$, despite being non-trivial.   
+The second term is for the $m$ rounds of the sumcheck. 
+Each $\frac{3}{|F|}$ stands for the probability that the specialization of the sumcheck claim to the random $\alpha_i$ is satisfied by a joint proximate $(p_1(X), p_2(X))$,
+%$\in \mathscr L_{m_1}\big|_{z_1,v_1}\times \mathscr L_{m_2}\big|_{z_1,v_1}$, 
+although not both claims for $X_i = 0$ and $X_i= 1$ hold. 
+
+\paragraph{Phase \ref{i:main:phase:3}:}
+The third phase reduces $\mathscr R_{phase 2}$ to the final verifier relation $\mathscr R_V$ of the protocol. 
+This is 
+\[
+\mathscr R_{V} =
+\left\{
+    \begin{matrix}
+        f_1 \in \left(\mathbb F_q^{D_1}\right)^{e_1}, %v_1\in F 
+        \\
+        f_2 \in \left(\mathbb F_q^{D_k}\right)^{e_k}, %v_2\in F 
+        \\
+        q_1(X), \ldots, q_m(X) \in F[X]^{\leq 3}
+        \\
+        v_A, v_B, v_C \in F
+        \\
+        g_2 \in \left(\mathbb F_q^{D_{2}}\right)^{e_{2}}, u_2\in F 
+        \\
+        \vdots
+        \\
+        g_{r-1} \in \left(\mathbb F_q^{D_{r}}\right)^{e_{r}}, u_{r-1}\in F
+        \\
+        g_r \in \mathscr L_{k_r} 
+    \end{matrix}
+    \::\:
+    % \hspace*{-5mm}
+    \begin{matrix}
+        % \exists (p_1(X),p_2(X)) \in \mathscr L_{m_1}\big|_{z_1,v_1}\times \mathscr L_{m_2}\big|_{z_1,v_1}
+        % \\
+        % d(p_1, f_1) \leq \theta_1, d(p_2, f_2)\leq \theta_2
+        % % \\
+        % % p_1(z_1) = v_1, p_2(z_2) = v_2,
+        % \\\text{and}
+        \\
+        0 = q_1(0) + q_1(1),
+        \\
+        q_i(\alpha_i) = q_{i+1}(0) + q_{i+1}(1),
+        \\
+        \text{for }i = 1,\ldots, m-1,
+        \\
+        q_m(\alpha_m) = (v_A \cdot v_B - v_C)\cdot eq(\vec\alpha, \vec\rho)
+        \\\text{and}
+        \\
+            g_r \text{ satisfies the aggregated WHIR claim}
+        \\
+        \bar v = \langle K_r, g_r\rangle_{H_{k_r}}, 
+        \\
+        \text{which involves the specializations}
+        \\
+        M_i(\vec\alpha, \vec\beta \| \: .\:), 
+        \\ 
+        M=A,B,C, \: i=1,2
+    \end{matrix}
+\right\},
+\]
+where $g_2$, \ldots, $g_{r-1}$, are the folding proposals committed by in the first $r-1$ rounds of WHIR, together with their values $u_2$, \ldots, $u_{r-1}$ at the verifier DEEP queries $z_2,\ldots, z_{r-1}$, and $g_r$ is the final folding proposal revealed in plain. 
+
+The soundness error of this phase is that of joint WHIR, 
+\[
+\varepsilon_\text{phase 3} = \varepsilon_{WHIR}(\theta_1,\ldots, \theta_r)
+\]
+and will be described in the following section.
+
+
+
+\subsection{Soundness ZO0K. \textcolor{red}{(tbc)}}
+
+For now, only few notes:
+
+For simplicity, we assume the masks as given. 
+(The full story is a bit more complicated as it needs to take into account the proximates of the masks.)
+Suppose that with notable probability in $\vec\beta_i$ the prover is able to provide $\hat f_i$ which close to a poly $\hat p_i$, so that
+\begin{itemize}
+    \item 
+    the new ensemble with $\hat p_i$ and $\msk_i$ satisfies the $\vec\beta_i$-specialized claim \eqref{e:zook:specialized:claim},
+    \item 
+    the folding $\mathsf{fold}_{\vec\beta_i}\hat f_{i-1}$ agrees on a density $\alpha$ subset of $D_{i-1}$ with  $\hat p_i - \msk_i$.
+    (Which is caused by \eqref{e:zook:out:domain:constraint} and \eqref{e:zook:in:domain:constraint} satisfied with notable prob.)
+\end{itemize}
+
+Then, with the help of line decodability, all intermediate foldings are proximate to polys, the mv rep of which satisfy the specialized claim, up to that $\hat f_{i-1}$ has a close poly $\hat p_{i-1}$, satisfying the combined claim \eqref{e:zook:claim:combined}.
+
+
+
+\subsection{The complete protocol \textcolor{red}{(tbc)}}

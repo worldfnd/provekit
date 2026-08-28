@@ -1,0 +1,2434 @@
+\newif\ifnotes
+\notestrue
+%\notesfalse
+
+%\documentclass{article}
+\documentclass[runningheads]{llncs}
+%\usepackage{geometry}
+% \geometry{
+%   a4paper,         % or letterpaper
+%   textwidth=13cm,  % llncs has 12.2cm
+%   textheight=24cm, % llncs has 19.3cm
+%   heightrounded,   % integer number of lines
+%   hratio=1:1,      % horizontally centered
+%   vratio=2:3,      % not vertically centered
+% }
+\usepackage{graphicx,svg} % Required for inserting images
+%\usepackage{background} % for custom headers 
+\usepackage{amsmath,amssymb}
+\usepackage{mathalpha}
+%\usepackage[scr=boondox,  % heavily sloped
+%            cal=esstix]   % slightly sloped
+%           {mathalpha}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage[n,advantage,operators,sets,adversary,landau,probability,notions,logic,ff,mm,primitives,events, complexity,asymptotics,keys]{cryptocode}
+\usepackage{mathrsfs}
+\usepackage{tikz-cd}
+\usetikzlibrary{decorations.pathreplacing,angles,quotes}
+\usepackage{color}
+%\usepackage[table]{xcolor}
+\usepackage{colortbl}
+\usepackage{url,multirow}
+\usepackage{todonotes, xspace}
+\usepackage{graphicx}
+\graphicspath{{images/}}
+
+\usepackage[bookmarks, 
+    colorlinks=false, 
+    pdftitle={S-two Whitepaper}, 
+    pdfauthor={StarkWare Team}
+]{hyperref}
+
+%comment out watermarks when not needed
+% \usepackage{draftwatermark}
+% \SetWatermarkScale{7}	
+% \SetWatermarkColor[gray]{0.9}
+
+% Theorem environments %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\spnewtheorem{thm}{Theorem}{\bfseries}{\itshape}
+\spnewtheorem*{thm*}{Theorem}{\bfseries}{\itshape}
+\spnewtheorem{cor}{Corollary}{\bfseries}{\itshape}
+\spnewtheorem{lem}{Lemma}{\bfseries}{\itshape}
+\spnewtheorem{prop}{Proposition}{\bfseries}{\itshape}
+\spnewtheorem{protocol}{Protocol}{\bfseries}{\itshape}
+
+\spnewtheorem{defn}{Definition}{\bfseries}{}
+
+\spnewtheorem{conj}{Conjecture}{\bfseries}{\itshape}
+\spnewtheorem{rem}{Remark}{\bfseries}{}
+
+
+\newcommand{\m}{\textsf{M31}}
+\newcommand{\cm}{\textsf{CM31}}
+\renewcommand{\i}{i}
+\newcommand{\qm}{\textsf{QM31}}
+\renewcommand{\j}{j}
+\newcommand{\feltLarge}{\textsf{F252}}
+
+%%%
+\usepackage{lipsum}
+
+\def\frontmatter{%
+    \pagenumbering{roman}
+    \setcounter{page}{1}
+    \renewcommand{\thesection}{\Roman{section}}
+}%
+
+\def\mainmatter{%
+    \pagenumbering{arabic}
+    \setcounter{page}{1}
+    \setcounter{section}{0}
+    \renewcommand{\thesection}{\arabic{section}}
+}%
+
+\def\backmatter{%
+    \setcounter{section}{0}
+    \renewcommand{\thesection}{\Alph{section}}
+}%
+
+
+
+
+% \def\companylogo{\includesvg[width=4cm]{StarkWare-logo-01.svg}}
+% \fancypagestyle{companypagestyle}
+% {
+%     \fancyhf{}
+%     % \fancyfoot[L]
+%     % {
+%     %     \parbox[b]{\dimexpr\linewidth-2.5cm\relax}
+%     %     {
+%     %         \sffamily \bfseries\hfill MyCompany, MyStreet 1\\
+%     %         Page \thepage\ of \pageref{LastPage}\hfill 1234 City, Country\\
+%     %         {\color{red}\rule{\dimexpr\linewidth\relax}{0.4pt}}\\
+%     %         www.mycompany.com
+%     %     }
+%     % }
+%     \fancyfoot[R]
+%     {
+%         \parbox[b]{2cm}{\companylogo}%
+%     }
+% }
+% \backgroundsetup{
+%   scale=1,
+%   color=black,
+%   opacity=1,
+%   angle=0,
+%   position=current page.south,
+%   vshift=80pt,
+%   contents={%
+%   \includesvg[width=4cm]{StarkWare-logo-01.svg}
+%   }
+% }
+
+\title{%
+Provekit Whitepaper
+}
+
+\authorrunning{World Foundation}
+
+\date{\today}
+
+
+\setcounter{tocdepth}{2}
+
+% \AddToHookNext{shipout/background}{
+%   \begin{tikzpicture}[remember picture,overlay]
+%   \node at ([yshift=100pt]current page.south)  {
+%     \includegraphics[width=4cm]{images/StarkWare-logo-01.pdf}
+%   };
+%   \end{tikzpicture}
+% }
+\newcommand{\RS}{\mathsf{RS}}
+\newcommand{\msk}{\mathsf{msk}}
+\newcommand{\comm}{\mathsf{Comm}}
+\newcommand{\fold}{\mathsf{fold}}
+\newcommand{\h}{\mathsf{h}}
+
+\newcommand{\ulrich}[1]{\ifnotes{\small\color{blue} Ulrich: #1}\xspace\fi}
+\newcommand{\remco}[1]{\ifnotes{\small\color{teal} Remco: #1}\xspace\fi}
+\newcommand{\marcin}[1]{\ifnotes{\small\color{orange} Marcin: #1}\xspace\fi}
+\newcommand{\albert}[1]{\ifnotes{\small\color{cyan} Albert: #1}\xspace\fi}
+
+%%%
+\usepackage{lipsum}
+
+\title{Provekit R1CS prover}
+% \author{Ulrich Hab{\"o}ck\textsuperscript{1}
+% %\\
+% %\texttt{ulrich.haboeck@gmail.com},
+% }
+\date{\today}
+
+
+% macros
+
+\makeatletter
+% \newcommand\frontmatter{%
+%    \cleardoublepage
+%   \pagenumbering{roman}
+% }
+% \newcommand\mainmatter{%
+%   \pagenumbering{arabic}
+% }
+% \newcommand\backmatter{%
+%    \cleardoublepage
+%    %\pagenumbering{Roman}
+% }
+\makeatother
+
+
+
+\begin{document}
+\let\oldaddcontentsline\addcontentsline
+\def\addcontentsline#1#2#3{}
+\maketitle
+\def\addcontentsline#1#2#3{\oldaddcontentsline{#1}{#2}{#3}}
+
+\frontmatter
+
+
+
+% \def\addcontentsline#1#2#3{}
+% \section*{Intro}
+% \def\addcontentsline#1#2#3{\oldaddcontentsline{#1}{#2}{#3}}
+% %\NoBgThispage
+% \pagestyle{plain}
+
+
+
+%\section{}
+
+\tableofcontents
+
+\mainmatter
+
+
+\section{R1CS with scheduled witnesses. \textcolor{red}{(tbc)}}
+Two-round R1CS, to support lookups into tables, which are baked into the R1CS matrices.
+The witness $\vec w$ consists of 
+\begin{enumerate}
+    \item 
+    Round-1 witness $\vec w_1$: 
+    These witnesses are independent of the verifier challenge
+    Includes public inputs, constants, and lookup table multiplicities.
+    \item 
+    Round-2 witness $\vec w_2$: 
+    These witnesses depend on the verifier challenges.
+    These are the verifier challenges themselves, the logUp inverses and their sums.
+\end{enumerate}
+\ulrich{Let us elaborate on the usefulness of 2-stage R1CS beyond lookups.}
+\ulrich{%
+Need to define $\mathscr R_{main}$ and $\mathscr R_{aux}$.
+Target $\vec w_1\in \mathscr R_{main} \cap \mathscr R_{aux}$
+}
+% The verifier challenges for logUp are dedicated inputs of the circuit, and the matrices $A$, $B$, $C$ cover the logUp logic. 
+The complete witness for the constraint system is of the form 
+\begin{equation*}
+%\label{e:witness:split}
+\vec w = \vec w_1\| \vec w_2,
+\end{equation*}
+with $\vec w_1\in \mathbb F_q^{N_1}$ and $\vec w_2\in \mathbb F_q^{N_2}$, 
+\ulrich{Concatenation is never used anywhere.}
+\ulrich{%
+It seems more efficient to treat logup with several basefield challenges.
+This is for sure the case for the witness builder.
+Memory constraints in the zerocheck (due to the higher-dimensional hypercube) can be overcome by univariate skip.
+}
+subject to $M\geq 1$ constraints
+\begin{equation*}
+% \label{e:R1CS}
+(A\cdot \vec w) \odot (B\cdot \vec w) = C\cdot \vec w,
+\end{equation*}
+with $A, B, C\in \mathbb F^{K\times N}$, and where $\odot$ is the entrywise (Hadamard) product.
+As for the witness, we split the matrices $M= A, B, C$ into 
+\begin{equation*}
+M = 
+\begin{pmatrix}
+M_1 | M_2
+\end{pmatrix}, 
+\end{equation*}
+with $M_1\in \mathbb F_q^{K \times N_1}$ and $M_2\in \mathbb F_q^{K\times N_2}$ corresponding to the $\vec w_1$- and $\vec w_2$-parts. 
+% \ulrich{Would $M_2$ over $F$ make sense?}
+Typically the system is partially decoupled, with each $A_2, B_2, C_2$ starting with a large block of zero rows, but we currently do not leverage simpler representations than the ones above. 
+% \ulrich{Do we?}
+
+% \[
+% \left[
+% \left(
+% \begin{array}{c|c}
+% A_{1,1}  & 0
+% \\\hline
+% A_{2,1} & A_{2,2} 
+% \end{array}
+% \right) 
+% \cdot
+% \begin{pmatrix}
+% \vec w_1 \\ \vec w_2
+% \end{pmatrix}
+% \right]
+% \odot
+% \left[
+% \left(
+% \begin{array}{c|c}
+% B_{1,1}  & 0
+% \\\hline
+% B_{2,1} & B_{2,2} 
+% \end{array}
+% \right) 
+% \cdot
+% \begin{pmatrix}
+% \vec w_1 \\ \vec w_2
+% \end{pmatrix}
+% \right]
+% =
+% \left(
+% \begin{array}{c|c}
+% C_{1,1}  & 0
+% \\\hline
+% C_{2,1} & C_{2,2} 
+% \end{array}
+% \right) 
+% \cdot
+% \begin{pmatrix}
+% \vec w_1 \\ \vec w_2
+% \end{pmatrix}
+% \]
+% \[
+% M = 
+% \left(
+% \begin{array}{c|c}
+% M_{1,1}  & 0
+% \\\hline
+% M_{2,1} & M_{2,2} 
+% \end{array}
+% \right) 
+% \]
+% with $M_{2,1}$ and $M_{2,2}$ very sparse (most of the rows have at most 2 entries).
+
+We need:
+\begin{itemize}
+    \item 
+    Definition of the first stage R1CS with auxiliary lookup relation $\mathscr R_\text{R1CS} \cap \mathscr R_\text{aux}$
+    \item
+    Definition of randomized R1CS (with two stages), and its soundness error
+\end{itemize}
+
+\subsubsection{Split-witness builder.}
+There is a split-witness builder for stepwise computation of the complete witness.
+
+
+
+\section{Preliminaries}
+
+Although the entire construction described in the writeup applies to arbitrary prime fields, we confine ourselve to the the following choices.
+%
+Let $\mathbb F_q$ be the Goldilocks prime field \cite{}, with the Solinas prime
+\[
+q = 2^{64} - 2^{32} + 1
+\]
+as modulus. 
+We denote by $F\geq \mathbb F_q$ any cryptographically large extension, in our case the degree 3 extension $F = \mathbb F_{q^5}$, using...
+\ulrich{%
+Check which irreducible polynomial is best
+}
+
+
+\subsection{Notation}
+Boolean Hypercube $H_n = \{0,1\}^n\subset \mathbb F_q^n$, indexing in natural order via $[0,2^n)$, 
+multivariate and multilinear polynomials,
+Lagrange polynomial
+\begin{equation}
+\label{e:eq}
+eq(\vec y, \vec\rho) = \prod_{i=1}^n (y_i \cdot \rho_i + (1 - y_i)\cdot (1-\rho_i))
+%= \prod_{i=1}^m (1 - y_i - \rho_i + 2 y_i  \rho_i),
+\end{equation}
+
+Inner product notation.
+
+
+\subsection{Multilinears and  univariates}
+
+ 
+Given a function $f\in \mathbb F^{H_n}$ (a vector of values) we will write
+\[
+f(X_1,\ldots, X_n) \in \mathbb F[X_1,\ldots, X_n]^{<2}
+\]
+for its multilinear extension, and 
+% multilinear $f(X_1,\ldots, X_n)\in $
+% %, given by its values over the Boolean hypercube $H_n$, %(the component of an interleaved representation) with the univariate polynomial
+associate to it the univariate polynomial
+\begin{equation}
+\label{e:values:to:coeffs}
+u_f(X) = \sum_{i=0}^{2^n-1} f(i_1,\ldots, i_n) \cdot X^i,
+\end{equation}
+defined by the values of $f$ over $H_n$,  where $i = i_1 + \ldots + 2^{n-1} i_n$ is the decomposition of the index into bits. 
+Under this \textit{values-to-coefficient} regime, we identify the space of multilinears (in $n$ variables) with the univariate space
+\begin{equation}
+\mathscr P_{n}(\mathbb F) = \mathbb F[X]^{<2^n} 
+\end{equation}
+in a way that is particularly efficient for Reed--Solomon encoding. 
+
+% \subsubsection{Liftings.}
+% Given a multilinear $f$ in $k$ variables, and $n>k$, we call
+% \[
+% f^*(X_1,\ldots, X_n) = (1-X_1)\cdot\ldots (1-X_{n-k})\cdot f(X_{n-k+1},\ldots, X_n)
+% \]
+% its \textit{lifting} to $n$ variables. 
+% Lifting will allow to treat a collection of polynomials in a uniform manner, while not paying the cost of duplicated values.
+% In terms of univariate representations,
+% \[
+% u_{f^*}(X) = u_f(X^{2^{n-k}}).
+% \]
+
+\subsubsection{Univariate evaluation}
+Evaluation at a point $z\in\mathbb F$ is a linear functional and can be written as inner product $u_m(z) = \langle f, L_z\rangle_{H_n}$ with  
+\begin{equation}
+\label{e:uni:eval:kernel}
+L_z(X_1, \ldots, X_n) = \prod_{j=1}^n \left(
+ (1 - X_j) + X_j \cdot z^{2^{j-1}}  \right),
+\end{equation}
+and its values over the hypercube are the powers of $z$ in natural order.
+% In terms of codes, $L_z$ expresses point evaluation of the codeword as linear functional on the message.
+
+% This establishes a one-to-one correspondence between multilinear polynomials in $k$ variables, and univariate polynomials from the space 
+% \[
+% \mathscr P_{k} = \mathbb F[X]^{<2^k}.
+% \]
+
+% For example the univariate Lagrangian 
+% \[
+% L_z(X) = \frac{1}{2^n}\cdot \left(1 + \sum_{i=1}^{2^n-1} z^{2^n - i} \cdot X^i\right) 
+% \]
+
+% Interleaved representations are encoded component-wise, i.e. row by row, using a Reed--Solomon code with message length matching the row length. 
+% Concretely, each postfix function $g(X_1, \ldots, X_{n-k}) = f(X_1,\ldots, X_{n-k},\vec y)$, given by its values over the Boolean hypercube $H_{n-k}$, is associated with the univariate polynomial
+% \[
+% \sum_{\vec x\in \{0,1\}^{n-k}} g(\vec x) \cdot X^{\iota(\vec x)} \quad \in \mathbb F[X]^{<2^{n-k}},
+% \]
+% where $\iota(\vec x) = x_1 + 2 x_2 + \ldots + 2^{n-k-1} x_{n-k}$ is the natural index of $\vec x$, and evaluated over a specified domain $D\subset \mathbb F$. 
+% In this way, we obtain postfix many Reed--Solomon codes, viewed as word from the \textit{interleaved code}.
+
+
+
+
+
+
+\subsection{Interleaved representation}
+
+In alignment with the sumcheck protocol, we will often think of a multilinear $f(X_1,\ldots, X_n)$ decomposed into its $k$-prefix functions
+% by postfixes $\vec y\in \{0,1\}^k$,
+\begin{align}
+\label{e:prefix:decomp}
+f(X_1,\ldots,X_n) =  \sum_{i = 0}^{2^{k}-1} eq_{i}(X_{1},\ldots, X_k) \cdot f_i(X_{k+1},\ldots, X_{n}) \cdot 
+\end{align}
+Here we again used the identification  $H_k = [0,2^k)$, by each index $i$ specifying the prefix $(i_{1},\ldots, i_{k})\in H_{k}$ via its bits.
+We call 
+$
+(f_0, \ldots, f_{2^{n-k}-1}) %\in \mathbb F[X_{k+1},\ldots, X_n]^{2^{k}}
+$
+the \textit{interleaved representation} of $f$, with interleaving depth $e = 2^{k}$.
+In terms of their univariate polynomials,
+\begin{align}
+\label{e:FFT:decomp}
+u_f(X) = \sum_{i=0}^{2^k-1}  X^{i} \cdot u_{f_i}(X^{2^k}), 
+\end{align}
+which is the FFT decomposition of $u_f(X)$. 
+
+\begin{rem}%[Postfix decomposition]
+\label{rem:postfix:decomp}
+The current version of ProveKit instead employs a postfix decomposition of multilinear polynomials, which corresponds, in the univariate representation, to partitioning the polynomial into contiguous blocks of monomial powers.
+%$u_f(X) = \sum_{i=0}^{2^{n-k}-1} u_{f_i}(X) \cdot X^{i \cdot 2^{k}}$.
+Since our construction relies very little on properties specific to Reed--Solomon codes, the choice of decomposition is largely a matter of convenience. We adopt a prefix decomposition instead, as it leads to notation that is more consistent with our treatment of liftings.
+\end{rem}
+
+
+
+\subsection{Liftings}
+
+Given a multilinear $f$ in $k$ variables, and $n>k$, we call
+\begin{equation}
+\label{e:lifting:multilinear}
+f^*(X_1,\ldots, X_n) = (1 - X_1)\cdot \ldots \cdot (1 - X_{n-k}) \cdot f(X_{n-k+1},\ldots, X_n)
+\end{equation}
+its \textit{lifting} to $n$ variables. 
+In terms of the values over the hypercube, lifting simply places the original vector (the values over $H_k$) on the prefix cube 
+\[
+\{0^{n-k}\}\times H_{k} \subset H_n,
+\]
+and pads it with zero on the remainder of $H_n$.
+In terms univariate representations, 
+\begin{equation}
+u_{f^*}(X) = u_f(X^{2^{n-k}}).
+\end{equation}
+We use lifting to uniformize our R1CS across the two stages at no additional cost.
+
+
+% \subsection{Sumcheck}
+
+% % In reverse order, since the hypercube is indexed in natural order.
+
+% The multivariate sumcheck protocol \cite{Sumcheck} is an interactive proof for that a multivariate polynomial $G\in \mathbb F[X_1,\ldots, X_n]$ satisfies
+% \[
+% \sum_{\vec x \in H_n} G(\vec x) = s.
+% \]
+% % Typically, the multivariate $G$ is a virtual polynomial in several committed multilinears, and its maximum individual degree $d = \max_i \deg_{X_i}(G)$ is at least $2$.
+% We assume that the reader is familiar with it, and only point out the following:
+% For implementation reasons, we consider the sumcheck protocol in \textit{reverse order}, from the last variable $X_n$ down to the first variable $X_1$.
+% In each step,  $k = n, n-1, \ldots, 1$, the prover provides the refinement polynomials $q_k(X)\in \mathbb F[X]^{\leq d_k}$, where $d_k$ is the individual degree of $G$ in $X_k$, and the verifier chooses to continue on the specialized claim $q_k(\lambda_k)$ at a random  $\lambda_k\sample\mathbb F$. 
+% \[
+% q_k(X) = \sum_{(x_{1},\ldots, x_{k-1}) \in H_{k-1}} G(x_1,\ldots, x_{k-1},X,\lambda_{k+1},\ldots, \lambda_n),
+% \]
+
+
+% Although we shall describe our protocols in a self-contained manner, we quickly sketch the sumcheck protocol, as it is a core ingredient of multilinear proof system.
+
+% Before the first round the prover claims the refinement polynomial 
+% \[
+% q_n(X) = \sum_{(x_2,\ldots, x_{n-1}) \in H_{n-1}} G(x_1,\ldots, x_{n-1}, X),
+% \]
+% which is of degree at most $d$.
+% The verifier checks the sanity condition that $s = q_0(0) + q_0(1)$, chooses a random $\lambda_n$, and it asks the prover to prove the specialized claim
+% \[
+% q_n(\lambda_n) = \sum_{(x_2,\ldots, x_n) \in H_{n-1}} G(x_1,\ldots, x_{n-1}, \lambda_n)
+% \]
+% instead.
+% The protocol continues in the same manner, letting the prover provide refinement polynomials
+% \[
+% q_k(X) = \sum_{(x_{1},\ldots, x_{k-1}) \in H_{k-1}} G(x_1,\ldots, x_{k-1},X,\lambda_{k+1},\ldots, \lambda_n),
+% \]
+% for $i=1,\ldots,n-2$ as response of the received challenges $\lambda_2,\ldots, \lambda_{n-1}$.
+% In the last step the verifier samples $\lambda_{n}\sample F$, which eventually reduces the sumcheck claim to that
+% \[
+% q_{n-1}(\lambda_n) = G(\lambda_1,\ldots, \lambda_n), 
+% \]
+% a evaluation claim for the multivariate polynomial $G$ at the random point $\vec \lambda = (\lambda_1,\ldots, \lambda_n)$, comprised of the random challenges received in the course of the protocol.
+% For a detailed treatment of the sumcheck protocol, and its importance to multivariate proofs in general, we refer to the manuscript \cite{Thaler:book} and the references therein.
+
+
+
+\subsection{Properties of interleaved Reed--Solomon codes}
+
+Are RS codes over an extension field. 
+Same rate, same distance.  
+
+
+
+
+\section{The protocol without zero-knowledge}
+\label{s:protocol:no:zk}
+
+In this section we describe the main construction for proving a two-stage R1CS, yet without the additional measures for zero-knowledge.
+The protocol is a combination Spartan \cite{Spartan} and WHIR \cite{WHIR} as a general inner-product argument. 
+We skip the proving the values of the public circuit polynomials, which in \cite{Spartan} is handled by SPARK, and assume that the verifier does compute their values by itself.
+In this way we obtain succinct proof sizes, yet the verifier costs are of the same order as the witness size.
+
+%is being outsourced to the verifier, yielding only succinct proof sizes, yet not a succinct verifier.
+
+% In the following we consider the R1CS stage 1 and 2 witnesses $\vec w_1$ and $\vec w_2$ padded to their next power of two, and hence of twoadic size $2^{m_1}$ and $2^{m_2}$.
+% Without loss in generality we assume that $m_1 \geq m_2$, and we will view $w_2$ padded to the same length via lifting their MLEs.
+% that $2^{m_1}$ matches $2^{k_0}$, the dimension of the largest function space $\mathscr P_{k_0}$ as specified by WHIR.
+
+
+\subsection{Arithmetization.}
+% The R1CS stage 1 and 2 witness vectors $\vec w_1, \vec w_2$ are zero-padded to their next power of two, and placed on the Boolean hypercube of respective size in the common manner.  
+We consider the R1CS witness vectors padded to their next power of two, i.e. as functions
+\[
+w_i: \{0,1\}^{m_i} \longrightarrow \mathbb F_q, \quad i=1,2,
+\]
+%and $w: \{0,1\}^n \longrightarrow F$, 
+and we denote their multilinear extensions again by the same letters.
+Likewise, the number of overall constraints are padded to a power of two, say $2^m$, and we view the R1CS matrices as functions
+\[
+A_i, B_i, C_i: \{0,1\}^m \times \{0,1\}^{m_i} \longrightarrow \mathbb F_q, \quad i =1,2, 
+\]
+with the same notation for their multilinear extensions. 
+
+Throughout the following we assume that $m_1\geq m_2$. 
+% \subsubsection{Lifted R1CS.}
+We lift $w_2$ to the same number of variables as $w_1$, and likewise we do for the second stage matrix polynomials $A_2, B_2, C_2$.
+The resulting system has
+\begin{multline}
+\label{e:combined:witness:poly}
+w(X_0,X_1,\ldots, X_{m_1}) =
+\\
+(1- X_0) \cdot w_1(X_1, \ldots, X_{m_1}) + X_0 \cdot w_2^*(X_{1},\ldots, X_{m_1}),
+\end{multline}
+as the combined witness polynomial, 
+and
+\begin{multline}
+\label{e:combined:matrix:poly}
+M(\vec Y,X_0,X_1,\ldots, X_{m_1}) =
+\\
+(1- X_0) \cdot M_1(\vec Y, X_1, \ldots, X_{m_1}) +
+ X_0 \cdot  M_2^*(\vec Y, X_1,\ldots, X_{m_1}),
+\end{multline}
+for $M=A,B,C$, as the combined matrix polynomials.
+%where $\vec Y=(Y_1,\ldots, Y_m)$, and $M_2^*(\vec Y,\:.\:)$ is the lifting of $M_2(\vec Y,\:.\:)$ to $m_1$ variables.
+
+
+\ulrich{placing of inputs}
+% Again, the multilinear extensions of the complete matrices $M$ and their components $M_1, M_2$ are connected via
+% \begin{multline*}
+% M(\vec Y, X_1,\ldots,X_n) = (1 - X_n)\cdot M_1(\vec Y, X_1, \ldots, X_{n-1}) 
+% \\ + X_n \cdot M_2(\vec Y, X_1, \ldots, X_{n-1}).
+% \end{multline*}
+
+
+
+\subsection{Encoding.}
+
+We encode $w_1$ and $w_2^*$ in interleaved manner, using the same basecode
+\begin{equation}
+\label{e:base:code}
+C = \RS[F,D, 2^{k}],
+\end{equation}
+which corresponds to the first basecode of WHIR.
+(We will discuss the setup of WHIR later.)
+The multilinears $w_1$ and $w_2^*$ are decomposed into $(m_1 - k)$-prefix components, 
+%in the $k$ variables $X_{m_1-k+1}, \ldots$, $X_{m_1}$, 
+% \[
+% w_{i,0}(X_{m_1-k+1},\ldots, X_{m_1}),\ldots, w_{i,e_i-1}(X_{m_1-k+1},\ldots, X_{m_1})
+% \]
+%as in \eqref{e:prefix:decomp}, 
+which are then encoded non-systematically, using their univariate representation from $\mathscr P_{k}$.
+%in the previously described values-to-coefficient regime.
+% \footnotemark
+% \footnotetext{%
+% Given the values $(w_1(i))_{i\in H_{m_1}}$, we reshape it into a matrix of $2^{m_1-k_1}$ rows of length $2^{k_1}$, $(w_1(i + 2^{m_1-k_1}j))_{i,j}$,
+% and encode each of the rows separately, taking the row entries as coefficients of the polynomials.
+% }
+The resulting words 
+\[
+f_1, f_2^* \in C^{e},
+\]
+the interleaved Reed--Solomon code of interleaving depth $e = 2^{m_1-k_1}$, 
+where $f_2^*$ has only $d = 2^{\max\{m_2-k_1,0\}}$ non-zero components. 
+(These are the prefix embeddings of the $d$ components of $w_2$.)
+Thus committing to the lifted $w_2^*$ causes no overhead compared to $w_2$, given that $m_2 \geq k$.
+% Whenever $m_2$ is smaller than $k$, we will work with lifted commitments.
+
+
+% assuming that $m_i\geq k$. 
+
+
+% This amounts to decomposing the combined witness polynomial into 
+% \begin{align*}
+% w(X_1,\ldots, X_{m_1 + 1}) = w(X_1,\ldots, X_k, \vec y)    
+% \end{align*}
+
+
+
+% While the setup of WHIR will be so that $m_1 \geq k$, which is typically the larger witness, it may happen that the second stage witness is smaller than the message length of $C$. 
+% In this case we use \textit{lifting}, which we decribe next.
+
+% \ulrich{%
+% More elegant: Let us lift $p_2(X)$ to $p_2(X^{e})\in\mathscr P_{m_1}$ with $e=2^{m_1 - m_2}$, and decompose it into $\mathscr P_{k_1}$-components.
+% If $m_2 < k_1$, i.e. $e > e_1$, we should end up with the lifting as described below:
+% There $p_2^*(X) = p_2(X^{e_1 \cdot 2^{k_2 - m_2}}) $
+% \[
+% p_2(X^e) = p_2((X^{e_1})^{e/e_1})
+% \]
+% gives
+% \[
+% p_{2,1}(Y) = p_2(Y^{e/e_1}) = p_2(Y^{2^{m_1-m_2-m1+k_1}}) = p_2(Y^{2^{k_1 - m_2}}).
+% \]
+% But we do not want to commit that over $D_1$.
+% }
+
+
+\subsubsection{Lifting small commitments.}
+Whenever $m_2 < k$, we commit the univariate representation $u_{2}(X)$ of $w_2$ over a projection of $D$, the image of the multiplicative homomorphism
+\begin{equation}
+\label{e:projection}
+\pi: D \longrightarrow \pi(D),\quad x\mapsto x^{2^{k_1 - m_2}}.
+\end{equation}
+Since $D$ is an FFT domain, the map is $2^{k - m_2}$-to-$1$ and onto.
+The committed word $f_2 \in \mathbb F^{D'}$ is from the smaller code
+\begin{equation}
+\label{e:projected:code}
+C' := \RS[F, D', 2^{m_2}],
+\end{equation}
+which has the same relative rate as $C$.
+The lifted word
+\begin{equation}
+\label{e:lifting:uni}
+f_2^*(x) =  f_2(\pi(x)) %= f_2 (x^{2^{k-m_2}})
+\end{equation}
+belongs to $C$, since $u_2^*(X) = u_2(X^{2^{k-m_2}})$ is of degree less than $2^{k}$.
+%
+By means of the projection $\pi$ we simulate $f_2^*\in C$ without paying the price of committing over the larger domain.
+
+
+\begin{rem}
+As noted in Remark~\ref{rem:postfix:decomp}, the current implementation employs a postfix decomposition. However, liftings of the corresponding univariate polynomials are naturally expressed in terms of prefix embeddings, resulting in a somewhat inelegant mixture of prefix and postfix terminology.
+\end{rem}
+
+% \ulrich{Ref to Ligerito and zook}
+%(See Section \ref{s:WHIR} for details.)
+
+% We use the same commit principle on application layer (i.e. on top of WHIR) for polynomials from \textit{any} $\mathscr P = \mathscr P_k$, 
+% \[
+% \mathscr P_0 \supseteq \mathscr P \supsetneq \mathscr P_{k_r},
+% \]
+% not necessarily matching one of the spaces in \eqref{e:chain:function:spaces}: 
+% %as interleaved codeword with one of the base codes $C_1,\ldots, C_r$. 
+% %from one of the spaces in \eqref{e:chain:function:spaces}.
+% Take the unique $i$ so that $\mathscr P_{k_i}\supseteq \mathscr P \supsetneq \mathscr P_{k_{i+1}}$,
+% and denote the co-dimension of $\mathscr P_{k_{i+1}}$ in $\mathscr P$ by
+% \begin{equation}
+% e = \dim(\mathscr P/\mathscr P_{k_{i+1}}).
+% %= 2^{k_{i} - k_{i+1}},
+% \end{equation}
+% The FFT-decomposition of any $p(X) \in \mathscr P$ into 
+% %a vector of $e_i$ polynomials $p_1(X),\ldots, p_{e_i}(X)$ from $\mathscr P_{i+1}$,
+% \begin{align}
+% \label{e:FFT:decomp}
+% p(X) = p_1(X^e) + X\cdot p_2(X^e) + \ldots + X^{e - 1}\cdot p_{e}(X^e),
+% \end{align}
+% defines a linear identity
+% \begin{equation}
+% \label{e:FFT:decomp:identity}
+% \mathscr P \simeq \mathscr P_{k_{i+1}}^{e},    
+% \end{equation}
+% %
+% and with this identity we commit $p(X)\in\mathscr P$ as word from 
+% \begin{align}
+% %\label{e:C_i}
+% C_{k_{i+1}}^e 
+% &= 
+% \left\{
+% [c_1(x),\ldots, c_{e}(x)]\big|_{x\in D_{i+1}} \::\: \text{all }c_j \in C_{k_{i+1}}
+% \right\}.
+% \end{align}
+%\ulrich{Maybe}
+% The codes $C_1,\ldots, C_r$ generated by the spaces $\mathscr P_{k_1}, \ldots \mathscr P_{k_r}$ over the domains $D_1, \ldots, D_r$, are the base codes of our scheme. 
+% Their minimum distance is
+% \begin{equation}
+% \label{e:min:dist:baseCode}
+% \delta(C_i) = 1 - \rho(C_i) - \frac{1}{|D_i|},  
+% \end{equation}
+% where
+% \begin{equation}
+% \label{e:rate:baseCode}
+% \rho(C_i) = \frac{2^{k_{i}}}{|D_i|} = 2^{k_{i}- n_{i}}
+% \end{equation}
+% is the relative rate.
+% \ulrich{%
+% Maybe add blow-up factors?
+% }
+
+
+
+
+
+\subsection{The IOPP}
+
+
+%Both witnesses will be committed as described above, as interleaved codeword with base code one of the $C_1,\ldots, C_r$ from \eqref{e:base:codes}.
+
+% In many of our applications, the second stage witness is not much smaller than the first, $m_1 = m_2 + 1$, but we will not make use of this fact.
+
+
+%The complete witness $\vec w = \vec w_1 \| \vec w_2$ is then of size $N=2^n$.
+
+
+% The WHIR function spaces $\mathscr P_{k_0}$, \ldots $\mathscr P_{k_r}$ can be chosen freely, except that $k_0 = m_1$, so that $\mathscr P_{k_0}$ matches the size of the witness $w_1$.
+% The size of $w_2$ either matches the dimension of one of these spaces, or an intermediate power of them. 
+% Take $j_2 \in \{k_1, \ldots, k_r\} $ as the unique value so that $m_2 \in (k_{j_2}, k_{j_2 - 1}]$. 
+% Then the univariate representation
+% \[
+% w_2(X) \in \mathscr P_{k_{j_2}}^{e_{j_2}'},
+% \]
+% with intermediate exponent $e_{j_2}' = 2^{m_2 - k_{j_2}}$ from $(1, e_{j_2}]$. 
+% % 2^m_2 = e_{j_2}' \cdot 2^{k_{j_2}}
+% We commit it as word from the interleaved code $C_{k_{j_2}}^{e_{j_2}'}$. 
+% \ulrich{This needs to be moved to function spaces and codes.}
+
+
+
+
+
+% \subsubsection{Commitments.}
+% First stage witness $w_1$ is committed as codeword from $C_1^{e_0}$, i.e. $k_1\cdot e_1 = 2^{n_1}$ and 
+% $w_2$ is committed as codeword from one of the $C_i$, with interleaving depth as in $C_i$, or less (as long as a power of two).
+
+
+
+% The witnesses $w_1$ and $w_2$ are committed as Reed-Solomon codewords from
+% \[
+% C_{i} = \RS[F, D_i, 2^{n_i}] = \{p(x)|_{x\in D_i} \::\: p \in F[X]^{<2^{n_i}} \}, \quad i=1,2,
+% \]
+% respectively, of possible different rate, and so that their evaluation domains are WHIR compatible, i.e. $D_2 \cap \pi^{n_1-n_2}(D_1) =\varnothing$ whenever $n_2 < n_1$.
+% \ulrich{%
+% Not sure if this is the best setting. 
+% This depends very much how we take the different withness lengths into account in WHIR. 
+% I think that a constant rate, and projection-consistent domain, choice is the better way to present it here. 
+% }
+
+
+
+
+% \subsubsection{The proof of proximity.}
+Given the commitment of $w_1$ as interleaved word $f_1$ on $D$, and proximity parameter $\theta\in (0,1)$, the target of the protocol is to show that $f_1$ is $\theta$-close to a solution of our augmented constraint system, characterized by  $\mathscr R_{main}$ and $\mathscr R_{aux}$ and the inputs $\vec{in} = (in_1,\ldots, in_{t_1})$.
+%
+% Recall that we use the values-to-coefficients regime, hence 
+That is, we want to prove that the committed function belongs to
+\begin{equation}
+\label{e:IOPP:main:R:0}
+\mathcal R_\theta = \left\{
+    f\in \left(\mathbb F_q^{D}\right)^{e} \::\:
+    \begin{matrix}
+    \exists p(X) = \sum_{i=0}^{2^{m_1}- 1} c_i X^i,  %\in \mathbb F_q[X]^{<2^{m_1}}, 
+    d(p, f) \leq \theta,
+    \\
+    \text{ with }
+    \\
+    (c_i)  \in \mathscr R_{main} \cap \mathscr R_{aux},
+    \\
+    (c_1,\ldots,c_{t_1}) = \vec{in}
+    \end{matrix}
+\right\},
+\end{equation}
+where $d(p,f)$ refers to the interleaved representation of $p(X)$ as  $e = 2^{m_1-k}$ component polynomials of degree $< 2^{k}$.
+The protocol is divided into three phases.
+
+\paragraph{Phase 1.}
+The first phase is devoted to the second stage of the R1CS.
+The prover receives the stage-2 challenge $\vec\xi\sample\mathbb F_q^{t_2}$ from the verifier, and responds with the commitment of the lifted witness $w_2^*(X_1,\ldots, X_{m_1})$.
+% In this phase we apply the well-known DEEP principle \cite{DEEPFRI} to simplify the soundness analysis in the heterogeneous setting, where the base codes for $\vec w_1$ and $\vec w_2$ are different.  
+% We ask the prover for the value of the committed polynomials at random out-of-domain points $z_1$ and $z_2$, respectively.
+% Then with high probability, the claimed values narrow down the prover to a single proximate polynomial for each of the commitments, mitigating quadratic expressions in the list size. 
+% (See below for a more in-depth discussion of the technique.)
+% %Since we only deal with two witnesses, the impact on proof sizes is negligible.
+% %
+% The correctness of the claims, rephrased as the inner-product constraints 
+% %for the univariate opening claims
+% \begin{equation}
+% \label{e:witnesses:DEEP:eval}
+% v_i = \sum_{\vec x \in H_{m_i}} L_{z_i}(\vec x)\cdot w_i(\vec x), \quad i = 1,2,
+% \end{equation}
+% with the multivariate representation of the univariate Lagrangians (recall \eqref{e:uni:Lagrangian:multi:rep}) are attested later on by  WHIR.
+% (Here $L_{z_i}$ is the multilinear representation of the univariate Lagrangian ź, see equation \eqref{e:uni:Lagrangian:multi:rep}.
+%(We use the same notation for the two.)
+
+% \begin{equation}
+% \label{e:IOPP:main:R:phase:1}
+% \mathcal R_{1} = \left\{
+%     f\in \left(\mathbb F_q^{D_1}\right)^{e_1} \::\:
+%     \begin{matrix}
+%     \exists p(X) = \sum_{i=0}^{2^{m_1}-1} c_i \cdot X^i \in \mathscr P_{m_1}, 
+%     \\
+%     d((p_1,\ldots, p_{e_1}), (f_1,\ldots, f_{e_1})) \leq \theta,
+%     \\
+%     % \text{coeffs of }p(X) 
+%     (c_i)\in \mathscr R_{R1CS} \cap \mathscr R_{lookup}
+%     \end{matrix}
+% \right\},
+% \end{equation}
+
+\paragraph{Phase 2.}
+The Spartan zero-check.
+We prove constraint satisfaction of the multilinears
+\begin{align}
+\label{e:a:poly}
+w_M(\vec Y) &= 
+\sum_{\vec x\in H_{m_1+1}} M(\vec Y, \vec x)\cdot w(\vec x), 
+\\\notag
+&= \sum_{\vec x\in H_{m_1}} M_1(\vec Y, \vec x)\cdot w_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec Y,\vec x) \cdot w_2^*(\vec x)
+\\\notag
+&= \sum_{\vec x\in H_{m_2}} M_1(\vec Y, \vec x)\cdot w_1(\vec x) + \sum_{\vec x\in H_{m_2}} M_2(\vec Y,\vec x) \cdot w_2(\vec x),
+% \quad 
+% b(\vec Y) = 
+% \sum_{\vec x\in H_{m_1+ 1}} B(\vec Y, \vec x)\cdot w(\vec x), 
+% \\
+% c(\vec Y) =
+% \sum_{\vec x\in H_{m_1+1}} C(\vec Y, \vec x)\cdot w(\vec x),
+\end{align}
+for $M=A,B,C$.
+% \begin{equation}
+% \label{e:a:poly}
+% \begin{aligned}
+% a(\vec Y) = 
+% \sum_{\vec x\in H_{m_1+1}} A(\vec Y, \vec x)\cdot w(\vec x), 
+% \quad 
+% b(\vec Y) = 
+% \sum_{\vec x\in H_{m_1+ 1}} B(\vec Y, \vec x)\cdot w(\vec x), 
+% \\
+% c(\vec Y) =
+% \sum_{\vec x\in H_{m_1+1}} C(\vec Y, \vec x)\cdot w(\vec x),
+% \end{aligned}
+% \end{equation}
+%which are uniquely determined by the commitments of $w_1$ and $w_2^*$.
+%
+For showing that
+\begin{equation*}
+% \label{e:R1CS:domain:identity}
+w_A(\vec y)\cdot w_B(\vec y) - w_C(\vec y) = 0, \quad \text{for all }\vec y \in H_m.
+\end{equation*}
+we run the sumcheck protocol on its inner product with $eq(\:.\:,\vec\rho)$, where $\vec\rho\sample F^m$ is random.
+% %of the quadratic expression $a(\vec y)\cdot b(\vec y) - c(\vec y)$ with 
+% \begin{equation*}
+% % \label{e:R1CS:zerocheck}
+% \sum_{\vec y\in H_m} \left(a(\vec y)\cdot b(\vec y) - c(\vec y)\right) \cdot eq(\vec y, \vec \rho) = 0,
+% \end{equation*}
+% where $eq(\vec y,\vec\rho)$ is 
+% the $m$-dimensional Lagrangian $eq(\vec y, \vec\rho)$ at a random $\vec \rho\sample F^{m}$ sampled by the verifier.
+% The sumcheck protocol 
+This reduces the above claim to evaluation claims 
+\begin{equation}
+\label{e:image:polys:evals}
+v_a = w_A(\vec \alpha),\quad v_b = w_B(\vec\alpha),\quad v_c = w_C(\vec\alpha),
+\end{equation}
+where  $\vec\alpha\in F^m$ are the verifier challenges drawn in the course of the sumcheck rounds.
+% (The value $eq(\vec\alpha, \vec \rho)$ is public and can be computed cheaply.)
+%and efficiently computable in $O(m)$ steps.) 
+
+% To prove the claims
+% \begin{align*}
+% v_a &= \sum_{\vec x\in H_n} A(\vec \alpha, \vec x)\cdot w(\vec x), \quad v_b = \sum_{\vec x\in H_n} B(\vec \alpha, \vec x)\cdot w(\vec x)
+% \\
+% v_c &= \sum_{\vec x\in H_n} C(\vec \alpha, \vec x)\cdot w(\vec x),
+% \end{align*}
+% together with the consistency constraints with respect to the public circuit inputs, including constants and the logUp challenges,
+% \begin{align*}
+% \vec {in}_j &= \sum_{\vec x\in H_n} eq(j, \vec x)\cdot w(\vec x), \quad j=0,\ldots,I,
+% \\
+% \alpha_j &= \sum_{\vec x\in H_n} eq(2^{n-1} + j,\vec x) \cdot w(\vec x), \quad j= 0,\ldots,k
+% \end{align*}
+
+\paragraph{Phase 3.}
+The third phase of the protocol is devoted to proving the linear claims \eqref{e:image:polys:evals}, which is done by WHIR on the combined witness $w$.
+For public input and challenge consistency, we further add the constraints
+\begin{align}
+\label{e:input:w1:constraint}
+in_j &= \sum_{\vec x\in H_{m_1}} eq(j,\vec x)\cdot w_1(\vec x), \quad j=0,\ldots, t_1,
+\\
+\label{e:input:w2:constraint}
+\xi_j & = \sum_{\vec x\in H_{m_1}} eq^*(j,\vec x)\cdot w_2^*(\vec x), \quad j=0,\ldots, t_2,
+\end{align}
+% \albert{Where are these alpha's in the prefix of $w_2$ coming from? Oh ok they are logUp challenges. Why is there a tuple of challenges and not one?} 
+% \ulrich{%
+% Usually, you have one logUp challenge for the point, where the fractions are evaluated at, and other challenges for compressing vectors into scalars, and sometimes even for domain separation (but I do not know whether we do the latter with randomness).
+% }
+where $\vec\xi = (\xi_1,\ldots, \xi_{t_2})$ are the challenges drawn in the second stage of the R1CS.
+The WHIR proof of proximity eventually reduces the linear claims on $w$ to claims on the combined matrix polynomials, which need to be checked by the verifier at full expense.
+
+Let us give the formal description of our IOPP. 
+For simplicity we assume that 
+\[
+t_1 = t_2 = t.
+\]
+Recall that $m_1\geq m_2$.
+
+% \begin{equation}
+% \label{e:split:matrix:values}
+% A(\vec\alpha,\vec\beta), 
+% \quad 
+% B(\vec\alpha,\vec\beta), 
+% \quad 
+% C(\vec\alpha,\vec\beta),
+% \end{equation}
+%and those of the involved Lagrangians $L_z(\vec\beta)$ and $eq(j,\vec \beta)$, 
+
+
+% As we emphasized before, we do not target a succinct verifier and leave the verification of \eqref{e:split:matrix:values} to the verifier, instead of providing a separate proof for it.
+
+
+\begin{protocol}[Main IOPP]
+\label{prot:main}
+The R1CS matrices $A_i,B_i,C_i \in \mathbb F_q^{m\times m_i}$, $i=1,2$, and public inputs $\vec{in} = (in_0,\ldots, in_{t})\in \mathbb F_q^t$ are known to both the prover and the verifier. 
+The prover has committed to the first-stage witness $\vec w_1\in \mathbb F_q^{m_1}$ as interleaved Reed--Solomon codeword $f_1\in C^e$ as described above, and provided the verifier oracle access.
+\begin{enumerate}
+\item
+\label{i:main:phase:1}
+R1CS second stage:
+% \begin{enumerate}
+% \item
+% \label{i:main:DEEP:w1}
+% The verifier sends a random $z_1\sample F$ to the prover, which answers with the value $v_1$ of the univariate representation $w_1(X)$ at $z_1$.
+% %
+% \item
+% \label{i:main:logUp}
+The verifier samples the stage-2 challenge
+\[
+\vec\xi \sample \mathbb F_q^{t}
+\]
+and sends them to the prover.
+The prover computes $\vec w_2 \in \mathbb F_q^{m_2}$  the second-stage witness of the R1CS, commits to it as codeword $f_2\in C^e$, as described above, and provides the verifier oracle access.
+%(the logUp inverses and their sums), 
+% commits to it as interleaved Reed--Solomon codeword $f_2$ associated with $\mathscr P_{m_2}(\mathbb F_q)$, and provides the verifier oracle access. 
+%
+% \item 
+% \label{i:main:DEEP:w2}
+% The verifier sends a random $z_2\sample F$ to the prover, which answers with the value of the univariate representation $w_2(X)$ at $z_2$.
+% \end{enumerate}
+%answers with the logUp R1CS witnesses $\vec w_2$, so that the 
+
+\item 
+\label{i:main:phase:2}
+R1CS zero-check:
+% Both prover and verifier engage in a \textit{zero-check} for the domain identity
+% \begin{equation}
+% a(\vec x) \cdot b(\vec x) = c(\vec x), \quad \vec x\in H_n = \{0,1\}^n
+% \end{equation}
+% where $a, b$ and $c$ are the multilinear extensions of the implicitly committed matrix-images
+% \[
+% \vec a = A\cdot \vec w, \vec b = B\cdot \vec w, \vec c = C\cdot \vec w.
+% \]
+The verifier sends a random 
+\[
+\vec\rho \sample F^m,
+\]
+and both prover and verifier engage in the sumcheck protocol for %the R1CS constraints
+\begin{align}
+\label{e:R1CS:zerocheck}
+\sum_{\vec x\in H_m} \left(w_A(\vec x)\cdot w_B(\vec x) - w_C(\vec x)\right)\cdot eq(\vec x, \vec\rho) = 0,
+\end{align}
+where $w_A(\vec x), w_B(\vec x), w_C(\vec x)$ are the multilinears as specified in \eqref{e:a:poly}.
+After the last round of the sumcheck, the prover sends 
+% (The protocol reduces the claim on the hypercube sum \eqref{e:R1CS:zerocheck} to a quadratic check on the evaluation claims 
+\begin{equation*}
+v_A = w_A(\vec\alpha),  \quad v_B = w_B(\vec\alpha), \quad v_C = w_C(\vec\alpha),
+\end{equation*}
+where $\vec\alpha \in F^m$ are the verifier challenges drawn in the course of the sumcheck, and the verifier checks if 
+$q_m(\alpha_m) = (v_A\cdot v_B - v_C) \cdot eq(\alpha,\rho).
+%These claims are announced by the prover in the last round. 
+
+\item 
+\label{i:main:phase:3}
+WHIR: 
+% The verifier samples a random $\lambda\sample F$, 
+Both prover and verifier run WHIR for the following linear constraints on the combined witness polynomial $w$:
+\begin{align}
+\label{e:phase3:claim:vM}
+v_M = \sum_{\vec x\in H_{m_1}} M_1(\vec\alpha, \vec x) \cdot w_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec\alpha,\vec x)\cdot w_2^*(\vec x)
+\end{align}
+with $M = A,B,C$, and
+\begin{align}
+\label{e:phase3:claim:inputs}
+in_i = \sum_{\vec x \in H_{m_1}} eq(i, \vec x) \cdot w_1(\vec x),
+\quad 
+\xi_i = \sum_{\vec x \in H_{m_2}} eq^*(i, \vec x) \cdot w_2^*(\vec x),
+\end{align}
+for $i = 0,\ldots, t$.
+% (The concrete form of the linear combination is described below.)
+(This phase reduces the validity of the linear constraints to claims on the combined matrix polynomials
+\begin{equation}
+\label{e:split:matrix:values}
+A(\vec\alpha,\vec\beta), 
+\quad 
+B(\vec\alpha,\vec\beta), 
+\quad 
+C(\vec\alpha,\vec\beta),
+\end{equation}
+where $\vec\beta \in F^{m_1}$ are the folding randomnesses drawn in the course of WHIR.)
+\end{enumerate}
+If all verifier checks in Phase \ref{i:main:phase:2} and Phase \ref{i:main:phase:3}, including that of the final matrix values \eqref{e:split:matrix:values}, pass, then the verifier accepts.
+Otherwise, it rejects.
+\end{protocol}
+
+% The three claims \eqref{e:phase3:claim:vM} and \eqref{e:phase3:claim:inputs} are of inner products of $w$ 
+% with the kernels
+% \[
+% K_M = (1-X_0) \cdot M_1(\vec\alpha,X_1,\ldots, X_{m_1}) + X_0\cdot M_2^*(X_1,\ldots, X_{m_1}), 
+% \]
+% $M=A,B,C$, and
+% \begin{align*}
+% K_{1,i} &= (1-X_0)\cdot  eq(i,X_1,\ldots, X_{m_1}), 
+% \\
+% K_{2,i} &= X_0\cdot eq^*(i,X_1,\ldots, X_{m_1}),
+% \end{align*}
+% for $i=0,\ldots, t$.
+%The three claims \eqref{e:phase3:claim:vM} and \eqref{e:phase3:claim:inputs}  are combined into a single linear claim on $w$, 
+Note that computing the matrix values \eqref{e:split:matrix:values} requires $O(n)$ field operations, where $n$ is the maximum number of non-zero entries in the R1CS matrices. 
+While these values can be proven via the SPARK polynomial commitment scheme for sparse multilinears \cite{Spartan}, our main use case pivots for letting the verifier take the burden of matrix evaluation.
+
+\begin{rem}
+If WHIR is configured to consume only $m_1-k_r$ variables, for some small $k_r$, then the matrix polynomials in the final WHIR claim are specialized to $M(\vec\alpha, \vec\beta\|\:.\:)$, $M=A,B,C$, which are multilinears in the remaining $k_r$ variables. 
+\end{rem}
+
+% \paragraph{The combined inner product claim.} 
+
+% The above mentioned linear combination of the claims \eqref{e:phase3:claim:vM} and \eqref{e:phase3:claim:inputs} is follows. 
+% %Let us roll out the concrete form of the linearly combined constraints, in terms of the component polynomials:
+% \begin{align}
+% \label{e:combined:claim}
+% v 
+% &=\sum_{\vec x\in H_{m_1}} K_1(\vec \alpha, \vec x)\cdot w_1(\vec x)
+% + \sum_{\vec x\in H_{m_1}} K_2^*(\vec\alpha,\vec x)\cdot w_2^*(\vec x), 
+% \end{align}
+% where
+% \begin{align}
+% K_1(\vec\alpha,\:.\:) &= A_1(\vec\alpha, \:.\:)  + \lambda B_1(\vec\alpha, \:.\:)  + \lambda^2 C_1(\vec\alpha, \:.\:)  
+% + \lambda^3 \sum_{i=0}^{t-1} \lambda^i\cdot eq(i,\:.\:)
+% \\
+% K_2(\vec\alpha,\:.\:) &= A_2(\vec\alpha, \:.\:)  + \lambda B_2(\vec\alpha, \:.\:)  + \lambda^2 C_1(\vec\alpha, \:.\:)  
+% + \lambda^{3+t} \sum_{i=0}^{t-1} \lambda^i\cdot eq(i,\:.\:)
+% \end{align}
+% and
+% \begin{align*}
+% v = v_A + \lambda\cdot v_B + \lambda^2\cdot v_C + \lambda^{3}\sum_{i=0}^{t} \lambda^{i}\cdot in_i + \lambda^{3+t}\sum_{i=0}^t \lambda^{i} \cdot\xi_i.
+% \end{align*}
+% Note that \eqref{e:combined:claim} is an inner product $v = \langle K, w\rangle_{H_{m_1 + 1}}$ of the combined witness polynomials $w = (1-X_0) w_1 + X_0 w_2^*$ with the combined kernel $K = (1-X_0) K_1(\alpha,\:.\:) + X_0 K_2^*(\alpha,\:.\:)$.
+
+
+
+
+
+\subsection{Soundness.}
+Without specifying the corresponding soundness notions,
+let us informally state the soundness guarantees of the protocol, for proximity parameters up to the Johnson radius.
+This means that $\theta$ as in the main relation \eqref{e:IOPP:main:R:0} satisfies
+\[
+\theta \in \left(0, 1 -\sqrt{1 - \delta_1}\right),
+\]
+where $\delta_1$ is the relative minimum distance of the base code $C_1 = C$. 
+% At these distance $\theta$, the number of proximates to a 
+The corresponding list size bound is
+\[
+\ell_1(\theta) =  \frac{1}{2 \sqrt{1-\delta_1}} \cdot \frac{1}{\eta},
+\]
+the combinatorial Johnson bound, with  $\eta =1 - \sqrt{1 - \delta_1} - \theta$.
+WHIR with $r$ rounds involves the further Reed--Solomon codes $C_2,\ldots, C_r$, with each round having its own proximity parameter $\theta_i$, again assumed to be within the Johnson radius. 
+(See Section \ref{s:WHIR}.)
+
+
+
+% \[
+% J(C_i) = 1 - \sqrt{1 - \delta(C_i)},
+% \]
+% of the base codes $C_1,\ldots, C_r$ used in WHIR. 
+% By the Johnson bound, the number of proximate codewords at given distance is then
+% \[
+% \ell(\theta) < \frac{1}{2 \sqrt{1-\delta}} \cdot \frac{1}{\eta},
+% \]
+% where is the gap to the Johnson radius. 
+% We do that 
+
+\begin{thm}
+\label{thm:main:soundness:informal}
+For proximity parameters $\theta_i\in \left(0, 1 - \sqrt{1-\delta_i} \right)$, $i=1,2,\ldots, r$, where $\delta_i$ are the minimum distances of the Reed--Solomon codes $C_1$, \ldots, $C_r$.
+Protocol \ref{prot:main} is a round-by-round knowledge sound interactive oracle proof for that $f_1\in \mathcal R_{\theta_1}$ as specified in \eqref{e:IOPP:main:R:0}, with the following overall soundness error for the three phases:
+\begin{align}
+\label{e:phase1:soundness:error}
+\varepsilon_\text{phase 1} 
+&\leq 
+    % % \max\left( 
+    % \binom{\ell_ 1}{2} \cdot \frac{2^{m_1}}{|F|} %\quad
+    % + \ell_2\cdot \varepsilon_{stage 2} %\quad
+    % + \binom{\ell_2}{2} \cdot \frac{2^{m_2}}{|F|},
+    % % \max\right)
+    \ell_1(\theta_1) \cdot \varepsilon_\text{R1CS} 
+\\\intertext{%
+where $\varepsilon_{R1CS}$ is the soundness error of the randomized AIR, 
+}\label{e:phase2:soundness:error}
+\varepsilon_\text{phase 2}  
+&\leq \ell_1(\theta_1) \cdot \max\left\{\frac{m}{|F|}, \frac{3}{|F|}\right\},
+\end{align}
+and $\varepsilon_\text{phase 3} \leq 
+%\ell_1\cdot \frac{3 + 2t - 1}{|F|} + 
+\varepsilon_\text{WHIR}(\theta_1,\ldots, \theta_r)$ for the overall soundness error of WHIR with $r$ rounds on the inner product claims \eqref{e:phase3:claim:vM} and \eqref{e:phase3:claim:inputs}.
+\end{thm}
+
+
+
+% \begin{rem}
+% Whenever the commitments $f_1$, $f_2$ belong to the same base code, and hence are absorbed in the same folding step of WHIR, the quadratic behavior in the list size is reduced to $\varepsilon_\text{phase 1} \leq \ell_1 \cdot \varepsilon_{stage 2}$ and $\varepsilon_\text{phase 2} \leq \ell_1\cdot \left(\frac{m}{|F|} + m\cdot \frac{3}{|F|}\right)$, since in this case, WHIR proves correlated agreement.
+% See the discussion below.
+% \end{rem}
+
+% The soundness analysis behind Theorem \ref{thm:soundness:main:informal} is largely standard.
+% Nevertheless we quickly discuss the soundness errors of the phases, and how lifting plays into it.
+% (The role of lifting)
+% \begin{equation}
+% \label{e:IOPP:main:R:0}
+% \mathcal R_\theta = \left\{
+%     f_1\in \left(\mathbb F_q^{D}\right)^{e} \::\:
+%     \begin{matrix}
+%     \exists p(X) = \sum_{i=0}^{2^{m_1}- 1} c_i X^i,  %\in \mathbb F_q[X]^{<2^{m_1}}, 
+%     d(p, f) \leq \theta,
+%     \\
+%     \text{ with }
+%     \\
+%     (c_i)  \in \mathscr R_{main} \cap \mathscr R_{aux},
+%     \\
+%     (c_1,\ldots,c_{t_1}) = \vec{in}
+%     \end{matrix}
+% \right\},
+% \end{equation}
+
+Let us roughly sketch the analysis behind Theorem \ref{thm:main:soundness:informal}.
+First of all, the entire protocol aims to prove a proximate solution of the \textit{lifted} R1CS, specified by $A_1, B_1, C_1$ and the prefix-embedded second stage matrices $A_2^*, B_2^*, C_2^*$.
+%which have the same number of columns as the first stage matrices.
+%padded to the same number of columns as the first stage matrices.
+% Unlike in \cite{lifted:FRI},
+Unlike in certain univariate arithmetizations, see \cite{liftedFRI}, lifting by prefix-embedding does not change the circuit logic -- it only introduces variables that are never used.
+The lifted system has the same soundness error as the original one, i.e. $\varepsilon_{R1CS^*} = \varepsilon_{R1CS}$, and from the point of view of $w_1$, it is equivalent to ask for a second stage response satisfying the lifted system, or a smaller witness satisfying the original system.\footnotemark
+\footnotetext{%
+In fact, a solution of the non-lifted system is simply obtained by truncation.
+}
+This is the reason why Phase 1 is a randomized reduction from the main claim $f_1\in \mathcal R_{\theta_1}$ to that the extended prover transcript $(f_1, f_2^*)$ belongs to 
+\begin{align*}
+\mathcal R_\text{phase 1} 
+&=
+\left\{
+    \begin{matrix}
+        f_1 \in \left(\mathbb F_q^{D}\right)^{e},% v_1\in F 
+        \\
+        f_2^* \in \left(\mathbb F_q^{D}\right)^{e}%, v_2\in F 
+    \end{matrix}
+    \::\:
+    % \hspace*{-0.25cm}
+    \begin{matrix}
+        \exists (p_1(X),p_2(X)) \in \mathscr P_{m_1}^2 %\times \mathscr P_{m_1}
+        \\
+        d((p_1,p_2), (f_1,f_2^*)) \leq \theta_1,
+        % \\
+        % p_1(z_1) = v_1, p_2(z_2) = v_2.
+        \\
+        \text{and their coefficient vectors}
+        \\
+        (\vec c_1, \vec c_2) \text{ satisfy the lifted R1CS }
+        \\
+        \text{on inputs }\vec{in} , \vec\xi 
+    \end{matrix}
+\right\}.
+\end{align*}
+(Here, the distance refers to the interleaved representation of $p_1$ and $p_2$.)
+%The latter will be ensured by Phase 2 and Phase 3 of the protocol.
+Note, that the proximate $p_2(X)$ is not demanded of lifted form, in other words, it is not asked to stem from a $\theta_1$-proximate of the non-lifted word $f_2$ on $D'$.
+(In fact, we do not rule out that $f_2$ is not as close to $C'$.)
+A usual pigeon-hole argument on the number of $\theta_1$-proximates of $(f_1,f_2^*)$ bounds the soundness error of this reduction by
+\[
+\ell_1(\theta_1) \cdot \varepsilon_{R1CS^*} = \ell_1(\theta_1)\cdot \varepsilon_{R1CS},
+\]
+as stated in the theorem.
+% Having a solution to the lifted R1CS is 
+
+% It simply demands any proximate $(p_1(X), p_2(X))$ of $(f_1,f_2^*)$ which solves the \textit{lifted} R1CS,  however, truncation  automatically yields a solution of the non-lifted constraint system. 
+% Thus we may use $\varepsilon_{R1CS}$ of the non-lifted system to argue the soundness error of Phase 1, scaled by $\ell_1(\theta_1)$ due to the usual pigeon-hole principle.
+% Therefore, if the prover is able to respond on more than $\ell_1(\theta_1)\cdot \varepsilon_\text{R1CS}\cdot |F^t|$ many challenges $\vec\xi$ with a function $f_2^*$ so that $(f_1, f_2^*)\in \mathscr R_\text{phase 1}$, then by the pigeon-hole principle, at least one of the $\theta_1$-proximates of $f_1$ must have more than $\varepsilon_\text{R1CS}\cdot |F^t|$ many continuations which solves the non-lifted R1CS.
+
+% The error for Phase 1 is the soundness error of randomized R1CS, scaled by the number of proximates of the committed functions. 
+% Since both $f_1$ and $f_2$ are committed over the same base code, we view them as elements of the extended interleaved code
+% \[
+% (f_1,f_2)\in C_1^{2e},
+% \]
+% and $\ell_1$ is the list size bound at distance $\theta_1$, inherited from the base code $C_1$.
+% WHIR will enforce correlated agreement between the components of the two, formally words of the interleaved code $C_1^{2e}$. 
+% In general, $f_1$ and $f_2$ belong to different base codes, and we assume all combinations of the proximates,
+% \[
+% \ell_1 \cdot \ell_2
+% \]
+% as a crude upper bound for the proximates of the pair of commitments.
+% Although we believe that a cross-domain analysis in the style of \cite{Stwo:whitepaper} can be extended to WHIR, thereby reducing this term, we do not pursue this direction here due to the substantial technical challenges involved.
+% Our extension field $F$ provides enough security margin to handle quadratic (or even cubic) products of list sizes.
+The same list size bound also scales the soundness errors of Phase 2, which is a reduction from $\mathcal R_\text{phase 1}$ to that the prover transcript $f_1,f_2^*$, extended by its proposed sumcheck polynomials $q_1(X),\ldots, q_m(X)$ and the final claims $v_A, v_B, v_C$, belongs to 
+\begin{equation*}
+\mathcal R_\text{phase 2} =
+\left\{
+    \begin{matrix}
+        f_1 \in \left(\mathbb F_q^{D}\right)^{e}, %v_1\in F 
+        \\
+        f_2^* \in \left(\mathbb F_q^{D}\right)^{e_2}, %v_2\in F 
+        \\
+        q_1(X), \ldots, q_m(X) \in F[X]^{\leq 3}
+        \\
+        v_A, v_B, v_C \in F
+    \end{matrix}
+    \::\:
+    \hspace*{-10mm}
+    \begin{matrix}
+        \exists (p_1(X),p_2(X)) \in \mathscr P_{m_1}^2
+        \\
+        d((p_1,p_2), (f_1,f_2^*)) \leq \theta_1,
+        \\\text{and}
+        \\
+        0 = q_1(0) + q_1(1),
+        \\
+        q_i(\alpha_i) = q_{i+1}(0) + q_{i+1}(1),
+        \\
+        \text{for }i = 1,\ldots, m-1,
+        \\
+        q_m(\alpha_m) = (v_A \cdot v_B - v_C)\cdot eq(\vec\alpha, \vec\rho)
+    \end{matrix}
+\right\}.
+\end{equation*}
+The first term of the soundness error \eqref{e:phase2:soundness:error},
+\[
+\ell_1(\theta_1) \cdot \frac{m}{|F|}
+\]
+attributes the reduction from the domain identity to the inner product with $eq(\:.\:,\vec\rho)$.
+%and corresponds to the probability that one of the proximates yields a non-zero constraint multilinear which evaluates to zero at the given point $\vec\rho$.
+The other term, 
+\[
+\ell_1(\theta_1)\cdot \frac{3}{|F|},
+\]
+is the soundness errors of each of the $m$ rounds of the sumcheck protocol, on the cubic zero-check expression.
+
+Finally, and without going into details, Phase 3 is a reduction from $\mathcal R_\text{phase 2}$ to the final verifier relation $\mathcal R_{V}$, which trades the correlated agreement claim
+\[
+\exists (p_1(X),p_2(X)) \in \mathscr P_{m_1}^2, \quad
+        d((p_1,p_2), (f_1,f_2^*)) \leq \theta_1,
+\]
+for consistency checks on the WHIR sumcheck polynomials and the aggregated WHIR claim on the final polynomial revealed in plain. 
+(The latter claim involves the evaluation claims on the matrix polynomials $M(\vec\alpha, \vec \beta)$.)
+% \[
+% \mathscr R_{V} =
+% \left\{
+%     \begin{matrix}
+%         f_1 \in \left(\mathbb F_q^{D}\right)^{e}, %v_1\in F 
+%         \\
+%         f_2^* \in \left(\mathbb F_q^{D}\right)^{e}, %v_2\in F 
+%         \\
+%         q_1(X), \ldots, q_m(X) \in F[X]^{\leq 3},
+%         \\
+%         v_A, v_B, v_C \in F,
+%         \\
+%         q_{1,1}(X),\ldots, q_{1,\epsilon_1}(X) \in F[X]^{\leq 3},
+%         \\
+%         g_2 \in \left(\mathbb F_q^{D_{2}}\right)^{e_{2}}, u_2\in F, 
+%         \\
+%         \vdots
+%         % \\
+%         % q_{r-1,1}(X),\ldots, q_{r-1,\epsilon_1}(X) \in F[X]^{\leq 3},
+%         % \\
+%         % g_{r-1} \in \left(\mathbb F_q^{D_{r}}\right)^{e_{r}}, u_{r-1}\in F,
+%         % \\
+%         \\
+%         q_{r,1}(X),\ldots, q_{r,\epsilon_r}(X) \in F[X]^{\leq 3},
+%         \\
+%         g_r \in \mathscr P_{k_r} 
+%     \end{matrix}
+%     \::\:
+%     % \hspace*{-5mm}
+%     \begin{matrix}
+%         % \exists (p_1(X),p_2(X)) \in \mathscr L_{m_1}\big|_{z_1,v_1}\times \mathscr L_{m_2}\big|_{z_1,v_1}
+%         % \\
+%         % d(p_1, f_1) \leq \theta_1, d(p_2, f_2)\leq \theta_2
+%         % % \\
+%         % % p_1(z_1) = v_1, p_2(z_2) = v_2,
+%         % \\\text{and}
+%         \\
+%         0 = q_1(0) + q_1(1),
+%         \\
+%         q_i(\alpha_i) = q_{i+1}(0) + q_{i+1}(1),
+%         \\
+%         \text{for }i = 1,\ldots, m-1,
+%         \\
+%         q_m(\alpha_m) = (v_A \cdot v_B - v_C)\cdot eq(\vec\alpha, \vec\rho)
+%         \\\text{and}
+%         \\
+%             g_r \text{ satisfies the aggregated WHIR claim}
+%         \\
+%         \bar v = \langle K_r, g_r\rangle_{H_{k_r}}, 
+%         \\
+%         \text{which involves the specializations}
+%         \\
+%         M_i(\vec\alpha, \vec\beta \| \: .\:), 
+%         \\ 
+%         M=A,B,C, \: i=1,2
+%     \end{matrix}
+% \right\}.
+% \]
+Its soundness error is $\varepsilon_\text{WHIR}(\theta_1,\ldots, \theta_r)$, the overall error of WHIR with $r$ rounds on the five claims \eqref{e:phase3:claim:vM} and \eqref{e:phase3:claim:inputs}.
+We describe the protocol in the next section.
+
+
+
+
+\section{WHIR}
+\label{s:WHIR}
+
+
+% Given the commitment $g_0$ of a multil
+
+% Given a function $g_0\in F^{D}$, and proximity parameter $\theta$, WHIR \cite{WHIR} proves proximity of $g_0$ to a polynomial $u_0(X)$ the multilinear representation of which,  $P_0(X_1,\ldots, X_{k_0})$, satisfies a linear claim of the form
+% \[
+% c_0 = \langle P_0, K_0\rangle_{H_{k_0}},
+% \]
+
+% Given an inner product claim $c_0 = \langle P_0, K_0\rangle_{H_{k_0}}$ between a multilinear $P_0(X_1,\ldots, X_m)$ with a public $K_0(X_1,\ldots, X_n)$, WHIR recursively transforms it into smaller claims 
+% \[
+% c_i = \langle P_i(\:.\:), K_i(\:.\:)\rangle_{H_{m-k_i}},
+% \]
+% where $P_i$ and $K_i$ are random linear combinations of the previous $P_{i-1}$ and $K_{i-1}$, respectively. 
+
+% is a random specialization of the previous polynomial $P_{i-1}$, and $K_i$ an aggregate of the previous $K_{i-1}$ together with the their consistency spot checks.
+
+For completeness we give a concise description of the WHIR \cite{WHIR} proof of proximity to constrained Reed--Solomon codes. 
+Given a word defined on some set, $g_0:D\longrightarrow \mathbb F_q$, WHIR \cite{WHIR} is an interactive oracle proof of proximity to a univariate polynomial $u_P(X)$, the multivariate representation of which, say $P(X_1, \ldots, X_{k_0})$, satisfies a linear claim of the form
+\begin{equation}
+\label{e:WHIR:main:claim}
+c_0 = \langle P_0, K_0\rangle_{H_{k_0}},
+\end{equation}
+where $K_0(X_1,\ldots, X_{k_0})$ is a publicly known (and often succinctly evaluable) multilinear. 
+Similar to Basefold \cite{Basefold} and preceding works, e.g. \cite{Gemini,Hyperplonk} \cite{DualGemini:hackmd,Zeromorph}, the construction of WHIR rests on the connection between multilinear sumcheck specialization and the FRI-like folding of their univariate representations.
+
+\subsection{Setup}
+The mechanics of WHIR is in alignment with a specified sequence of univariate spaces
+\begin{align}
+\label{e:chain:function:spaces}
+\mathscr P_{k_0} \supset \mathscr P_{k_1} \supset \ldots \supset \mathscr P_{k_r},
+\end{align}
+with $k_{0} > k_1 > \ldots > k_{r}\geq 0$. 
+(These will correspond to the number of remaining variables after each round.)
+As before, we commit polynomials in interleaved representation, using the linear isomorphism
+\[
+\mathscr P_{k_i} \simeq \mathscr P_{k_{i+1}}^{e_{i+1}}, \quad e_{i+1} = \dim{\mathscr P_{k_i}/\mathscr P{k_{i+1}}},
+\]
+by FFT decomposition \eqref{e:FFT:decomp}, for each $i=0,\ldots, r-1$.
+The decomposed polynomials, elements from
+\begin{equation}
+\mathscr P_{k_1}^{e_1}, \mathscr P_{k_2}^{e_2}, \ldots, \mathscr P_{k_{r}}^{e_{r}},
+\end{equation}
+are then %evaluated over their own domain $D_i$, 
+committed as words from the interleaved codes
+\begin{equation}
+ C_1^{e_1}, C_2^{e_2}, \ldots, C_r^{e_r},
+\end{equation}
+with specified base codes $C_{i} = \RS\left[F, D_{i}, 2^{k_{i}}\right]$ of (typically increasing) minimum distance.
+Their evaluation domains $D_i$ are chosen as multiplicative cosets\footnotemark in $\mathbb F_q$, and are of size $|D_{i}|= 2^{n_{i}}$ for some $n_i > k_{i}$. 
+\footnotetext{%
+More generally, disjoint unions of multiplicative cosets of size $2^{k_i}$.
+}
+Each round further specifies $s_i\geq 1$ for the number of samples in the consistency check between adjacent oracles, as described below.
+
+
+\subsection{The IOPP.}
+
+In the following $\mathbb F_q$ is an FFT-friendly prime field, and $F$ a finite extension of it. 
+The protocol starts with initial claim \eqref{e:WHIR:main:claim} and consists of $r$ rounds. 
+Each round $i=1,\ldots,r$ reduces a claim $c_{i-1} = \langle P_{i-1}, K_{i-1}\rangle_{H_{k_{i-1}}}$ on the previous polynomial $P_{i-1}$ to a claim $c_{i} = \langle P_{i}, K_{i}\rangle_{H_{k_i}}$ on a new polynomial.
+
+%typically cryptographically large.
+
+% As described at the beginning of Section \ref{s:protocol:no:zk}, WHIR specifies a chain of univariate polynomial spaces
+% \begin{align*}
+% % \label{e:chain:function:spaces}
+% \mathscr P_{k_0} \supset \mathscr P_{k_1} \supset \ldots \supset \mathscr P_{k_{r-1}} \supset \mathscr P_{k_r},
+% \end{align*}
+% with $k_{0} > k_1 > \ldots > k_{r}\geq 0$.
+% A polynomial $p(X)$ from $\mathscr P_{k_{i-1}}$, $i = 1,\ldots, r$, is committed in decomposed manner as element $(p_1(X),\ldots, p_{e_i}(X))$ from  $\mathscr P_{k_i}^{e_i}$, where $e_i = \dim \mathscr P_{k_{i-1}} / \mathscr P_{k_i}$, according to the common FFT decomposition \eqref{e:FFT:decomp}.
+% Thus, the codes met in the course of WHIR are the interleaved Reed--Solomon codes $C_{i}^{e_i}$, $i=1,\ldots, r$, with base code
+% \[
+% C_{i} = \RS[F,D_i,2^{k_i}], \quad i=1,\ldots, r,
+% \]
+% generated by the polynomials from $\mathscr P_{k_i}$, respectively.
+% The evaluation domains $D_i$ are multiplicative subgroups of $\mathbb F_q$, of size $|D_i|=2^{n_i}$, for some $n_i > k_i$.
+
+
+\begin{protocol}[WHIR]
+\label{prot:WHIR}
+The prover has a multilinear $P_{0}\in \mathbb F_q[X_1,\ldots, X_{k_0}]$, satisfying the inner-product claim
+\[
+c_0 = \langle P_{0}, K_0 \rangle_{H_{k_0}} 
+\]
+with some public multilinear $K_{0}\in F[X_1,\ldots, X_{k_0}]$.
+The verifier has oracle access to $g_{0}\in (\mathbb F_q^D)^{e_1}$ the commitment of $P_0$'s univariate representation $u_{P_0}(X)\in \mathscr P_{k_0}$ as interleaved word from $C_1^{e_1}$.
+
+Both prover and verifier engage in the following $r$ rounds, for $i=1,\ldots, r$, each consisting of three phases. 
+\begin{enumerate}
+    \item 
+    Sumcheck for $r_i = k_{i-1} - k_i$ rounds, on the previous inner product claim between $P_{i-1}$ and $K_{i-1}$.
+    In the course of these rounds, the prover has sent the quadratic refinements polynomials $q_{i,1}(X)$, \ldots $q_{i,r_i}(X)$, and the verifier has answered with $\vec\beta_i = (\beta_{i,1}, \ldots \beta_{1, r_i})\in F^{r_i}$.
+    The prover commits to 
+    \[
+    P_{i} = P_{i-1}(\vec \beta_{i},\:.\:), 
+    \]
+    % the latter only when $k_i +1 \leq m_2$, 
+    as the polynomial $u_{P_i}(X)\in \mathscr P_{k_i}$ represented by the interleaved word
+    \[
+    g_{i}  \in C_{i+1}^{e_{i+1}},
+    \]
+    and provides the verifier oracle access.
+    (In the case $i=r$, the prover reveals the polynomial $u_{P_r}(X)$ in plain.)
+    % and their next refinement polynomial
+    % \begin{align*}
+    % q_{k_i + 1}(X) = &\langle K_{i,1}(\:.\:,X,\beta_{k_i + 1}, \ldots,\beta_{m_1}), p_1(\:.\:,X,\beta_{k_i + 1}, \ldots, \beta_{m_1})\rangle
+    % \\
+    % &+ \langle K_2(\:.\:,X,\beta_{k_i + 1}, \ldots,\beta_{m_2}), 
+    %  p_2(\:.\:,X,\beta_{k_i + 1}, \ldots,\beta_{m_2}) \rangle,
+    % \end{align*}
+    \item 
+    Query phase. 
+    \begin{enumerate}
+    \item
+    The verifier draws a DEEP query $x_{0} \sample F$, on which the prover answers with the value $v_{0}$ of the univariate representations $u_{P_i}(X)$ at $x_{0}$.  
+    \item 
+    The verifier queries $g_{i-1}$ from the previous round at $s_i>0$ random positions 
+    \[
+    x_{i,1}, \ldots, x_{i,s_i} \sample D_{i},
+    \]
+    and computes the expected values $v_{1}, \ldots, v_{s_i}$ for $u_{P_{i}}(X)$ at these points from the oracle answers, and $\vec\beta_i$.
+    \end{enumerate}
+    \item 
+    Aggregation.
+    The verifier samples $\gamma_i\sample F$ for combining the specialized sumcheck claim
+    \begin{align*}
+    q_{i, r_i}(\beta_{i,r_i}) &= \langle P_{i}, K_{i-1}(\vec \beta_{i},\:.\:) \rangle_{H_{k_i}} 
+    \end{align*}
+    and the evaluation claims
+    \begin{align*}
+    v_{j} &= \langle P_{i}, L_{x_i}\rangle_{H_{k_i}}, 
+    \quad j = 0,\ldots, s_i,
+    \end{align*}
+    into a the new inner product claim
+    $
+    c_i = \langle P_{i}, K_{i}\rangle_{H_{k_i}} 
+    $
+    with the new $c_i$ and kernel $K_{i}$ as clarified below.
+\end{enumerate}
+If the consistency checks in all the sumcheck rounds hold, and if the final inner product claim $c_r = \langle P_r, K_r\rangle$ holds for the multilinear representation of the revealed polynomial $u_{P_r}(X)$, then the verifier accepts.
+\end{protocol}
+
+In the aggregation step, the combined kernel is
+\begin{align*}
+    K_{i} &=  K_{i-1,i,1}(\vec\beta_{i},X_1,\ldots, X_{k_i}) + \sum_{j=0}^{s_i} \gamma_i^{j+1} \cdot L_{x_{j}}(X_1,\ldots, X_{k_i}),
+    \end{align*}
+and $c_i = q_{i,r_i}(\beta_{i,r_i}) + \sum_{j=0}^{s_i} \gamma_i^{j+1}\cdot v_{j}$.
+    
+
+% \subsection{Combining several claims.}
+
+
+
+\subsection{Soundness.}
+
+% Let us quickle discuss the soundness properties of WHIR, for proximity parameters in the Johnson regime of the Reed--Solomon codes, 
+% \[
+% \theta_i \in \left(0, 1 -\sqrt{1-\delta_i}\right),
+% \]
+% where $\delta_i$ is the minimum distance of $C_i$, $i=1,\ldots, r$.
+
+Every round of WHIR is a randomized reduction $\mathcal R_{i-1}\longrightarrow \mathcal R_i$ in the verifier randomnesses $\beta_{i,1},\ldots,\beta_{i,r_i}$, $x_{i,0},x_{i,1},\ldots, x_{i,s_i}$, and $\gamma_i$, where 
+\begin{equation}
+\label{e:WHIR:round:relation}
+\mathcal R_i = \left\{
+\begin{matrix}
+g_i\in (\mathbb F_q^{D_{i}})^{e_{i}}
+% \\
+% q_0(X) \in F[X]^{\leq 2}
+\end{matrix}
+\::\:
+\begin{matrix}
+\exists p_i(X)\in \mathscr P_{k_i}, 
+%p_i(X) = p{P_i}(X_1,\ldots, X_{k_i})%
+\\
+d(g_i,p_i)\leq \theta_i,
+\\
+\langle P_i, K_i\rangle_{H_{k_i}} = c_i 
+% \\
+% q_0(0) + q_0(1) = c_0
+\end{matrix}
+\right\}.
+\end{equation} 
+(Again, $P_i$ is the multilinear representation of $p_i$, and the distance refers to the interleaved representation of $p_i$.)
+We use somewhat lazy notation here, hiding the dependency of $\mathcal R_i$ on the previous messages:
+The inner product kernel $K_i$ incorporates the specialized sumcheck claim on the previous oracle $g_{i-1}$, its values at the $s_i$ in-domain queries, and the claimed value for $p_i$ at the single out-of-domain point $x_{i,0}$.
+We note that in the case $i=r$, since $p_r(X)\in \mathscr P_{k_r}$ is revealed in plain, $g_r = p_r$, the distance condition in \eqref{e:WHIR:round:relation} becomes vacuous. 
+
+The soundness analysis of the sumcheck phase, in parallel with the multilinear combinations of the interleaved components, is the most technically involved part. 
+Its proof relies on (degree-$2$) curve decodability of Reed--Solomon codes, yielding correlated agreement under the additional constraints imposed by the inner products. 
+% for \textit{constrained} Reed--Solomon codes \cite[Theorem 4]{Basefold:LDR}, a consequence of degree-2 curve decodability up to Johnson radius of $C_i$, 
+% %which is a consequence of the more recent notion of line decodability \cite{goyalguruswami}.
+% which we shall state in a simplified form in Appendix \ref{s:CAT}.
+%
+Without specifying the intermediate relations for each step of a WHIR round, we state its soundness properties as an (interactive oracle) reduction.
+For a detailed analysis we refer to \cite[Section 6.4]{Basefold:LDR}, which generalizes in a straight-forward manner to arbitrary inner product constraints.
+%of the reduction $\mathcal R_{i-1}\longrightarrow \mathcal R_i$.
+
+\begin{thm}[WHIR Soundness]
+For $\theta_i\in (0,1 -\sqrt{1-\delta_i})$, where $\delta_i$ is the minimum distance of the Reed--Solomon code $C_i$.
+Then round $i$ in Protocol \ref{prot:WHIR} is round-by-round (knowledge) sound oracle reduction $\mathcal R_{i-1}\longrightarrow R_{i}$, with the following soundness errors for its steps.
+\begin{enumerate}
+    \item 
+    Sumcheck phase:
+    For each of the $r_i$ steps,
+    \begin{align*}
+       \varepsilon_{S,i} &= \varepsilon_{\text{CA}}(C_{i-1},2,\theta_{i-1}), 
+    \end{align*}
+    where $\varepsilon_\text{CA}(C_{i-1},2,\theta_{i-1})$ is the soundness error of the constrained correlated agreement theorem (Theorem \ref{thm:CAT:constrained}) for $C_{i-1}$, under degree-$2$ constraints, using proximity parameter $\theta_{i-1}$.
+    \item 
+    Query phase:
+    \begin{align*}
+        \varepsilon_{Q,i} = \frac{\ell_i(\theta_i)^2}{2} \cdot \frac{2^{n-k_{i}}}{|F\setminus D_i|} + (1 -\theta_{i-1})^{s_i},
+    \end{align*}
+    where $\ell_i(\theta_i)$ is the list size bound for $C_i$ at distance $\theta_i$.
+    \item 
+    Aggregation step:
+    \begin{align*}
+        \varepsilon_{A,i} = \ell_i(\theta_i) \cdot \frac{s_{i}}{|F|},
+    \end{align*}
+    again with the same list size bound as above.
+\end{enumerate}
+\end{thm}
+
+\begin{rem}
+For the soundness analysis, one may alternatively use the high-level notion of mutual correlated agreement \cite{WHIR}, a consequence of curve-decodability \cite{cryptoeprint:2025/2110,cryptoeprint:2025/2054}. 
+\end{rem}
+% Let us roughly discuss the soundness errors. 
+% \begin{rem}
+% Alternatively, one may use the stronger notion of mutual correlated agreement.
+% \end{rem}
+
+% Each step of the sumcheck is a randomized reduction $\mathcal R_{i-1}\stackrel{\lambda_i}{\longrightarrow} \mathcal R_i$, where
+% \[
+% \mathcal R_i = \left\{
+% \begin{matrix}
+% f_0\in F^{D_0},
+% \\
+% q_0, \ldots, q_{i-1} \in F[X]^{\leq 2}
+% \end{matrix}
+% \::\:
+% \begin{matrix}
+% q_{j-1}(\lambda_j) = q_j(0) + q_j(1), j=1,\ldots,i-1,
+% \\
+% \text{and}
+% \\
+% \exists p_i(X)\in \mathscr P_{n-i}, %P_i =\Phi^{-1}(p_i),
+% \\
+% d_{\pi^i(D_0)}(\mathsf{fold}_{\lambda_1,\ldots, \lambda_i}(f_0),p_i)\leq \theta_0,
+% % \\\text{s.t.} 
+% \\
+% \langle P_i, R_0(\lambda_1,\ldots, \lambda_i,\:.\:)\rangle = q_{i-1}(\lambda_i),
+% \end{matrix}
+% \right\},
+% \]
+% for $i=1,\ldots, k-1$.
+
+
+\section{Adding zero-knowledge}
+
+
+\subsection{Randomizing $w_M(\vec\alpha)$.}
+
+Recall that in the end of Phase \ref{i:main:phase:2} of Protocol \ref{prot:main}, the prover reveals the values
+$w_A(\vec\alpha)$, $w_B(\vec\alpha)$, $w_C(\vec\alpha)$, which are subject to 
+\begin{equation}
+\label{e:zerocheck:last:check}
+q_{m}(\alpha_m) = (w_A(\vec\alpha)\cdot w_B(\vec\alpha) - w_C(\vec \alpha))\cdot eq(\vec\alpha,\vec\rho),
+\end{equation}
+where $\alpha\in F^m$ are the random challenges collected over the rounds of the sumcheck.
+In this section we discuss two different strategies to prevent these values from leaking private witness data.
+%Both randomize either $w_1$ or $w_2$ ``on-chip'', by 
+Both extend the witness (either $w_1$ or $w_2$) by random values, and add trivial gates to assure their propagation through the R1CS matrices. 
+
+
+
+\subsubsection{Randomization by extension field elements.}
+
+This is the canonical solution, where the openings over $F$ are randomized by random witnesses over $F$.
+%This breaks with our current design decision keeping $w_2$ also over $\mathbb F_q$, so the solution would be only interesting if we decide to revert to $w_2$ over the extension field $F$.   
+Note that it is sufficient to randomize $w_A(\vec\alpha)$ and $w_B(\vec\alpha)$; the value of $w_C(\vec\alpha)$ is then uniquely determined by \eqref{e:zerocheck:last:check}, as long as $eq(\vec\alpha, \vec\rho)\neq 0$. 
+
+We allocate two private extension field variables $R_A, R_B$ in the second stage R1CS, and set their values to $r_A, r_B \sample F$. 
+Their gates are 
+\[
+R_A \cdot 1 = R_A, \quad 1 \cdot R_B = R_B, 
+%\quad 1 \cdot R_C = R_C,
+\]
+located at arbitrary row indices $\vec x_A, \vec x_B \in H_m$.
+Then 
+\begin{align}
+\label{e:wA:randomized:extfield}
+w_A(\vec Y) &= w_A'(\vec Y)  + r_A \cdot eq(\vec x_A,\vec Y),
+\\
+\label{e:wB:randomized:extfield}
+w_B(\vec Y) &= w_B'(\vec Y) + r_B \cdot eq(\vec x_B, \vec Y) 
+\end{align}
+with $w_A'$, $w_B'$, not depending on the two random witnesses $r_A$, $r_B$.
+ 
+% These two randomnesses are sufficient to hide the other witnesses, for most of the $\vec\alpha\in F^m$.
+% $\vec x_1\in H_m$ corresponds to the row index of the gate $R_1\cdot 1 = R_1$ in $A_2$.
+
+\begin{lem}
+\label{lem:ext:field:randomization}
+For any $\vec\rho\in F^m$.
+Except for a fraction of $\varepsilon \leq \frac{3 m}{|F|}$ points $\vec\alpha\in F^m$, 
+the distribution of $(w_A(\vec\alpha), w_B(\vec\alpha), w_C(\vec\alpha))$ is uniform on the set
+\[
+\left\{
+(v_A, v_B, v_C) \in F^3 
+\::\:
+q_m(\alpha_m) = (v_A\cdot v_B - v_C)\cdot eq(\vec\alpha,\vec\rho)
+\right\}.
+\]
+\end{lem}
+\begin{proof}
+The exceptional set is the union of the roots of the multilinears $eq(\vec x_A, \:.\:)$, $eq(\vec x_B, \:.\:)$  and $eq(\:.\:,\vec\rho)$.
+For all other $\vec\alpha\in F^m$, the vector $(w_A(\vec\alpha), w_B(\vec\alpha))$ is uniformly distributed over $F^2$, since the coefficients of $r_A$ and $r_B$ do not vanish in \eqref{e:wA:randomized:extfield} and \eqref{e:wB:randomized:extfield}, and they uniquely determine $w_C(\vec\alpha)$ via the claim \eqref{e:zerocheck:last:check}.
+$\Box$
+\end{proof}
+
+% We note that this already diverges from the univariate case, where local randomization of the witness propagates to \textit{all} points outside the witness domain. 
+
+The bound in Lemma \ref{lem:ext:field:randomization} is essentially tight, as multivariate Lagrangians have exactly a fraction of $m/|F|$ zeros in $F^m$.
+In other words, local randomization of the witness propagates only to \textit{almost all} points outside the witness domain.\footnotemark
+\footnotetext{%
+This diverges from univariate IOPs, where local randomization propagates to \textit{all} points outside the witness domain. 
+}
+% 
+However, the fraction of exceptional points is of order $1/|F|$, and excluding them does not conflict our soundness goals.
+
+
+For completeness we also cite an extension to multiple evaluation points:
+\begin{lem}
+\label{lem:multipoint:eval}
+Choose $\Omega =\{\vec x_1, \ldots, \vec x_k\}$ a set of $k\geq 1$ distinct points on the Boolean hypercube $H_n$. 
+Then, except with probability of at most $\varepsilon = \frac{k\cdot n}{|F|}$ in $\vec \alpha_1, \ldots, \vec \alpha_k \in F^n$, the multi-point evaluation matrix
+\begin{equation*}
+E_{\vec\alpha_1,\ldots,\vec\alpha_k} =
+\begin{pmatrix}
+eq(\vec x_1,\vec \alpha_1) & eq(\vec x_1, \vec\alpha_2) & \ldots & eq(\vec x_1, \vec\alpha_k)
+\\
+eq(\vec x_2,\vec \alpha_1) & eq(\vec x_2, \vec\alpha_2) & \ldots & eq(\vec x_2, \vec\alpha_k)
+\\
+\vdots & \vdots & &\vdots
+\\
+eq(\vec x_k,\vec \alpha_1) & eq(\vec x_k, \vec\alpha_2) & \ldots & eq(\vec x_k, \vec\alpha_k)
+\end{pmatrix}
+\end{equation*}
+is of full rank.
+\end{lem}
+
+The proof shows that the determinant is a non-zero multilinear in the coordinates of $\vec\alpha_1, \ldots, \vec\alpha_k$.
+We postpone it to the appendix.
+% \begin{proof}
+% The determinant of the matrix equals
+% \[
+% \sum_{\sigma\in S_k} L_{\vec x_{\sigma(1)}}(\vec\alpha_1) \cdot L_{\vec x_{\sigma(2)}}(\vec\alpha_2) \cdot \ldots \cdot L_{\vec x_{\sigma(k)}}(\vec\alpha_k) ,
+% \]
+% where $\sigma$ ranges over all permutations of $\{1,2,\ldots, k\}$, and therefore is a multilinear polynomial in the coordinates of $\vec\alpha_1$, \ldots, $\vec\alpha_k$.
+% By Schwartz-Zippel, it can be zero for at most $k\cdot n$ points, unless it is identical zero.
+% To exclude the latter, observe that each product in the determinant can be written as 
+% \[
+% L_{\vec x_{\sigma(1)}, \vec x_{\sigma(2)},\ldots, \vec x_{\sigma(k)}}(\vec \alpha_1,\ldots,\vec\alpha_k),
+% \]
+% the Lagrangian at $(\vec x_{\sigma(1)}, \vec x_{\sigma(2)},\ldots, \vec x_{\sigma(k)})$ in the $k\cdot n$-dimensional hypercube.
+% Since the points $\vec x_1,\ldots, \vec x_k$ are distinct, so are the points in 
+% \[
+% \{(\vec x_{\sigma(1)}, \vec x_{\sigma(2)},\ldots, \vec x_{\sigma(k)}) \::\: \sigma\in S_k \},
+% \]
+% and we conclude from linear independence of Lagrangians that their sum cannot be zero.
+% $\Box$
+% \end{proof}
+
+
+
+
+\subsubsection{Randomization by basefield elements.}
+%In the light of Lemma \ref{lem:multipoint:eval} 
+% As we would like to keep the witness over the basefield $\mathbb F_q$
+
+It is tempting to believe that the univariate strategy from \cite{cryptoeprint:2024/1037}, which randomizes an extension field opening by extension-field-degree many basefield values, carries over to the multilinear world in a straight-forward manner.
+However, the best generic result we found is the following one, which has a way too large bound for the exceptional set.
+
+\begin{lem}
+\label{lem:Lagrange:random:eval}
+Let $F$ be a degree $e$ extension of a prime field $\mathbb F_q$, and $\Omega =\{\vec x_1, \ldots, \vec x_e\}$ a set of $e$ distinct points on the Boolean hypercube $H_m\subset \mathbb F_q^m$. 
+Then, except for a fraction of at most $\varepsilon = \frac{m}{q-1}$ points $\vec \alpha \in F^m$, the elements
+\begin{equation*}
+eq(\vec x_1, \vec \alpha), \ldots, eq(\vec x_e, \vec \alpha) \in F
+%= eq(\vec \rho,\vec x_i)    
+\end{equation*}
+are $\mathbb F_q$-linear independent. 
+\end{lem}
+
+
+The proof of the lemma relies on the well-known Moore determinant as a distinguisher for $\mathbb F_q$-linear independence.
+However, we require the property also over $K$ the field of rational functions in several variables, and hence state it in full generality.
+%on , which is as follows.
+\begin{lem}
+\label{lem:goss}
+Let $K$ be a (possibly infinite) field of characteristic $q<\infty$, and let $f_1,\ldots,f_k\in K$, $k\geq 1$.
+Then $f_1,\ldots, f_k$ are $\mathbb F_q$-linear independent if and only if the determinant of the Moore matrix
+\[
+% \Delta(f_1,\ldots, f_k) = \left|
+M(f_1,\ldots, f_k) =
+\begin{pmatrix}
+f_1 & f_2 & \ldots & f_k
+\\
+f_1^q & f_2^q & \ldots & f_k^q
+\\
+\vdots &\vdots & \ddots & \vdots
+\\
+f_q^{q^{k-1}} & f_2^{q^{k-1}} & \ldots & f_k^{q^{k-1}}
+\end{pmatrix}
+% \right| \neq 0
+\]
+is a non-zero element in $K$. 
+\end{lem}
+
+For a proof of Lemma \ref{lem:goss}, we refer the reader to \cite[Lemma 1.3.3]{Goss96}.
+
+
+\begin{proof}[of Lemma \ref{lem:Lagrange:random:eval}]
+Since the points $\vec x_1,\ldots, \vec x_n$ are distinct, the Lagrangians $eq(\vec x_i,\vec Y)$, $i=1,\ldots,e$, are $\mathbb F_q$-linear independent elements of $K= \mathbb F_p(\vec Y)$, the rational function field in $m$ variables. % the coordinates of $\vec Y$.  
+By Lemma \ref{lem:goss}, their Moore determinant 
+\[
+\det M(eq(\vec x_1, \vec Y),\ldots, eq(\vec x_e, \vec Y))\neq 0,
+\]
+as an element of $K$.
+Moreover, since all matrix entries are polynomials, we conclude that the Moore determinant
+is a non-zero \textit{polynomial}. 
+% (All entries of the Moore matrix are polynomials.)
+%
+% Let us determine its total degree. 
+The $(i,j)$-th entry in the Moore matrix is
+% \[
+% L_{x_j}(Y_1,\ldots, Y_n)^{p^{i}} = L_{x_j}(Y_1^{p^i},\ldots, Y_n^{p^i}),
+% \]
+has total degree at most $m\cdot q^{i-1}$, and the total degree the determinant is at most
+\begin{align*}
+m + m q + \ldots + m  q^{e-1} = m \cdot \frac{q^e - 1}{q - 1}.
+\end{align*}
+By Schwartz-Zippel, the fraction of $\vec\alpha\in F^m$ for which the determinant evaluates zero
+is at most
+\[
+\frac{m}{q-1} \cdot \frac{q^e -1}{q^e} < \frac{m}{q-1}.
+\]
+For all other $\vec\alpha$ the determinant is non-zero, and another application of Lemma \ref{lem:goss} yields that $eq(\vec x_1,\vec\alpha),\ldots, eq(\vec x_e, \vec \alpha)$ are $\mathbb F_p$-linear independent elements of $F$.
+$\Box$
+\end{proof}
+
+It is hard to tell whether the Schwartz--Zippel bound in Lemma \ref{lem:Lagrange:random:eval} is tight. 
+A high polynomial degree is not a guarantee for a large set of zeros. 
+% For example, 
+% \[
+% eq(\vec x_i, \vec Y)^{q^{i-1}} = eq(x_{i,1},\ldots, x_{i,m}, Y_1^{q^{i-1}},\ldots, Y_m^{q^{i-1}})
+% \]
+% is of total degree $m\cdot q^{i-1}$. 
+% Its zeros are the roots of $Y_j^{q^{i-1}} - x_{i,j}$, but in $F$ there is only one solution, $Y_j = x_{i,j}$, since is no $q^{i-1}$-th root of unity, except $1$.\footnotemark
+% \footnotetext{%
+% This follows from $(q^{i-1},q^{e} - 1) = 1$. 
+% }
+% Thus the polynomials has the same number of roots as $eq(\vec x_i, \vec Y)$. 
+We tried shortly with GPT-5.6, but did not achieve significant improvements. 
+However, it proposed the following work around, which explicitly uses the multiplicative structure of the Lagrangians. 
+
+\paragraph{Blowing up soundness.}
+Instead of a single set $\Omega$ of size $e$, we choose several sets
+\[
+\Omega_1, \ldots \Omega_s \subset H_m,
+\]
+in a very particular manner, so that their exceptional sets are statistically independent.
+(The latter will be possible because of the tensor structure of the Lagrangians.)
+Each $\Omega_j$ is a set of $e$ points contained in a sub-cube of small dimension 
+\[
+t = \ceil{\log_2 e},
+\]
+with its free part touching the variables $Y_{i_j(1)}, \ldots, Y_{i_j(t)}$ only, meaning that its points do not vary outside these $t$ coordinates.  
+%We call the variables $Y_{i_j(1)}, \ldots, Y_{i_j(s)}$ \textit{free variables}, and the remaining $m-s$ variables the \textit{fixed variables} of $\Omega_j$.
+We further require that the free variables are disjoint between the sets, i.e.
+\[
+\big\{Y_{i_j(1)},\ldots, Y_{i_j(t)} \big\} \cap \big\{Y_{i_{j'}(1)},\ldots, Y_{i_{j'}(t)} \big\} = \varnothing,
+\]
+whenever $j\neq j'$.
+The crux is that for each such set $\Omega_j$, we can drop its fixed variables in the proof of Lemma \ref{lem:Lagrange:random:eval}, as long as their $eq$-terms are not zero, since a common non-zero factor does not change $\mathbb F_q$-linear independence. 
+The exceptional set for $\Omega_j$ is only in the variables $Y_{i_j(1)}, \ldots, Y_{i_j(t)}$, independent of the other variables, and we arrive at the following statement.
+
+\begin{lem}
+With $\Omega_1,\ldots, \Omega_s \subset H_{m}$ as above.
+Then except for an $\varepsilon$-fraction of points $\vec\alpha\in F^m$, where
+\begin{equation}
+\label{e:basefield:randomization:error}
+\varepsilon < s\cdot \frac{m-t}{|F|} + \left(\frac{t}{q-1}\right)^s,
+\end{equation}
+at least one of the sets $\Omega = \Omega_j$ is such that its values $eq(\vec x, \vec\alpha)$, $\vec x\in \Omega$, are $\mathbb F_q$-linearly independent.
+\end{lem}
+\begin{proof}
+The first term bounds the the probability that $\vec\alpha\in F^m$ hits one of the $m-t$ fixed variables of $\Omega_j$, times $e$ for the union bound over all sets.
+For all other $\vec\alpha$, the exceptional sets in Lemma \ref{lem:Lagrange:random:eval} are statistically independent, and of relative size $t/(q-1)$ each.
+$\Box$
+\end{proof}
+
+In our application we would use $s = e$, to make the second term in \eqref{e:basefield:randomization:error} of order $O(1/|F|)$. 
+That is,  we would require $e^2$ random witnesses over $\mathbb F_q$ to randomize $w_A(\alpha)$, and another $e^2$ random witnesses for $w_B(\alpha)$. 
+They can be placed at arbitrary positions in the witness, yet their constraints (as before of the form $R_j \cdot 1 = R_j$, or $1\cdot R_j = R_j$) have to respect the positioning described above. 
+
+%The main disadvantage is that we cannot place them at arbitrary positions. 
+
+
+
+\subsection{Zero-check masking}
+\label{s:zk:zerocheck}
+
+The zero-check, Phase \ref{i:main:phase:2} in Protocol \ref{prot:main}, is turned into zero-knowledge by using the sumcheck randomization from Libra \cite{cryptoeprint:2019/317}.
+The prover commits to the univariate polynomials 
+\begin{equation}
+\label{e:zk:zerocheck:randomizers}
+h_0\sample F, \quad h_1(X),\ldots, h_m(X)\sample F[X]^{<d},
+\end{equation}
+where $d=3$ is the degree of the sumcheck \eqref{e:R1CS:zerocheck}.
+These polynomials define the sparse mask
+\begin{equation}
+\label{e:zk:zerocheck:sparse:mask}
+h(X_1,\ldots, X_n) = h_0 + X_1\cdot h_1(X_1) + \ldots + X_m\cdot h_n(X_m),
+\end{equation}
+which is overlaid with the hypercube sum \eqref{e:R1CS:zerocheck}. 
+The prover claims the sum $c' = \sum_{\vec x \in H_m} h_m(X_m)$, the computation of which is almost for free via the succinct representation
+\begin{align*}
+\frac{1}{2^m}\sum_{\vec x\in H_m} h(\vec x) 
+% = 2^{m} h_0 + 2^{m-1} h_1(1) + 2\cdot \sum_{\vec x\in H_{m-1}} X_2 h_2(x_2) + \ldots + x_m\cdot h_m(x_m) 
+% \\
+%  = 2^{m} h_0 + 2^{m-1} h_1(1) + 2\cdot (2^{m-2} h_2(1) + 2 \cdot \sum_{\vec x H_{m-2}} ...)
+%  \\
+=  h_0 + \frac{1}{2}\left(
+h_1(1) + \ldots + h_m(1)
+\right).
+\end{align*}
+%It receives a random $\alpha\sample F$ from the verifier, and 
+Then both run the sumcheck on the combined claim
+\begin{equation}
+\label{e:zk:zerocheck:combined:claim}
+c_0 = \alpha \cdot c + c' = \sum_{\vec x\in H_n} \alpha\cdot G(\vec x) + h,
+\end{equation}
+where $\alpha\sample F$ is random, and  $c = \sum_{x\in H_n} G(x_1,\ldots, x_n)$ is the target claim. 
+(In our case $G$ is be the multivariate zero-check term, and $c=0$.)
+
+%
+The sparse mask carries sufficient entropy to perfectly hide the witness in the sumcheck polynomials
+\begin{equation*}
+\hat q_k(X) = \sum_{\vec x\in H_{n-k}} \alpha\cdot G(\alpha_1,\ldots, \alpha_{k-1},X,\vec x) +  h(\alpha_1,\ldots, \alpha_{k-1},X,\vec x),
+\end{equation*}
+for $k=1,\ldots,n$, as the following lemma shows.
+
+\begin{lem}
+For any $\alpha\in F $, $(\alpha_1,\ldots, \alpha_n)\in F^n$. 
+The distribution of the sumcheck prover messages $c_0, \hat q_1(X),\ldots, \hat q_n(X)$ is uniform on the set
+\[
+\mathcal R = \left\{
+\begin{matrix}
+c_0\in F, \hat q_1,\ldots,\hat q_n\in F[X]^{\leq d}
+\end{matrix}
+\::\:
+\begin{matrix}
+c_0 = \hat q_1(0) + \hat q_1(1),
+\\
+\hat q_{k}(\alpha_{k}) = \hat q_{k+1}(0) + \hat q_{k+1}(1),
+\\
+k=1,\ldots n-1
+\end{matrix}
+\right\},
+\]
+independent of $G$.
+\end{lem}
+
+For the sake of completeness, we give a proof the lemma.
+\begin{proof}
+Fix $G$, $\alpha\in F$ and $(\alpha_1,\ldots,\alpha_n)\in F^n$, and choose any set $S\subset F$ of $d$ distinct points, containing the element $1$, but not $0$.
+Using the consistency equations it is easily seen that the linear mapping, which sends $(c_0,\hat q_1(X),\ldots, \hat q_n(X))$ to the values   
+\begin{equation}
+\label{e:zk:zerocheck:polys:by:value}
+(\vec v_1,\ldots, \vec v_n) = (\hat q_1|_{S\cup\{0\}},\hat q_1|_S, \ldots, \hat q_n|_S) 
+\end{equation}
+is a bijection between $\mathcal R$ and $F^{dn + 1}$. 
+We leave this to the reader.\footnotemark
+\footnotetext{%
+The values $\vec v_1$ uniquely determine the polynomial $\hat q_1(X)\in F[X]^{\leq d}$ by degree, and with it $c_0 = \hat q_1(0) + \hat q_1 (1)$.
+Likewise, $\hat q_1(\alpha_1)$ together with the values $\vec v_2$ uniquely determine $\hat q_2(X)\in F[X]^{\leq d}$ satisfying $\hat q_1(\alpha_1) = \hat q_2(0) + \hat q_2(1)$, since the letter determines the value of $\hat q_2(X)$ at the additional point $0$.
+And so on.
+}
+To prove the lemma, it suffices to show that the values \eqref{e:zk:zerocheck:polys:by:value} are in one-to-one correspondence with $h_0\in F, h_1,\ldots, h_n\in F[X]^{<d}$.
+But this is evident from the concrete form
+\begin{multline*}
+\hat q_{k}(X) = \sum_{\vec x \in H_{n-k}} \alpha \cdot G(\alpha_1,\ldots, \alpha_{k-1}, X,\vec x) 
+\\
++ 2^{n-k} (h_0 + \alpha_1 h_1(\alpha_1) +\ldots +\alpha_{k-1} h_{k-1}(\alpha_{k-1})+ X h_{k}(X)) 
+\\+ \sum_{\vec x \in H_{n-k}} x_{k+1} h_{k+1}(x_{k+1}) + \ldots + x_n 
+h_n(x_n),
+\end{multline*}
+in which the other $h_0,\ldots, h_{k-1}, h_{k+1},\ldots, h_n$ impact only the constant part of the polynomial.
+(The representation partially collapses in the two edge cases.
+For $k=1$ there are no terms except $h_0$ preceding $X h_1(X)$, and for $k=n$, there are no terms following $X h_n(X)$.)
+$\Box$
+\end{proof}
+
+
+The sumcheck reduces the claim \eqref{e:zk:zerocheck:combined:claim} to that 
+\begin{align*}
+\hat q_m(\alpha_m) = G(\alpha_1,\ldots, \alpha_m) + h_1(\alpha_1) + \ldots + h_m(\alpha_m),
+\end{align*}
+where
+\begin{align*}
+G(\vec\alpha) =  (w_A(\vec\alpha)\cdot w_B(\vec\alpha) - w_C(\vec\alpha))\cdot eq(\vec\alpha,\vec\rho),    
+\end{align*}
+for which the prover sends the values $w_A(\vec\alpha)$, $w_B(\vec\alpha)$, $w_C(\vec\alpha)$. 
+The complementary term 
+\begin{equation}
+\label{e:zk:zerocheck:mask:opening}
+h_1(\alpha_1) + \ldots + h_m(\alpha_m) = \hat q_m(\alpha_m) - G(\vec\alpha)
+\end{equation}
+can be proven in zero-knowledge by a separate protocol.
+
+\begin{rem}
+In our current implementation, we append the $dm+1$ coefficients\footnotemark for $h_0,h_1,\ldots, h_m$ to the first stage witness $\vec w_1$, and use zk-WHIR with the additional constraint
+\begin{equation}
+\hat q_m(\alpha_m) - G(\vec\alpha) = \sum_{\vec x\in H_{m_1}} I_\alpha(\vec x)\cdot  w_1(\vec x),
+\end{equation}
+where $I_\alpha$ is the inner product kernel for $h_1(\alpha_1) + \ldots + h_m(\alpha_m)$.
+This requires the witness to be sufficiently below a power two. 
+See the complete protocol in Section \ref{s:complete:protocol}.
+\footnotetext{%
+Alternatively, one may directly use the representation by their values \eqref{e:zk:zerocheck:polys:by:value}.} 
+\end{rem}
+
+Let us quickly sketch the transcript simulator for the zero-check.
+The prover chooses arbitrary random polynomials $w_1(X_1,\ldots, X_{m_1})$  and $w_2(X_1,\ldots, X_{m_2})$, with their image polynomials $w_A, w_B, w_C$ not satisfying the zero-check hypercube sum for random $\vec\rho\sample F$.
+Then it samples $h_0,h_1,\ldots, h_n$ and $\lambda\neq 0$ and computes the hypercube sum
+\begin{equation}
+\label{e:sumcheck:randomized:G}
+c_0 = \sum G + \lambda h.
+\end{equation}
+It then runs the sumcheck protocol on the valid claim \eqref{e:sumcheck:randomized:G}.
+The (wrong) claim $c'$ is chosen adaptively so that $\alpha \cdot 0 + c' = c_0$. 
+For details, see Section \ref{}.
+
+% For on-domain randomization we rely on the following Lemma. 
+% \ulrich{We need an adaption to multivariates of bounded individual degree, if we reveal cross-terms}
+% \begin{lem}
+% Fix any $k$ distinct points $\vec x_1,\ldots, \vec x_k\in H_n$. 
+% Then 
+% \[
+% \Pr_{\vec y_1,\ldots, \vec y_k\sample F^n}\left[
+% \det \begin{pmatrix}
+% eq(\vec y_i,\vec x_j)
+% \end{pmatrix}
+% = 0
+% \right] 
+% \leq \frac{k\cdot n}{|F|}.
+% \]
+% \end{lem}
+% \begin{proof}
+% The determinant is multilinear in the coordinates of $\vec y_1, \ldots, \vec y_k$.
+% $\Box$
+% \end{proof}
+
+
+\subsection{Masked commitments.}
+\label{s:masked:commitments}
+
+To avoid witness information leakage from commitment openings, we use a slightly different approach than \cite{cryptoeprint:2026/391}.
+Instead of committing to a zero-knowledge encoding of witness,
+we overlay a witness polynomial with a sparse random mask without  degree increase:
+Given witness $p \in \mathscr P_{m}$ and random $\msk\sample F[X]^{< q_i}$, for some small $q_i < 2^m$, we commit to
+\begin{equation}
+\hat p = p + \msk, %\in \mathscr P_m,
+\end{equation}
+which is again from $\mathscr P_m$.
+(This secures the witness for up to $q_i$ openings.)
+Obviously this does not bind the witness, unless we also commit to $\msk$, which is required for ZO0K anyways (see Section \ref{s:zook}).
+
+For practical reasons, we \textit{jointly} commit all\footnotemark masks required by the protocol in one shot.
+\footnotetext{%
+These are the masks for the two witness polynomials $w_1$ and $w_2$, and the further masks $\msk_{1},\ldots, \msk_{r}$, $h_1,\ldots, h_r$ required for ZO0K.
+}%
+We concatenate their coefficient vectors, append $q_{zk}$ additional random coefficients, and encode the resulting vector as a single word from 
+\begin{equation}
+\label{e:C:zk}
+C_{zk} = \RS[F,D_{zk}, d_{zk}].
+\end{equation}
+Here the degree bound $d_{zk}$ is at least $q_{zk}$ larger than the total of all mask lengths, and can be chosen again a power of two, if this helps encoding performance.
+(The choice of $q_{zk}$ depends on the number of openings in the final proof of proximity, Protocol \ref{prot:zook:final:opening}.)
+
+The rationale behind masked commitments is the following.
+Adding the small mask $\msk$ in coefficient representation is a local modification of the witness, and the 
+subsequent encoding of $\hat p$ is as costly as that of $p$. 
+In contrast, even a tiny degree increase of the witness polynomial would lead to an $O(m)$ overhead in the encoding step, where $m$ is the degree of $p$.
+
+
+
+
+\subsection{WHIR in zero-knowledge}
+\label{s:zook}
+
+
+We describe an adaptation of ZO0K \cite{cryptoeprint:2026/391} to our technique for randomizing commitments as described in the previous section.
+The changes to the original protocol are minimal, and based on the fact that we can now also view masked polynomials as multilinears in the sumcheck claim.
+See Remark \ref{rem:zook:pi:instead:pi:hat} for a one-to-one variant of \cite{cryptoeprint:2026/391}.
+
+
+% \subsubsection{ZO0K.}
+%ZO0K instead uses throughout sparse masks for randomization, and is therefore particularly prover friendly. 
+The sumcheck rounds are randomized using the sparse Libra mask explained in Section \ref{s:zk:zerocheck}, and information leakage via commitment openings is mitigated through the commitment masks as described above.
+In this multi-polynomial regime, ZO0K considers WHIR as a sumcheck prover, which gradually reduces composite claims of the form 
+\begin{align}
+\label{e:zook:claim}
+c_{i}  &= \left\langle \hat p_{i}, K^{(i)} \right\rangle_{H_{k_{i}}} 
++ \sum_{j=0}^{i} \Gamma_j^{(i)}(\msk_j) + \sum_{j=1}^{i} \Lambda_{j}^{(i)} (h_{j}),
+\end{align}
+involving a costly part, the inner product $\left\langle \hat p_{i}, K^{(i)} \right\rangle$ of a large (masked) witness polynomial $\hat p_i$ with a public kernel $K^{(i)}$, and a cheap part, certain public linear functionals $\Lambda_j^{(i)}$, $\Gamma_j^{(i)}$ on the (small) masks committed by the prover so far:\footnotemark
+\footnotetext{%
+The $\Lambda_j^{(i)}(h_j)$ and $\Gamma_j^{(i)}(\msk_i)$ can be again represented as inner products. 
+However, because of their fundamentally different treatment in the protocol, we write them as linear functionals.
+}
+The sparse sumcheck masks $h_1,\ldots, h_i$ and the witness masks $\msk_0,\ldots,\msk_i$.
+The cheap part is not further reduced by the sumcheck logic; it is treated as constant function 
+% \[
+% \frac{1}{2^{k_i}}\cdot \sum_{j=1}^{i-1} \Lambda_{j}^{(i)} (h_{j}) + \Gamma_j^{(i)}(\msk_j)
+% \]
+on the hypercube $H_{k_i}$, which is passed through the rounds in a weighted form.
+%leading to an simple update law for the linear functionals. 
+The costly part is reduced in the usual sense, by folding. 
+However, not before a fresh sumcheck mask $h_{i+1}$ enters the sum.
+In this manner, the number of masks in the claim \eqref{e:zook:claim} grow from round to round, but the costly part shrinks.
+
+After the final round, the remaining claim, a linear functional in $\hat p_r$, $h_1,\ldots, h_r$, $\msk_0,\ldots, \msk_{r}$, is proven in zero-knowledge by an elementary proof of proximity, Protocol \ref{prot:zook:final:opening} below.
+
+
+
+
+% Recall that WHIR in full generality is a sumcheck prover, and works for arbitrary algebraic expressions $G(f_1,\ldots, f_m)$ in several multilinear polynomials $f_1$, \ldots $f_m$. 
+% Every now and then it accompanies the sumcheck with new proposals for the multilinears in the specialized claim, and the claim of proximity to a sumcheck consistent ensemble of polynomials is reduced to a fresh claim on the new ensemble of smaller codewords.
+% However there is no strict need to provide new proposals for every multilinear in the claim. 
+% If a multilinear is small, e.g. depending only one or two variables or has a succinct representation, then the verifier can compute its specialization on its own, without sacrificing efficiency.
+
+% This is the view point we take on ZO0K:
+% In each round the prover replaces the (one and only) large polynomial in the claim by a smaller one. 
+% On the other hand it adds few more small commitments required for zero-knowledge.
+% The number of committed words grows, but the total size of the multilinears becomes smaller and smaller.
+
+
+% (Here, we again use the same notation for the composed polynomial and its interleaved representation.)
+% This is a linear constraint on the committed codewords $\hat p_0$ and $\hat\msk_0$.
+ %(Their final specialized claim will be proven on their initial unfolded form.)
+% Once the polynomial becomes 
+
+\subsubsection{The required masks.}
+As pointed out in Section \ref{s:masked:commitments}, we assume that the prover has committed beforehand to all the masks, as a single word from $C_\text{zk}$.
+Concretely, each sumcheck mask $h_i$ is committed as coefficient vector 
+\begin{equation}
+\label{e:zook:sumcheck:mask:coeffs}
+h_{i,0}\| h_{i,1} \| \ldots\| h_{i,r_i} \in F^{2 r_i + 1}
+\end{equation}
+from $h_{i,0}\sample F$, and $h_{i,j}\sample F[X]^{<2}$, appended by the coefficients of the commitment masks \begin{align}
+\label{e:zook:commitment:mask:coeffs}
+msk_i \in F^{q_i},  \quad i=0,\ldots,r,
+\end{align}
+from $\msk_i \sample F[X]^{< q_i}$, where $msk_0$ can be taken from the subfield $\mathbb F_q$, assuming that the first witness polynomial $p_0$ is over $\mathbb F_q$.
+(In our application, our $p_0$ is the composite witness polynomial, both of which have their own basefield mask.)
+The number of coefficients is chosen according to how often the commitment of $p_i + \msk_i$ is queried in the course of WHIR:
+\begin{align}
+q_0 &= s_{1}, 
+\\
+q_i &= s_{i+1} + 1 \text{ for } 1\leq i\leq r-1,
+\\\intertext{assuming a single DEEP query in each of the rounds, and}
+q_r &= s_\text{zk},
+\end{align}
+the number of queries on $\hat p_r$ in the final opening protocol, Protocol \ref{prot:zook:final:opening}.
+The concatenated coefficient vectors \eqref{e:zook:sumcheck:mask:coeffs} and \eqref{e:zook:commitment:mask:coeffs} are encoded in zero-knowlege manner, by appending to the message another $q_{zk}$ random coefficients
+\begin{equation}
+\label{e:zook:mask:blinder:coeffs}
+msk_{zk} \in F^{q^{zk}},
+\end{equation}
+before the Reed--Solomon encoding. 
+That is, $C_{zk}$ encodes   
+\[
+h_1\|\ldots \|h_r \| msk_0 \|\ldots \| msk_r \| msk_{zk}
+\]
+parsed as coefficient vector from $F^{r + k_0 - k_r + q_0 + \ldots + q_r + q_{zk}}$ as Reed--Solomon codeword over $F$ with evaluation domain $D_{zk}$.
+
+\subsubsection{Initialization.}
+The initial claim is on the unmasked polynomial $p_0 = \hat p_0 - \msk_0 \in \mathscr P_{k_1}^{e_1}(\mathbb F_q)$, and of the form
+\[
+c_0 = \langle \hat p_0 - \msk_0, K \rangle_{H_{k_0}},
+\]
+where the inner product kernel $K$ is public.
+This is of the form \eqref{e:zook:claim} with 
+\[
+K^{(0)} = K, \quad \Lambda_0^{(0)}(\msk_0) = \langle K, \msk_0\rangle_{H_{k_0}}.
+\]
+The latter can be easily computed as a linear functional on the coefficient vector $msk_0\in\mathbb F_q^{q_0}$:
+The multilinear representation of $\msk_0\in F[X]^{< q_0}$ is non-zero only on the first $q_0$ points of the hypercube and thus
+\[
+\langle K, \msk_0\rangle_{H_{k_0}} = \sum_{j=0}^{q_0-1} K(j)\cdot msk_{0,j},
+\]
+in the index notation of the hypercube. 
+
+\subsubsection{Modifications of a WHIR round.}
+
+Let us describe the changes of round $i$ in Protocol \ref{prot:WHIR}, $i=1,\ldots, r$.
+At the beginning of the round, the prover has already committed to 
+$\hat p_{i-1}$, $\msk_0,\ldots, \msk_{i-1}$, $h_1,\ldots h_{i-1}$, satisfying the linear constraint
+\begin{align}
+\label{e:zook:prev:claim}
+c_{i-1}  &= \left\langle \hat p_{i-1}, K^{(i-1)} \right\rangle_{H_{k_{i-1}}} 
+ + \sum_{j=0}^{i-1} \Gamma_j^{(i-1)}(\msk_j)
++ \sum_{j=1}^{i-1} \Lambda_{j}^{(i-1)} (h_{j})
+% + \sum_{j=1}^{i-1} \sum_{k=0}^{r_j} \Lambda_{i,j}^{(i-1)} (h_{j,k})
+%     + \sum_{j=1}^{i-1} \Gamma_i^{(i-1)}(\msk_j)
+\end{align}
+We think of the claim as $c_{i-1} = \sum_{\vec x\in H_{k_{i-1}}} G_{i-1}(\vec x)$ for the quadratic expression
+\begin{align*}
+G_{i-1}(\vec x) = \hat p_{i-1}(\vec x) \cdot K^{(i-1)}(\vec x) - 2^{-k_{i-1}}\cdot B_{i-1},
+\end{align*}
+where $B_{i-1}$ is the sum of the mask functionals in \eqref{e:zook:prev:claim}.
+
+
+\paragraph{Step 1: Masking phase.}
+Identical to the sumcheck randomization in Section \ref{s:zk:zerocheck}.
+The prover takes the masks $h_{i,0}\in F$, $h_{i,1},\ldots,h_{i,r_i} \in F[X]^{<2}$ it committed before running the protocol. 
+They define the sumcheck mask
+% \ulrich{mayb /}
+\begin{equation}
+\label{e:zook:sumcheck:mask}
+h_i(X_1,\ldots, X_{r_i}) = h_{i,0} + X_1 \cdot h_{i,1}(X_1) + \ldots + X_{r_i} \cdot h_{i,r_{i}}(X_{r_i}),
+\end{equation}
+in as many variables as the sumcheck phase of the WHIR round consumes, $r_i = k_i - k_{i-1}$.
+% in the next $r_i$ variables $X_1,\ldots, X_{r_i}$ processed by the sumcheck.
+It claims 
+\[
+d_i = \sum_{\vec x\in H_{k_{i-1}}} h_i(x_1,\ldots, x_r).
+\]
+The verifier sends a random $\lambda_i\sample F$, which reduces  \eqref{e:zook:prev:claim} to the combined claim
+\begin{align}
+\label{e:zook:combined:sumcheck:claim}
+\lambda_i\cdot c_{i-1} + d_i = \sum_{\vec x\in H_{k_{i-1}}} 
+\left(\lambda_i \cdot G_{i-1}(\vec x) + h_i(x_1,\ldots, x_{r_i})
+\right).
+\end{align}
+
+\paragraph{Step 2: Sumcheck phase.}
+Both prover and verifier proceed with the $r_i$ sumcheck rounds on the combined claim \eqref{e:zook:claim:combined}.
+In the course of it, the prover provides the quadratic refinement polynomials
+$
+\hat q_{i,1}(X), \ldots, \hat q_{i,r_i}(X), 
+$ 
+the verifier has sent $\vec\beta_i = (\beta_{i,1},\ldots, \beta_{i,r_i})$.
+After the last sumcheck round, the claim \eqref{e:zook:combined:sumcheck:claim} is reduced to 
+\begin{multline*}
+\hat q_{i,r_i}(\beta_{i,r_i}) 
+= \sum_{\vec x'\in H_{k_i}} \left(
+\lambda_ i \cdot G_{i-1}(
+\vec\beta_i,\vec x') + h_i(\vec\beta_{i})
+\right)
+\\
+= \lambda_i\cdot \left\langle \hat p_{i-1}(\vec \beta_i, \:.\:), K^{(i-1)}(\vec\beta_i,\:.\:)\right\rangle_{H_{k_i}} + 2^{k_i - k_{i-1}}\cdot \lambda_i\cdot B_i + 2^{k_i}\cdot h_i(\vec\beta_i)
+\end{multline*}
+which linear in $\hat p_{i-1}(\vec\beta_{i},\:.\:)$ and the masks, now including $h_i$.
+
+\paragraph{Step 3: Commit.}
+The prover takes $\msk_{i}\in F[X]^{<q_i}$, and commits to %the masked polynomial
+\[
+\hat p_i = \hat p_{i-1}(\vec\beta_{i},\:.\:) + \msk_i(\:.\:)
+\]
+as a word from $\mathscr P_{k_{i}}^{e_i}$.
+This masked commitment is required also in the last round $i=r$. 
+% (For an alternative variant see Remark  \ref{rem:zook:pi:instead:pi:hat}.)
+The new ensemble of polynomials, $\hat p_i, \msk_i$, and $\msk_0,\ldots, \msk_{i-1}$, $h_1,\ldots, h_i$, is subject to the linear constraint
+\begin{multline}
+\label{e:zook:specialized:claim}
+\hat q_{i,r_i}(\beta_{i,r_i}) = 
+\left\langle \hat p_i - \msk_i,  \lambda_i\cdot K^{(i-1)}(\vec\beta_i, \:.\:) \right\rangle_{H_{k_i}} 
+\\
++ 2^{-r_i} \cdot \lambda_i \cdot B_{i-1} + 2^{k_i}\cdot h_i(\vec\beta_i),
+\end{multline}
+which are of the form \eqref{e:zook:claim}.
+%except that $\msk_{i-1}$ does not appear in it.
+
+\paragraph{Step 4: Query phase.}
+In the query phase, the verifier asks the masked polynomial $\hat p_i$ for the value at the out-of-domain sample $x_{i,0}\sample F$ and uses the values of the previous $\hat p_{i-1}$ to constrain $\hat p_i - \msk_i$ at the points $x_{i,1},\ldots, x_{i,s_i}\sample D_i$.
+In terms of the new ensemble, these claims are the linear constraints 
+\begin{align}
+\label{e:zook:out:domain:constraint}
+\sum_{\vec x' \in H_{k_i}} \hat p_i(\vec x') \cdot L_{x_{i,0}}(\vec x') &= v_0,
+\\
+\label{e:zook:in:domain:constraint}
+\sum_{\vec x'\in H_{k_i}} \left(\hat p_i(\vec x') - \msk_{i}(\vec x')\right)\cdot L_{x_{i,k}}(\vec x') &= v_{k},
+\end{align}
+for $k= 1,\ldots, s_i$, where $L_{x_{i_k}}$ are the univariate Lagrangians of degree $2^{k_{i-1}}$. 
+These constraints are again of the form \eqref{e:zook:claim}.
+%now with $\msk_{i-1}$ mentioned the first time. 
+
+
+% The proximate $\hat p_1$ the multilin rep of which is
+% \begin{align*}
+% \langle \hat p_1,
+% K_{0\lambda_1,\ldots, \lambda_{k}}
+% \rangle_{H_{n-k}}
+% & = q_k(\lambda_k) - \gamma\cdot h(\lambda_1,\ldots,\lambda_{k}) 
+% \\
+% & \quad\quad + 
+% \langle \msk_1 - \msk_{0,\lambda_1,\ldots,\lambda_k},
+% K_{0\lambda_1,\ldots, \lambda_{k}}\rangle_{H_{n-k}}
+% \\
+% \langle \hat p_1,  L_{Q_i}\rangle_{H_{n-k}} &= v_{Q_0}
+% \\
+% \langle \hat p_1, L_{Q_i}\rangle_{H_{n-k}} &= (\fold_{\lambda_1,\ldots, \lambda_k} \hat f_0) (Q_i).
+% \end{align*}
+
+
+
+
+\paragraph{Step 4: Aggregation of claims.}
+
+The verifier samples a random $\gamma_i\sample F$ for combining the above claims \eqref{e:zook:specialized:claim}, \eqref{e:zook:out:domain:constraint} and \eqref{e:zook:in:domain:constraint} on the new ensemble into a single claim of the form \eqref{e:zook:claim}, with the following linear functionals:
+\begin{align}
+\label{e:zook:update:K}
+K^{(i)} &=  \lambda_i\cdot K^{(i-1)}(\vec\beta_i,\:.\:) + \sum_{k=0}^{s_i} \gamma_i^{k+1} \cdot L_{x_{i,k}}(\:.\:),
+\\\label{e:zook:update:Gamma}
+\Gamma_{j}^{(i)}  &=  2^{r_i}\cdot\lambda_i\cdot \Lambda_j^{(i-1)}, \quad j=1,\ldots,i-1,
+\\\label{e:zook:new:Gamma}
+% \Gamma_i^{(i)} &= -\Big\langle \:.\:, \lambda_i\cdot K^{(i-1)}(\vec\beta_i,\:.\:) + \sum_{k=1}^{s_i} \gamma_i^{k+1}\cdot L_{x_{i,k}}(\:.\:) \Big\rangle_{H_{k_i}}   
+\Gamma_i^{(i)} &= - \langle \:.\:, K^{(i)} - \gamma_i\cdot L_{x_{i,0}} \rangle_{H_{k_i}}
+\\\label{e:zook:update:Lambda}
+\Lambda_{j}^{(i)}  
+&=  2^{r_i}\cdot\lambda_i\cdot \Lambda_j^{(i-1)}, \quad j=1,\ldots, i-1,
+\\\label{e:zook:new:Lambda}
+\Lambda_i^{(i)}(h_i) & = 2^{-k_i}\cdot h_i(\vec \beta_i).
+\end{align}
+As before, the inner product \eqref{e:zook:new:Gamma} on $\msk_i$ and the evaluation \eqref{e:zook:new:Lambda} on $h_i$ are inexpensive to compute.
+
+
+\begin{rem}
+\label{rem:zook:pi:instead:pi:hat}
+In closer alignment with \cite{cryptoeprint:2026/391}, one may  think of the claims \eqref{e:zook:claim} in terms of the unmasked polynomial $p_i = \hat p_i - \msk_i$, rather than of the masked one, i.e.
+\begin{align*}
+% \label{e:zook:claim:paper}
+c_{i}  &= \left\langle p_{i}, K^{(i)} \right\rangle_{H_{k_{i}}} 
++ \sum_{j=0}^{i} \Gamma_j^{(i)}(\msk_j) + \sum_{j=1}^{i} \Lambda_{j}^{(i)} (h_{j}).
+\end{align*}
+In Step 3, the prover commits to $\hat p_i = p_{i-1}(\vec\beta_i,\:.\:) + \msk_i(\:.\:)$ instead of $\hat p_i = \hat p_{i-1}(\vec\beta_i,\:.\:) + \msk_i(\:.\:)$, and the consistency relation for the $s_i$ in-domain queries would then be 
+\begin{align*}
+\sum_{\vec x'\in H_{k_i}} \left(\hat p_i(\vec x') - \msk_{i}(\vec x') + \msk_{i-1}(\vec\beta_i, \:.\:) \right)\cdot L_{x_{i,j}}(\vec x') &= v_{j}, 
+\end{align*}
+instead of \eqref{e:zook:in:domain:constraint}, leading to a different update rule of $\Gamma_{i-1}^{(i)}$.
+\end{rem}
+
+
+\subsubsection{The final opening protocol.}
+
+
+% In a nutshell: 
+% \begin{itemize}
+% \item
+% random linear combination with a random polynomial (a full mask).
+% \item 
+% has a separate proof of proximity, decoupled from WHIR $\longrightarrow$ multiplicative blowup by list size.
+% \end{itemize}
+
+The final claim after round $r$ is of the form
+\begin{equation}
+\label{e:zook:claim:r}
+c_r  = \langle \hat p_r, K^{(r)} \rangle_{H_{k_r}} 
++ \sum_{j=0}^r  \Gamma_j^{(r)}(\msk_j) + \sum_{j=1}^r \Lambda_j^{(r)}(h_j).
+\end{equation}
+% with $K = K^{(r)}$, $\Lambda_i = \Lambda_i^{(r)}$ and $\Gamma_i = \Gamma_i^{(r)}$.
+It is proven via the following elementary proof of proximity on $\hat p_r \in \mathscr P_r^{e_r}$, as a word of $C_{k_r}^{e_r}$, and the encoding of $\mathsf m = h_1\|\ldots \|h_r \| msk_0 \|\ldots \| msk_r \| msk_{zk} \in F^{m_{zk}}$ 
+as word of $C_{zk}$.
+
+\begin{protocol}
+\label{prot:zook:final:opening}
+The prover commits to a full entropy mask $H \sample \mathscr P_r^{e_r}$, $M\sample F^{m_{zk}}$, the latter parsed as $H_1\|\ldots\|H_r\|M_0\|\ldots\|M_r\|M_{zk}$, and claims
+\begin{equation}
+\label{e:zook:claim:H}
+d  = \langle  H, K^{(r)} \rangle_{H_{k_r}}
++ \sum_{j=0}^r \Gamma_j^{(r)}(M_j) + \sum_{j=1}^r \Lambda_j^{(r)}(H_j).
+\end{equation}
+The verifier replies with $\lambda\sample F$.
+The prover reveals the combined words $H' = \lambda\cdot \hat p_r + H$, $M' = \lambda\cdot \mathsf m + M$, the latter parsed as $H_1'\|\ldots\|H_r'\|M_0'\|\ldots\|M_r'\|M_{zk}'$.
+
+% \ulrich{This needs a spec of how to commit to masks. }
+The verifier queries the commitments of $\hat p_r$ and $\mathsf m$ independently at random points $x_{1}, \ldots x_{s}\sample D_r$ and $y_1,\ldots, y_s\sample D_{zk}$, respectively, and checks collinearity of the revealed values with those of $H'$ and $M'$. 
+%the linear combination.
+If the collinearity checks hold, and if 
+\begin{equation}
+\label{e:zook:claim:combined}
+\lambda \cdot c_r + d  = \langle  H', K \rangle_{H_{k_r}}
++ \sum_{j=0}^r \Gamma_j(M_j') + \sum_{j=1}^r \Lambda_j(H_j'),
+\end{equation}
+then the verifier accepts.
+\end{protocol}
+
+
+
+
+
+
+\section{The complete protocol \textcolor{red}{(tbc)}}
+\label{s:complete:protocol}
+
+
+
+
+
+\section{The non-interactive STARK \textcolor{red}{(tbc)}}
+
+\subsection{Merkle commitments \textcolor{red}{(tbc)}}
+
+\subsection{Fiat--Shamir / BCS transform \textcolor{red}{(tbc)}}
+
+\subsection{Example parameters \textcolor{red}{(tbc)}}
+
+\subsection{Benchmarks \textcolor{red}{(tbc)}}
+
+
+\section{Outlook v3 \textcolor{red}{(tbc)}}
+
+% \noindent
+% Provekit v3
+% \begin{itemize}
+% \item 
+% Lean4 (feasibility study)
+% \item 
+% Circuits over $\mathbb Z$ and $\mathcal R = \mathbb Z[X]/(q(X))$.
+% Sometimes constraints over polynomial rings really  sense. 
+% Maybe some of them similarly explored in FRI-Bininus constraints?
+% \item 
+% WHI$\mathbb Z$: WHIR over integers.
+% \item 
+% Bit-integer commitments:
+% Using FRI-Binius/WHIR over $\mathbb F_2$ for committing $\{0,1\}$-valued polynomials.
+% Opening claim at random $\vec r\sample F_q^n$, where $q$ is the random prime,
+% \[
+% \sum_{\vec x\in H_n} v(\vec x)^* \cdot L_n(\vec x, \vec r)^* = a \mod q,
+% \]
+% via homomorphic transform of the lifted claim 
+% \[
+% \sum_{\vec x\in H_n} v(\vec x)^* \cdot L_n(\vec x, \vec r)^* = a^*
+% \]
+% to a grand product over $\mathbb F_{2^{128}}$.
+% %Exploring mixed char proofs: $\mathbb Z$ combined with $\mathbb F_2$
+
+% \item 
+% Zero-knowledge for WHI$\mathbb Z$
+% \end{itemize}
+
+% \noindent
+% Interesting questions around IPRS codes
+% \begin{itemize}
+%     \item 
+%     Can we somehow lift any correlated agreement theorem from the field $\mathbb F_p$ of the construction prime to the integers $\mathbb Z$? 
+%     \url{https://chatgpt.com/share/6a508b03-8e94-83ed-96eb-d58708428317}
+%     \item 
+%     What is the distance of an IPRS code mod a random prime?
+% \end{itemize}
+
+
+
+\bibliographystyle{alpha}
+\bibliography{SNARKs}
+
+
+\appendix
+
+\input{Correlated agreement}
+\input{IOPP soundness}
+
+% \section{IOPP soundness}
+
+% \subsection{Joint WHIR}
+
+% \subsection{The complete protocol}
+
+
+\input{IOPP-zk}
+
+\input{Veil}
+
+
+
+\end{document}

@@ -1,0 +1,85 @@
+\section{Alternatives to ZO0K}
+
+\subsubsection{Proposal 1: VEIL}
+
+In its most simple variant, the followings steps need to be taken.
+
+\subsubsection{Securing the witness queries.}
+We need to randomize the witnesses $w_1$ and $w_2$ for the number of queries from $D$. (No R1CS modification necessary). 
+Recall we commit the witnesses in interleaved manner, using the FFT decomposition, and thus we need to randomize the witnesses properly, so that each component is affected equally:
+Thinking of $\vec w_1$ as the not yet decomposed vector, add a \textit{contiguous} interval of $e \cdot \text{num}_\text{queries}$  random values, where $e$ is the interleaving depth, at any place in the not used padding space of it. 
+For $w_2$ likewise, but we may take into account that less than $e$ many components are non-zero.
+
+
+\subsubsection{Isolator polynomials.}
+
+In its most simple variant, the prover samples addionally to two random polynomials over the extension field $F$,
+\[
+H_1 \sample F[X_1, \ldots, X_{m_1}], \quad H_2 \sample F[X_1,\ldots, X_{m_2}],
+\]
+and commits them together with $w_1$ and $w_2$, respectively. 
+These `isolator polynomials' are combined together with $w_1$ and $w_2$ in an additional (virtual) batching step before entering WHIR:
+\begin{enumerate}
+    \item 
+    After we combined \eqref{e:phase3:claim:vM} and \eqref{e:phase3:claim:inputs}  into a single inner product claim $\langle K, w\rangle_{H_{m_1 + 1}}$ on the combined witness poly, the prover reveals 
+    \[
+    v = \langle K, H \rangle_{H_{m_1 + 1}}
+    \]
+    on the combined isolator polynomial $H = (1 - X_0 ) \cdot H_1 + X_0 \cdot H_2^*$.
+    with $w_1$ and $w_2^*$ replaced by $H_1$ and $H_2^*$.  
+    \item 
+    The verifier draws a further randomness $\gamma_2$ to combine the two claims into a claim on the linear combination $w + \gamma \cdot H$. 
+    This combination is not committed, the values of it are computed from those of $w$ and $H$. 
+    \item 
+    Run WHIR on the virtual linear combination $w + \gamma \cdot H$.
+\end{enumerate}
+
+The isolator polynomial entirely decouples the distribution of the future run of WHIR from the past (and thus the witnesses). 
+WHIR is run entirely in non-zk mode, no changes here.
+
+While the prove size increases only marginally (by one extension field element per $w_1$ query, likewise for $w_2$), prover cost does, since the prover has to hash the isolator polys. 
+Moreover, we most likely hit memory bounds in this variant of VEIL.
+
+\ulrich{%
+The witness polys $w_1$ is about $1/4$-th the size as in the BN254 case, and $w_2$ is about $3/4$-th of the size.
+However, $H_1$ and $H_2$ together are $3/4$-th of the entire BN254 witnesses, which is why I believe we will hit memory bounds for the largest circuits we want to prove.
+}
+
+
+\paragraph{A more prover friendly variant.}
+
+To mitigate the memory bounds, we insert isolator polynomials in the first round of WHIR instead.
+\ulrich{This is a hacky solution, which requires additional sumcheck blinders, I am not a fan of it.}
+
+\begin{enumerate}
+\item
+The prover only samples a single
+\[
+H \sample C_1
+\]
+from the base code of $w_1$ and $w_2^*$, and commits either together with $w_1$. 
+This is much less overhead (both compute and memory). 
+
+\item 
+Modified first round of WHIR:
+\begin{enumerate}
+\item
+The sumcheck phase is randomized in the usual manner, using 
+\[
+h_1(X),\ldots, h_{k_1}(X)\sample F[X]^{\leq 3}.
+\]
+These are committed separately, and in zk manner. 
+
+\item
+After specializing the sumcheck claim to $X_1 = \beta_1,\ldots, X_k =\beta_{k_1}$, the prover reveals 
+\[
+v = \langle K_0(\beta_1,\ldots, \beta_{k_1}, \:.\:), H\rangle_{H_{m_1 - k_1}},
+\]
+and the claims for $w(\beta_1,\ldots, \beta_{k_1},\:.\:)$ and $H$ are combined via another verifier randomness $\gamma_2\sample F$.
+\item 
+We now proceed with the virtual linear combination $w(\beta_1,\ldots, \beta_{k_1}, \:.\:) + \gamma_2\cdot H$.
+(The query phase, the aggregation phase.)
+\end{enumerate}
+\end{enumerate}
+
+The value $h_1(\beta_1) +\ldots + h_{k_1}(\beta_{k_1})$ is proven separately. 

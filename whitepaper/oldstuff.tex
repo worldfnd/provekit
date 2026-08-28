@@ -1,0 +1,143 @@
+\subsection{ZO0K' variant 2 (legacy)}
+\label{s:zook:variant:2}
+
+Given WHIR with $1\leq r\leq n$ rounds, consisting of $k_1,\ldots,k_r$ sumcheck rounds,
+and $n = k_1 + k_2 + \ldots + k_r$.
+Let $n_0 = 0$, $n_1 = k_1$, $n_2 = k_1 + k_2 $, \ldots
+
+Instead of adding the masks $\msk_1,\ldots,\msk_{r-1}\in F[X]^{<2^m}$ stepwise, we overlay them altogether with the input polynomial $p_0(X_1,\ldots, X_n)$ during its commit procedure, using the joint mask 
+from the sparse univariate
+\begin{align}
+\label{e:joint:mask}
+\msk(X_1,\ldots,X_n) \simeq  \msk_0(X) + \msk_1(X^{2^{n_1}}) + \ldots + \msk_{r-1}(X^{2^{n_r}}).
+\end{align}
+However, unlike in the zkWHIR 2.0 proposal, we also use quadratic sumcheck
+blinders $h_1,\ldots h_n$, which we mix into the sumcheck at the very beginning.
+
+\subsubsection{Masked commitment.}
+Given the multilinear $p_1(X_1,\ldots, X_n)$ we commit to it in the following manner.
+\begin{itemize}
+\item 
+Sample masks and mask blinders $\msk_i, b_i \sample F[X]^{2^m}$, $i=1,\ldots, r$, and commit to
+\[
+\hat\msk_i(X) = \msk_i(X) + X^{2^m} \cdot b_i(X),
+\]
+% $i=0,\ldots r-1$, 
+% \[
+% \hat \msk_i(X_1,\ldots, X_m) = \msk(X_1,\ldots, X_m) + b_i(X_1,\ldots, X_m), 
+% \]
+$i=0,\ldots, r-1$, as a codewords from $C'$.
+
+\item 
+Commit
+\begin{align*}
+\hat p_0(X_1,\ldots, X_n) = p_0(X_1,\ldots, X_n) + \msk(X_1,\ldots, X_n),
+%+ \sum_{i=0}^{r-1} \msk_i(X_{n_i + 1}, \ldots ,X_{n_i + m}),
+\end{align*}
+as codeword from $C_n$, where $\msk$ is the composed masked from \eqref{e:joint:mask}.
+Notice that the univariate in \eqref{e:joint:mask} consists only of $r\times 2^m$ coefficients, thus adding them to $p_0$ is a ``local'' modification.
+\end{itemize}
+
+\subsubsection{The protocol.}
+Given $p_1(X_1,\ldots, X_n)$, committed as above, we prove the inner product claim 
+\[
+\sum_{\vec x \in H_n} p_0(\vec x)\cdot K(\vec x) = c_0
+\]
+as follows:
+
+\begin{enumerate}
+\item 
+The prover samples the sumcheck blinder $h_j(X)\sample F[X]^{<3}$, and commits them as codewords from $C'$, via
+\[
+\hat h_j(X) = h_j(X) + X^{2^m} \cdot c_j(X),
+\]
+% $j=1,\ldots,n$, 
+with $c_j(X)\sample F[X]^{2^m}$.
+The sumcheck mask is the multivariate 
+\[
+h(X_1,\ldots, X_n) = h_1(X_1) + \ldots + h_n(X_n).
+\]
+Note that with $\hat h_1,\ldots, \hat h_n$, we have implicitly committed to the hypercube sum
+\[
+\langle 1, h\rangle_{H_n} = \sum_{\vec x \in\{0,1\}^n} h_1(x_1)+ \ldots + h_n(x_n)
+= \sum_{j=1}^n h_j(0) + h_j(1),
+\]
+and the prover does not need to announce it explicitly. 
+
+\item
+The verifier answers with $\gamma\sample F$, and both the prover and the verifier now run WHIR on $\hat p_0$, $\msk$, and $h$ on the joint claim
+\begin{align*}
+\sum_{\vec x\in H_n} 
+\left(\hat p_0(\vec x) - \msk(\vec x) \right) 
+\cdot K(\vec x) + \gamma\cdot h(\vec x)  &= c_0 + \gamma \cdot \langle 1, h\rangle_{H_n}.
+\end{align*}
+After the final round of WHIR the claim is reduced to 
+\begin{align}
+\label{e:final:claim}
+\left(\hat p_0(\vec \lambda) - \msk(\vec \lambda) \right) 
+\cdot K'(\vec \lambda) + \gamma\cdot h(\vec \lambda)  &= c_0 + \gamma \cdot \langle 1, h\rangle_{H_n}, %= s_0,
+\end{align}
+where $\vec\lambda\in F^n$ are the folding challenges of WHIR, and $K'$ is the modified kernel, which has all the single-point queries absorbed. 
+
+\item 
+The final claim \eqref{e:final:claim} is linear in the univariates $\msk_0,\ldots, \msk_{r-1}$ and $h_1,\ldots, h_n$, hence also in their committed versions 
+\[
+\hat\msk_0,\ldots, \hat\msk_{r-1},\hat h_1,\ldots, \hat h_n \in F[X]^{<2^{m+1}}.
+\]
+The prover commits to the random polynomials
+\[
+m_0,\ldots, m_{r-1}, m_r, \ldots, m_{r+n-1} \sample F[X]^{<2^{m+1}} 
+\]
+as codewords from $C'$, reveals the value $v$ of their linear functional.
+Both claims are batched using another verifier randomness, and the combined claim is proven by complete reveal of its witness, together with the collinearity checks at the query points. 
+\end{enumerate}
+
+
+\begin{lem}
+Let $Q_0$ and  $Q_1, \ldots, Q_{r-1}$ be any choice of query sets for $\hat f_0$ and its foldings $\hat f_1$, \ldots, $\hat f_{r-1}$ committed in WHIR.
+(That is, we fix all verifier challenges in WHIR.)
+Then the distribution of 
+\[
+\left(\hat f_0|_{Q_0}, \ldots, \hat f_{r-1}|_{Q_{r-1}}\right)
+\in F^{|Q_0|+\ldots +|Q_{r-1}|}
+\]
+is uniform on $F^{|Q_0|+\ldots +|Q_{r-1}|}$, when varying over all masks $\msk_0,\ldots,\msk_{r-1}\in F[X]^{<2^m}$.
+(Or course, independent of $h_1,\ldots, h_n$.)
+% ($\hat f_r$ is revealed in full.)
+\end{lem}
+\begin{proof}
+I think best by induction, "bottom-up".
+Purely univariate.
+$\Box$
+\end{proof}
+
+
+\begin{lem}
+Again for $Q_0, Q_1,\ldots, Q_{r-1}$ and the other verifier challenges in WHIR fixed.
+The distribution of the sumcheck polynomials 
+$q_1(X),\ldots, q_n(X)$ is uniform on 
+\[
+\mathcal R_k = 
+\left\{
+(q_{n_k+1},\ldots, q_{n_{k+1}})\in \left(F[X]^{<3}\right)^n \::\:
+\begin{matrix}
+c = q_1(0) + q_1(0)
+\\
+q_i(\lambda_i) = q_{i+1}(0) + q_{i+1}(1),
+\\
+\text{for }i=1,\ldots,n-1,
+\\
+q_n(\lambda_n) = \text{last sumcheck claim} 
+\\
+\text{with the (todo!)}
+\end{matrix}
+\right\},
+\]
+when varying over $h_1,\ldots, h_n\in F[X]^{<3}$, independent of the masks $\msk_0,\ldots,\msk_{r-1}$. 
+\ulrich{Need to write separate relations for each round of WHIR}
+\end{lem}
+
+\begin{proof}
+First for a single WHIR round, induction on its sumcheck rounds.
+$\Box$
+\end{proof}
