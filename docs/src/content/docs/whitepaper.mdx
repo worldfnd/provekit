@@ -11,6 +11,20 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <MathJax />
 
+<div class="pk-pdf-viewer not-content">
+  <div class="pk-pdf-toolbar">
+    <WhitepaperViewToggle />
+    <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/whitepaper/provekit-v2-whitepaper.pdf`} target="_blank" rel="noreferrer">Open PDF <span aria-hidden="true">↗</span></a>
+  </div>
+  <iframe
+    src={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/whitepaper/provekit-v2-whitepaper.pdf#view=FitH`}
+    title="ProveKit v2 Whitepaper (WIP), compiled PDF"
+  ></iframe>
+  <div class="pk-pdf-fallback">
+    This browser cannot display the PDF inline. <a href={`${import.meta.env.BASE_URL.replace(/\/$/, '')}/whitepaper/provekit-v2-whitepaper.pdf`}>Open the compiled whitepaper</a>.
+  </div>
+</div>
+
 <div class="pk-whitepaper">
   <div class="pk-paper-hero">
     <div class="pk-paper-hero-head">
@@ -356,7 +370,7 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="v_A = w_A(\vec\alpha),  \quad v_B = w_B(\vec\alpha), \quad v_C = w_C(\vec\alpha),"></span></div>
 
-<p>where <span class="pk-inline-math not-content" data-tex="\vec\alpha \in F^m"></span> are the verifier challenges drawn in the course of the sumcheck, and the verifier checks if <span class="pk-inline-math not-content" data-tex="q_m(\alpha_m) = (v_A\cdot v_B - v_C) \cdot eq(\alpha,\rho)."></span></p>
+<p>where <span class="pk-inline-math not-content" data-tex="\vec\alpha \in F^m"></span> are the verifier challenges drawn in the course of the sumcheck, and the verifier checks if <span class="pk-inline-math not-content" data-tex="q_m(\alpha_m) = (v_A\cdot v_B - v_C) \cdot eq(\alpha,\rho)"></span>.</p>
 
 </li>
 

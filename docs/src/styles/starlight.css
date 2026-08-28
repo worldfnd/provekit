@@ -632,6 +632,49 @@ body {
 
 :root[data-whitepaper-view='latex'] .pk-whitepaper .pk-paper-footer strong { color: inherit; }
 
+/* LaTeX mode is the compiler output itself. The native PDF surface preserves
+   LNCS pagination, Computer Modern metrics, figures, and equation layout. */
+.pk-pdf-viewer {
+  display: none;
+  width: min(100%, 72rem);
+  margin: 1.5rem auto 3rem;
+}
+
+:root[data-whitepaper-view='latex'] .pk-whitepaper { display: none; }
+:root[data-whitepaper-view='latex'] .pk-pdf-viewer { display: block; }
+
+.pk-pdf-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.pk-pdf-toolbar .pk-view-toggle { margin: 0; }
+.pk-pdf-toolbar > a {
+  color: var(--pk-ink-soft);
+  font: 500 0.78rem var(--pk-font-mono);
+  text-decoration: none;
+}
+.pk-pdf-toolbar > a:hover { color: var(--pk-brand); }
+
+.pk-pdf-viewer iframe {
+  display: block;
+  width: 100%;
+  height: max(48rem, calc(100dvh - 10rem));
+  border: 1px solid var(--pk-line);
+  border-radius: 0.5rem;
+  background: #e6e6e6;
+  box-shadow: 0 16px 42px rgb(19 29 43 / 12%);
+}
+
+.pk-pdf-fallback {
+  margin: 0.75rem 0 0;
+  color: var(--pk-ink-soft);
+  font-size: 0.85rem;
+}
+
 @media (max-width: 48rem) {
   .pk-paper-hero-head { display: block; }
   .pk-view-toggle { margin-top: 1.25rem; }
@@ -654,6 +697,16 @@ body {
   }
 
   :root[data-whitepaper-view='latex'] .pk-whitepaper .pk-paper-hero h1 { font-size: clamp(2.2rem, 12vw, 3rem); }
+
+  .pk-pdf-viewer { margin-block: 0.75rem 2rem; }
+  .pk-pdf-toolbar { align-items: center; }
+  .pk-pdf-viewer iframe {
+    height: calc(100dvh - 8rem);
+    min-height: 34rem;
+    border-inline: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
 }
 
 

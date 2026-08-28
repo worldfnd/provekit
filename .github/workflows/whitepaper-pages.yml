@@ -34,6 +34,15 @@ jobs:
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
 
+      - name: Set up Tectonic
+        uses: wtfjoke/setup-tectonic@eb29fd68b7d3f76011906b6e45ea4320c8de5d2f # v4.0.5
+
+      - name: Compile whitepaper PDF
+        run: |
+          mkdir -p assets/whitepaper
+          tectonic -X compile --outdir assets/whitepaper --outfmt pdf --untrusted whitepaper/main.tex
+          mv assets/whitepaper/main.pdf assets/whitepaper/provekit-v2-whitepaper.pdf
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
