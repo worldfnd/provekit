@@ -7,12 +7,12 @@ on:
         description: "Optional iOS-specific benchmark functions"
         required: false
         type: string
-        default: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e","bench_mobile::bench_passport_fragmented_age_check_prepare","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_webauthn_assertion_prepare","bench_mobile::bench_webauthn_assertion_prove","bench_mobile::bench_webauthn_assertion_verify","bench_mobile::bench_webauthn_assertion_e2e","bench_mobile::bench_oprf_prepare","bench_mobile::bench_oprf_prove","bench_mobile::bench_oprf_verify","bench_mobile::bench_oprf_e2e"]'
+        default: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
       functions_android:
         description: "Optional Android-specific benchmark functions"
         required: false
         type: string
-        default: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e","bench_mobile::bench_passport_fragmented_age_check_prepare","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_webauthn_assertion_prepare","bench_mobile::bench_webauthn_assertion_prove","bench_mobile::bench_webauthn_assertion_verify","bench_mobile::bench_webauthn_assertion_e2e","bench_mobile::bench_oprf_prepare","bench_mobile::bench_oprf_prove","bench_mobile::bench_oprf_verify","bench_mobile::bench_oprf_e2e"]'
+        default: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
       platform:
         description: "android | ios | both"
         required: false
@@ -45,7 +45,7 @@ on:
         description: "Number of benchmark iterations"
         required: false
         type: string
-        default: "5"
+        default: "2"
       warmup:
         description: "Number of warmup iterations"
         required: false
@@ -127,13 +127,13 @@ jobs:
     name: BrowserStack benchmarks
     needs: [browserstack-preflight, resolve-device-matrices]
     if: ${{ needs.browserstack-preflight.outputs.available == 'true' }}
-    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@ec5848752760cf2edd4d7f8c7c1e329bd668cf95
+    uses: worldcoin/mobile-bench-rs/.github/workflows/reusable-bench.yml@cf4416db0cd356a4434a524512de7e3716bd0799
     secrets:
       BROWSERSTACK_USERNAME: ${{ secrets.BROWSERSTACK_USERNAME }}
       BROWSERSTACK_ACCESS_KEY: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
     with:
       crate_path: ./bench-mobile
-      functions: '["bench_mobile::bench_passport_complete_age_check_prepare","bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_complete_age_check_verify","bench_mobile::bench_passport_complete_age_check_e2e","bench_mobile::bench_passport_fragmented_age_check_prepare","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_webauthn_assertion_prepare","bench_mobile::bench_webauthn_assertion_prove","bench_mobile::bench_webauthn_assertion_verify","bench_mobile::bench_webauthn_assertion_e2e","bench_mobile::bench_oprf_prepare","bench_mobile::bench_oprf_prove","bench_mobile::bench_oprf_verify","bench_mobile::bench_oprf_e2e"]'
+      functions: '["bench_mobile::bench_passport_complete_age_check_prove","bench_mobile::bench_passport_fragmented_age_check_prove","bench_mobile::bench_oprf_prove"]'
       functions_ios: ${{ inputs.functions_ios }}
       functions_android: ${{ inputs.functions_android }}
       platform: ${{ inputs.platform }}
@@ -143,7 +143,7 @@ jobs:
       android_devices: ${{ needs.resolve-device-matrices.outputs.android_devices }}
       iterations: ${{ inputs.iterations }}
       warmup: ${{ inputs.warmup }}
-      mobench_version: "0.1.48"
+      mobench_version: "0.2.0"
       max_completion_timeout_secs: 7200
       rust_toolchain: nightly-2026-03-04
       ffi_backend: native-c-abi
@@ -151,383 +151,3 @@ jobs:
       allow_non_pr: false
       head_sha: ${{ inputs.head_sha }}
       requested_by: ${{ github.actor }}
-
-  validate-web-request:
-    name: Validate WASM benchmark revision
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      head_repo: ${{ steps.validate.outputs.head_repo }}
-      head_sha: ${{ steps.validate.outputs.head_sha }}
-    steps:
-      - name: Require the current PR head
-        id: validate
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ inputs.pr_number }}
-          REQUESTED_SHA: ${{ inputs.head_sha }}
-        run: |
-          set -euo pipefail
-          [[ "$PR_NUMBER" =~ ^[1-9][0-9]*$ ]] || {
-            echo "::error::pr_number must be a positive integer"
-            exit 2
-          }
-          [[ "$REQUESTED_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || {
-            echo "::error::head_sha must be a full commit SHA"
-            exit 2
-          }
-          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
-          current_sha="$(jq -r '.head.sha' <<<"$pr_json")"
-          head_repo="$(jq -r '.head.repo.full_name' <<<"$pr_json")"
-          test "${REQUESTED_SHA,,}" = "${current_sha,,}" || {
-            echo "::error::Requested SHA is not the current PR head"
-            exit 2
-          }
-          [[ "$head_repo" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] || exit 2
-          echo "head_repo=$head_repo" >> "$GITHUB_OUTPUT"
-          echo "head_sha=${current_sha,,}" >> "$GITHUB_OUTPUT"
-
-  trusted-web-mobench:
-    name: Build trusted Mobench 0.1.48 web control plane
-    needs: validate-web-request
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout exact Mobench release
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: worldcoin/mobile-bench-rs
-          ref: ec5848752760cf2edd4d7f8c7c1e329bd668cf95
-          persist-credentials: false
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
-        with:
-          toolchain: stable
-      - name: Build exact cargo-mobench
-        run: cargo build --locked --release -p mobench --bin cargo-mobench
-      - name: Upload trusted CLI
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: provekit-v1-web-cargo-mobench
-          path: target/release/cargo-mobench
-          if-no-files-found: error
-          retention-days: 1
-
-  prepare-web:
-    name: Prepare immutable ProveKit WASM bundle
-    needs: [validate-web-request, trusted-web-mobench]
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    permissions:
-      contents: read
-    outputs:
-      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
-    steps:
-      - name: Checkout exact benchmark revision
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          repository: ${{ needs.validate-web-request.outputs.head_repo }}
-          ref: ${{ needs.validate-web-request.outputs.head_sha }}
-          persist-credentials: false
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
-        with:
-          toolchain: nightly-2026-03-04
-          targets: wasm32-unknown-unknown
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
-        with:
-          shared-key: provekit-v1-web-0.1.48
-      - name: Install Mobench 0.1.48 wasm-bindgen CLI
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo install wasm-bindgen-cli --version 0.2.113 --locked
-      - name: Download trusted Mobench CLI
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: provekit-v1-web-cargo-mobench
-          path: trusted-bin
-      - name: Generate browser witnesses outside measurement
-        env:
-          MOBENCH_CI_PREPARE: "1"
-        run: ./bench-mobile/scripts/prepare-web-benchmarks.sh
-      - name: Build portable single-thread WASM bundle
-        shell: bash
-        env:
-          RUSTFLAGS: -C link-arg=--max-memory=4294967296
-        run: |
-          set -euo pipefail
-          chmod +x trusted-bin/cargo-mobench
-          for spec in \
-            "passport-complete:web-passport-complete" \
-            "passport-fragmented:web-passport-fragmented" \
-            "webauthn:web-webauthn" \
-            "oprf:web-oprf"; do
-            slug="${spec%%:*}"
-            feature="${spec#*:}"
-            FEATURE="$feature" python3 - <<'PY'
-          import os
-          from pathlib import Path
-
-          manifest = Path("bench-mobile/Cargo.toml")
-          text = manifest.read_text()
-          marker = 'default = ["web-'
-          start = text.find(marker)
-          if start < 0:
-              raise SystemExit("browser default feature marker is missing")
-          end = text.find('"]', start)
-          if end < 0:
-              raise SystemExit("browser default feature is malformed")
-          text = text[:start] + f'default = ["{os.environ["FEATURE"]}' + text[end:]
-          manifest.write_text(text)
-          PY
-            trusted-bin/cargo-mobench build \
-              --target web \
-              --crate-path bench-mobile \
-              --release \
-              --output-dir "target/mobench-v1/${slug}"
-          done
-      - name: Upload immutable WASM bundle
-        id: upload
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: provekit-v1-web-bundle
-          path: target/mobench-v1/*/web
-          if-no-files-found: error
-          retention-days: 1
-
-  browser-web:
-    name: ${{ matrix.workload.label }} WASM on ${{ matrix.environment.label }}
-    needs: [validate-web-request, trusted-web-mobench, prepare-web]
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    environment: Browserstack
-    permissions:
-      actions: read
-    strategy:
-      fail-fast: false
-      max-parallel: 2
-      matrix:
-        workload:
-          - label: Passport complete
-            slug: passport-complete
-            function: bench_mobile::bench_passport_complete_age_check_prove
-          - label: Passport fragmented
-            slug: passport-fragmented
-            function: bench_mobile::bench_passport_fragmented_age_check_prove
-          - label: WebAuthn assertion
-            slug: webauthn
-            function: bench_mobile::bench_webauthn_assertion_prove
-          - label: OPRF
-            slug: oprf
-            function: bench_mobile::bench_oprf_prove
-        environment:
-          - label: macOS Safari
-            slug: macos-safari
-            browser: Safari
-            browser_version: latest
-            os: OS X
-            os_version: Sequoia
-            device: ""
-          - label: Windows Chrome
-            slug: windows-chrome
-            browser: Chrome
-            browser_version: latest
-            os: Windows
-            os_version: "11"
-            device: ""
-          - label: iOS Safari
-            slug: ios-safari
-            browser: Safari
-            browser_version: ""
-            os: ""
-            os_version: "18"
-            device: iPhone 16 Pro Max
-          - label: Android Chrome
-            slug: android-chrome
-            browser: Chrome
-            browser_version: ""
-            os: ""
-            os_version: "13.0"
-            device: Google Pixel 7
-    steps:
-      - name: Download trusted Mobench CLI
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: provekit-v1-web-cargo-mobench
-          path: trusted-bin
-      - name: Download immutable WASM bundle
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: provekit-v1-web-bundle
-          path: bundle
-      - name: Start local static server
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m http.server 4173 --bind 127.0.0.1 \
-            --directory "bundle/${{ matrix.workload.slug }}/web" \
-            > "$RUNNER_TEMP/mobench-web-server.log" 2>&1 &
-          echo "MOBENCH_WEB_SERVER_PID=$!" >> "$GITHUB_ENV"
-          for _ in {1..20}; do
-            curl --fail --silent http://127.0.0.1:4173/ >/dev/null && exit 0
-            sleep 1
-          done
-          exit 1
-      - name: Configure BrowserStack credentials
-        uses: browserstack/github-actions/setup-env@93aebce225b754566349151c0676b26b005e591b
-        with:
-          username: ${{ secrets.BROWSERSTACK_USERNAME }}
-          access-key: ${{ secrets.BROWSERSTACK_ACCESS_KEY }}
-      - name: Start BrowserStack Local
-        uses: browserstack/github-actions/setup-local@93aebce225b754566349151c0676b26b005e591b
-        with:
-          local-testing: start
-          local-logging-level: all-logs
-          local-identifier: random
-          local-args: --force-local
-      - name: Run browser benchmark
-        id: run-web
-        shell: bash
-        env:
-          BROWSER: ${{ matrix.environment.browser }}
-          BROWSER_VERSION: ${{ matrix.environment.browser_version }}
-          TARGET_OS: ${{ matrix.environment.os }}
-          OS_VERSION: ${{ matrix.environment.os_version }}
-          DEVICE: ${{ matrix.environment.device }}
-          FUNCTION: ${{ matrix.workload.function }}
-          WORKLOAD_SLUG: ${{ matrix.workload.slug }}
-          ENVIRONMENT_SLUG: ${{ matrix.environment.slug }}
-          ITERATIONS: ${{ inputs.iterations }}
-          WARMUP: ${{ inputs.warmup }}
-          HEAD_SHA: ${{ needs.validate-web-request.outputs.head_sha }}
-        run: |
-          set -euo pipefail
-          chmod +x trusted-bin/cargo-mobench
-          mkdir -p results
-          build_name="provekit-v1-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          session_name="${WORKLOAD_SLUG}-${ENVIRONMENT_SLUG}"
-          printf 'MOBENCH_BUILD_NAME=%s\nMOBENCH_SESSION_NAME=%s\n' \
-            "$build_name" "$session_name" >> "$GITHUB_ENV"
-          args=(
-            run-web
-            --url http://127.0.0.1:4173/
-            --function "$FUNCTION"
-            --iterations "$ITERATIONS"
-            --warmup "$WARMUP"
-            --browser "$BROWSER"
-            --os-version "$OS_VERSION"
-            --local-identifier "$BROWSERSTACK_LOCAL_IDENTIFIER"
-            --script-timeout-secs 3600
-            --page-load-timeout-secs 300
-            --build-name "$build_name"
-            --session-name "$session_name"
-            --output "results/${WORKLOAD_SLUG}-${ENVIRONMENT_SLUG}.json"
-          )
-          [ -z "$BROWSER_VERSION" ] || args+=(--browser-version "$BROWSER_VERSION")
-          [ -z "$TARGET_OS" ] || args+=(--os "$TARGET_OS")
-          [ -z "$DEVICE" ] || args+=(--device "$DEVICE")
-          trusted-bin/cargo-mobench "${args[@]}"
-      - name: Capture benchmark provenance
-        if: always()
-        shell: bash
-        env:
-          FUNCTION: ${{ matrix.workload.function }}
-          WORKLOAD_SLUG: ${{ matrix.workload.slug }}
-          ENVIRONMENT_SLUG: ${{ matrix.environment.slug }}
-          ENVIRONMENT_LABEL: ${{ matrix.environment.label }}
-          HEAD_SHA: ${{ needs.validate-web-request.outputs.head_sha }}
-          BUNDLE_DIGEST: ${{ needs.prepare-web.outputs.artifact_digest }}
-          RUN_OUTCOME: ${{ steps.run-web.outcome }}
-        run: |
-          set -euo pipefail
-          mkdir -p results
-          builds="$RUNNER_TEMP/browserstack-builds.json"
-          sessions="$RUNNER_TEMP/browserstack-sessions.json"
-          build_id=""
-          session_id=""
-          if curl --fail --silent --show-error \
-            --user "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
-            "https://api.browserstack.com/automate/builds.json?limit=100" > "$builds"; then
-            build_id="$(
-              jq -r --arg name "${MOBENCH_BUILD_NAME:-}" \
-                '[.[] | .automation_build | select(.name == $name)][0].hashed_id // ""' \
-                "$builds"
-            )"
-          fi
-          if [ -n "$build_id" ] && curl --fail --silent --show-error \
-            --user "$BROWSERSTACK_USERNAME:$BROWSERSTACK_ACCESS_KEY" \
-            "https://api.browserstack.com/automate/builds/${build_id}/sessions.json?limit=100" \
-            > "$sessions"; then
-            session_id="$(
-              jq -r --arg name "${MOBENCH_SESSION_NAME:-}" \
-                '[.[] | .automation_session | select(.name == $name)][0].hashed_id // ""' \
-                "$sessions"
-            )"
-          fi
-          jq -n \
-            --arg source_sha "$HEAD_SHA" \
-            --arg bundle_digest "$BUNDLE_DIGEST" \
-            --arg function "$FUNCTION" \
-            --arg environment "$ENVIRONMENT_LABEL" \
-            --arg build_name "${MOBENCH_BUILD_NAME:-}" \
-            --arg session_name "${MOBENCH_SESSION_NAME:-}" \
-            --arg build_id "$build_id" \
-            --arg session_id "$session_id" \
-            --arg outcome "$RUN_OUTCOME" \
-            '{
-              schema_version: 1,
-              source_sha: $source_sha,
-              bundle_digest: $bundle_digest,
-              function: $function,
-              environment: $environment,
-              wasm_threads: 1,
-              browserstack: {
-                build_name: $build_name,
-                session_name: $session_name,
-                build_id: (if $build_id == "" then null else $build_id end),
-                session_id: (if $session_id == "" then null else $session_id end)
-              },
-              outcome: $outcome
-            }' > "results/${WORKLOAD_SLUG}-${ENVIRONMENT_SLUG}.provenance.json"
-      - name: Stop BrowserStack Local
-        if: always()
-        uses: browserstack/github-actions/setup-local@93aebce225b754566349151c0676b26b005e591b
-        with:
-          local-testing: stop
-      - name: Stop local static server
-        if: always()
-        shell: bash
-        run: |
-          if [ -n "${MOBENCH_WEB_SERVER_PID:-}" ]; then
-            kill "$MOBENCH_WEB_SERVER_PID" 2>/dev/null || true
-          fi
-      - name: Upload browser evidence
-        if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: provekit-v1-web-${{ matrix.workload.slug }}-${{ matrix.environment.slug }}
-          path: |
-            results/*.json
-            ${{ runner.temp }}/mobench-web-server.log
-          if-no-files-found: warn
-          retention-days: 30
-
-  browser-web-complete:
-    name: ProveKit V1 WASM benchmark matrix
-    needs: [prepare-web, browser-web]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Require bundle and all browser lanes
-        env:
-          PREPARE_RESULT: ${{ needs.prepare-web.result }}
-          BROWSER_RESULT: ${{ needs.browser-web.result }}
-        run: |
-          test "$PREPARE_RESULT" = success
-          test "$BROWSER_RESULT" = success

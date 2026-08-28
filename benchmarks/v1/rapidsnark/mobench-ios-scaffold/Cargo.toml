@@ -7,6 +7,6 @@ license = "Apache-2.0"
 
 [dependencies]
 anyhow = "1"
-mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs.git", rev = "e992596a786cc18047102a318d40131c953e57b8" }
+mobench-sdk = "0.2.0"
 
 [workspace]

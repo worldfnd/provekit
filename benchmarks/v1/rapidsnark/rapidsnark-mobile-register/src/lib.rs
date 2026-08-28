@@ -1,7 +1,7 @@
-//! Static benchmark declarations for Mobench 0.1.48 source discovery.
+//! Static benchmark declarations for Mobench 0.2.0 source discovery.
 //!
 //! The package compiles the shared implementation selected by `[lib].path` in
-//! `Cargo.toml`. Mobench 0.1.48 scans only this conventional path when choosing
+//! `Cargo.toml`. Mobench scans this conventional path when choosing
 //! the generated runner's default function, so these compile-disabled
 //! declarations keep its generated metadata aligned with the runtime registry.
 

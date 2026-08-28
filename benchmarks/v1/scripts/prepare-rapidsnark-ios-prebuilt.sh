@@ -105,7 +105,7 @@ prepare_workload() {
         source_sha: $source_digest,
         platform: "ios",
         build_profile: "release",
-        mobench_version: "0.1.48",
+        mobench_version: "0.2.0",
         abi: {
           benchmark: "mobench-bench-spec-v1",
           runner: "browserstack-xcuitest-v2"

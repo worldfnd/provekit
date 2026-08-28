@@ -18,7 +18,7 @@ ark-bn254 = "0.6"
 ark-serialize = "0.6"
 inventory = "0.3"
 libc = "0.2"
-mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs.git", rev = "e992596a786cc18047102a318d40131c953e57b8" }
+mobench-sdk = "0.2.0"
 rand = "0.8"
 ruint = "1.19"
 serde = { version = "1", features = ["derive"] }

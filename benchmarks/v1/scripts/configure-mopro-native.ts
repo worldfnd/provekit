@@ -79,7 +79,7 @@ function replaceRequired(
 
 let cargo = readFileSync(cargoPath, "utf8");
 const mobenchDependency =
-  'mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs.git", rev = "e992596a786cc18047102a318d40131c953e57b8" }';
+  'mobench-sdk = "0.2.0"';
 cargo = cargo.replace(/^mobench-sdk = .*$/m, mobenchDependency);
 if (cargo.includes('mopro-ffi = { version = "=0.3.7", features = ["witnesscalc"] }')) {
   cargo = cargo.replace(

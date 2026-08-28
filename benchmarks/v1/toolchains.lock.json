@@ -80,13 +80,13 @@
     }
   },
   "mobench": {
-    "package_version": "0.1.48",
+    "package_version": "0.2.0",
     "repository": "https://github.com/worldcoin/mobile-bench-rs.git",
-    "branch": "codex/android-32bit-native-abi",
-    "source_revision": "e992596a786cc18047102a318d40131c953e57b8",
-    "artifact_sdk_source_revision": "e992596a786cc18047102a318d40131c953e57b8",
-    "draft_pr": "https://github.com/worldcoin/mobile-bench-rs/pull/45",
-    "reason": "Fix native C ABI size_t layout on 32-bit Android devices, preserve Rust panic diagnostics, remove the artifact-upload deadline, and force BrowserStack HTTP/1.1 for reliable large multipart uploads"
+    "branch": "v0.2.0",
+    "source_revision": "cf4416db0cd356a4434a524512de7e3716bd0799",
+    "artifact_sdk_source_revision": "cf4416db0cd356a4434a524512de7e3716bd0799",
+    "release": "https://github.com/worldcoin/mobile-bench-rs/releases/tag/v0.2.0",
+    "reason": "Pinned public Mobench 0.2.0 release with the native C ABI, BrowserStack, and report-contract updates"
   },
   "android": {
     "java": {
