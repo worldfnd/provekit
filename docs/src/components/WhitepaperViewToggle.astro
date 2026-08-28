@@ -5,7 +5,8 @@
   <span class="pk-view-toggle-label" id="whitepaper-view-label">Presentation</span>
   <div class="pk-view-toggle-control" role="group" aria-labelledby="whitepaper-view-label">
     <button type="button" data-whitepaper-view="docs" aria-pressed="true">Docs</button>
-    <button type="button" data-whitepaper-view="latex" aria-pressed="false">LaTeX</button>
+    <button type="button" data-whitepaper-view="latex" aria-pressed="false">Markdown</button>
+    <button type="button" data-whitepaper-view="pdf" aria-pressed="false">LaTeX</button>
   </div>
 </div>
 
@@ -14,7 +15,8 @@
 
   const readStoredView = () => {
     try {
-      return localStorage.getItem(STORAGE_KEY) === 'latex' ? 'latex' : 'docs';
+      const storedView = localStorage.getItem(STORAGE_KEY);
+      return ['docs', 'latex', 'pdf'].includes(storedView) ? storedView : 'docs';
     } catch {
       return 'docs';
     }

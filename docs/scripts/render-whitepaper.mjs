@@ -46,7 +46,9 @@ const htmlAttributeEscape = (value) => value
   .replaceAll('&', '&amp;')
   .replaceAll('<', '&lt;')
   .replaceAll('>', '&gt;')
-  .replaceAll('"', '&quot;');
+  .replaceAll('"', '&quot;')
+  .replaceAll('\r', '')
+  .replaceAll('\n', '&#10;');
 
 const referenceKinds = {
   e: 'Equation',
@@ -69,6 +71,66 @@ const indexReferences = (value) => {
     const count = (counters.get(kind) || 0) + 1;
     counters.set(kind, count);
     labels.set(key, { kind, number: count });
+  }
+
+  let appendixMode = false;
+  let sectionNumber = 0;
+  let subsectionNumber = 0;
+  let subsubsectionNumber = 0;
+  let currentSection = '';
+  const sectionTokens = /\\appendix\b|\\(section|subsection|subsubsection)(\*)?\{[^}]*\}|\\label\{([^}]*)\}/g;
+  for (const match of value.matchAll(sectionTokens)) {
+    if (match[0].startsWith('\\appendix')) {
+      appendixMode = true;
+      sectionNumber = 0;
+      subsectionNumber = 0;
+      subsubsectionNumber = 0;
+      currentSection = '';
+      continue;
+    }
+    if (match[1]) {
+      if (match[2]) {
+        currentSection = '';
+        continue;
+      }
+      if (match[1] === 'section') {
+        sectionNumber += 1;
+        subsectionNumber = 0;
+        subsubsectionNumber = 0;
+        currentSection = appendixMode ? String.fromCharCode(64 + sectionNumber) : String(sectionNumber);
+      } else if (match[1] === 'subsection') {
+        subsectionNumber += 1;
+        subsubsectionNumber = 0;
+        const sectionLabel = appendixMode ? String.fromCharCode(64 + sectionNumber) : String(sectionNumber);
+        currentSection = sectionLabel + '.' + subsectionNumber;
+      } else {
+        subsubsectionNumber += 1;
+        const sectionLabel = appendixMode ? String.fromCharCode(64 + sectionNumber) : String(sectionNumber);
+        currentSection = sectionLabel + '.' + subsectionNumber + '.' + subsubsectionNumber;
+      }
+      continue;
+    }
+    if (match[3]?.startsWith('s:') && currentSection) {
+      labels.set(match[3], { kind: 'Section', number: currentSection });
+    }
+  }
+
+  const environmentCounters = new Map();
+  for (const environment of theoremEnvironments) {
+    if (environment === 'proof' || environment === 'thm*') continue;
+    const escapedEnvironment = environment.replace('*', '\\*');
+    const environmentPattern = new RegExp(
+      '\\\\begin\\{' + escapedEnvironment + '\\}(?:\\[[^\\]]*\\])?([\\s\\S]*?)\\\\end\\{' + escapedEnvironment + '\\}',
+      'g',
+    );
+    for (const match of value.matchAll(environmentPattern)) {
+      const number = (environmentCounters.get(environment) || 0) + 1;
+      environmentCounters.set(environment, number);
+      const kind = theoremLabels[environment] || 'Reference';
+      for (const label of match[1].matchAll(/\\label\{([^}]*)\}/g)) {
+        labels.set(label[1], { kind, number });
+      }
+    }
   }
   return labels;
 };
@@ -211,10 +273,15 @@ const mathMarkup = (value, inline = false, environment = '') => {
   // generated formula from those prose styles.
   if (inline) return '<span class="pk-inline-math not-content" data-tex="' + formula + '"></span>';
   const id = labels[0] ? ' id="' + htmlAttributeEscape(labels[0]) + '"' : '';
+  const equationReference = labels.map((label) => referenceLabels.get(label)).find(Boolean);
+  const equationNumber = equationReference
+    ? '<span class="pk-equation-number" aria-hidden="true">(' + equationReference.number + ')</span>'
+    : '';
   const additionalAnchors = labels.slice(1).map((label) =>
     '<span class="pk-reference-anchor" id="' + htmlAttributeEscape(label) + '"></span>').join('');
   return '<div class="pk-equation"' + id + '>' + additionalAnchors
-    + '<span class="not-content" data-display-math="true" data-tex="' + formula + '"></span></div>';
+    + '<span class="not-content" data-display-math="true" data-tex="' + formula + '"></span>'
+    + equationNumber + '</div>';
 };
 
 const extractBlocks = (value) => {
@@ -353,15 +420,20 @@ const inlineMarkup = (value, blocks) => {
   return result.replace(/\s+/g, ' ').trim();
 };
 
-const headingMarkup = (level, title, blocks) => {
+const headingMarkup = (level, title, blocks, number = '') => {
   const cleanTitle = title.replace(/\\textcolor\{[^}]*\}\{([^{}]*)\}/g, '$1').trim();
   const id = cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return '<h' + level + ' id="' + id + '">' + inlineMarkup(cleanTitle, blocks) + '</h' + level + '>';
+  const numberMarkup = number
+    ? '<span class="pk-heading-number" aria-hidden="true">' + number + '</span>'
+    : '';
+  return '<h' + level + ' id="' + id + '">' + numberMarkup
+    + inlineMarkup(cleanTitle, blocks) + '</h' + level + '>';
 };
 
 const renderDocument = (value, blocks) => {
   let source = value
-    .replace(/\\(?:frontmatter|mainmatter|backmatter|appendix|maketitle|tableofcontents|cleardoublepage|newpage)\b/g, '')
+    .replace(/\\appendix\b/g, '\n@@APPENDIX@@\n')
+    .replace(/\\(?:frontmatter|mainmatter|backmatter|maketitle|tableofcontents|cleardoublepage|newpage)\b/g, '')
     .replace(/\\(?:bibliographystyle|bibliography)\{[^}]*\}/g, '')
     .replace(/\\(?:begin|end)\{document\}/g, '')
     .replace(/\\textcolor\{[^}]*\}\{([^{}]*)\}/g, '$1')
@@ -369,11 +441,20 @@ const renderDocument = (value, blocks) => {
     .replace(/\\end\{(itemize|enumerate)\}/g, '\n@@LIST_END@@\n')
     .replace(/^\s*\\item\s*/gm, '\n@@ITEM@@\n');
 
+  const theoremCounters = new Map();
   for (const environment of theoremEnvironments) {
-    const startPattern = new RegExp('\\\\begin\\{' + environment + '\\}(?:\\[([^\\]]*)\\])?', 'g');
-    source = source.replace(startPattern, (_, title = '') =>
-      '\n@@THEOREM_START_' + environment + '_' + title.replaceAll('|', '/') + '@@\n');
-    source = source.replaceAll('\\end{' + environment + '}', '\n@@THEOREM_END@@\n');
+    const escapedEnvironment = environment.replace('*', '\\*');
+    const environmentPattern = new RegExp(
+      '\\\\begin\\{' + escapedEnvironment + '\\}(?:\\[([^\\]]*)\\])?([\\s\\S]*?)\\\\end\\{' + escapedEnvironment + '\\}',
+      'g',
+    );
+    source = source.replace(environmentPattern, (_, title = '', content) => {
+      const numbered = environment !== 'proof' && environment !== 'thm*';
+      const number = numbered ? (theoremCounters.get(environment) || 0) + 1 : '';
+      if (numbered) theoremCounters.set(environment, number);
+      return '\n@@THEOREM_START_' + environment + '_' + number + '_'
+        + title.replaceAll('|', '/') + '@@\n' + content + '\n@@THEOREM_END@@\n';
+    });
   }
 
   const output = [];
@@ -381,6 +462,10 @@ const renderDocument = (value, blocks) => {
   let listItemOpen = false;
   let theoremOpen = false;
   let paragraph = [];
+  let appendixMode = false;
+  let sectionNumber = 0;
+  let subsectionNumber = 0;
+  let subsubsectionNumber = 0;
 
   const flushParagraph = () => {
     const text = paragraph.join(' ').replace(/\s+/g, ' ').trim();
@@ -406,11 +491,37 @@ const renderDocument = (value, blocks) => {
       continue;
     }
 
-    const heading = line.match(/^\\(section|subsection|subsubsection|paragraph)\*?\{(.*)\}$/);
+    if (line === '@@APPENDIX@@') {
+      flushParagraph();
+      appendixMode = true;
+      sectionNumber = 0;
+      subsectionNumber = 0;
+      subsubsectionNumber = 0;
+      continue;
+    }
+
+    const heading = line.match(/^\\(section|subsection|subsubsection|paragraph)(\*)?\{(.*)\}$/);
     if (heading) {
       flushParagraph();
       const level = { section: 2, subsection: 3, subsubsection: 4, paragraph: 5 }[heading[1]];
-      output.push(headingMarkup(level, heading[2], blocks));
+      const numbered = !heading[2];
+      let number = '';
+      if (numbered && heading[1] === 'section') {
+        sectionNumber += 1;
+        subsectionNumber = 0;
+        subsubsectionNumber = 0;
+        number = appendixMode ? String.fromCharCode(64 + sectionNumber) : String(sectionNumber);
+      } else if (numbered && heading[1] === 'subsection') {
+        subsectionNumber += 1;
+        subsubsectionNumber = 0;
+        const sectionLabel = appendixMode ? String.fromCharCode(64 + sectionNumber) : String(sectionNumber);
+        number = sectionLabel + '.' + subsectionNumber;
+      } else if (numbered && heading[1] === 'subsubsection') {
+        subsubsectionNumber += 1;
+        const sectionLabel = appendixMode ? String.fromCharCode(64 + sectionNumber) : String(sectionNumber);
+        number = sectionLabel + '.' + subsectionNumber + '.' + subsubsectionNumber;
+      }
+      output.push(headingMarkup(level, heading[3], blocks, number));
       continue;
     }
 
@@ -440,13 +551,16 @@ const renderDocument = (value, blocks) => {
       continue;
     }
 
-    const theoremStart = line.match(/^@@THEOREM_START_([^_]+)_(.*)@@$/);
+    const theoremStart = line.match(/^@@THEOREM_START_([^_]+)_([0-9]*)_(.*)@@$/);
     if (theoremStart) {
       flushParagraph();
       const kind = theoremStart[1];
-      const title = plainReferenceText(theoremStart[2] || theoremLabels[kind] || kind);
+      const number = theoremStart[2];
+      const title = plainReferenceText(theoremStart[3]);
       const label = theoremLabels[kind] || kind;
-      const asideTitle = title !== label ? label + ': ' + title : label;
+      const asideTitle = kind === 'proof'
+        ? label + (title ? ' ' + title : '') + '.'
+        : label + (number ? ' ' + number : '') + (title ? '. ' + title : '.');
       output.push('<Aside type="note" title="' + htmlEscape(asideTitle) + '">');
       theoremOpen = true;
       continue;
@@ -500,6 +614,7 @@ const output = template.slice(0, startIndex + startMarker.length)
 const generatedMath = [...output.matchAll(/data-tex="([\s\S]*?)"/g)].map((match) => match[1]);
 const invalidMath = generatedMath.filter((formula) => {
   const decoded = formula
+    .replaceAll('&#10;', '\n')
     .replaceAll('&lt;', '<')
     .replaceAll('&gt;', '>')
     .replaceAll('&quot;', '"')

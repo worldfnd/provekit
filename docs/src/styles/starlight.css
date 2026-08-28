@@ -403,6 +403,8 @@ body {
 .pk-equation mjx-container[display='true'] {
   margin-block: 0 !important;
 }
+.pk-equation-number,
+.pk-heading-number { display: none; }
 .pk-inline-math { white-space: nowrap; }
 .pk-citation, .pk-reference { color: var(--pk-brand); font: 0.82em var(--pk-font-mono); }
 .pk-reference[href] { text-decoration: underline; text-decoration-thickness: 0.08em; text-underline-offset: 0.15em; }
@@ -557,6 +559,12 @@ body {
   line-height: 1.25;
 }
 
+:root[data-whitepaper-view='latex'] .pk-whitepaper .pk-heading-number {
+  display: inline;
+  margin-inline-end: 0.55em;
+  font: inherit;
+}
+
 :root[data-whitepaper-view='latex'] .pk-whitepaper .pk-paper-body h3 {
   margin-top: 2rem;
   font-family: Georgia, 'Times New Roman', serif;
@@ -584,13 +592,30 @@ body {
   line-height: 1.65;
 }
 
+:root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list { list-style-type: decimal; }
+:root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list ol { list-style-type: lower-alpha; }
+:root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list ol ol { list-style-type: lower-roman; }
+:root[data-whitepaper-view='latex'] .pk-whitepaper ul.pk-paper-list { list-style-type: disc; }
+
 :root[data-whitepaper-view='latex'] .pk-whitepaper .pk-equation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 1rem;
   margin-block: 0.5rem;
   border: 0;
   padding-block: 0.15rem;
   background: transparent;
   color: var(--pk-paper-ink);
   font-size: 1.08rem;
+}
+
+:root[data-whitepaper-view='latex'] .pk-whitepaper .pk-equation-number {
+  display: block;
+  min-width: 2.4rem;
+  color: inherit;
+  font-size: 0.88rem;
+  text-align: right;
 }
 
 :root[data-whitepaper-view='latex'] .pk-whitepaper .pk-citation,
@@ -640,8 +665,8 @@ body {
   margin: 1.5rem auto 3rem;
 }
 
-:root[data-whitepaper-view='latex'] .pk-whitepaper { display: none; }
-:root[data-whitepaper-view='latex'] .pk-pdf-viewer { display: block; }
+:root[data-whitepaper-view='pdf'] .pk-whitepaper { display: none; }
+:root[data-whitepaper-view='pdf'] .pk-pdf-viewer { display: block; }
 
 .pk-pdf-toolbar {
   display: flex;
