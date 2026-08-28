@@ -7,7 +7,7 @@ ffi_backend = "native-c-abi"
 package = "dev.world.benchmobile"
 min_sdk = 24
 target_sdk = 34
-abis = ["arm64-v8a"]
+abis = ["arm64-v8a", "armeabi-v7a"]
 
 [ios]
 bundle_id = "dev.world.benchmobile"

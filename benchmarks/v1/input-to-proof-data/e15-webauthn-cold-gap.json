@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "campaign_id": "input-to-proof-v1-20260807",
+  "logical_series_id": "webauthn_closest_analogue__motorola_e15__circom_groth16__cold_local",
+  "target": "motorola_e15",
+  "device": {
+    "model": "moto e15",
+    "os": "Android 14",
+    "abi": "armeabi-v7a",
+    "zygote": "zygote32",
+    "userspace_bitness": 32
+  },
+  "runtime": "android_native",
+  "workload": "webauthn_closest_analogue",
+  "circuit": "webauthn",
+  "circuit_variant": "closest-analogue",
+  "circuit_commit": "0fb5b4aa1398281c2fd3dbe14db147e05b61f201",
+  "stack": "circom_groth16",
+  "frontend": "circom",
+  "prover_backend": "rust-rapidsnark-0.1.4",
+  "witness_backend": "rust-witness-0.1.6 (split helper canary)",
+  "timing_mode": "cold_local",
+  "sample_kind": "gap",
+  "sample_index": null,
+  "status": "runtime_failed",
+  "failure_code": "out_of_memory",
+  "failure_detail": "Rapidsnark failed in the native E15 worker with `mmap failed: Out of memory`. The pinned WebAuthn zkey is 1,733,145,772 bytes and the frozen WTNS is 109,218,412 bytes; the 32-bit E15 could not create the proving mappings. Repeated helper-split and unmap canaries did not produce a stable valid run.",
+  "metrics": {
+    "initialization_time_ms": null,
+    "witness_time_ms": null,
+    "prover_time_ms": null,
+    "verify_time_ms": null,
+    "total_time_ms": null,
+    "input_to_proof_time_ms": null,
+    "peak_memory_mib": null,
+    "proof_size_bytes": null,
+    "circuit_size_bytes": null,
+    "artifact_size_bytes": null,
+    "bundle_size_bytes": null,
+    "constraint_count": null
+  },
+  "artifact_context": {
+    "zkey_size_bytes": 1733145772,
+    "wtns_size_bytes": 109218412,
+    "apk_sha256": "dd9271754813dea6248384c25c603185b68b10fc3f1535a862440febf47bdc57",
+    "apk_size_bytes": 1198528277,
+    "apk_is_proving_payload": false
+  },
+  "evidence": {
+    "report_path": "target/v1-benchmarks/input-to-proof/e15/attempts/circom-webauthn-helper-unmap-canary-20260811/results.json",
+    "report_sha256": "41d6c31a71f5d19c512b9d240517ff372dd75ed6c026fa4c1be3ef5ce3e516ee",
+    "logcat_path": "target/v1-benchmarks/input-to-proof/e15/attempts/circom-webauthn-helper-unmap-canary-20260811/circom_webauthn_input_to_proof.logcat.txt",
+    "logcat_sha256": "cfccf2a1be99f36e3968e157868513a43fc6b08f9e9e475a2574b87019499255"
+  },
+  "note": "This is an explicit E15 input-to-proof gap. It is not a zero measurement, and no iPhone, Mac, or browser value is substituted."
+}

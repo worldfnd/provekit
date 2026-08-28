@@ -1,0 +1,22 @@
+[package]
+name = "taceo-oprf-benchmark"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+ark-bn254 = "0.6"
+ark-serialize = "0.6"
+libc = "0.2"
+rand = "0.8"
+rand_chacha = "0.3"
+ruint = "1.19"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+taceo-groth16-material = { package = "taceo-groth16-material", path = "../../../../target/v1-benchmarks/taceo-v021/sources/circom-helpers/groth16-material", features = ["circom"] }
+
+[patch.crates-io]
+circom-witness-rs = { path = "../../../../target/v1-benchmarks/taceo-v021/sources/circom-witness-rs" }

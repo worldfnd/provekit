@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "profile": "P1",
+  "self_source_revision": "15b167e3543a9dff1dbb16fcf71a45fe4625cf9e",
+  "registration_fixture": {
+    "path": "benchmarks/v1/circom/fixtures/self/register_sha256_sha256_sha256_rsa_65537_4096.json",
+    "sha256": "2d9ccff0b1a94c500d722cea20fbeb68ff9c6c48f21391b7f5b441752dfa5030"
+  },
+  "passport": {
+    "signature": "rsa_sha256_65537_4096",
+    "dg1_birth_date_offset": 62,
+    "dg1_expiry_date_offset": 70
+  },
+  "public_statement": {
+    "current_date_yymmdd": "260723",
+    "minimum_age": "18",
+    "fixture_id": "self-pack-bytes-and-poseidon-dg1"
+  }
+}

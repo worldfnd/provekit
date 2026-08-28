@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "campaign_id": "input-to-proof-v1-20260807",
+  "sampling": { "warmups": 1, "measured": 5, "sequential": true },
+  "workloads": [
+    "passport_complete_age_check",
+    "passport_p1",
+    "oprf_o2",
+    "webauthn_closest_analogue"
+  ],
+  "timing_modes": {
+    "cold_local": "Fresh process/runtime per attempt; hash-verified assets are local and network transfer is excluded.",
+    "warm_reuse": "One initialized runtime is reused; every attempt still regenerates its witness and proof."
+  },
+  "e15_status": {
+    "successful_logical_series": 23,
+    "gap_logical_series": 1,
+    "gap_manifest": "benchmarks/v1/input-to-proof-data/e15-webauthn-cold-gap.json",
+    "gap": {
+      "series": "webauthn_closest_analogue__motorola_e15__circom_groth16__cold_local",
+      "status": "runtime_failed",
+      "failure_code": "out_of_memory"
+    }
+  },
+  "final_export": {
+    "path": "benchmarks/v1/input-to-proof-data/input-to-proof-samples.csv",
+    "sha256": "388ec30b6331792b741e1f4248929a1cabd2174f60c15b5663297dc170fd731e",
+    "logical_series": 72,
+    "successful_series": 69,
+    "gap_series": 3,
+    "rows": 417,
+    "successful_attempt_rows": 414,
+    "gap_rows": 3,
+    "campaign_ids": [
+      "input-to-proof-v1-20260807",
+      "input-to-proof-v1-mac-multithread-16-20260812",
+      "input-to-proof-v1-taceo-oprf-20260814"
+    ]
+  },
+  "headline": "input_to_proof_time_ms",
+  "verification": "Valid-proof acceptance and tampered-proof rejection are mandatory and excluded from headline latency.",
+  "pins": {
+    "provekit_v1": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
+    "provekit_noir": "1.0.0-beta.11",
+    "oprf_noir_compat_commit": "7831dca615db55147c60f49415af6e86730df090",
+    "barretenberg_noir": "1.0.0-beta.19",
+    "bb_js": "4.2.0-aztecnr-rc.2",
+    "mopro": "0.3.7",
+    "circom": "2.2.2",
+    "snarkjs": "0.7.6",
+    "rust_witness": "0.1.6",
+    "rust_rapidsnark": "0.1.4",
+    "rust_rapidsnark_commit": "fcf92e7454600109e4eab4a0c907e8d59649fd9c",
+    "wasmi_iphone_oprf": "0.46.0",
+    "taceo_circom_helpers_commit": "8aacd73ed6ab0a2b9b2158e613acfa920860865a",
+    "taceo_circom_witness_rs_commit": "e11206a9f453145dcd6b814523cbfba4f60cf5c6",
+    "taceo_groth16": "0.2.1",
+    "taceo_groth16_material": "0.4.2"
+  },
+  "publication_boundaries": {
+    "mac_chrome": "browser_wasm",
+    "iphone_se_2022": "ios_native",
+    "motorola_e15": "android_native"
+  }
+}

@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "benchmark": "oprf_world_id_nullifier",
+  "backend": "provekit_v1_branch_9b2a6f_wasm_single",
+  "download_time_ms": 8.205000042915344,
+  "initialization_time_ms": 26.2150000333786,
+  "artifacts": {
+    "prover_bytes": 1638340,
+    "verifier_bytes": 1061409
+  },
+  "bundle": {
+    "shared_runtime_bytes": 9165802,
+    "incremental_circuit_bytes": 2706044,
+    "cold_download_bytes": 11871846
+  },
+  "circuit": {
+    "constraints": 95921,
+    "witnesses": 97061
+  },
+  "environment": {
+    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/151.0.0.0 Safari/537.36",
+    "hardware_concurrency": 16,
+    "cross_origin_isolated": true,
+    "wasm_threads": false,
+    "memory_metric": "unavailable"
+  },
+  "warmup": 1,
+  "iterations": 5,
+  "samples": [
+    {
+      "iteration": 0,
+      "warmup": true,
+      "prepare_time_ms": 361.125,
+      "witness_time_ms": 1440.5550000667572,
+      "prove_time_ms": 2870.2850000858307,
+      "verify_time_ms": 138.70999991893768,
+      "end_to_end_time_ms": 3452.2599999904633,
+      "proof_size_bytes": 842574,
+      "tampered_proof_rejected": true
+    },
+    {
+      "iteration": 0,
+      "warmup": false,
+      "prepare_time_ms": 361.84499990940094,
+      "witness_time_ms": 1328.7549999952316,
+      "prove_time_ms": 2697.0049999952316,
+      "verify_time_ms": 134.04000008106232,
+      "end_to_end_time_ms": 3277.264999985695,
+      "proof_size_bytes": 849742,
+      "tampered_proof_rejected": true
+    },
+    {
+      "iteration": 1,
+      "warmup": false,
+      "prepare_time_ms": 359.6399999856949,
+      "witness_time_ms": 1316.375,
+      "prove_time_ms": 2698.9199999570847,
+      "verify_time_ms": 132.67500007152557,
+      "end_to_end_time_ms": 3274.314999938011,
+      "proof_size_bytes": 844238,
+      "tampered_proof_rejected": true
+    },
+    {
+      "iteration": 2,
+      "warmup": false,
+      "prepare_time_ms": 358.65499997138977,
+      "witness_time_ms": 1318.1800000667572,
+      "prove_time_ms": 2718.515000104904,
+      "verify_time_ms": 136.99000000953674,
+      "end_to_end_time_ms": 3214.899999976158,
+      "proof_size_bytes": 842786,
+      "tampered_proof_rejected": true
+    },
+    {
+      "iteration": 3,
+      "warmup": false,
+      "prepare_time_ms": 370.3549998998642,
+      "witness_time_ms": 1343.9100000858307,
+      "prove_time_ms": 2734.7300000190735,
+      "verify_time_ms": 136.91500008106232,
+      "end_to_end_time_ms": 3325.064999938011,
+      "proof_size_bytes": 846326,
+      "tampered_proof_rejected": true
+    },
+    {
+      "iteration": 4,
+      "warmup": false,
+      "prepare_time_ms": 366.60000002384186,
+      "witness_time_ms": 1317.1150000095367,
+      "prove_time_ms": 2693.179999947548,
+      "verify_time_ms": 133.375,
+      "end_to_end_time_ms": 3275.6299999952316,
+      "proof_size_bytes": 847310,
+      "tampered_proof_rejected": true
+    }
+  ],
+  "process_memory": {
+    "metric": "peak_chrome_renderer_rss",
+    "peak_rss_kib": 719520,
+    "peak_renderer_pid": 79137,
+    "polling_interval_ms": 100,
+    "sample_count": 120
+  },
+  "browser": {
+    "name": "Google Chrome",
+    "version": "151.0.7922.72",
+    "executable_path": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    "headless": true
+  }
+}

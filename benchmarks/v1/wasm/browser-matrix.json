@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "environments": [
+    {
+      "id": "macos_chrome_single",
+      "os": "OS X",
+      "os_version": "Sequoia",
+      "browser": "Chrome",
+      "execution": "single-thread",
+      "real_mobile": false
+    },
+    {
+      "id": "ios_safari_single",
+      "os": "ios",
+      "os_version": "set-via-BROWSERSTACK_OS_VERSION",
+      "device": "iPhone SE 2022",
+      "browser": "Safari",
+      "execution": "single-thread",
+      "real_mobile": true,
+      "device_catalog_query_required": true
+    },
+    {
+      "id": "android_chrome_single",
+      "os": "android",
+      "os_version": "12.0",
+      "device": "Samsung Galaxy S21",
+      "browser": "Chrome",
+      "execution": "single-thread",
+      "real_mobile": true
+    },
+    {
+      "id": "android_chrome_threaded",
+      "os": "android",
+      "os_version": "12.0",
+      "device": "Samsung Galaxy S21",
+      "browser": "Chrome",
+      "execution": "threaded",
+      "real_mobile": true,
+      "requires_cross_origin_isolation": true
+    }
+  ]
+}

@@ -1,0 +1,557 @@
+{
+  "schema_version": 2,
+  "campaign_id": "semantic-parity-v1-20260731",
+  "contract": {
+    "profiles": [
+      "passport_p1",
+      "oprf_o2",
+      "webauthn_closest_analogue"
+    ],
+    "targets": [
+      "mac_chrome",
+      "iphone_se_2022",
+      "motorola_e15"
+    ],
+    "stacks": [
+      "provekit_v1",
+      "noir_barretenberg",
+      "circom_groth16"
+    ],
+    "expected_cells": 27,
+    "sampling": {
+      "warmup": 1,
+      "measured": 5,
+      "sequential": true
+    },
+    "correctness": {
+      "valid_proof_accepted": true,
+      "tampered_proof_rejected": true
+    },
+    "headline_metrics": [
+      "prove_time_ms",
+      "proof_size_bytes",
+      "proving_payload_size_bytes",
+      "process_peak_memory_kib"
+    ],
+    "payload_definition": "Deduplicated bytes required to create a proof: proving circuit plus frozen input, and backend proving parameters/CRS. Verifier-only artifacts, application packages, and transport duplication are excluded."
+  },
+  "semantic_profiles": {
+    "passport_p1": {
+      "definition": "Matched monolithic RSA-4096 passport integrity, Self registry authorization, DG1 validity and asserted minimum-age proof.",
+      "circom_source_commit": "7de99e9e001d06797c9770684afea20f096d1ac3",
+      "self_fixture_commit": "15b167e3543a9dff1dbb16fcf71a45fe4625cf9e"
+    },
+    "oprf_o2": {
+      "definition": "Matched World ID Protocol nullifier statement and frozen witness, including the identical public nullifier.",
+      "world_id_protocol_commit": "85aeeef539961cae5a63de794997b507a5975717",
+      "noir_taceo_compat_commit": "7831dca615db55147c60f49415af6e86730df090",
+      "expected_nullifier_hex": "0x2f2fa0f2ad10720be5239755275c46b362fb90cfc5bccbdd8f889a8aadda0d8d"
+    },
+    "webauthn_closest_analogue": {
+      "definition": "Historical closest available counterparts, not semantically equivalent: Noir binds challenge, client-data type, origin, RP-ID hash, UP/UV flags, and public key; privacy-ethereum/webauthn-circom omits several of those bindings.",
+      "source": "benchmarks/v1/legacy/data/benchmark-samples.csv",
+      "source_sha256": "474cb49d528862da3a029967f63fdee1875339b7c3da5f7599f2aded40d57d60"
+    }
+  },
+  "cells": [
+    {
+      "cell_id": "passport_p1__mac_chrome__provekit_v1",
+      "profile": "passport_p1",
+      "target": "mac_chrome",
+      "stack": "provekit_v1",
+      "state": "qualified",
+      "evidence": "evidence/provekit-v1/mac/passport.json",
+      "evidence_sha256": "46a2b3655f41a5b94e8565e39baa16adece1d904106db4436837d2ebf9239ecd",
+      "payload": [
+        {
+          "name": "passport_p1.pkp",
+          "bytes": 2283056,
+          "sha256": "7c99f9724f25229324ae3ec24d37a61e112cc32c411f8580c64ae1ed9a33eea7"
+        },
+        {
+          "name": "passport_p1.inputs.json",
+          "bytes": 30683,
+          "sha256": "6570f80c3e5464ab1840385b2b8ebc875128688bdb77e12057751be278f5a450"
+        }
+      ],
+      "provenance": {
+        "evidence_sha256": "46a2b3655f41a5b94e8565e39baa16adece1d904106db4436837d2ebf9239ecd",
+        "session_id": "",
+        "payload_scope": "PKP/prover plus frozen proving input; no IPA/APK/transport bytes"
+      }
+    },
+    {
+      "cell_id": "passport_p1__mac_chrome__noir_barretenberg",
+      "profile": "passport_p1",
+      "target": "mac_chrome",
+      "stack": "noir_barretenberg",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/passport-p1/mac-chrome/noir-barretenberg.json",
+      "evidence_sha256": "55146fe20fe3edc1887b6cc7a8fb5803c1f571b41568351380e1648b080a9fb7",
+      "payload": [
+        {
+          "path": "benchmarks/v1/noir/passport_p1/web/dist/assets/passport_p1/circuit.json",
+          "bytes": 3260936,
+          "sha256": "357150b3344a5ae6cbc8cd2304840f29142b9dbab21bbf842e083380aefe9a34"
+        },
+        {
+          "path": "benchmarks/v1/noir/passport_p1/web/dist/assets/passport_p1/inputs.json",
+          "bytes": 30675,
+          "sha256": "243399e581fced3044b80b34ee45a7e07a64002f02fce811cc9a4d8d3196896a"
+        },
+        {
+          "name": "https://crs.aztec-cdn.foundation/g1.dat bytes=0-67108927",
+          "bytes": 67108928,
+          "sha256": "0f238856e55722f15a4d64ef0de12b4260e218245590bd3a6c900aee188de8e5"
+        },
+        {
+          "name": "https://crs.aztec-cdn.foundation/g2.dat",
+          "bytes": 128,
+          "sha256": "01797bfc4de5a96f0e516a9ea4537d18786dc30cb991aca4274c95822b69c32f"
+        },
+        {
+          "name": "https://crs.aztec-cdn.foundation/grumpkin_g1.dat bytes=0-4194367",
+          "bytes": 4194368,
+          "sha256": "8df01ac0f564db0b52857d37b363b8f8042cd1d886f8d8fd2677375a6290e870"
+        }
+      ]
+    },
+    {
+      "cell_id": "passport_p1__mac_chrome__circom_groth16",
+      "profile": "passport_p1",
+      "target": "mac_chrome",
+      "stack": "circom_groth16",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/passport-p1/mac-chrome/circom-snarkjs.json",
+      "evidence_sha256": "9b2a0b7e1e621531d6a8c3750d07f6e775ee30c02eb7971db39aff2e5a384264",
+      "payload": [
+        {
+          "path": "target/v1-benchmarks/semantic-parity/passport-p1/browser/fixtures/passport_p1.wasm",
+          "bytes": 10089991,
+          "sha256": "322efbab8702ab37e3367e171326e0cb28dd336027898c08c1429c4b91e33f5f"
+        },
+        {
+          "path": "target/v1-benchmarks/semantic-parity/passport-p1/browser/fixtures/passport_p1_final.zkey",
+          "bytes": 498212512,
+          "sha256": "75de3f63996cd69f63de091029aace20c90f4dbbcaf47603af015e74884f721c"
+        },
+        {
+          "path": "target/v1-benchmarks/semantic-parity/passport-p1/browser/fixtures/passport_p1.input.json",
+          "bytes": 30424,
+          "sha256": "8c90e1b2392e013df6a6bdd1f22c1bb2bae9bca457c8b937e43a0e10e3618758"
+        }
+      ]
+    },
+    {
+      "cell_id": "oprf_o2__mac_chrome__provekit_v1",
+      "profile": "oprf_o2",
+      "target": "mac_chrome",
+      "stack": "provekit_v1",
+      "state": "qualified",
+      "evidence": "evidence/provekit-v1/mac/oprf.json",
+      "evidence_sha256": "33bd92614f10ca8dd2c8033d74fda19ba0429d7dd5604e83896321f6268a7b14",
+      "payload": [
+        {
+          "name": "oprf_world_id_nullifier.pkp",
+          "bytes": 1638340,
+          "sha256": "e9baca10698248ae6a4c718b0fb615e95fd13f1f66d5c23c751fc7f8f94cd2af"
+        },
+        {
+          "name": "oprf_world_id_nullifier.inputs.json",
+          "bytes": 6295,
+          "sha256": "4b295901ff20681cf7719442f281e16774950673e2fb849e22fad5d50ff4e8ad"
+        }
+      ],
+      "provenance": {
+        "evidence_sha256": "33bd92614f10ca8dd2c8033d74fda19ba0429d7dd5604e83896321f6268a7b14",
+        "session_id": "",
+        "payload_scope": "PKP/prover plus frozen proving input; no IPA/APK/transport bytes"
+      }
+    },
+    {
+      "cell_id": "oprf_o2__mac_chrome__noir_barretenberg",
+      "profile": "oprf_o2",
+      "target": "mac_chrome",
+      "stack": "noir_barretenberg",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/oprf-o2/mac-chrome/noir-barretenberg.json",
+      "evidence_sha256": "32dd1a99e8c3d09d3ecbb7d8d25cc4bf317eafaf2eeba18187125e27188e0620",
+      "payload": [
+        {
+          "path": "benchmarks/v1/barretenberg/web/dist/assets/oprf_world_id_nullifier/circuit.json",
+          "bytes": 2615487,
+          "sha256": "cc49b173395c6c0cea047285cbb69d5caf75903b9df65862c021d48c2a1683ad"
+        },
+        {
+          "path": "benchmarks/v1/barretenberg/web/dist/assets/oprf_world_id_nullifier/inputs.json",
+          "bytes": 6295,
+          "sha256": "4b295901ff20681cf7719442f281e16774950673e2fb849e22fad5d50ff4e8ad"
+        },
+        {
+          "name": "https://crs.aztec-cdn.foundation/g1.dat bytes=0-67108927",
+          "bytes": 67108928,
+          "sha256": "0f238856e55722f15a4d64ef0de12b4260e218245590bd3a6c900aee188de8e5"
+        },
+        {
+          "name": "https://crs.aztec-cdn.foundation/g2.dat",
+          "bytes": 128,
+          "sha256": "01797bfc4de5a96f0e516a9ea4537d18786dc30cb991aca4274c95822b69c32f"
+        },
+        {
+          "name": "https://crs.aztec-cdn.foundation/grumpkin_g1.dat bytes=0-4194367",
+          "bytes": 4194368,
+          "sha256": "8df01ac0f564db0b52857d37b363b8f8042cd1d886f8d8fd2677375a6290e870"
+        }
+      ]
+    },
+    {
+      "cell_id": "oprf_o2__mac_chrome__circom_groth16",
+      "profile": "oprf_o2",
+      "target": "mac_chrome",
+      "stack": "circom_groth16",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/oprf-o2/mac-chrome/circom-snarkjs.json",
+      "evidence_sha256": "d05057da686031712bee068b2d5b34c824e25b1b73b19e7b2a99c29063553b39",
+      "payload": [
+        {
+          "path": "benchmarks/v1/circom/web/dist/assets/oprf/oprf_nullifier.wasm",
+          "bytes": 918505,
+          "sha256": "f13e21ad5a14462a7ccd9d30c845d551e1eac3cc0346676aa674c792bb91e909"
+        },
+        {
+          "path": "benchmarks/v1/circom/web/dist/assets/oprf/oprf_nullifier.zkey",
+          "bytes": 38279392,
+          "sha256": "5c13f036144b3e9767edb51dc28034d3dc8d72d6ca4d66fad2c9655f5b4653dc"
+        },
+        {
+          "path": "benchmarks/v1/circom/web/dist/assets/oprf/oprf_nullifier.input.json",
+          "bytes": 5610,
+          "sha256": "662a0242fd4a36ad71d565a51d5ecc4e70b764fd884d41902911e30a85764d40"
+        }
+      ]
+    },
+    {
+      "cell_id": "passport_p1__iphone_se_2022__provekit_v1",
+      "profile": "passport_p1",
+      "target": "iphone_se_2022",
+      "stack": "provekit_v1",
+      "state": "qualified",
+      "evidence": "evidence/provekit-v1/ios/summary.json",
+      "evidence_sha256": "942eb49b9faa546669836a28a96b0e85ab56e11479232ac09abe1ce0ca8d07fa",
+      "payload": [
+        {
+          "name": "complete_age_check.pkp+frozen-input",
+          "bytes": 2307676,
+          "sha256": "01c5ac40b916e3efe5b42f947d90f9076300f24c69af78844aff5867a8007526"
+        },
+        {
+          "name": "complete_age_check.Prover.toml",
+          "bytes": 247039,
+          "sha256": "dd1ff84f238d5d92b8c7de56b4dc6df9c2309e53f7394d4ac35055b3195f7aa1"
+        }
+      ],
+      "provenance": {
+        "evidence_sha256": "942eb49b9faa546669836a28a96b0e85ab56e11479232ac09abe1ce0ca8d07fa",
+        "session_id": "5d9449e718692b36c4efa7c6609a6ba6d6a38eec",
+        "payload_scope": "PKP/prover plus frozen proving input; no IPA/APK/transport bytes"
+      }
+    },
+    {
+      "cell_id": "passport_p1__iphone_se_2022__noir_barretenberg",
+      "profile": "passport_p1",
+      "target": "iphone_se_2022",
+      "stack": "noir_barretenberg",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/passport-p1/iphone-native/barretenberg.json",
+      "evidence_sha256": "c23af12b98fcf599742beeefb057dea3f0967a724f2e2797469106c387847899"
+    },
+    {
+      "cell_id": "passport_p1__iphone_se_2022__circom_groth16",
+      "profile": "passport_p1",
+      "target": "iphone_se_2022",
+      "stack": "circom_groth16",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/passport-p1/iphone-native/circom.json",
+      "evidence_sha256": "88b26ae5181dad955f78dd724a40fd694507f80dbe2dad82f048e5c92d2d29f0"
+    },
+    {
+      "cell_id": "passport_p1__motorola_e15__provekit_v1",
+      "profile": "passport_p1",
+      "target": "motorola_e15",
+      "stack": "provekit_v1",
+      "state": "qualified",
+      "evidence": "evidence/provekit-v1/e15/passport.json",
+      "evidence_sha256": "42024ba37ff2f339864b6b6390a11ee5a54f2dc9d2a5758ac3775f94699ea484",
+      "payload": [
+        {
+          "name": "complete_age_check.pkp+frozen-input",
+          "bytes": 2299488,
+          "sha256": "01c5ac40b916e3efe5b42f947d90f9076300f24c69af78844aff5867a8007526"
+        },
+        {
+          "name": "complete_age_check.Prover.toml",
+          "bytes": 247039,
+          "sha256": "dd1ff84f238d5d92b8c7de56b4dc6df9c2309e53f7394d4ac35055b3195f7aa1"
+        }
+      ],
+      "provenance": {
+        "evidence_sha256": "42024ba37ff2f339864b6b6390a11ee5a54f2dc9d2a5758ac3775f94699ea484",
+        "session_id": "",
+        "payload_scope": "PKP/prover plus frozen proving input; no IPA/APK/transport bytes"
+      }
+    },
+    {
+      "cell_id": "passport_p1__motorola_e15__noir_barretenberg",
+      "profile": "passport_p1",
+      "target": "motorola_e15",
+      "stack": "noir_barretenberg",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/e15/passport-p1/noir-barretenberg/normalized.json",
+      "evidence_sha256": "abaf4563625e6aa3c4aaf4d8479798fbbd6deda8a8a3a0a5d56aaf51bbe9e245"
+    },
+    {
+      "cell_id": "passport_p1__motorola_e15__circom_groth16",
+      "profile": "passport_p1",
+      "target": "motorola_e15",
+      "stack": "circom_groth16",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/e15/passport-p1/circom-rapidsnark-attempt-2/normalized.json",
+      "evidence_sha256": "159e4a6007fc7c179a53d4e369aaa603733853ab0c3c8b47f82fa8d9b1b82231"
+    },
+    {
+      "cell_id": "oprf_o2__iphone_se_2022__provekit_v1",
+      "profile": "oprf_o2",
+      "target": "iphone_se_2022",
+      "stack": "provekit_v1",
+      "state": "qualified",
+      "evidence": "evidence/provekit-v1/ios/summary.json",
+      "evidence_sha256": "942eb49b9faa546669836a28a96b0e85ab56e11479232ac09abe1ce0ca8d07fa",
+      "payload": [
+        {
+          "name": "oprf.pkp+frozen-input",
+          "bytes": 1638340,
+          "sha256": "0a87a592e96b6e116b36f69e6fd8d2a0a5952e27f9c872c8d18d73642b4ec64c"
+        },
+        {
+          "name": "oprf.Prover.toml",
+          "bytes": 5853,
+          "sha256": "afd85db335ebdcd794dac895b1889cb40cae3d17ff52cb050b4204fb4c6d0797"
+        }
+      ],
+      "provenance": {
+        "evidence_sha256": "942eb49b9faa546669836a28a96b0e85ab56e11479232ac09abe1ce0ca8d07fa",
+        "session_id": "6eca64c91564a0b36a0edc10d78e76dfde9780e0",
+        "payload_scope": "PKP/prover plus frozen proving input; no IPA/APK/transport bytes"
+      }
+    },
+    {
+      "cell_id": "oprf_o2__iphone_se_2022__noir_barretenberg",
+      "profile": "oprf_o2",
+      "target": "iphone_se_2022",
+      "stack": "noir_barretenberg",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/oprf-o2/iphone-native/barretenberg.json",
+      "evidence_sha256": "8580c5e6644ef865375b3db4686fec083da4fccd1f341333e17da67afcb70746"
+    },
+    {
+      "cell_id": "oprf_o2__iphone_se_2022__circom_groth16",
+      "profile": "oprf_o2",
+      "target": "iphone_se_2022",
+      "stack": "circom_groth16",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/oprf-o2/iphone-native/circom.json",
+      "evidence_sha256": "0e4e9e61067888ba86bfaf2969e6b88b02c9f0cd6ab67a8f35647a4ccea5f43a"
+    },
+    {
+      "cell_id": "oprf_o2__motorola_e15__provekit_v1",
+      "profile": "oprf_o2",
+      "target": "motorola_e15",
+      "stack": "provekit_v1",
+      "state": "qualified",
+      "evidence": "evidence/provekit-v1/e15/oprf.json",
+      "evidence_sha256": "bcd52f8091121664d3538bfec853d421b49be1d0dd80e069c1a5f520780948d0",
+      "payload": [
+        {
+          "name": "oprf.pkp+frozen-input",
+          "bytes": 1638340,
+          "sha256": "0a87a592e96b6e116b36f69e6fd8d2a0a5952e27f9c872c8d18d73642b4ec64c"
+        },
+        {
+          "name": "oprf.Prover.toml",
+          "bytes": 5853,
+          "sha256": "afd85db335ebdcd794dac895b1889cb40cae3d17ff52cb050b4204fb4c6d0797"
+        }
+      ],
+      "provenance": {
+        "evidence_sha256": "bcd52f8091121664d3538bfec853d421b49be1d0dd80e069c1a5f520780948d0",
+        "session_id": "",
+        "payload_scope": "PKP/prover plus frozen proving input; no IPA/APK/transport bytes"
+      }
+    },
+    {
+      "cell_id": "oprf_o2__motorola_e15__noir_barretenberg",
+      "profile": "oprf_o2",
+      "target": "motorola_e15",
+      "stack": "noir_barretenberg",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/e15/oprf-o2/noir-barretenberg/normalized.json",
+      "evidence_sha256": "5e2cbcf4519bfd1e91ae22e142c9e554421157505c76688e8bfa4d038883227b"
+    },
+    {
+      "cell_id": "oprf_o2__motorola_e15__circom_groth16",
+      "profile": "oprf_o2",
+      "target": "motorola_e15",
+      "stack": "circom_groth16",
+      "state": "qualified",
+      "evidence": "target/v1-benchmarks/semantic-parity/e15/oprf-o2/circom-rapidsnark-1x5/normalized.json",
+      "evidence_sha256": "4487c4ce7d5d50c1534ff373080bc205599f8bd8f2909e8852f9d6ba6eef1bd7"
+    },
+    {
+      "cell_id": "webauthn_closest_analogue__mac_chrome__provekit_v1",
+      "profile": "webauthn_closest_analogue",
+      "target": "mac_chrome",
+      "stack": "provekit_v1",
+      "state": "qualified",
+      "evidence": "evidence/provekit-v1/mac/webauthn.json",
+      "evidence_sha256": "183f9f4b0176c1e03f1c63c8f800e01159aef9b6c1a7b8db60b03ae8d6f97dc2",
+      "payload": [
+        {
+          "name": "webauthn_assertion.pkp",
+          "bytes": 2278684,
+          "sha256": "0e43f923ae67fd12f4841bb4be28349ee371c029d6355c5cce467996da63ee7f"
+        },
+        {
+          "name": "webauthn_assertion.inputs.json",
+          "bytes": 7831,
+          "sha256": "aa8d7f8b27ae2f5deeb49c9eddf1fdd0789aa3bcc212d83619beabe1b8d362dc"
+        }
+      ],
+      "provenance": {
+        "evidence_sha256": "183f9f4b0176c1e03f1c63c8f800e01159aef9b6c1a7b8db60b03ae8d6f97dc2",
+        "session_id": "",
+        "payload_scope": "PKP/prover plus frozen proving input; no IPA/APK/transport bytes"
+      }
+    },
+    {
+      "cell_id": "webauthn_closest_analogue__mac_chrome__noir_barretenberg",
+      "profile": "webauthn_closest_analogue",
+      "target": "mac_chrome",
+      "stack": "noir_barretenberg",
+      "state": "historical_frozen"
+    },
+    {
+      "cell_id": "webauthn_closest_analogue__mac_chrome__circom_groth16",
+      "profile": "webauthn_closest_analogue",
+      "target": "mac_chrome",
+      "stack": "circom_groth16",
+      "state": "historical_frozen"
+    },
+    {
+      "cell_id": "webauthn_closest_analogue__iphone_se_2022__provekit_v1",
+      "profile": "webauthn_closest_analogue",
+      "target": "iphone_se_2022",
+      "stack": "provekit_v1",
+      "state": "qualified",
+      "evidence": "evidence/provekit-v1/ios/summary.json",
+      "evidence_sha256": "942eb49b9faa546669836a28a96b0e85ab56e11479232ac09abe1ce0ca8d07fa",
+      "payload": [
+        {
+          "name": "webauthn_assertion.pkp+frozen-input",
+          "bytes": 2361340,
+          "sha256": "f2db98b9d9b5ff2ccd4d9cbe5bd50327bc037685299936aff6d55ba0fa1071f1"
+        },
+        {
+          "name": "webauthn_assertion.Prover.toml",
+          "bytes": 49220,
+          "sha256": "aa0fd0a7718f5db6a70f55585014e1afa598f9cd8b5af3ccf6e087dd8a7fccfd"
+        }
+      ],
+      "provenance": {
+        "evidence_sha256": "942eb49b9faa546669836a28a96b0e85ab56e11479232ac09abe1ce0ca8d07fa",
+        "session_id": "9e03602c537f1b3e84d3672fc3a36bbeb8cbca41",
+        "payload_scope": "PKP/prover plus frozen proving input; no IPA/APK/transport bytes"
+      }
+    },
+    {
+      "cell_id": "webauthn_closest_analogue__iphone_se_2022__noir_barretenberg",
+      "profile": "webauthn_closest_analogue",
+      "target": "iphone_se_2022",
+      "stack": "noir_barretenberg",
+      "state": "historical_frozen"
+    },
+    {
+      "cell_id": "webauthn_closest_analogue__iphone_se_2022__circom_groth16",
+      "profile": "webauthn_closest_analogue",
+      "target": "iphone_se_2022",
+      "stack": "circom_groth16",
+      "state": "historical_frozen"
+    },
+    {
+      "cell_id": "webauthn_closest_analogue__motorola_e15__provekit_v1",
+      "profile": "webauthn_closest_analogue",
+      "target": "motorola_e15",
+      "stack": "provekit_v1",
+      "state": "qualified",
+      "evidence": "evidence/provekit-v1/e15/webauthn.json",
+      "evidence_sha256": "c09f8e98f64646e38e241caf41a95f7d5052d1082242fb80b138585bb901446f",
+      "payload": [
+        {
+          "name": "webauthn_assertion.pkp+frozen-input",
+          "bytes": 2327836,
+          "sha256": "f2db98b9d9b5ff2ccd4d9cbe5bd50327bc037685299936aff6d55ba0fa1071f1"
+        },
+        {
+          "name": "webauthn_assertion.Prover.toml",
+          "bytes": 49220,
+          "sha256": "aa0fd0a7718f5db6a70f55585014e1afa598f9cd8b5af3ccf6e087dd8a7fccfd"
+        }
+      ],
+      "provenance": {
+        "evidence_sha256": "c09f8e98f64646e38e241caf41a95f7d5052d1082242fb80b138585bb901446f",
+        "session_id": "",
+        "payload_scope": "PKP/prover plus frozen proving input; no IPA/APK/transport bytes"
+      }
+    },
+    {
+      "cell_id": "webauthn_closest_analogue__motorola_e15__noir_barretenberg",
+      "profile": "webauthn_closest_analogue",
+      "target": "motorola_e15",
+      "stack": "noir_barretenberg",
+      "state": "historical_frozen"
+    },
+    {
+      "cell_id": "webauthn_closest_analogue__motorola_e15__circom_groth16",
+      "profile": "webauthn_closest_analogue",
+      "target": "motorola_e15",
+      "stack": "circom_groth16",
+      "state": "historical_frozen"
+    }
+  ],
+  "provekit_v1": {
+    "core_commit": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
+    "campaign_harness_commit": "7de99e9e001d06797c9770684afea20f096d1ac3",
+    "noir_version": "1.0.0-beta.11",
+    "browser_backend": "tooling/provekit-wasm single-thread build",
+    "browser_sdk_package": "not used for publication measurements",
+    "proof_serialization": {
+      "browser": "V1 WASM proof byte serialization",
+      "native": "postcard NoirProof (.np) byte serialization"
+    },
+    "native_devices": {
+      "iphone": {
+        "device": "iPhone SE 2022-15",
+        "builds": {
+          "passport": "5d9449e718692b36c4efa7c6609a6ba6d6a38eec",
+          "webauthn": "9e03602c537f1b3e84d3672fc3a36bbeb8cbca41",
+          "oprf": "6eca64c91564a0b36a0edc10d78e76dfde9780e0"
+        }
+      },
+      "e15": {
+        "serial": "ZY32M6782K",
+        "os": "Android 14",
+        "abi": "armeabi-v7a,armeabi",
+        "zygote": "zygote32"
+      }
+    }
+  }
+}

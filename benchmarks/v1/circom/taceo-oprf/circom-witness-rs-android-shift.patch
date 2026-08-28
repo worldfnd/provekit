@@ -1,0 +1,19 @@
+diff --git a/src/graph.rs b/src/graph.rs
+--- a/src/graph.rs
++++ b/src/graph.rs
+@@ -278,13 +278,13 @@ fn shift_left(a: U256, amount: U256) -> U256 {
+     if amount >= uint!(254) {
+         U256::ZERO
+     } else {
+-        ((a << amount.as_limbs()[0]) & bit_mask()) % M
++        ((a << amount.as_limbs()[0] as usize) & bit_mask()) % M
+     }
+ }
+
+ fn shift_right(a: U256, amount: U256) -> U256 {
+     if amount >= uint!(254) {
+         U256::ZERO
+     } else {
+-        (a >> amount.as_limbs()[0]) % M
++        (a >> amount.as_limbs()[0] as usize) % M
+     }

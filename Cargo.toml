@@ -117,13 +117,14 @@ base64 = "0.22.1"
 bytes = "1.10.1"
 ciborium = "0.2.2"
 chrono = "0.4.41"
+chkstk_stub = "=0.1.0"
 # On CI divan get replaced by divan = { package = "codspeed-divan-compat", version = "3.0.1" } for benchmark tracking.
 # This is a workaround because different package selection based on target does not mix well with workspace dependencies.
 divan = "0.1.21"
 hex = "0.4.3"
 itertools = "0.14.0"
 inventory = "0.3"
-mobench-sdk = { version = "0.1.47", default-features = false, features = ["registry"] }
+mobench-sdk = { git = "https://github.com/worldcoin/mobile-bench-rs.git", rev = "e992596a786cc18047102a318d40131c953e57b8", default-features = false, features = ["registry"] }
 paste = "1.0.15"
 postcard = { version = "1.1.1", features = ["use-std"] }
 primitive-types = "0.13.1"

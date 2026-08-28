@@ -1,0 +1,12 @@
+[project]
+crate = "zk_mobile_bench"
+library_name = "zk_mobile_bench"
+ffi_backend = "native-c-abi"
+
+[ios]
+bundle_id = "dev.world.zkmobilebench.BenchRunner"
+deployment_target = "15.0"
+runner = "swiftui"
+
+[browserstack]
+ios_completion_timeout_secs = 7200

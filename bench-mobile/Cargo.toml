@@ -13,6 +13,10 @@ description = "Mobile benchmarks for ProveKit Noir passport proving"
 [features]
 default = []
 fixture-tests = []
+web-oprf = []
+web-passport-complete = []
+web-passport-fragmented = []
+web-webauthn = []
 
 [package.metadata.cargo-machete]
 ignored = ["inventory"]
@@ -21,6 +25,7 @@ ignored = ["inventory"]
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [dependencies]
+acir.workspace = true
 anyhow.workspace = true
 inventory.workspace = true
 mobench-sdk.workspace = true
@@ -30,6 +35,7 @@ provekit-common.workspace = true
 provekit-prover.workspace = true
 provekit-r1cs-compiler.workspace = true
 provekit-verifier.workspace = true
+postcard.workspace = true
 rayon.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -38,5 +44,15 @@ thiserror = "1.0"
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
+[build-dependencies]
+base64.workspace = true
+chkstk_stub.workspace = true
+flate2 = "1.1"
+serde_json.workspace = true
+
 [lints]
 workspace = true
+
+[[example]]
+name = "export-wasm-witness"
+path = "examples/export_wasm_witness.rs"

@@ -1,0 +1,277 @@
+{
+  "schema_version": 2,
+  "campaign_id": "provekit-v1-cross-device",
+  "publication_iterations": 5,
+  "warmup_iterations": 1,
+  "comparison_warning": "The three stacks implement the closest available counterparts, not identical statements. Report each circuit identity and never rank stacks as if the circuits were interchangeable.",
+  "targets": [
+    {
+      "id": "iphone_se_2022_native",
+      "surface": "native",
+      "provider": "browserstack",
+      "device": "iPhone SE 2022",
+      "os_version": "resolve-and-freeze-from-device-catalog",
+      "architecture": "arm64",
+      "paid_confirmation_required": true
+    },
+    {
+      "id": "motorola_e15_native",
+      "surface": "native",
+      "provider": "physical",
+      "device": "Motorola E15",
+      "os_version": "capture-with-adb",
+      "architecture": "capture-ro.product.cpu.abilist-and-userspace-bitness",
+      "paid_confirmation_required": false
+    },
+    {
+      "id": "m4_max_chrome_wasm",
+      "surface": "browser-wasm",
+      "provider": "local",
+      "device": "MacBook Pro M4 Max",
+      "os_version": "capture-at-run-time",
+      "architecture": "arm64",
+      "browser": "Google Chrome",
+      "browser_version": "capture-at-run-time",
+      "paid_confirmation_required": false
+    }
+  ],
+  "stacks": [
+    {
+      "id": "provekit_v1",
+      "frontend": "noir",
+      "native_adapter": "ProveKit C ABI through Mobench",
+      "browser_adapter": "tooling/provekit-wasm at provekit_v1.core_commit, fixed-16-worker threaded wasm-bindgen package",
+      "browser_sdk_compatibility": "@worldcoin/provekit@0.1.0 is retained only as an incompatibility record; it is not a measured runtime",
+      "proof_system": "WHIR",
+      "required_cells": 9
+    },
+    {
+      "id": "noir_barretenberg",
+      "frontend": "noir",
+      "native_adapter": "Mopro 0.3.7 Noir adapter",
+      "native_backend": "barretenberg-rs 4.2.0-aztecnr-rc.2",
+      "browser_adapter": "@noir-lang/noir_js plus smoke-validated @aztec/bb.js",
+      "proof_system": "UltraHonk",
+      "required_cells": 9
+    },
+    {
+      "id": "circom_groth16",
+      "frontend": "circom",
+      "native_adapter": "Mopro 0.3.7",
+      "native_backend_policy": "Rapidsnark preferred; Arkworks plus rust-witness is a target-specific fallback",
+      "browser_adapter": "snarkjs@0.7.6 with exactly 16 requested/effective workers",
+      "proof_system": "Groth16",
+      "required_cells": 9
+    }
+  ],
+  "workloads": {
+    "passport": {
+      "headline": true,
+      "noir": {
+        "circuit": "complete_age_check",
+        "identity": "monolithic passport age-check statement"
+      },
+      "circom": {
+        "source": "selfxyz/self",
+        "circuits": [
+          "signature-specific registration",
+          "vc_and_disclose"
+        ],
+        "identity": "two-stage product flow"
+      },
+      "equivalence": "not-equivalent"
+    },
+    "webauthn": {
+      "headline": false,
+      "noir": {
+        "circuit": "ES256 assertion",
+        "identity": "binds challenge, ceremony type, origin, RP-ID hash, UP/UV flags, signature, and public key"
+      },
+      "circom": {
+        "source": "privacy-ethereum/webauth-circom",
+        "circuit": "WebAuthn assertion counterpart",
+        "identity": "closest available ES256 Circom counterpart; it does not bind the complete Noir assertion statement"
+      },
+      "equivalence": "not-equivalent"
+    },
+    "oprf": {
+      "headline": false,
+      "noir": {
+        "source": "TACEO oprf-nr",
+        "circuit": "core example"
+      },
+      "circom": {
+        "source": "worldcoin/world-id-protocol",
+        "circuits": [
+          "query",
+          "nullifier"
+        ],
+        "identity": "application circuits reported under distinct circuit names"
+      },
+      "equivalence": "not-equivalent"
+    }
+  },
+  "circom_native_backend_gate": {
+    "arm64_pilot": {
+      "witness_adapter": "witnesscalc-adapter@0.1.7",
+      "prover": "rust-rapidsnark@0.1.4"
+    },
+    "iphone_policy": "Use Rapidsnark only after every exact circuit passes build, valid-proof verification, tamper rejection, warmup, and five measured samples.",
+    "motorola_policy": "Capture ABI and userspace bitness with ADB. Try Rapidsnark only when supported; otherwise use Mopro Arkworks plus rust-witness and retain the backend difference in every row.",
+    "compatibility_fallback": {
+      "adapter": "iden3/circom-witnesscalc@0.3.0",
+      "status": "fallback-only",
+      "warning": "Known documented feature gaps include RSA-related circuits."
+    },
+    "oprf_o2_canonical_override": {
+      "scope": "oprf_nullifier / O2-world-id-nullifier on Mac, iPhone, and Motorola E15",
+      "helper_source": "TaceoLabs/circom-helpers@8aacd73ed6ab0a2b9b2158e613acfa920860865a (main)",
+      "witness_source": "philsippl/circom-witness-rs@e11206a9f453145dcd6b814523cbfba4f60cf5c6 (codex/remove-cxx-bridge-and-grep)",
+      "prover": "taceo-groth16 0.2.1 / taceo-groth16-material 0.4.2",
+      "measurement_boundary": "raw frozen input through circom-witness-rs graph execution and TACEO Groth16 proof serialization",
+      "reason": "The TACEO helper path is the qualified replacement for the prior Rapidsnark/Rust-witness OPRF rows; all six cold/warm target series are measured with the same frozen zkey, graph, and input bundle."
+    }
+  },
+  "noir_native_gate": {
+    "mopro": "0.3.7",
+    "noir": "1.0.0-beta.19",
+    "barretenberg_rs": "4.2.0-aztecnr-rc.2",
+    "port_policy": "Mechanical ports are allowed only when semantic outputs remain identical.",
+    "motorola_policy": "If ADB confirms armv7 userspace and the Mopro Noir adapter cannot target it, record unsupported with the captured device evidence."
+  },
+  "correctness_gate": {
+    "before_timing": [
+      "valid-proof-accepted",
+      "tampered-proof-rejected",
+      "public-outputs-recorded",
+      "workload-and-circuit-identity-recorded"
+    ],
+    "missing_metrics": "blank",
+    "allowed_failure_statuses": [
+      "unsupported",
+      "build_failed",
+      "crashed",
+      "runtime_failed",
+      "timed_out",
+      "zero_samples"
+    ],
+    "prohibitions": [
+      "estimates",
+      "substituting-browser-timings-for-native",
+      "merging-native-and-browser-runtimes",
+      "encoding-missing-measurements-as-zero"
+    ]
+  },
+  "measurement_fields": [
+    "initialization_time_ns",
+    "witness_time_ns",
+    "prove_time_ns",
+    "verify_time_ns",
+    "end_to_end_time_ns",
+    "proof_size_bytes",
+    "circuit_size_bytes",
+    "artifact_size_bytes",
+    "bundle_size_bytes",
+    "peak_memory_bytes",
+    "constraint_count"
+  ],
+  "publication": {
+    "canonical_csv": "benchmarks/v1/input-to-proof-data/input-to-proof-samples.csv",
+    "campaign_id": "input-to-proof-v1-20260807",
+    "campaign_ids": [
+      "input-to-proof-v1-20260807",
+      "input-to-proof-v1-mac-multithread-16-20260812",
+      "input-to-proof-v1-taceo-oprf-20260814"
+    ],
+    "canonical_mac_campaign_id": "input-to-proof-v1-mac-multithread-16-20260812",
+    "headline_metric": "input_to_proof_time_ms",
+    "measurement_boundary": "raw structured circuit input through fresh witness generation to serialized proof bytes",
+    "rows": 417,
+    "logical_cells": 36,
+    "logical_series": 72,
+    "successful_series": 69,
+    "gap_series": 3,
+    "samples_per_successful_cell": {"warmup": 1, "measured": 5},
+    "all_cells_status": "three_structured_runtime_gaps",
+    "provekit_v1_core_commit": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
+    "payload_definition": "PKP/prover plus the frozen proving input; verifier-only artifacts, APK/IPA/XCUITest packages, and transport duplication are excluded",
+    "proof_serialization": {
+      "browser": "V1 WASM proof byte serialization",
+      "native": "serialized postcard NoirProof (.np) bytes"
+    },
+    "gaps": [
+      {
+        "series": "webauthn_closest_analogue__mac_chrome__circom_groth16__cold_local",
+        "status": "runtime_failed",
+        "failure_code": "out_of_memory",
+        "metrics": "blank"
+      },
+      {
+        "series": "webauthn_closest_analogue__mac_chrome__circom_groth16__warm_reuse",
+        "status": "not_run",
+        "failure_code": "blocked_by_cold_failure",
+        "metrics": "blank"
+      },
+      {
+        "series": "webauthn_closest_analogue__motorola_e15__circom_groth16__cold_local",
+        "status": "runtime_failed",
+        "failure_code": "out_of_memory",
+        "metrics": "blank"
+      }
+    ],
+    "legacy_datasets": [
+      {
+        "path": "benchmarks/v1/legacy/data/benchmark-samples.csv",
+        "kind": "exploratory_compound_proof_only",
+        "rows": 198
+      },
+      {
+        "path": "benchmarks/v1/legacy/semantic-parity/semantic-parity-samples.csv",
+        "kind": "proof_only_semantic_parity",
+        "rows": 162
+      },
+      {
+        "path": "benchmarks/v1/legacy/taceo-candidate/input-to-proof-samples.taceo-candidate.csv",
+        "kind": "experimental_production_backend_candidate",
+        "rows": 372
+      }
+    ]
+  },
+  "input_to_proof_campaign": {
+    "campaign_id": "input-to-proof-v1-20260807",
+    "canonical_csv": "benchmarks/v1/input-to-proof-data/input-to-proof-samples.csv",
+    "headline_metric": "input_to_proof_time_ms",
+    "measurement_boundary": "raw structured circuit input through fresh witness generation to serialized proof bytes",
+    "verification_boundary": "valid-proof acceptance and tampered-proof rejection are mandatory but outside headline timing",
+    "workloads": [
+      "passport_complete_age_check",
+      "passport_p1",
+      "oprf_o2",
+      "webauthn_closest_analogue"
+    ],
+    "passport_p1": {
+      "noir_source": "benchmarks/v1/noir/passport_p1/src/main.nr",
+      "circom_source": "benchmarks/v1/circom/passport_p1/passport_p1.circom",
+      "identity": "P1-matched monolithic RSA-4096 passport integrity, registry authorization, DG1 validity, and minimum-age assertion"
+    },
+    "circom_oprf_taceo_replacement": {
+      "witness_backend": "circom-witness-rs@e11206a9f453145dcd6b814523cbfba4f60cf5c6 (codex/remove-cxx-bridge-and-grep)",
+      "prover_backend": "taceo-groth16 0.2.1 / taceo-groth16-material 0.4.2 from circom-helpers@8aacd73ed6ab0a2b9b2158e613acfa920860865a",
+      "measurement_boundary": "raw frozen input through generated Circom witness graph, Groth16 proof generation, and exact proof serialization",
+      "qualification": "valid-proof acceptance and tampered-proof rejection on every target and timing mode; exact graph, zkey, input, proof, and process-memory hashes are retained"
+    },
+    "timing_modes": {
+      "cold_local": "fresh process and proof runtime per attempt with locked assets already local",
+      "warm_reuse": "initialized runtime is reused while witness and proof are regenerated"
+    },
+    "expected_series": 72,
+    "expected_rows": 417,
+    "successful_series": 69,
+    "gap_series": 3,
+    "samples_per_series": {
+      "warmup": 1,
+      "measured": 5
+    },
+    "provekit_v1_core_commit": "9b2a6f37c67691eab4b0cec6c35e35c520e93285"
+  }
+}

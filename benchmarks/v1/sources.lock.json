@@ -1,0 +1,231 @@
+{
+  "schema_version": 1,
+  "sources": [
+    {
+      "name": "provekit-v1-core",
+      "url": "https://github.com/worldfnd/provekit.git",
+      "revision": "9b2a6f37c67691eab4b0cec6c35e35c520e93285",
+      "license": "MIT OR Apache-2.0",
+      "sparse_paths": ["provekit", "tooling/provekit-wasm", "tooling/cli"],
+      "purpose": "Exact ProveKit V1 proving/verifying and fixed-16-worker browser WASM implementation"
+    },
+    {
+      "name": "self",
+      "url": "https://github.com/selfxyz/self.git",
+      "revision": "15b167e3543a9dff1dbb16fcf71a45fe4625cf9e",
+      "license": "MIT (circuits/LICENSE)",
+      "sparse_paths": [],
+      "purpose": "Circom passport registration and disclosure circuits"
+    },
+    {
+      "name": "world-id-protocol",
+      "url": "https://github.com/worldcoin/world-id-protocol.git",
+      "revision": "85aeeef539961cae5a63de794997b507a5975717",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Pure WebAuthn Noir source and production OPRF Circom circuits"
+    },
+    {
+      "name": "webauth-circom",
+      "url": "https://github.com/privacy-ethereum/webauth-circom.git",
+      "revision": "0fb5b4aa1398281c2fd3dbe14db147e05b61f201",
+      "license": "MIT (package.json)",
+      "sparse_paths": [],
+      "purpose": "Circom WebAuthn assertion benchmark for native Arkworks and Rapidsnark lanes"
+    },
+    {
+      "name": "noir-base64",
+      "url": "https://github.com/noir-lang/noir_base64.git",
+      "revision": "4200d5ffb1d4416f336c392ed7f3f729facbc2ad",
+      "tag": "v0.5.0",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Transitive dependency of the vendored WebAuthn Noir library"
+    },
+    {
+      "name": "noir-poseidon",
+      "url": "https://github.com/noir-lang/poseidon.git",
+      "revision": "00f879180a56720169cff92a56778d40678d8e26",
+      "tag": "v0.2.6",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Transitive dependency of the vendored WebAuthn Noir library"
+    },
+    {
+      "name": "noir-poseidon-v0.3.0",
+      "url": "https://github.com/noir-lang/poseidon.git",
+      "revision": "0880c371e88e583d39515fd3f877538657ac41eb",
+      "tag": "v0.3.0",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Mechanical Noir beta.19 compatibility input for the Passport circuit"
+    },
+    {
+      "name": "noir-bignum-v0.10.0",
+      "url": "https://github.com/noir-lang/noir-bignum.git",
+      "revision": "00d4360fbaaae71b1ee7f93f78dfad4eb7e11479",
+      "tag": "v0.10.0",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Pinned Passport RSA transitive dependency"
+    },
+    {
+      "name": "noir-rsa-v0.11.0",
+      "url": "https://github.com/zkpassport/noir_rsa.git",
+      "revision": "4d153ca99deadc462da5f6d5d05d7f46f9210623",
+      "tag": "v0.11.0",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Pinned Passport RSA implementation"
+    },
+    {
+      "name": "noir-sha512-v0.2.0",
+      "url": "https://github.com/zkpassport/sha512.git",
+      "revision": "e92ffb473f3264529a0793770f63a09946df50cc",
+      "tag": "v0.2.0",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Pinned Passport RSA transitive dependency"
+    },
+    {
+      "name": "noir-sha1-v0.11",
+      "url": "https://github.com/zac-williamson/sha1.git",
+      "revision": "d510f33c8546488286946ed459b26b62f5a71f91",
+      "tag": "v0.11",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Pinned Passport RSA transitive dependency"
+    },
+    {
+      "name": "noir-sha256",
+      "url": "https://github.com/noir-lang/sha256.git",
+      "revision": "9442e5b6856f98b2ec029882d7e90199ecff91ba",
+      "tag": "v0.3.0",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Transitive dependency of the vendored WebAuthn Noir library"
+    },
+    {
+      "name": "oprf-nr",
+      "url": "https://github.com/TaceoLabs/oprf-nr.git",
+      "revision": "808f3c795b57963dd58ef282ccd61022ef39c285",
+      "tag": "v0.1.0-beta.1",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Noir beta.11-compatible OPRF example circuit source"
+    },
+    {
+      "name": "oprf-nr-v2",
+      "url": "https://github.com/TaceoLabs/oprf-nr.git",
+      "revision": "fd37726215b59d3d4823ea7b1967b1da3525ed9d",
+      "tag": "v2.0.0",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Noir beta.20-compatible revision of the same TACEO OPRF core example used by @worldcoin/provekit 0.1.0"
+    },
+    {
+      "name": "circom",
+      "url": "https://github.com/iden3/circom.git",
+      "revision": "6f782d7313793b3dc18cc3b38d2335eead9f5d50",
+      "license": "GPL-3.0",
+      "sparse_paths": [],
+      "purpose": "Circom 2.2.2-era compiler used to generate circom-witness-rs graphs"
+    },
+    {
+      "name": "circom-witness-rs",
+      "url": "https://github.com/philsippl/circom-witness-rs.git",
+      "revision": "38553d2e71059c8635651a81a397603c75fb9d8a",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Generated native Rust Circom witness calculation"
+    },
+    {
+      "name": "circom-helpers",
+      "url": "https://github.com/TaceoLabs/circom-helpers.git",
+      "revision": "8aacd73ed6ab0a2b9b2158e613acfa920860865a",
+      "branch": "main",
+      "license": "MIT OR Apache-2.0",
+      "packages": {
+        "taceo-groth16": "0.2.1",
+        "taceo-groth16-material": "0.4.2"
+      },
+      "sparse_paths": [],
+      "purpose": "TACEO Groth16 material and prover used for the replacement Circom OPRF series"
+    },
+    {
+      "name": "circom-witness-rs-taceo-oprf",
+      "url": "https://github.com/philsippl/circom-witness-rs.git",
+      "revision": "e11206a9f453145dcd6b814523cbfba4f60cf5c6",
+      "branch": "codex/remove-cxx-bridge-and-grep",
+      "license": "MIT",
+      "sparse_paths": [],
+      "purpose": "Witness generator patched into circom-helpers for the replacement Circom OPRF series"
+    },
+    {
+      "name": "circom-compat",
+      "url": "https://github.com/arkworks-rs/circom-compat.git",
+      "revision": "d677f28b216fcc39ee8440d152cc9217850f5d4c",
+      "tag": "v0.6.0",
+      "license": "Apache-2.0",
+      "sparse_paths": [],
+      "purpose": "Arkworks Circom R1CS and witness compatibility"
+    },
+    {
+      "name": "mopro",
+      "url": "https://github.com/zkmopro/mopro.git",
+      "revision": "10871f02e365c478cb4b61016e4034f7e74f076b",
+      "version": "0.3.7",
+      "license": "MIT OR Apache-2.0",
+      "sparse_paths": [],
+      "purpose": "Native iOS and Android integration layer for both Noir/Barretenberg and Circom/Groth16; it is retained, not being dropped"
+    },
+    {
+      "name": "w2c2",
+      "url": "https://github.com/vivianjeng/w2c2.git",
+      "revision": "9de3c2be5a4ed8ef5fdbd536e445120594fb8530",
+      "license": "MIT",
+      "sparse_paths": [],
+      "submodules": true,
+      "purpose": "Pinned host WebAssembly-to-C transpiler required by rust-witness during native cross-compilation"
+    },
+    {
+      "name": "rust-rapidsnark",
+      "url": "https://github.com/zkmopro/rust-rapidsnark.git",
+      "revision": "fcf92e7454600109e4eab4a0c907e8d59649fd9c",
+      "tag": "v0.1.4",
+      "version": "0.1.4",
+      "license": "MIT OR Apache-2.0",
+      "sparse_paths": [],
+      "purpose": "Preferred native Groth16 prover pilot through Mopro from frozen WTNS and standard SnarkJS zkeys"
+    },
+    {
+      "name": "witnesscalc-adapter",
+      "url": "https://github.com/zkmopro/witnesscalc_adapter.git",
+      "revision": "e3a9b065547bbbbf69b8b0c8e25d61ec46602c94",
+      "tag": "v0.1.7",
+      "version": "0.1.7",
+      "license": "MIT OR Apache-2.0",
+      "sparse_paths": [],
+      "purpose": "Preferred arm64 native Circom witness generator paired with rust-rapidsnark"
+    },
+    {
+      "name": "circom-witnesscalc",
+      "url": "https://github.com/iden3/circom-witnesscalc.git",
+      "revision": "d48eb7c97857d46b8a75c94ab96f769207263245",
+      "tag": "v0.3.0",
+      "version": "0.3.0",
+      "license": "GPL-3.0",
+      "sparse_paths": [],
+      "purpose": "Compatibility-only witness fallback; documented feature gaps make it unsuitable as the default for RSA-related passport circuits"
+    },
+    {
+      "name": "rapidsnark",
+      "url": "https://github.com/iden3/rapidsnark.git",
+      "revision": "81eddf1a536d26497b237c0b8a04fe90baf7e439",
+      "license": "LGPL-3.0",
+      "sparse_paths": [],
+      "submodules": true,
+      "purpose": "Native Groth16 prover"
+    }
+  ]
+}

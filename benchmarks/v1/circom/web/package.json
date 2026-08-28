@@ -1,0 +1,15 @@
+{
+  "name": "provekit-v1-circom-browser-benchmarks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bash build.sh",
+    "smoke": "bun run smoke.ts"
+  },
+  "dependencies": {
+    "snarkjs": "0.7.6"
+  },
+  "devDependencies": {
+    "playwright-core": "1.59.1"
+  }
+}

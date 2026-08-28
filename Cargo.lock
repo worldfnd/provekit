@@ -608,13 +608,18 @@ name = "bench-mobile"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64",
+ "chkstk_stub",
+ "flate2",
  "inventory",
  "libc",
  "mobench-sdk",
+ "postcard",
  "provekit-common",
  "provekit-prover",
  "provekit-r1cs-compiler",
  "provekit-verifier",
+ "provekit_acir",
  "provekit_noirc_abi",
  "provekit_noirc_artifacts",
  "rayon",
@@ -840,6 +845,15 @@ name = "cfg_aliases"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
+
+[[package]]
+name = "chkstk_stub"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "047f6ab2f3b9bcaf23b593d1580898e4244d27eadf1a1fae99212ee5735d3d1c"
+dependencies = [
+ "cc",
+]
 
 [[package]]
 name = "chrono"
@@ -2907,9 +2921,8 @@ dependencies = [
 
 [[package]]
 name = "mobench-macros"
-version = "0.1.47"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a202bc64289731f6761ad9d056fa9d084808aecb17d0c1d7ac98765bcf3e92"
+version = "0.1.48"
+source = "git+https://github.com/worldcoin/mobile-bench-rs.git?rev=e992596a786cc18047102a318d40131c953e57b8#e992596a786cc18047102a318d40131c953e57b8"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2918,9 +2931,8 @@ dependencies = [
 
 [[package]]
 name = "mobench-sdk"
-version = "0.1.47"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed6b1083cdd1e6a79ab3396a14e26a6fa472a60366bd37b9f2dce9a9eaa2d21f"
+version = "0.1.48"
+source = "git+https://github.com/worldcoin/mobile-bench-rs.git?rev=e992596a786cc18047102a318d40131c953e57b8#e992596a786cc18047102a318d40131c953e57b8"
 dependencies = [
  "inventory",
  "libc",
@@ -2928,6 +2940,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "wasm-bindgen",
 ]
 
 [[package]]

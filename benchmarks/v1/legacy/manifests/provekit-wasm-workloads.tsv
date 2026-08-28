@@ -1,0 +1,16 @@
+# scope	kind	path	mime_type
+shared-runtime	html	benchmarks/v1/wasm/dist/index.html	text/html; charset=utf-8
+shared-runtime	runner-js	benchmarks/v1/wasm/dist/runner.js	text/javascript; charset=utf-8
+shared-runtime	worker-js	benchmarks/v1/wasm/dist/worker.js	text/javascript; charset=utf-8
+shared-runtime	provekit-wasm	benchmarks/v1/wasm/dist/provekit_wasm_bg.wasm	application/wasm
+shared-runtime	acvm-wasm	benchmarks/v1/wasm/dist/acvm_js_bg.wasm	application/wasm
+shared-runtime	noirc-abi-wasm	benchmarks/v1/wasm/dist/noirc_abi_wasm_bg.wasm	application/wasm
+webauthn_assertion	inputs	benchmarks/v1/wasm/dist/assets/webauthn_assertion/inputs.json	application/json; charset=utf-8
+webauthn_assertion	provekit-pkp	benchmarks/v1/wasm/dist/assets/webauthn_assertion/webauthn_assertion.pkp	application/octet-stream
+webauthn_assertion	provekit-pkv	benchmarks/v1/wasm/dist/assets/webauthn_assertion/webauthn_assertion.pkv	application/octet-stream
+passport_complete_age_check	inputs	benchmarks/v1/wasm/dist/assets/passport_complete_age_check/inputs.json	application/json; charset=utf-8
+passport_complete_age_check	provekit-pkp	benchmarks/v1/wasm/dist/assets/passport_complete_age_check/passport_complete_age_check.pkp	application/octet-stream
+passport_complete_age_check	provekit-pkv	benchmarks/v1/wasm/dist/assets/passport_complete_age_check/passport_complete_age_check.pkv	application/octet-stream
+oprf_taceo	inputs	benchmarks/v1/wasm/dist/assets/oprf_taceo/inputs.json	application/json; charset=utf-8
+oprf_taceo	provekit-pkp	benchmarks/v1/wasm/dist/assets/oprf_taceo/oprf_taceo.pkp	application/octet-stream
+oprf_taceo	provekit-pkv	benchmarks/v1/wasm/dist/assets/oprf_taceo/oprf_taceo.pkv	application/octet-stream

@@ -1,0 +1,14 @@
+[package]
+name = "passport_p1"
+type = "bin"
+description = "P1 Passport input-to-proof benchmark: Self SHA256/RSA-4096/registry statement"
+authors = ["World Foundation"]
+license = "MIT"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+poseidon = { path = "../../../../target/v1-benchmarks/noir-beta19-compat/passport/poseidon" }
+bignum = { path = "../../../../target/v1-benchmarks/noir-beta19-compat/passport/noir-bignum" }
+rsa = { path = "../../../../target/v1-benchmarks/noir-beta19-compat/passport/noir-rsa" }
+utils = { path = "../../../../noir-examples/noir-passport-monolithic/utils/utils" }
+sha256 = { tag = "v0.3.0", git = "https://github.com/noir-lang/sha256" }

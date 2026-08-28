@@ -1,0 +1,10 @@
+[package]
+name = "webauthn_assertion"
+type = "bin"
+description = "Reproducible ES256 WebAuthn assertion benchmark"
+authors = ["World Foundation"]
+license = "MIT"
+compiler_version = ">=1.0.0"
+
+[dependencies]
+webauthn = { path = "../../../../target/v1-benchmarks/noir-beta19-compat/vendor/webauthn" }

@@ -1,0 +1,19 @@
+diff --git a/c/misc.hpp b/c/misc.hpp
+index 96be43d..441dcd7 100644
+--- a/c/misc.hpp
++++ b/c/misc.hpp
+@@ -168,7 +168,14 @@ public:
+     }
+ 
+     static unsigned int defaultThreadCount() {
++#if defined(__APPLE__) && defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++        // Large proving keys can exceed iOS's per-process memory allowance when
++        // each MSM worker allocates its own bucket matrix. Keep the native iOS
++        // benchmark deterministic and bounded to one worker.
++        return 1;
++#else
+         unsigned int n = std::thread::hardware_concurrency();
+ 
+         return n == 0 ? 1 : n;
++#endif
+     }

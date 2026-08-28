@@ -1,0 +1,10 @@
+if(NOT DEFINED ENV{ANDROID_NDK_HOME})
+  message(FATAL_ERROR "ANDROID_NDK_HOME is required")
+endif()
+set(ANDROID_ABI arm64-v8a CACHE STRING "" FORCE)
+# v0.87 uses aligned_alloc/getrandom directly; both are public NDK APIs from 28.
+set(ANDROID_PLATFORM android-28 CACHE STRING "" FORCE)
+set(ANDROID_STL c++_static CACHE STRING "" FORCE)
+include("$ENV{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake")
+set(CMAKE_SYSTEM_PROCESSOR aarch64)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)

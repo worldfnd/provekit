@@ -6,27 +6,24 @@ if [[ "${MOBENCH_CI_PREPARE:-}" != "1" ]]; then
   exit 1
 fi
 
-noir_version="v1.0.0-beta.11"
-if ! command -v noirup >/dev/null 2>&1; then
-  curl --fail --location --proto '=https' --tlsv1.2 \
-    https://raw.githubusercontent.com/noir-lang/noirup/dedc07043b6ae9a680a19c7394847a58e404cbba/install | bash
-  export PATH="$HOME/.nargo/bin:$PATH"
-fi
-noirup --version "$noir_version"
-command -v nargo >/dev/null 2>&1 || {
-  echo "nargo was not installed by noirup $noir_version" >&2
-  exit 1
-}
-
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+"${repo_root}/benchmarks/v1/scripts/bootstrap-webauthn-source.sh"
+nargo_bin="$(
+  V1_NARGO_LOCK_KEY=noir_provekit \
+    "${repo_root}/benchmarks/v1/scripts/bootstrap-nargo.sh"
+)"
 
 compile_fixture() {
   local circuit_dir="$1"
   local aggregate_target_dir="${2:-}"
+  local nargo_home="${3:-}"
   echo "Generating Noir artifact in ${circuit_dir}"
   (
     cd "${repo_root}/${circuit_dir}"
-    nargo compile --skip-brillig-constraints-check --force
+    if [[ -n "${nargo_home}" ]]; then
+      export HOME="${nargo_home}"
+    fi
+    "${nargo_bin}" compile --skip-brillig-constraints-check --force
   )
 
   if [[ -n "${aggregate_target_dir}" ]]; then
@@ -52,7 +49,7 @@ compile_oprf_benchmark_fixture() (
 
   (
     cd "${fixture_dir}"
-    nargo compile --skip-brillig-constraints-check --force
+    "${nargo_bin}" compile --skip-brillig-constraints-check --force
   )
 
   mkdir -p "${source_dir}/target"
@@ -70,3 +67,20 @@ compile_fixture "noir-examples/noir-passport/merkle_age_check/t_attest" \
   "noir-examples/noir-passport/merkle_age_check/target"
 compile_oprf_benchmark_fixture
 compile_fixture "noir-examples/p256_bigcurve"
+if [[ "${PROVEKIT_REUSE_WEBAUTHN_FIXTURE:-}" != "1" ]] && command -v bun >/dev/null 2>&1; then
+  (
+    cd "${repo_root}/benchmarks/v1/noir/webauthn_assertion"
+    bun install --frozen-lockfile
+    bun run fixture
+  )
+else
+  for fixture in Prover.toml inputs.json; do
+    if [[ ! -s "${repo_root}/benchmarks/v1/noir/webauthn_assertion/${fixture}" ]]; then
+      echo "error: Bun is unavailable and checked-in WebAuthn ${fixture} is missing" >&2
+      exit 1
+    fi
+  done
+  echo "Bun unavailable; using checked-in deterministic WebAuthn input fixture"
+fi
+compile_fixture "benchmarks/v1/noir/webauthn_assertion" "" \
+  "${V1_BENCHMARK_NARGO_HOME:-${repo_root}/target/v1-benchmarks/nargo-home}"

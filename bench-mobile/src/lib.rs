@@ -5,14 +5,20 @@ use {
         prove_complete_age_check_fixture, prove_complete_age_check_fixture_proof_only,
         prove_fragmented_age_check_fixture_proof_only, verify_complete_age_check_fixture,
         PreparedCompleteAgeCheckFixture, PreparedCompleteAgeCheckProver,
-        PreparedFragmentedAgeCheckProvers, VerifiedCompleteAgeCheckFixture,
+        PreparedCompleteAgeCheckProverWithSerializedVerifier, PreparedFragmentedAgeCheckProvers,
+        VerifiedCompleteAgeCheckFixture,
     },
     examples::{
         MobileBenchFixture, PreparedCircuitFixture, PreparedProverFixture, VerifiedCircuitFixture,
     },
     mobench_sdk::{benchmark, profile_phase},
+    provekit_common::{file::serialize, NoirProof},
     serde_json::json,
-    std::hint::black_box,
+    std::{
+        hint::black_box,
+        sync::{Once, OnceLock},
+        time::Instant,
+    },
 };
 
 pub mod examples;
@@ -67,48 +73,6 @@ pub enum BenchError {
     #[error("benchmark execution failed: {reason}")]
     ExecutionFailed { reason: String },
 }
-
-#[cfg(target_os = "android")]
-fn configure_android_complete_age_check_threads(function: &str) {
-    use std::sync::Once;
-
-    static INIT: Once = Once::new();
-
-    if function != "bench_mobile::bench_passport_complete_age_check_prove" {
-        return;
-    }
-
-    INIT.call_once(|| {
-        let threads = std::env::var("PROVEKIT_ANDROID_COMPLETE_AGE_RAYON_THREADS")
-            .ok()
-            .and_then(|value| value.parse::<usize>().ok())
-            .filter(|threads| *threads > 0)
-            .unwrap_or(1);
-
-        match rayon::ThreadPoolBuilder::new()
-            .num_threads(threads)
-            .build_global()
-        {
-            Ok(()) => log_benchmark_lifecycle(
-                "rayon_configured",
-                function,
-                0,
-                0,
-                json!({ "threads": threads }),
-            ),
-            Err(error) => log_benchmark_lifecycle(
-                "rayon_config_skipped",
-                function,
-                0,
-                0,
-                json!({ "threads": threads, "error": error.to_string() }),
-            ),
-        }
-    });
-}
-
-#[cfg(not(target_os = "android"))]
-fn configure_android_complete_age_check_threads(_function: &str) {}
 
 impl From<mobench_sdk::BenchSpec> for BenchSpec {
     fn from(spec: mobench_sdk::BenchSpec) -> Self {
@@ -211,19 +175,25 @@ fn log_benchmark_lifecycle(
     }
 }
 
+fn benchmark_start_metadata(function: &str) -> serde_json::Value {
+    // Querying outside a Rayon worker lazily initializes the normal global
+    // pool when needed; it does not configure or constrain the worker count.
+    json!({
+        "resolved_function": function,
+        "rayon_threads": rayon::current_num_threads(),
+    })
+}
+
 pub fn run_benchmark(spec: BenchSpec) -> Result<BenchReport, BenchError> {
     let function = spec.name.clone();
     let iterations = spec.iterations;
     let warmup = spec.warmup;
-    configure_android_complete_age_check_threads(&function);
     log_benchmark_lifecycle(
         "start",
         &function,
         iterations,
         warmup,
-        json!({
-            "resolved_function": function,
-        }),
+        benchmark_start_metadata(&function),
     );
 
     let sdk_spec: mobench_sdk::BenchSpec = spec.into();
@@ -285,10 +255,48 @@ fn setup_complete_age_check_verified() -> VerifiedCompleteAgeCheckFixture {
 }
 
 fn setup_complete_age_check_prover() -> PreparedCompleteAgeCheckProver {
+    static VALIDATION_GATE: Once = Once::new();
+    VALIDATION_GATE.call_once(|| {
+        let prepared = passport::prepare_complete_age_check_fixture()
+            .expect("prepare complete_age_check validation canary");
+        let verified = prove_complete_age_check_fixture(prepared)
+            .expect("prove complete_age_check validation canary");
+        verified
+            .verify_and_reject_tampered()
+            .expect("validate complete_age_check proof and tamper rejection");
+    });
     let prover = passport::prepare_complete_age_check_fixture()
         .expect("prepare complete_age_check fixture")
         .into_prover_only();
+    record_proving_payload(&prover);
     in_process::trim_process_memory();
+    prover
+}
+
+fn passport_single_thread_pool() -> &'static rayon::ThreadPool {
+    static SINGLE_THREAD_POOL: OnceLock<rayon::ThreadPool> = OnceLock::new();
+    SINGLE_THREAD_POOL.get_or_init(|| {
+        rayon::ThreadPoolBuilder::new()
+            .num_threads(1)
+            .build()
+            .expect("build single-thread Passport pool")
+    })
+}
+
+fn setup_complete_age_check_prover_single_thread(
+) -> PreparedCompleteAgeCheckProverWithSerializedVerifier {
+    in_process::log_process_memory("before_frozen_prover_load");
+    let frozen = passport::frozen_complete_age_check_fixture();
+    let (prover_size_bytes, input_size_bytes) = frozen.proving_payload_sizes();
+    let prover = frozen
+        .load_prover_with_serialized_verifier()
+        .expect("load frozen single-thread complete_age_check prover");
+    record_proving_payload_sizes(prover_size_bytes, input_size_bytes);
+    in_process::log_process_memory("after_frozen_prover_load");
+    in_process::trim_process_memory();
+    let memory = in_process::log_process_memory("after_setup_trim");
+    mobench_sdk::record_run_u64("passport_setup_rss_kb", memory.rss_kb);
+    mobench_sdk::record_run_u64("passport_setup_swap_kb", memory.swap_kb);
     prover
 }
 
@@ -315,9 +323,44 @@ fn setup_oprf_verified() -> VerifiedCircuitFixture {
 }
 
 fn setup_oprf_prover() -> PreparedProverFixture {
+    static VALIDATION_GATE: Once = Once::new();
+    VALIDATION_GATE.call_once(|| {
+        let prepared = examples::prepare_fixture(MobileBenchFixture::Oprf)
+            .expect("prepare oprf validation canary");
+        let verified = examples::prove_fixture(prepared).expect("prove oprf validation canary");
+        verified
+            .verify_and_reject_tampered()
+            .expect("validate oprf proof and tamper rejection");
+    });
     let prover = examples::prepare_fixture(MobileBenchFixture::Oprf)
         .expect("prepare oprf fixture")
         .into_prover_only();
+    record_proving_payload(&prover);
+    in_process::trim_process_memory();
+    prover
+}
+
+fn setup_passport_p1_prover() -> PreparedProverFixture {
+    setup_validated_prover(MobileBenchFixture::PassportP1, &PASSPORT_P1_VALIDATION_GATE)
+}
+
+static PASSPORT_P1_VALIDATION_GATE: Once = Once::new();
+
+fn setup_validated_prover(
+    fixture: MobileBenchFixture,
+    validation_gate: &'static Once,
+) -> PreparedProverFixture {
+    validation_gate.call_once(|| {
+        let prepared = examples::prepare_fixture(fixture).expect("prepare validation canary");
+        let verified = examples::prove_fixture(prepared).expect("prove validation canary");
+        verified
+            .verify_and_reject_tampered()
+            .expect("validate proof and tamper rejection");
+    });
+    let prover = examples::prepare_fixture(fixture)
+        .expect("prepare input-to-proof fixture")
+        .into_prover_only();
+    record_proving_payload(&prover);
     in_process::trim_process_memory();
     prover
 }
@@ -344,6 +387,86 @@ fn setup_p256_bigcurve_prover() -> PreparedProverFixture {
     prover
 }
 
+fn setup_webauthn_assertion_prepared() -> PreparedCircuitFixture {
+    let prepared = examples::prepare_fixture(MobileBenchFixture::WebauthnAssertion)
+        .expect("prepare webauthn_assertion fixture");
+    in_process::trim_process_memory();
+    prepared
+}
+
+fn setup_webauthn_assertion_verified() -> VerifiedCircuitFixture {
+    let prepared = setup_webauthn_assertion_prepared();
+    let verified = examples::prove_fixture(prepared).expect("prove webauthn_assertion fixture");
+    in_process::trim_process_memory();
+    verified
+}
+
+fn setup_webauthn_assertion_prover() -> PreparedProverFixture {
+    static VALIDATION_GATE: Once = Once::new();
+    VALIDATION_GATE.call_once(|| {
+        let prepared = examples::prepare_fixture(MobileBenchFixture::WebauthnAssertion)
+            .expect("prepare webauthn_assertion validation canary");
+        let verified =
+            examples::prove_fixture(prepared).expect("prove webauthn_assertion validation canary");
+        verified
+            .verify_and_reject_tampered()
+            .expect("validate webauthn_assertion proof and tamper rejection");
+    });
+    let prover = examples::prepare_fixture(MobileBenchFixture::WebauthnAssertion)
+        .expect("prepare webauthn_assertion fixture")
+        .into_prover_only();
+    record_proving_payload(&prover);
+    in_process::trim_process_memory();
+    prover
+}
+
+fn record_proving_payload(prover: &PreparedProverFixture) {
+    let (prover_size_bytes, input_size_bytes) = prover
+        .proving_payload_sizes()
+        .expect("serialize ProveKit proving payload");
+    record_proving_payload_sizes(prover_size_bytes, input_size_bytes);
+}
+
+fn record_proving_payload_sizes(prover_size_bytes: usize, input_size_bytes: usize) {
+    mobench_sdk::record_run_u64("prover_size_bytes", prover_size_bytes as u64);
+    mobench_sdk::record_run_u64("input_size_bytes", input_size_bytes as u64);
+    mobench_sdk::record_run_u64(
+        "proving_payload_size_bytes",
+        (prover_size_bytes + input_size_bytes) as u64,
+    );
+}
+
+fn record_proof_metrics(proof: &NoirProof, prove_started: Instant) {
+    let (prove_time_ns, proof_size_bytes) = exact_proof_metrics(proof, prove_started);
+    mobench_sdk::record_sample_u64("prove_time_ns", prove_time_ns);
+    mobench_sdk::record_sample_u64("proof_size_bytes", proof_size_bytes);
+}
+
+fn record_input_to_proof_metrics(proof: &NoirProof, started: Instant) {
+    let (input_to_proof_time_ns, proof_size_bytes) = exact_proof_metrics(proof, started);
+    mobench_sdk::record_sample_u64("input_to_proof_time_ns", input_to_proof_time_ns);
+    // ProveKit's native `Prover::prove(input_map)` performs witness solving and
+    // proof generation as one call, so there is no honest phase split here.
+    mobench_sdk::record_sample_u64("prove_time_ns", input_to_proof_time_ns);
+    mobench_sdk::record_sample_u64("proof_size_bytes", proof_size_bytes);
+}
+
+fn benchmark_input_to_proof(prepared: PreparedProverFixture) {
+    let started = Instant::now();
+    let proof = examples::prove_fixture_proof_only(prepared)
+        .expect("generate ProveKit input-to-proof fixture");
+    record_input_to_proof_metrics(&proof, started);
+    black_box(proof);
+}
+
+fn exact_proof_metrics(proof: &NoirProof, prove_started: Instant) -> (u64, u64) {
+    let prove_time_ns = prove_started.elapsed().as_nanos().min(u128::from(u64::MAX)) as u64;
+    let proof_size_bytes = serialize(proof)
+        .expect("serialize exact ProveKit .np proof")
+        .len() as u64;
+    (prove_time_ns, proof_size_bytes)
+}
+
 #[benchmark]
 pub fn bench_passport_complete_age_check_prepare() {
     let prepared = profile_phase("prepare", || {
@@ -359,12 +482,59 @@ pub fn bench_passport_complete_age_check_prepare() {
 
 #[benchmark(setup = setup_complete_age_check_prover, per_iteration)]
 pub fn bench_passport_complete_age_check_prove(prepared: PreparedCompleteAgeCheckProver) {
+    let prove_started = Instant::now();
     let proof = profile_phase("prove", || {
         prove_complete_age_check_fixture_proof_only(prepared)
             .expect("prove complete_age_check fixture")
     });
 
+    record_proof_metrics(&proof, prove_started);
     black_box(proof);
+}
+
+/// Memory-constrained proof-only Passport lane for 32-bit Android devices.
+///
+/// Both the correctness canary and every timed proof execute inside the same
+/// one-thread Rayon pool. This preserves the proof-only timing and exact proof
+/// metrics while preventing parallel proof phases from exhausting low-memory
+/// devices.
+#[benchmark(setup = setup_complete_age_check_prover_single_thread, per_iteration)]
+pub fn bench_passport_complete_age_check_prove_single_thread(
+    prepared: PreparedCompleteAgeCheckProverWithSerializedVerifier,
+) {
+    let (prove_time_ns, proof_size_bytes, after_prove, before_verify, after_verify) =
+        passport_single_thread_pool().install(|| {
+            let prove_started = Instant::now();
+            let verified = profile_phase("prove", || {
+                prepared
+                    .prove()
+                    .expect("prove single-thread complete_age_check fixture")
+            });
+
+            let proof_metrics = exact_proof_metrics(verified.proof(), prove_started);
+            let after_prove = in_process::log_process_memory("after_prove");
+            in_process::trim_process_memory();
+            let before_verify = in_process::log_process_memory("after_prove_trim");
+            verified
+                .verify_and_reject_tampered()
+                .expect("verify single-thread complete_age_check proof and reject tampering");
+            let after_verify = in_process::log_process_memory("after_verify");
+            (
+                proof_metrics.0,
+                proof_metrics.1,
+                after_prove,
+                before_verify,
+                after_verify,
+            )
+        });
+    mobench_sdk::record_sample_u64("prove_time_ns", prove_time_ns);
+    mobench_sdk::record_sample_u64("proof_size_bytes", proof_size_bytes);
+    mobench_sdk::record_sample_u64("rss_after_prove_kb", after_prove.rss_kb);
+    mobench_sdk::record_sample_u64("swap_after_prove_kb", after_prove.swap_kb);
+    mobench_sdk::record_sample_u64("rss_before_verify_kb", before_verify.rss_kb);
+    mobench_sdk::record_sample_u64("swap_before_verify_kb", before_verify.swap_kb);
+    mobench_sdk::record_sample_u64("rss_after_verify_kb", after_verify.rss_kb);
+    mobench_sdk::record_sample_u64("swap_after_verify_kb", after_verify.swap_kb);
 }
 
 #[benchmark(setup = setup_complete_age_check_verified)]
@@ -377,8 +547,18 @@ pub fn bench_passport_complete_age_check_verify(verified: &VerifiedCompleteAgeCh
     black_box(verified);
 }
 
-#[benchmark]
-pub fn bench_passport_complete_age_check_e2e() {
+fn run_passport_complete_age_check_e2e() {
+    static VALIDATION_GATE: Once = Once::new();
+    VALIDATION_GATE.call_once(|| {
+        let prepared = passport::prepare_complete_age_check_fixture()
+            .expect("prepare complete_age_check validation canary");
+        let verified = prove_complete_age_check_fixture(prepared)
+            .expect("prove complete_age_check validation canary");
+        verified
+            .verify_and_reject_tampered()
+            .expect("validate complete_age_check proof and tamper rejection");
+    });
+
     let prepared = profile_phase("prepare", || {
         passport::prepare_complete_age_check_fixture().expect("prepare complete_age_check fixture")
     });
@@ -390,6 +570,22 @@ pub fn bench_passport_complete_age_check_e2e() {
     });
 
     black_box(verified);
+}
+
+#[benchmark]
+pub fn bench_passport_complete_age_check_e2e() {
+    run_passport_complete_age_check_e2e();
+}
+
+/// Memory-constrained Passport lane for 32-bit devices whose OS kills the
+/// default Rayon execution before it can emit a sample.
+///
+/// The pool is initialized during the warmup invocation and then reused by
+/// all five measured samples. The distinct benchmark name keeps this
+/// constrained execution policy visible in exported evidence.
+#[benchmark]
+pub fn bench_passport_complete_age_check_e2e_single_thread() {
+    passport_single_thread_pool().install(run_passport_complete_age_check_e2e);
 }
 
 #[benchmark]
@@ -432,11 +628,57 @@ pub fn bench_oprf_prepare() {
 
 #[benchmark(setup = setup_oprf_prover, per_iteration)]
 pub fn bench_oprf_prove(prepared: PreparedProverFixture) {
+    let prove_started = Instant::now();
     let proof = profile_phase("prove", || {
         examples::prove_fixture_proof_only(prepared).expect("prove oprf fixture")
     });
 
+    record_proof_metrics(&proof, prove_started);
     black_box(proof);
+}
+
+#[benchmark(setup = setup_oprf_prover, per_iteration)]
+pub fn bench_oprf_input_to_proof(prepared: PreparedProverFixture) {
+    benchmark_input_to_proof(prepared);
+}
+
+#[benchmark(setup = setup_passport_p1_prover, per_iteration)]
+pub fn bench_passport_p1_input_to_proof(prepared: PreparedProverFixture) {
+    benchmark_input_to_proof(prepared);
+}
+
+#[benchmark(setup = setup_complete_age_check_prover, per_iteration)]
+pub fn bench_passport_complete_age_check_input_to_proof(prepared: PreparedCompleteAgeCheckProver) {
+    let started = Instant::now();
+    let proof = prove_complete_age_check_fixture_proof_only(prepared)
+        .expect("generate complete_age_check input-to-proof fixture");
+    record_input_to_proof_metrics(&proof, started);
+    black_box(proof);
+}
+
+/// Memory-constrained input-to-proof Passport lane for 32-bit Android devices.
+///
+/// Witness solving and proof generation remain inside the measured `prove`
+/// call. Correct-proof acceptance and tamper rejection run afterward, outside
+/// the timing interval, in the same single-thread Rayon pool.
+#[benchmark(setup = setup_complete_age_check_prover_single_thread, per_iteration)]
+pub fn bench_passport_complete_age_check_input_to_proof_single_thread(
+    prepared: PreparedCompleteAgeCheckProverWithSerializedVerifier,
+) {
+    let (input_to_proof_time_ns, proof_size_bytes) = passport_single_thread_pool().install(|| {
+        let started = Instant::now();
+        let verified = prepared
+            .prove()
+            .expect("generate single-thread complete_age_check input-to-proof fixture");
+        let metrics = exact_proof_metrics(verified.proof(), started);
+        verified
+            .verify_and_reject_tampered()
+            .expect("verify single-thread complete_age_check proof and reject tampering");
+        metrics
+    });
+    mobench_sdk::record_sample_u64("input_to_proof_time_ns", input_to_proof_time_ns);
+    mobench_sdk::record_sample_u64("prove_time_ns", input_to_proof_time_ns);
+    mobench_sdk::record_sample_u64("proof_size_bytes", proof_size_bytes);
 }
 
 #[benchmark(setup = setup_oprf_verified)]
@@ -450,6 +692,16 @@ pub fn bench_oprf_verify(verified: &VerifiedCircuitFixture) {
 
 #[benchmark]
 pub fn bench_oprf_e2e() {
+    static VALIDATION_GATE: Once = Once::new();
+    VALIDATION_GATE.call_once(|| {
+        let prepared = examples::prepare_fixture(MobileBenchFixture::Oprf)
+            .expect("prepare oprf validation canary");
+        let verified = examples::prove_fixture(prepared).expect("prove oprf validation canary");
+        verified
+            .verify_and_reject_tampered()
+            .expect("validate oprf proof and tamper rejection");
+    });
+
     let prepared = profile_phase("prepare", || {
         examples::prepare_fixture(MobileBenchFixture::Oprf).expect("prepare oprf fixture")
     });
@@ -511,9 +763,90 @@ pub fn bench_p256_bigcurve_e2e() {
     black_box(verified);
 }
 
+#[benchmark]
+pub fn bench_webauthn_assertion_prepare() {
+    let prepared = profile_phase("prepare", || {
+        examples::prepare_fixture(MobileBenchFixture::WebauthnAssertion)
+            .expect("prepare webauthn_assertion fixture")
+    });
+
+    black_box((
+        prepared.prover_size(),
+        prepared.constraint_count(),
+        prepared.input_count(),
+    ));
+}
+
+#[benchmark(setup = setup_webauthn_assertion_prover, per_iteration)]
+pub fn bench_webauthn_assertion_prove(prepared: PreparedProverFixture) {
+    let prove_started = Instant::now();
+    let proof = profile_phase("prove", || {
+        examples::prove_fixture_proof_only(prepared).expect("prove webauthn_assertion fixture")
+    });
+
+    record_proof_metrics(&proof, prove_started);
+    black_box(proof);
+}
+
+#[benchmark(setup = setup_webauthn_assertion_prover, per_iteration)]
+pub fn bench_webauthn_assertion_input_to_proof(prepared: PreparedProverFixture) {
+    benchmark_input_to_proof(prepared);
+}
+
+#[benchmark(setup = setup_webauthn_assertion_verified)]
+pub fn bench_webauthn_assertion_verify(verified: &VerifiedCircuitFixture) {
+    let verified = profile_phase("verify", || {
+        examples::verify_fixture(verified.clone()).expect("verify webauthn_assertion fixture")
+    });
+
+    black_box(verified);
+}
+
+#[benchmark]
+pub fn bench_webauthn_assertion_e2e() {
+    static VALIDATION_GATE: Once = Once::new();
+    VALIDATION_GATE.call_once(|| {
+        let prepared = examples::prepare_fixture(MobileBenchFixture::WebauthnAssertion)
+            .expect("prepare webauthn_assertion validation canary");
+        let verified =
+            examples::prove_fixture(prepared).expect("prove webauthn_assertion validation canary");
+        verified
+            .verify_and_reject_tampered()
+            .expect("validate webauthn_assertion proof and tamper rejection");
+    });
+
+    let prepared = profile_phase("prepare", || {
+        examples::prepare_fixture(MobileBenchFixture::WebauthnAssertion)
+            .expect("prepare webauthn_assertion fixture")
+    });
+    let verified = profile_phase("prove", || {
+        examples::prove_fixture(prepared).expect("prove webauthn_assertion fixture")
+    });
+    let verified = profile_phase("verify", || {
+        examples::verify_fixture(verified).expect("verify webauthn_assertion fixture")
+    });
+
+    black_box(verified);
+}
+
 #[cfg(test)]
 mod tests {
-    use super::BenchReport;
+    use super::{benchmark_start_metadata, BenchReport};
+
+    #[test]
+    fn lifecycle_metadata_records_observed_rayon_threads() {
+        let metadata =
+            benchmark_start_metadata("bench_mobile::bench_passport_complete_age_check_prove");
+
+        assert_eq!(
+            metadata["resolved_function"],
+            "bench_mobile::bench_passport_complete_age_check_prove"
+        );
+        assert_eq!(metadata["rayon_threads"], rayon::current_num_threads());
+        assert!(metadata["rayon_threads"]
+            .as_u64()
+            .is_some_and(|threads| threads > 0));
+    }
 
     #[test]
     fn report_conversion_preserves_sample_resource_metrics() {
