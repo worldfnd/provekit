@@ -71,7 +71,10 @@
       node.textContent = delimiter[0] + node.dataset.tex + delimiter[1];
       node.dataset.mathReady = 'true';
     });
-    window.MathJax?.typesetPromise?.(nodes)?.then(fitProveKitEquations);
+    window.MathJax?.typesetPromise?.(nodes)?.then(() => {
+      fitProveKitEquations();
+      document.fonts?.ready.then(fitProveKitEquations);
+    });
   };
 
   window.addEventListener('provekit-mathjax-ready', typesetProveKitMath);

@@ -28,6 +28,7 @@ const theoremLabels = {
 };
 
 const theoremEnvironments = new Set(Object.keys(theoremLabels));
+let referenceLabels = new Map();
 const mathEnvironments = new Set([
   'equation', 'equation*', 'align', 'align*',
   'gather', 'gather*', 'multline', 'multline*',
@@ -46,6 +47,50 @@ const htmlAttributeEscape = (value) => value
   .replaceAll('<', '&lt;')
   .replaceAll('>', '&gt;')
   .replaceAll('"', '&quot;');
+
+const referenceKinds = {
+  e: 'Equation',
+  i: 'Step',
+  lem: 'Lemma',
+  prot: 'Protocol',
+  rem: 'Remark',
+  s: 'Section',
+  thm: 'Theorem',
+};
+
+const indexReferences = (value) => {
+  const counters = new Map();
+  const labels = new Map();
+  for (const match of value.matchAll(/\\label\{([^}]*)\}/g)) {
+    const key = match[1];
+    if (!key || labels.has(key)) continue;
+    const prefix = key.split(':', 1)[0];
+    const kind = referenceKinds[prefix] || 'Reference';
+    const count = (counters.get(kind) || 0) + 1;
+    counters.set(kind, count);
+    labels.set(key, { kind, number: count });
+  }
+  return labels;
+};
+
+const referenceMarkup = (key, equation = false) => {
+  if (!key) return '<span class="pk-reference pk-reference--pending">reference pending</span>';
+  const reference = referenceLabels.get(key);
+  if (!reference) return '<span class="pk-reference pk-reference--missing">[' + htmlEscape(key) + ']</span>';
+  const text = equation ? '(' + reference.number + ')' : reference.kind + ' ' + reference.number;
+  return '<a class="pk-reference" href="#' + htmlAttributeEscape(key) + '">' + text + '</a>';
+};
+
+const plainReferenceText = (value) => value
+  .replace(/((?:Equation|Lemma|Protocol|Remark|Section|Step|Theorem)\s+)?\\(?:eq)?ref\{([^}]*)\}/g,
+    (_, precedingKind = '', key) => {
+    if (!key) return 'reference pending';
+    const reference = referenceLabels.get(key);
+    if (!reference) return '[' + key + ']';
+    return precedingKind ? precedingKind + reference.number : reference.kind + ' ' + reference.number;
+  })
+  .replace(/\\cite(?:\[[^\]]*\])?\{([^}]*)\}/g, (_, keys) =>
+    keys ? '[' + keys.replaceAll(',', ', ') + ']' : '[citation pending]');
 
 const findClosingBrace = (value, openIndex) => {
   let depth = 0;
@@ -150,6 +195,7 @@ const texForMath = (value) => normalizeIntertext(value)
   .trim();
 
 const mathMarkup = (value, inline = false, environment = '') => {
+  const labels = [...value.matchAll(/\\label\{([^}]*)\}/g)].map((match) => match[1]);
   let tex = texForMath(value);
   if (!inline && /^(?:align|align\*)$/.test(environment)) {
     tex = '\\begin{aligned}' + tex + '\\end{aligned}';
@@ -158,7 +204,11 @@ const mathMarkup = (value, inline = false, environment = '') => {
   }
   const formula = htmlAttributeEscape(tex);
   if (inline) return '<span class="pk-inline-math" data-tex="' + formula + '"></span>';
-  return '<div class="pk-equation"><span data-display-math="true" data-tex="' + formula + '"></span></div>';
+  const id = labels[0] ? ' id="' + htmlAttributeEscape(labels[0]) + '"' : '';
+  const additionalAnchors = labels.slice(1).map((label) =>
+    '<span class="pk-reference-anchor" id="' + htmlAttributeEscape(label) + '"></span>').join('');
+  return '<div class="pk-equation"' + id + '>' + additionalAnchors
+    + '<span data-display-math="true" data-tex="' + formula + '"></span></div>';
 };
 
 const extractBlocks = (value) => {
@@ -263,6 +313,9 @@ const inlineMarkup = (value, blocks) => {
   replaceOneArgument(['footnote'], (content) =>
     '<span class="pk-footnote">' + inlineMarkup(content, blocks) + '</span>');
 
+  result = result.replace(/\\(?:ldots|cdots|dots)\b/g, (command) =>
+    tokenise(mathMarkup(command, true)));
+
   const unmatchedDollar = result.match(/(?<!\\)\$(?!\$)/);
   if (unmatchedDollar && unmatchedDollar.index !== undefined) {
     const start = unmatchedDollar.index;
@@ -275,9 +328,14 @@ const inlineMarkup = (value, blocks) => {
   }
 
   result = result.replace(/\\cite(?:\[[^\]]*\])?\{([^}]*)\}/g, (_, keys) =>
-    tokenise('<span class="pk-citation">[' + htmlEscape(keys.replaceAll(',', ', ')) + ']</span>'));
-  result = result.replace(/\\(?:eq)?ref\{([^}]*)\}/g, (_, reference) =>
-    tokenise('<span class="pk-reference">[' + htmlEscape(reference) + ']</span>'));
+    tokenise('<span class="pk-citation">['
+      + (keys ? htmlEscape(keys.replaceAll(',', ', ')) : 'citation pending') + ']</span>'));
+  result = result.replace(/\\eqref\{([^}]*)\}/g, (_, reference) =>
+    tokenise(referenceMarkup(reference, true)));
+  result = result.replace(/\\ref\{([^}]*)\}/g, (_, reference) =>
+    tokenise(referenceMarkup(reference)));
+  result = result.replace(/\\label\{([^}]*)\}/g, (_, label) =>
+    tokenise('<span class="pk-reference-anchor" id="' + htmlAttributeEscape(label) + '"></span>'));
   result = result.replace(/\\(?:noindent|small|xspace|hfill|quad|qquad)\b/g, ' ');
   result = result.replace(/\\(?:hspace|vspace)\*?\{[^}]*\}/g, ' ');
   result = result.replace(/\\([%&_#])/g, '$1').replace(/\\\\/g, ' ');
@@ -299,7 +357,6 @@ const renderDocument = (value, blocks) => {
     .replace(/\\(?:frontmatter|mainmatter|backmatter|appendix|maketitle|tableofcontents|cleardoublepage|newpage)\b/g, '')
     .replace(/\\(?:bibliographystyle|bibliography)\{[^}]*\}/g, '')
     .replace(/\\(?:begin|end)\{document\}/g, '')
-    .replace(/\\label\{[^}]*\}/g, '')
     .replace(/\\textcolor\{[^}]*\}\{([^{}]*)\}/g, '$1')
     .replace(/\\begin\{(itemize|enumerate)\}/g, '\n@@LIST_START_$1@@\n')
     .replace(/\\end\{(itemize|enumerate)\}/g, '\n@@LIST_END@@\n')
@@ -380,7 +437,7 @@ const renderDocument = (value, blocks) => {
     if (theoremStart) {
       flushParagraph();
       const kind = theoremStart[1];
-      const title = theoremStart[2] || theoremLabels[kind] || kind;
+      const title = plainReferenceText(theoremStart[2] || theoremLabels[kind] || kind);
       const label = theoremLabels[kind] || kind;
       const asideTitle = title !== label ? label + ': ' + title : label;
       output.push('<Aside type="note" title="' + htmlEscape(asideTitle) + '">');
@@ -417,6 +474,7 @@ const mainMatterIndex = mainSource.lastIndexOf('\\mainmatter');
 const body = mainMatterIndex === -1 ? mainSource : mainSource.slice(mainMatterIndex + '\\mainmatter'.length);
 const expanded = await inlineInputs(body);
 const cleaned = removeInternalNotes(stripComments(expanded));
+referenceLabels = indexReferences(cleaned);
 const extracted = extractBlocks(cleaned);
 const rendered = renderDocument(extracted.result, extracted.blocks);
 
@@ -447,6 +505,25 @@ const invalidMath = generatedMath.filter((formula) => {
 });
 if (invalidMath.length) {
   throw new Error('Generated whitepaper contains unsupported MathJax input:\n' + invalidMath.join('\n---\n'));
+}
+const proseOutput = output.replace(/data-tex="[\s\S]*?"/g, '');
+const rawProseCommands = [...new Set(proseOutput.match(/\\[A-Za-z]+/g) || [])];
+if (rawProseCommands.length) {
+  throw new Error('Generated whitepaper contains raw TeX commands in prose: '
+    + rawProseCommands.join(', '));
+}
+const missingReferences = [...output.matchAll(/pk-reference--missing[^>]*>\[([^\]]+)\]/g)]
+  .map((match) => match[1]);
+if (missingReferences.length) {
+  throw new Error('Generated whitepaper contains unresolved references: '
+    + [...new Set(missingReferences)].join(', '));
+}
+const referenceTargets = [...output.matchAll(/href="#([^"]+)"/g)].map((match) => match[1]);
+const renderedIds = new Set([...output.matchAll(/id="([^"]+)"/g)].map((match) => match[1]));
+const missingTargets = [...new Set(referenceTargets.filter((target) => !renderedIds.has(target)))];
+if (missingTargets.length) {
+  throw new Error('Generated whitepaper contains references without targets: '
+    + missingTargets.join(', '));
 }
 await mkdir(path.dirname(outputPath), { recursive: true });
 await writeFile(outputPath, output, 'utf8');

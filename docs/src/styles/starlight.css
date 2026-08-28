@@ -405,6 +405,10 @@ body {
 }
 .pk-inline-math { white-space: nowrap; }
 .pk-citation, .pk-reference { color: var(--pk-brand); font: 0.82em var(--pk-font-mono); }
+.pk-reference[href] { text-decoration: underline; text-decoration-thickness: 0.08em; text-underline-offset: 0.15em; }
+.pk-reference--pending { color: var(--pk-mute); }
+.pk-reference-anchor,
+.pk-equation[id] { scroll-margin-top: 6rem; }
 .pk-footnote { color: var(--pk-ink-soft); font-size: 0.9em; }
 
 .pk-theorem {
