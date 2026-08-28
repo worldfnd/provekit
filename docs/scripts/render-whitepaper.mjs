@@ -105,7 +105,34 @@ const inlineInputs = async (value) => {
   return result;
 };
 
-const texForMath = (value) => value
+const intertextRow = (content) => {
+  const parts = content
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(/(?<!\\)\$/);
+  const row = parts.map((part, index) => {
+    if (index % 2 === 1) return part.trim();
+    if (!part) return '';
+    return '\\text{' + part + '}';
+  }).filter(Boolean).join('');
+  return '& ' + row + ' \\\\';
+};
+
+const normalizeIntertext = (value) => {
+  let result = value;
+  let commandIndex = result.indexOf('\\intertext');
+  while (commandIndex !== -1) {
+    const argument = takeArgument(result, commandIndex + '\\intertext'.length);
+    if (!argument) throw new Error('Malformed \\intertext in display math');
+    result = result.slice(0, commandIndex)
+      + intertextRow(argument.content)
+      + result.slice(argument.end);
+    commandIndex = result.indexOf('\\intertext', commandIndex);
+  }
+  return result;
+};
+
+const texForMath = (value) => normalizeIntertext(value)
   .replace(/\\label\{[^}]*\}/g, '')
   .replace(/\\tag\{[^}]*\}/g, '')
   .replace(/\\notag\b/g, '')
@@ -414,7 +441,9 @@ const invalidMath = generatedMath.filter((formula) => {
     .replaceAll('&amp;', '&');
   const hasAlignmentContainer = /\\begin\{(?:aligned|gathered|matrix|pmatrix|bmatrix|vmatrix|Vmatrix)\}/.test(decoded);
   const hasUnwrappedAlignment = decoded.includes('&') && !hasAlignmentContainer;
-  return hasUnwrappedAlignment || /\\(?:hspace|vspace)\*?\s*\{/.test(decoded);
+  return hasUnwrappedAlignment
+    || /\\(?:hspace|vspace)\*?\s*\{/.test(decoded)
+    || decoded.includes('\\intertext');
 });
 if (invalidMath.length) {
   throw new Error('Generated whitepaper contains unsupported MathJax input:\n' + invalidMath.join('\n---\n'));
