@@ -7,51 +7,56 @@ sidebar:
 
 import { Aside } from '@astrojs/starlight/components';
 import MathJax from '../../components/MathJax.astro';
+import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <MathJax />
 
-<div class="pk-paper-hero">
-  <div class="pk-paper-kicker">Research draft · feature/whitepaper</div>
-  <h1>ProveKit Whitepaper</h1>
-  <p class="pk-paper-dek">A web-readable treatment of scheduled-witness R1CS, WHIR, and zero-knowledge commitments for a practical proof system.</p>
-  <div class="pk-paper-actions">
-    <a class="pk-paper-button pk-paper-button--primary" href="https://github.com/worldfnd/provekit/tree/feature/whitepaper/whitepaper">View LaTeX source <span aria-hidden="true">↗</span></a>
-    <a class="pk-paper-button" href={import.meta.env.BASE_URL}>Back to docs <span aria-hidden="true">→</span></a>
+<div class="pk-whitepaper">
+  <div class="pk-paper-hero">
+    <div class="pk-paper-hero-head">
+      <div class="pk-paper-kicker">Research draft · feature/whitepaper</div>
+      <WhitepaperViewToggle />
+    </div>
+    <h1>ProveKit Whitepaper</h1>
+    <p class="pk-paper-dek">A web-readable treatment of scheduled-witness R1CS, WHIR, and zero-knowledge commitments for a practical proof system.</p>
+    <div class="pk-paper-actions">
+      <a class="pk-paper-button pk-paper-button--primary" href="https://github.com/worldfnd/provekit/tree/feature/whitepaper/whitepaper">View LaTeX source <span aria-hidden="true">↗</span></a>
+      <a class="pk-paper-button" href={import.meta.env.BASE_URL}>Back to docs <span aria-hidden="true">→</span></a>
+    </div>
   </div>
-</div>
 
-<div class="pk-paper-notice" role="note">
-  <strong>Draft status.</strong> This page mirrors the current research branch. Sections marked <code>(tbc)</code> are intentionally shown as unfinished; the text is not a production security claim or a completed protocol specification.
-</div>
-
-<div class="pk-paper-overview">
-  <div class="pk-paper-overview-copy">
-    <div class="pk-paper-kicker">What this paper develops</div>
-    <h2>A proof pipeline designed around the witness</h2>
-    <p>The construction starts with a two-stage R1CS whose first-stage witness is independent of verifier challenges and whose second-stage witness can be derived after those challenges arrive. It then turns the resulting constraints into multilinear and Reed–Solomon claims that WHIR can fold and verify.</p>
-    <p>The zero-knowledge sections add randomized zero-checks and masked commitments so that the verifier can check consistency without learning the underlying witness. The appendix collects the current soundness notes, correlated-agreement statement, and alternative VEIL direction.</p>
+  <div class="pk-paper-notice" role="note">
+    <strong>Draft status.</strong> This page mirrors the current research branch. Sections marked <code>(tbc)</code> are intentionally shown as unfinished; the text is not a production security claim or a completed protocol specification.
   </div>
-  <div class="pk-paper-facts" aria-label="Paper facts">
-    <div><span>Core field</span><strong>Goldilocks</strong></div>
-    <div><span>Commitment layer</span><strong>WHIR</strong></div>
-    <div><span>Security direction</span><strong>Zero knowledge</strong></div>
-  </div>
-</div>
 
-<div class="pk-paper-map">
-  <div class="pk-paper-kicker">Reading map</div>
-  <div class="pk-paper-map-grid">
-    <a href="#r1cs-with-scheduled-witnesses-tbc"><span>01</span><strong>Scheduled witnesses</strong><small>Separate challenge-independent and challenge-dependent work.</small></a>
-    <a href="#preliminaries"><span>02</span><strong>Preliminaries</strong><small>Multilinears, liftings, and interleaved representations.</small></a>
-    <a href="#the-protocol-without-zero-knowledge"><span>03</span><strong>Core protocol</strong><small>Arithmetization, encoding, IOPP, and soundness.</small></a>
-    <a href="#whir"><span>04</span><strong>WHIR</strong><small>Folding, setup, and round-by-round soundness.</small></a>
-    <a href="#adding-zero-knowledge"><span>05</span><strong>Zero knowledge</strong><small>Randomization, masking, and final openings.</small></a>
-    <a href="#alternatives-to-zo0k"><span>06</span><strong>Appendix</strong><small>Soundness notes, correlated agreement, and VEIL.</small></a>
+  <div class="pk-paper-overview">
+    <div class="pk-paper-overview-copy">
+      <div class="pk-paper-kicker">What this paper develops</div>
+      <h2>A proof pipeline designed around the witness</h2>
+      <p>The construction starts with a two-stage R1CS whose first-stage witness is independent of verifier challenges and whose second-stage witness can be derived after those challenges arrive. It then turns the resulting constraints into multilinear and Reed-Solomon claims that WHIR can fold and verify.</p>
+      <p>The zero-knowledge sections add randomized zero-checks and masked commitments so that the verifier can check consistency without learning the underlying witness. The appendix collects the current soundness notes, correlated-agreement statement, and alternative VEIL direction.</p>
+    </div>
+    <div class="pk-paper-facts" aria-label="Paper facts">
+      <div><span>Core field</span><strong>Goldilocks</strong></div>
+      <div><span>Commitment layer</span><strong>WHIR</strong></div>
+      <div><span>Security direction</span><strong>Zero knowledge</strong></div>
+    </div>
   </div>
-</div>
 
-<div class="pk-paper-body">
-  <div class="pk-paper-kicker">Paper text</div>
+  <div class="pk-paper-map">
+    <div class="pk-paper-kicker">Reading map</div>
+    <div class="pk-paper-map-grid">
+      <a href="#r1cs-with-scheduled-witnesses-tbc"><span>01</span><strong>Scheduled witnesses</strong><small>Separate challenge-independent and challenge-dependent work.</small></a>
+      <a href="#preliminaries"><span>02</span><strong>Preliminaries</strong><small>Multilinears, liftings, and interleaved representations.</small></a>
+      <a href="#the-protocol-without-zero-knowledge"><span>03</span><strong>Core protocol</strong><small>Arithmetization, encoding, IOPP, and soundness.</small></a>
+      <a href="#whir"><span>04</span><strong>WHIR</strong><small>Folding, setup, and round-by-round soundness.</small></a>
+      <a href="#adding-zero-knowledge"><span>05</span><strong>Zero knowledge</strong><small>Randomization, masking, and final openings.</small></a>
+      <a href="#alternatives-to-zo0k"><span>06</span><strong>Appendix</strong><small>Soundness notes, correlated agreement, and VEIL.</small></a>
+    </div>
+  </div>
+
+  <div class="pk-paper-body">
+    <div class="pk-paper-kicker">Paper text</div>
 
   {/* GENERATED WHITEPAPER BODY */}
 
@@ -1524,10 +1529,11 @@ d(p_{1,i}(X),f_1)\leq \theta_1,
 <p>The value <span class="pk-inline-math" data-tex="h_1(\beta_1) +\ldots + h_{k_1}(\beta_{k_1})"></span> is proven separately.</p>
 
 {/* END GENERATED WHITEPAPER BODY */}
-</div>
+  </div>
 
-<div class="pk-paper-footer">
-  <strong>Source provenance</strong>
-  <span>Rendered from <code>whitepaper/main.tex</code> and its appendix files on the <code>feature/whitepaper</code> branch.</span>
-  <a href="https://github.com/worldfnd/provekit/tree/feature/whitepaper/whitepaper">Open the source directory ↗</a>
+  <div class="pk-paper-footer">
+    <strong>Source provenance</strong>
+    <span>Rendered from <code>whitepaper/main.tex</code> and its appendix files on the <code>feature/whitepaper</code> branch.</span>
+    <a href="https://github.com/worldfnd/provekit/tree/feature/whitepaper/whitepaper">Open the source directory ↗</a>
+  </div>
 </div>

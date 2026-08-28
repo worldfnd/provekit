@@ -1,0 +1,63 @@
+---
+---
+
+<div class="pk-view-toggle" data-whitepaper-toggle>
+  <span class="pk-view-toggle-label" id="whitepaper-view-label">Presentation</span>
+  <div class="pk-view-toggle-control" role="group" aria-labelledby="whitepaper-view-label">
+    <button type="button" data-whitepaper-view="docs" aria-pressed="true">Docs</button>
+    <button type="button" data-whitepaper-view="latex" aria-pressed="false">LaTeX</button>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = 'provekit-whitepaper-view';
+
+  const readStoredView = () => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) === 'latex' ? 'latex' : 'docs';
+    } catch {
+      return 'docs';
+    }
+  };
+
+  const writeStoredView = (view) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, view);
+    } catch {
+      // A blocked storage API should not prevent the toggle from working.
+    }
+  };
+
+  const applyView = (view) => {
+    document.documentElement.dataset.whitepaperView = view;
+    document.querySelectorAll('[data-whitepaper-toggle]').forEach((toggle) => {
+      toggle.querySelectorAll('[data-whitepaper-view]').forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.whitepaperView === view));
+      });
+    });
+    writeStoredView(view);
+  };
+
+  const initializeWhitepaperView = () => {
+    const toggles = [...document.querySelectorAll('[data-whitepaper-toggle]')];
+    if (!toggles.length) {
+      delete document.documentElement.dataset.whitepaperView;
+      return;
+    }
+
+    applyView(readStoredView());
+
+    toggles.forEach((toggle) => {
+      if (toggle.dataset.bound === 'true') return;
+      toggle.dataset.bound = 'true';
+      toggle.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-whitepaper-view]');
+        if (!button) return;
+        applyView(button.dataset.whitepaperView);
+      });
+    });
+  };
+
+  document.addEventListener('astro:page-load', initializeWhitepaperView);
+  initializeWhitepaperView();
+</script>
