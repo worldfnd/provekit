@@ -78,7 +78,7 @@ export default defineConfig({
           label: 'Reference',
           items: [
             { slug: 'cli/overview', label: 'CLI reference' },
-            { slug: 'whitepaper', label: 'Whitepaper' },
+            { slug: 'whitepaper', label: 'ProveKit v2 Whitepaper' },
             { slug: 'reference/performance' },
             { slug: 'reference/examples', label: 'Examples catalog' },
             { slug: 'reference/error-codes', label: 'FFI error codes' },
