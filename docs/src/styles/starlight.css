@@ -301,14 +301,19 @@ body {
 }
 
 .pk-view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 4.4rem;
   border: 0;
   border-inline-end: 1px solid var(--pk-line-mid);
-  padding: 0.5rem 0.65rem;
+  padding: 0.55rem 0.8rem;
   background: transparent;
   color: var(--pk-ink-soft);
   cursor: pointer;
-  font: 500 0.68rem/1 var(--pk-font-mono);
-  letter-spacing: 0.04em;
+  font: 500 0.82rem/1.2 var(--pk-font-sans);
+  letter-spacing: 0;
+  text-align: center;
   transition: background-color 120ms ease, color 120ms ease;
 }
 
