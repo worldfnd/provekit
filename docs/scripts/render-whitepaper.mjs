@@ -73,11 +73,13 @@ const indexReferences = (value) => {
   return labels;
 };
 
-const referenceMarkup = (key, equation = false) => {
+const referenceMarkup = (key, equation = false, precedingKind = '') => {
   if (!key) return '<span class="pk-reference pk-reference--pending">reference pending</span>';
   const reference = referenceLabels.get(key);
   if (!reference) return '<span class="pk-reference pk-reference--missing">[' + htmlEscape(key) + ']</span>';
-  const text = equation ? '(' + reference.number + ')' : reference.kind + ' ' + reference.number;
+  const text = equation
+    ? '(' + reference.number + ')'
+    : (precedingKind || reference.kind) + ' ' + reference.number;
   return '<a class="pk-reference" href="#' + htmlAttributeEscape(key) + '">' + text + '</a>';
 };
 
@@ -203,12 +205,16 @@ const mathMarkup = (value, inline = false, environment = '') => {
     tex = '\\begin{gathered}' + tex + '\\end{gathered}';
   }
   const formula = htmlAttributeEscape(tex);
-  if (inline) return '<span class="pk-inline-math" data-tex="' + formula + '"></span>';
+  // Starlight applies document-flow margins to adjacent custom elements unless
+  // they are inside a `not-content` boundary. MathJax uses adjacent custom
+  // elements for radicals, fractions, matrices, and scripts, so isolate every
+  // generated formula from those prose styles.
+  if (inline) return '<span class="pk-inline-math not-content" data-tex="' + formula + '"></span>';
   const id = labels[0] ? ' id="' + htmlAttributeEscape(labels[0]) + '"' : '';
   const additionalAnchors = labels.slice(1).map((label) =>
     '<span class="pk-reference-anchor" id="' + htmlAttributeEscape(label) + '"></span>').join('');
   return '<div class="pk-equation"' + id + '>' + additionalAnchors
-    + '<span data-display-math="true" data-tex="' + formula + '"></span></div>';
+    + '<span class="not-content" data-display-math="true" data-tex="' + formula + '"></span></div>';
 };
 
 const extractBlocks = (value) => {
@@ -332,8 +338,9 @@ const inlineMarkup = (value, blocks) => {
       + (keys ? htmlEscape(keys.replaceAll(',', ', ')) : 'citation pending') + ']</span>'));
   result = result.replace(/\\eqref\{([^}]*)\}/g, (_, reference) =>
     tokenise(referenceMarkup(reference, true)));
-  result = result.replace(/\\ref\{([^}]*)\}/g, (_, reference) =>
-    tokenise(referenceMarkup(reference)));
+  result = result.replace(/((?:Equation|Lemma|Protocol|Remark|Section|Step|Theorem)\s+)?\\ref\{([^}]*)\}/g,
+    (_, precedingKind = '', reference) =>
+      tokenise(referenceMarkup(reference, false, precedingKind.trim())));
   result = result.replace(/\\label\{([^}]*)\}/g, (_, label) =>
     tokenise('<span class="pk-reference-anchor" id="' + htmlAttributeEscape(label) + '"></span>'));
   result = result.replace(/\\(?:noindent|small|xspace|hfill|quad|qquad)\b/g, ' ');
