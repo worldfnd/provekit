@@ -15,6 +15,7 @@ use {
         },
     },
     base64::{engine::general_purpose::STANDARD, Engine as _},
+    noir_bignum_paramgen::compute_barrett_reduction_parameter,
     rsa::{
         pkcs1::DecodeRsaPublicKey, pkcs8::DecodePublicKey, traits::PublicKeyParts, BigUint,
         Pkcs1v15Sign, Pss, RsaPublicKey,
@@ -22,14 +23,6 @@ use {
     sha2::{Digest, Sha256},
     std::{fmt::Write as _, path::Path},
 };
-
-const BARRETT_REDUCTION_OVERFLOW_BITS: usize = 6;
-
-fn compute_barrett_reduction_parameter(modulus: &BigUint) -> BigUint {
-    let numerator =
-        BigUint::from(1u8) << (modulus.bits() as usize * 2 + BARRETT_REDUCTION_OVERFLOW_BITS);
-    numerator / modulus
-}
 
 /// Parsed passport data
 pub struct PassportReader {

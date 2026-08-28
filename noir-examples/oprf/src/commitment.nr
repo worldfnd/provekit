@@ -9,21 +9,10 @@ pub fn generate_commitment(
     oprf_response: PublicKey,
     mt_index: Field,
     commitment_r: Field,
-    expected_id_commitment: Field,
-    nonce: Field,
-    signal_hash: Field,
 ) -> OprfNullifierOutputs {
     let nullifier = generate_nullifier(query, oprf_response);
     let id_commitment = generate_id_commitment(mt_index, commitment_r);
-    assert(
-        (expected_id_commitment == 0) | (expected_id_commitment == id_commitment),
-        "Identity commitment mismatch",
-    );
-    OprfNullifierOutputs {
-        nullifier,
-        nonce_squared: nonce * nonce,
-        signal_hash_squared: signal_hash * signal_hash,
-    }
+    OprfNullifierOutputs { nullifier, id_commitment }
 }
 
 fn generate_nullifier(query: Field, oprf_response: PublicKey) -> Field {

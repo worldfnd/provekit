@@ -1,5 +1,5 @@
 use super::{
-    constants::{CREDENTIAL_DS, CREDENTIAL_USER_ID_DS},
+    constants::CREDENTIAL_DS,
     merkle_proof::{compute_merkle_root_poseidon2, merkle_leaf},
     types::{OprfQueryInputs, PublicKey},
 };
@@ -13,30 +13,24 @@ fn check_credential_signature(
     pk: [Field; 2],
     credential_type_id: Field,
     user_id: Field,
-    user_id_r: Field,
-    genesis_issued_at: u64,
+    genesis_issued_at: Field,
     expires_at: u64,
     hashes: [Field; 2],
     current_time_stamp: u64,
-    genesis_issued_at_min: u64,
-    cred_id: Field,
 ) {
     // Check expiration first
     assert(current_time_stamp < expires_at, "Credential expired");
-    assert(genesis_issued_at_min <= genesis_issued_at, "Credential predates minimum issuance time");
-
-    let blinded_user_id = perm::x5_3([CREDENTIAL_USER_ID_DS, user_id, user_id_r])[1];
 
     // Calculate message hash
     let hash_inputs = [
         CREDENTIAL_DS,
         credential_type_id,
-        blinded_user_id,
-        genesis_issued_at as Field,
+        user_id,
+        genesis_issued_at,
         expires_at as Field,
         hashes[0],
         hashes[1],
-        cred_id,
+        0,
     ];
     let hash_state = perm::x5_8(hash_inputs);
     let message = hash_state[1];
@@ -51,7 +45,6 @@ pub fn oprf_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     root: Field,
     cred_pk: PublicKey,
     current_time_stamp: u64,
-    genesis_issued_at_min: u64,
     inputs: OprfQueryInputs<MAX_DEPTH, NUM_KEYS>,
     beta_bits: [u1; 251],
 ) -> PublicKey {
@@ -84,13 +77,10 @@ pub fn oprf_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
         [cred_pk.x, cred_pk.y],
         inputs.cred_type_id,
         inputs.merkle_proof.mt_index,
-        inputs.cred_user_id_r,
         inputs.cred_genesis_issued_at,
         inputs.cred_expires_at,
         [inputs.cred_hashes.claims_hash, inputs.cred_hashes.associated_data_hash],
         current_time_stamp,
-        genesis_issued_at_min,
-        inputs.cred_id,
     );
 
     // Encode query to curve point and perform scalar multiplication
@@ -109,7 +99,6 @@ pub fn verify_unblinding(
     // Check that oprf_response is on the curve and perform unblinding
     let response_point = BabyJubJubPoint::new(oprf_response.x, oprf_response.y);
     assert(response_point.is_on_curve(), "OPRF response must be on curve");
-    assert(response_point.check_sub_group(), "OPRF response must be in prime order subgroup");
 
     // Verify: oprf_response * beta === oprf_response_blinded
     let reblinded = response_point.scalar_mul_bits(beta_bits);

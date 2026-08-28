@@ -24,15 +24,7 @@ mod format;
 mod prover;
 mod verifier;
 
-#[cfg(feature = "parallel")]
 pub use wasm_bindgen_rayon::init_thread_pool;
-
-/// Returns whether this WASM module was compiled with worker-thread support.
-#[wasm_bindgen::prelude::wasm_bindgen(js_name = supportsThreads)]
-#[must_use]
-pub fn supports_threads() -> bool {
-    cfg!(feature = "parallel")
-}
 
 #[wasm_bindgen::prelude::wasm_bindgen(js_name = initPanicHook)]
 pub fn init_panic_hook() {

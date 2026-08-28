@@ -126,7 +126,7 @@ pub fn check_integrity_of_sod_within_sod_cert(
 
     // Clearly the SOD itself is supposed to be hashed and then concatenated with some other "stuff"
     // That "stuff" is the thing which is actually signed
-    let econtent_hash = sha256_var(econtent, econtent_len);
+    let econtent_hash = sha256_var(econtent, econtent_len as u64);
 
     for i in 0..32 {
         assert(econtent_hash[i] == signed_attributes[econtent_hash_offset + i]);
@@ -151,7 +151,7 @@ pub fn check_dg1_hash_within_sod(
     // Ensure dg1_padded_length doesn't exceed the actual array size
     assert(dg1_padded_length <= 95, "dg1_padded_length out of bounds");
 
-    let dg1_hash = sha256_var(dg1, dg1_padded_length as u32);
+    let dg1_hash = sha256_var(dg1, dg1_padded_length);
 
     // The DG1 hash is located at the start of the SOD
     // (offset is always 0 for DG1)
