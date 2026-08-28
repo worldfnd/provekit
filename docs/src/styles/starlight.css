@@ -401,8 +401,7 @@ body {
 .pk-equation::-webkit-scrollbar { display: none; }
 .pk-equation span[data-display-math='true'] { display: block; width: 100%; white-space: normal; }
 .pk-equation mjx-container[display='true'] {
-  margin-block: -0.65em !important;
-  transform: translateY(-1.34em);
+  margin-block: 0 !important;
 }
 .pk-inline-math { white-space: nowrap; }
 .pk-citation, .pk-reference { color: var(--pk-brand); font: 0.82em var(--pk-font-mono); }

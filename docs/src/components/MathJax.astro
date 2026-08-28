@@ -26,6 +26,42 @@
 </script>
 <script is:inline src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
 <script is:inline>
+  let proveKitEquationFitFrame;
+
+  const fitProveKitEquations = () => {
+    if (proveKitEquationFitFrame) cancelAnimationFrame(proveKitEquationFitFrame);
+    const equations = [...document.querySelectorAll('.pk-equation')];
+    equations.forEach((equation) => {
+      equation.style.blockSize = '';
+      const container = equation.querySelector('mjx-container[display="true"]');
+      if (container) container.style.transform = '';
+    });
+
+    proveKitEquationFitFrame = requestAnimationFrame(() => {
+      proveKitEquationFitFrame = undefined;
+      equations.forEach((equation) => {
+        const container = equation.querySelector('mjx-container[display="true"]');
+        const glyphs = [...equation.querySelectorAll('mjx-c')]
+          .map((glyph) => glyph.getBoundingClientRect())
+          .filter((bounds) => bounds.width > 0 && bounds.height > 0);
+        if (!container || !glyphs.length) return;
+
+        const equationBounds = equation.getBoundingClientRect();
+        const inkTop = Math.min(...glyphs.map((bounds) => bounds.top));
+        const inkBottom = Math.max(...glyphs.map((bounds) => bounds.bottom));
+        const inkHeight = inkBottom - inkTop;
+        const safetyInset = 8;
+        const borderSize = parseFloat(getComputedStyle(equation).borderTopWidth)
+          + parseFloat(getComputedStyle(equation).borderBottomWidth);
+
+        container.style.transform = `translateY(${safetyInset - (inkTop - equationBounds.top)}px)`;
+        equation.style.blockSize = `${Math.ceil(inkHeight + 2 * safetyInset + borderSize)}px`;
+      });
+    });
+  };
+
+  window.fitProveKitEquations = fitProveKitEquations;
+
   const typesetProveKitMath = () => {
     const nodes = [...document.querySelectorAll('[data-tex]')];
     nodes.forEach((node) => {
@@ -34,11 +70,12 @@
       node.textContent = delimiter[0] + node.dataset.tex + delimiter[1];
       node.dataset.mathReady = 'true';
     });
-    window.MathJax?.typesetPromise?.(nodes);
+    window.MathJax?.typesetPromise?.(nodes)?.then(fitProveKitEquations);
   };
 
   window.addEventListener('provekit-mathjax-ready', typesetProveKitMath);
   document.addEventListener('astro:page-load', typesetProveKitMath);
+  document.addEventListener('provekit-whitepaper-view-change', fitProveKitEquations);
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', typesetProveKitMath, { once: true });
   } else {

@@ -36,6 +36,7 @@
       });
     });
     writeStoredView(view);
+    document.dispatchEvent(new Event('provekit-whitepaper-view-change'));
   };
 
   const initializeWhitepaperView = () => {
