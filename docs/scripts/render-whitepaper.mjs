@@ -443,6 +443,28 @@ const headingMarkup = (level, title, blocks, number = '') => {
     + inlineMarkup(cleanTitle, blocks) + '</h' + level + '>';
 };
 
+const romanNumeral = (value) => {
+  const numerals = [
+    [1000, 'm'], [900, 'cm'], [500, 'd'], [400, 'cd'], [100, 'c'], [90, 'xc'],
+    [50, 'l'], [40, 'xl'], [10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i'],
+  ];
+  let remaining = value;
+  let output = '';
+  for (const [amount, symbol] of numerals) {
+    while (remaining >= amount) {
+      output += symbol;
+      remaining -= amount;
+    }
+  }
+  return output;
+};
+
+const orderedListMarker = (value, depth) => {
+  if (depth % 3 === 2) return String.fromCharCode(96 + value) + '.';
+  if (depth % 3 === 0) return romanNumeral(value) + '.';
+  return value + '.';
+};
+
 const renderDocument = (value, blocks) => {
   let source = value
     .replace(/\\appendix\b/g, '\n@@APPENDIX@@\n')
@@ -544,14 +566,14 @@ const renderDocument = (value, blocks) => {
       closeListItem();
       const tag = listStart[1] === 'itemize' ? 'ul' : 'ol';
       output.push('<' + tag + ' class="pk-paper-list">');
-      listStack.push(tag);
+      listStack.push({ tag, count: 0 });
       continue;
     }
     if (line === '@@LIST_END@@') {
       flushParagraph();
       closeListItem();
-      const tag = listStack.pop();
-      if (tag) output.push('</' + tag + '>');
+      const list = listStack.pop();
+      if (list) output.push('</' + list.tag + '>');
       continue;
     }
     if (line === '@@ITEM@@') {
@@ -559,6 +581,12 @@ const renderDocument = (value, blocks) => {
       closeListItem();
       if (listStack.length) {
         output.push('<li>');
+        const list = listStack.at(-1);
+        list.count += 1;
+        if (list.tag === 'ol') {
+          output.push('<span class="pk-list-marker" aria-hidden="true">'
+            + orderedListMarker(list.count, listStack.length) + '</span>');
+        }
         listItemOpen = true;
       }
       continue;
@@ -598,7 +626,7 @@ const renderDocument = (value, blocks) => {
 
   flushParagraph();
   closeListItem();
-  while (listStack.length) output.push('</' + listStack.pop() + '>');
+  while (listStack.length) output.push('</' + listStack.pop().tag + '>');
   if (theoremOpen) output.push('</Aside>');
   return output.join('\n\n');
 };

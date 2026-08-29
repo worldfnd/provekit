@@ -82,11 +82,15 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">1.</span>
+
 <p>Round-1 witness <span class="pk-inline-math not-content" data-tex="\vec w_1"></span>: These witnesses are independent of the verifier challenge Includes public inputs, constants, and lookup table multiplicities.</p>
 
 </li>
 
 <li>
+
+<span class="pk-list-marker" aria-hidden="true">2.</span>
 
 <p>Round-2 witness <span class="pk-inline-math not-content" data-tex="\vec w_2"></span>: These witnesses depend on the verifier challenges. These are the verifier challenges themselves, the logUp inverses and their sums.</p>
 
@@ -322,6 +326,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">1.</span>
+
 <p><span class="pk-reference-anchor" id="i:main:phase:1"></span> R1CS second stage: The verifier samples the stage-2 challenge</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="\vec\xi \mathrel{\leftarrow} \mathbb F_q^{t}"></span></div>
@@ -331,6 +337,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 </li>
 
 <li>
+
+<span class="pk-list-marker" aria-hidden="true">2.</span>
 
 <p><span class="pk-reference-anchor" id="i:main:phase:2"></span> R1CS zero-check: The verifier sends a random</p>
 
@@ -349,6 +357,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 </li>
 
 <li>
+
+<span class="pk-list-marker" aria-hidden="true">3.</span>
 
 <p><span class="pk-reference-anchor" id="i:main:phase:3"></span> WHIR: Both prover and verifier run WHIR for the following linear constraints on the combined witness polynomial <span class="pk-inline-math not-content" data-tex="w"></span>:</p>
 
@@ -484,6 +494,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">1.</span>
+
 <p>Sumcheck for <span class="pk-inline-math not-content" data-tex="r_i = k_{i-1} - k_i"></span> rounds, on the previous inner product claim between <span class="pk-inline-math not-content" data-tex="P_{i-1}"></span> and <span class="pk-inline-math not-content" data-tex="K_{i-1}"></span>. In the course of these rounds, the prover has sent the quadratic refinements polynomials <span class="pk-inline-math not-content" data-tex="q_{i,1}(X)"></span>, <span class="pk-inline-math not-content" data-tex="\ldots"></span> <span class="pk-inline-math not-content" data-tex="q_{i,r_i}(X)"></span>, and the verifier has answered with <span class="pk-inline-math not-content" data-tex="\vec\beta_i = (\beta_{i,1}, \ldots \beta_{1, r_i})\in F^{r_i}"></span>. The prover commits to</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="P_{i} = P_{i-1}(\vec \beta_{i},\:.\:),"></span></div>
@@ -498,6 +510,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">2.</span>
+
 <p>Query phase.</p>
 
 </li>
@@ -506,11 +520,15 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">a.</span>
+
 <p>The verifier draws a DEEP query <span class="pk-inline-math not-content" data-tex="x_{0} \mathrel{\leftarrow} F"></span>, on which the prover answers with the value <span class="pk-inline-math not-content" data-tex="v_{0}"></span> of the univariate representations <span class="pk-inline-math not-content" data-tex="u_{P_i}(X)"></span> at <span class="pk-inline-math not-content" data-tex="x_{0}"></span>.</p>
 
 </li>
 
 <li>
+
+<span class="pk-list-marker" aria-hidden="true">b.</span>
 
 <p>The verifier queries <span class="pk-inline-math not-content" data-tex="g_{i-1}"></span> from the previous round at <span class="pk-inline-math not-content" data-tex="s_i&gt;0"></span> random positions</p>
 
@@ -523,6 +541,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 </ol>
 
 <li>
+
+<span class="pk-list-marker" aria-hidden="true">3.</span>
 
 <p>Aggregation. The verifier samples <span class="pk-inline-math not-content" data-tex="\gamma_i\mathrel{\leftarrow} F"></span> for combining the specialized sumcheck claim</p>
 
@@ -566,6 +586,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">1.</span>
+
 <p>Sumcheck phase: For each of the <span class="pk-inline-math not-content" data-tex="r_i"></span> steps,</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="\begin{aligned}\varepsilon_{S,i} &amp;= \varepsilon_{\text{CA}}(C_{i-1},2,\theta_{i-1}),\end{aligned}"></span></div>
@@ -576,6 +598,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">2.</span>
+
 <p>Query phase:</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="\begin{aligned}\varepsilon_{Q,i} = \frac{\ell_i(\theta_i)^2}{2} \cdot \frac{2^{n-k_{i}}}{|F\setminus D_i|} + (1 -\theta_{i-1})^{s_i},\end{aligned}"></span></div>
@@ -585,6 +609,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 </li>
 
 <li>
+
+<span class="pk-list-marker" aria-hidden="true">3.</span>
 
 <p>Aggregation step:</p>
 
@@ -1176,6 +1202,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">1.</span>
+
 <p>After we combined <a class="pk-reference" href="#e:phase3:claim:vM">(19)</a> and <a class="pk-reference" href="#e:phase3:claim:inputs">(20)</a> into a single inner product claim <span class="pk-inline-math not-content" data-tex="\langle K, w\rangle_{H_{m_1 + 1}}"></span> on the combined witness poly, the prover reveals</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="v = \langle K, H \rangle_{H_{m_1 + 1}}"></span></div>
@@ -1186,11 +1214,15 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">2.</span>
+
 <p>The verifier draws a further randomness <span class="pk-inline-math not-content" data-tex="\gamma_2"></span> to combine the two claims into a claim on the linear combination <span class="pk-inline-math not-content" data-tex="w + \gamma \cdot H"></span>. This combination is not committed, the values of it are computed from those of <span class="pk-inline-math not-content" data-tex="w"></span> and <span class="pk-inline-math not-content" data-tex="H"></span>.</p>
 
 </li>
 
 <li>
+
+<span class="pk-list-marker" aria-hidden="true">3.</span>
 
 <p>Run WHIR on the virtual linear combination <span class="pk-inline-math not-content" data-tex="w + \gamma \cdot H"></span>.</p>
 
@@ -1210,6 +1242,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">1.</span>
+
 <p>The prover only samples a single</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="H \mathrel{\leftarrow} C_1"></span></div>
@@ -1220,6 +1254,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">2.</span>
+
 <p>Modified first round of WHIR:</p>
 
 </li>
@@ -1227,6 +1263,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 <ol class="pk-paper-list">
 
 <li>
+
+<span class="pk-list-marker" aria-hidden="true">a.</span>
 
 <p>The sumcheck phase is randomized in the usual manner, using</p>
 
@@ -1238,6 +1276,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 
 <li>
 
+<span class="pk-list-marker" aria-hidden="true">b.</span>
+
 <p>After specializing the sumcheck claim to <span class="pk-inline-math not-content" data-tex="X_1 = \beta_1,\ldots, X_k =\beta_{k_1}"></span>, the prover reveals</p>
 
 <div class="pk-equation"><span class="not-content" data-display-math="true" data-tex="v = \langle K_0(\beta_1,\ldots, \beta_{k_1}, \:.\:), H\rangle_{H_{m_1 - k_1}},"></span></div>
@@ -1247,6 +1287,8 @@ import WhitepaperViewToggle from '../../components/WhitepaperViewToggle.astro';
 </li>
 
 <li>
+
+<span class="pk-list-marker" aria-hidden="true">c.</span>
 
 <p>We now proceed with the virtual linear combination <span class="pk-inline-math not-content" data-tex="w(\beta_1,\ldots, \beta_{k_1}, \:.\:) + \gamma_2\cdot H"></span>. (The query phase, the aggregation phase.)</p>
 

@@ -404,7 +404,8 @@ body {
   margin-block: 0 !important;
 }
 .pk-equation-number,
-.pk-heading-number { display: none; }
+.pk-heading-number,
+.pk-list-marker { display: none; }
 .pk-inline-math { white-space: nowrap; }
 .pk-citation, .pk-reference { color: var(--pk-brand); font: 0.82em var(--pk-font-mono); }
 .pk-reference[href] { text-decoration: underline; text-decoration-thickness: 0.08em; text-underline-offset: 0.15em; }
@@ -592,13 +593,19 @@ body {
   line-height: 1.65;
 }
 
-:root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list { list-style-type: decimal; }
-:root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list ol { list-style-type: lower-alpha; }
-:root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list ol ol { list-style-type: lower-roman; }
+:root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list { list-style: none; }
 :root[data-whitepaper-view='latex'] .pk-whitepaper ul.pk-paper-list { list-style-type: disc; }
-:root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list > li::marker {
+:root[data-whitepaper-view='latex'] .pk-whitepaper ol.pk-paper-list > li {
+  position: relative;
+}
+:root[data-whitepaper-view='latex'] .pk-whitepaper .pk-list-marker {
+  display: inline-block;
+  position: absolute;
+  right: calc(100% + 0.45rem);
+  min-width: 1.5rem;
   color: inherit;
   font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 :root[data-whitepaper-view='latex'] .pk-whitepaper .pk-equation {
