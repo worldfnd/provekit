@@ -8,7 +8,7 @@
     "precheck": "bun scripts/render-whitepaper.mjs",
     "build": "astro build",
     "prebuild": "bun scripts/render-whitepaper.mjs",
-    "check": "astro sync && tsc --noEmit",
+    "check": "bun test scripts/render-whitepaper.test.mjs && astro sync && tsc --noEmit",
     "preview": "astro preview"
   },
   "dependencies": {

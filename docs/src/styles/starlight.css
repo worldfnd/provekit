@@ -409,6 +409,12 @@ body {
 .pk-inline-math { white-space: nowrap; }
 .pk-citation, .pk-reference { color: var(--pk-brand); font: 0.82em var(--pk-font-mono); }
 .pk-reference[href] { text-decoration: underline; text-decoration-thickness: 0.08em; text-underline-offset: 0.15em; }
+.pk-citation-group { white-space: nowrap; }
+.pk-citation[href] { text-decoration: underline; text-underline-offset: 0.15em; }
+.pk-bibliography { margin-top: 4rem; }
+.pk-bibliography-list { list-style: none; margin: 1.25rem 0 0; padding: 0; }
+.pk-bibliography-entry { margin: 0 0 0.9rem; padding-left: 2.6rem; position: relative; }
+.pk-bibliography-label { left: 0; position: absolute; }
 .pk-reference--pending { color: var(--pk-mute); }
 .pk-reference-anchor,
 .pk-equation[id] { scroll-margin-top: 6rem; }

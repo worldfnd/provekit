@@ -29,6 +29,8 @@ const theoremLabels = {
 
 const theoremEnvironments = new Set(Object.keys(theoremLabels));
 let referenceLabels = new Map();
+let bibliographyEntries = new Map();
+let citationLabels = new Map();
 const mathEnvironments = new Set([
   'equation', 'equation*', 'align', 'align*',
   'gather', 'gather*', 'multline', 'multline*',
@@ -49,6 +51,135 @@ const htmlAttributeEscape = (value) => value
   .replaceAll('"', '&quot;')
   .replaceAll('\r', '')
   .replaceAll('\n', '&#10;');
+
+const findBalancedEnd = (value, startIndex, open = '{', close = '}') => {
+  let depth = 0;
+  for (let index = startIndex; index < value.length; index += 1) {
+    if (value[index] === '\\') {
+      index += 1;
+      continue;
+    }
+    if (value[index] === open) depth += 1;
+    if (value[index] === close) {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+};
+
+const parseBibValue = (value, startIndex) => {
+  let index = startIndex;
+  while (/\s/.test(value[index] || '')) index += 1;
+  if (value[index] === '{') {
+    const end = findBalancedEnd(value, index);
+    return end === -1 ? null : { value: value.slice(index + 1, end), end: end + 1 };
+  }
+  if (value[index] === '"') {
+    let end = index + 1;
+    while (end < value.length && (value[end] !== '"' || value[end - 1] === '\\')) end += 1;
+    return { value: value.slice(index + 1, end), end: end + 1 };
+  }
+  let end = index;
+  while (end < value.length && value[end] !== ',') end += 1;
+  return { value: value.slice(index, end).trim(), end };
+};
+
+const parseBibliography = (source) => {
+  const entries = new Map();
+  for (const match of source.matchAll(/@(\w+)\s*\{/g)) {
+    const open = match.index + match[0].lastIndexOf('{');
+    const close = findBalancedEnd(source, open);
+    if (close === -1) continue;
+    const body = source.slice(open + 1, close);
+    const separator = body.indexOf(',');
+    if (separator === -1) continue;
+    const key = body.slice(0, separator).trim();
+    const fields = {};
+    let index = separator + 1;
+    while (index < body.length) {
+      while (/[\s,]/.test(body[index] || '')) index += 1;
+      const field = body.slice(index).match(/^([A-Za-z][\w-]*)\s*=/);
+      if (!field) break;
+      index += field[0].length;
+      const parsed = parseBibValue(body, index);
+      if (!parsed) break;
+      fields[field[1].toLowerCase()] = parsed.value;
+      index = parsed.end;
+    }
+    entries.set(key, { type: match[1].toLowerCase(), key, fields });
+  }
+  return entries;
+};
+
+const latexAccents = {
+  '"': '\u0308', "'": '\u0301', '`': '\u0300', '^': '\u0302', '~': '\u0303',
+  '=': '\u0304', '.': '\u0307', u: '\u0306', v: '\u030c', H: '\u030b',
+  c: '\u0327', k: '\u0328', b: '\u0331', d: '\u0323',
+};
+
+const plainBibText = (value = '') => value
+  .replace(/\\url\{([^}]*)\}/g, '$1')
+  .replace(/\\(?:textit|emph|textbf|mathrm|mathsf)\{([^{}]*)\}/g, '$1')
+  .replace(/\{?\\(["'`^~=.uvHckbd])\s*\{?([A-Za-z])\}?\}?/g,
+    (_, accent, letter) => (letter + latexAccents[accent]).normalize('NFC'))
+  .replace(/\\&/g, '&')
+  .replace(/\\[A-Za-z]+\b/g, '')
+  .replace(/[{}]/g, '')
+  .replace(/~/g, ' ')
+  .replace(/--/g, '—')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+const indexCitations = (source) => {
+  const labels = new Map();
+  for (const match of source.matchAll(/\\cite(?:\[[^\]]*\])?\{([^}]*)\}/g)) {
+    for (const key of match[1].split(',').map((value) => value.trim()).filter(Boolean)) {
+      if (!bibliographyEntries.has(key)) throw new Error('Citation key missing from bibliography: ' + key);
+      if (!labels.has(key)) labels.set(key, labels.size + 1);
+    }
+  }
+  return labels;
+};
+
+const citationMarkup = (keysValue, qualifier = '') => {
+  const keys = keysValue.split(',').map((value) => value.trim()).filter(Boolean);
+  if (!keys.length) return '<span class="pk-citation pk-citation--pending">[citation pending]</span>';
+  const links = keys.map((key) => {
+    const label = citationLabels.get(key);
+    return '<a class="pk-citation" href="#citation-' + htmlAttributeEscape(key) + '">'
+      + (keys.length === 1 && !qualifier ? '[' + label + ']' : label) + '</a>';
+  });
+  if (keys.length === 1 && !qualifier) return links[0];
+  const contents = links.join(', ') + (qualifier ? ', ' + htmlEscape(qualifier) : '');
+  return '<span class="pk-citation-group">[' + contents + ']</span>';
+};
+
+const bibliographyMarkup = () => {
+  if (!citationLabels.size) return '';
+  const items = [...citationLabels].map(([key, label]) => {
+    const entry = bibliographyEntries.get(key);
+    const fields = entry.fields;
+    const authors = plainBibText(fields.author).replace(/\s+and\s+/g, ', ');
+    const title = plainBibText(fields.title);
+    const venue = plainBibText(fields.journal || fields.booktitle || fields.howpublished || fields.publisher);
+    const year = plainBibText(fields.year);
+    const url = plainBibText(fields.url)
+      || fields.doi && 'https://doi.org/' + plainBibText(fields.doi)
+      || (fields.note?.match(/\\url\{([^}]*)\}/) || [])[1]
+      || '';
+    const pieces = [authors, title, venue, year].filter(Boolean).map(htmlEscape);
+    const titleIndex = authors ? 1 : 0;
+    if (url && pieces[titleIndex]) {
+      pieces[titleIndex] = '<a href="' + htmlAttributeEscape(url) + '">' + pieces[titleIndex] + '</a>';
+    }
+    return '<li id="citation-' + htmlAttributeEscape(key) + '" class="pk-bibliography-entry">'
+      + '<span class="pk-bibliography-label">[' + label + ']</span> '
+      + pieces.join('. ') + '.</li>';
+  });
+  return '<section class="pk-bibliography"><h2 id="references">References</h2>'
+    + '<ol class="pk-bibliography-list">' + items.join('') + '</ol></section>';
+};
 
 const referenceKinds = {
   e: 'Equation',
@@ -166,8 +297,9 @@ const plainReferenceText = (value) => value
     if (!reference) return '[' + key + ']';
     return precedingKind ? precedingKind + reference.number : reference.kind + ' ' + reference.number;
   })
-  .replace(/\\cite(?:\[[^\]]*\])?\{([^}]*)\}/g, (_, keys) =>
-    keys ? '[' + keys.replaceAll(',', ', ') + ']' : '[citation pending]');
+  .replace(/\\cite(?:\[([^\]]*)\])?\{([^}]*)\}/g, (_, qualifier = '', keys) =>
+    keys ? '[' + keys.replaceAll(',', ', ') + (qualifier ? ', ' + qualifier : '') + ']'
+      : '[citation pending]');
 
 const findClosingBrace = (value, openIndex) => {
   let depth = 0;
@@ -413,9 +545,8 @@ const inlineMarkup = (value, blocks) => {
     }
   }
 
-  result = result.replace(/\\cite(?:\[[^\]]*\])?\{([^}]*)\}/g, (_, keys) =>
-    tokenise('<span class="pk-citation">['
-      + (keys ? htmlEscape(keys.replaceAll(',', ', ')) : 'citation pending') + ']</span>'));
+  result = result.replace(/\\cite(?:\[([^\]]*)\])?\{([^}]*)\}/g,
+    (_, qualifier = '', keys) => tokenise(citationMarkup(keys, qualifier)));
   result = result.replace(/\\eqref\{([^}]*)\}/g, (_, reference) =>
     tokenise(referenceMarkup(reference, true)));
   result = result.replace(/((?:Equation|Lemma|Protocol|Remark|Section|Step|Theorem)\s+)?\\ref\{([^}]*)\}/g,
@@ -637,8 +768,10 @@ const body = mainMatterIndex === -1 ? mainSource : mainSource.slice(mainMatterIn
 const expanded = await inlineInputs(body);
 const cleaned = removeInternalNotes(stripComments(expanded));
 referenceLabels = indexReferences(cleaned);
+bibliographyEntries = parseBibliography(await readFile(path.join(sourceRoot, 'SNARKs.bib'), 'utf8'));
+citationLabels = indexCitations(cleaned);
 const extracted = extractBlocks(cleaned);
-const rendered = renderDocument(extracted.result, extracted.blocks);
+const rendered = renderDocument(extracted.result, extracted.blocks) + '\n\n' + bibliographyMarkup();
 
 const template = await readFile(outputPath, 'utf8');
 const startMarker = '{/* GENERATED WHITEPAPER BODY */}';
