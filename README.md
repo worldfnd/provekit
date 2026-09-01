@@ -30,7 +30,7 @@ Install Rust with `rustup`. This repository includes `rust-toolchain.toml`, so C
 Install the Noir toolchain version used by v1 examples:
 
 ```sh
-noirup --version v1.0.0-beta.11
+noirup --version v1.0.0-beta.20
 ```
 
 ### Run a proof

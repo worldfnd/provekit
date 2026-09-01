@@ -1,5 +1,5 @@
 use super::{constants::MERKLE_LEAF_DS, types::PublicKey};
-use poseidon2::bn254::perm;
+use poseidon2::bn254::permutation as perm;
 
 pub fn merkle_leaf<let NUM_KEYS: u32>(pk: [PublicKey; NUM_KEYS]) -> Field {
     let mut inputs: [Field; 16] = [0; 16];
@@ -10,7 +10,7 @@ pub fn merkle_leaf<let NUM_KEYS: u32>(pk: [PublicKey; NUM_KEYS]) -> Field {
         inputs[i * 2 + 2] = pk[i].y;
     }
 
-    let hash_state = perm::x5_16(inputs);
+    let hash_state = perm::t16(inputs);
     hash_state[1]
 }
 
@@ -36,7 +36,7 @@ pub fn compute_merkle_root_poseidon2<let N: u32>(
             let left = sibling + (diff * (1 - is_right_field));
             let right = sibling + (diff * is_right_field);
 
-            let hash_state = perm::x5_2([left, right]);
+            let hash_state = perm::t2([left, right]);
             current = hash_state[0] + left;
 
             idx >>= 1;

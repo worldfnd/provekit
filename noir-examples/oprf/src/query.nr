@@ -5,7 +5,7 @@ use super::{
 };
 use babyjubjub::{BabyJubJubPoint, hash_to_curve::encode};
 use eddsa_poseidon2::verify_eddsa_poseidon2;
-use poseidon2::bn254::perm;
+use poseidon2::bn254::permutation as perm;
 
 fn check_credential_signature(
     s: Field,
@@ -32,7 +32,7 @@ fn check_credential_signature(
         hashes[1],
         0,
     ];
-    let hash_state = perm::x5_8(hash_inputs);
+    let hash_state = perm::t8(hash_inputs);
     let message = hash_state[1];
 
     // Verify EdDSA signature and assert directly
@@ -46,7 +46,7 @@ pub fn oprf_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
     cred_pk: PublicKey,
     current_time_stamp: u64,
     inputs: OprfQueryInputs<MAX_DEPTH, NUM_KEYS>,
-    beta_bits: [u1; 251],
+    beta_bits: [bool; 251],
 ) -> PublicKey {
     // 1. Verify sk/pk by verifying a signature to a known message
     let chosen_pk = inputs.user_pk[inputs.pk_index as u32];
@@ -94,7 +94,7 @@ pub fn oprf_query<let MAX_DEPTH: u32, let NUM_KEYS: u32>(
 pub fn verify_unblinding(
     oprf_response: PublicKey,
     oprf_response_blinded: PublicKey,
-    beta_bits: [u1; 251],
+    beta_bits: [bool; 251],
 ) {
     // Check that oprf_response is on the curve and perform unblinding
     let response_point = BabyJubJubPoint::new(oprf_response.x, oprf_response.y);

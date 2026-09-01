@@ -136,7 +136,7 @@ impl BabyJubJubPoint {
             BabyJubJubPoint::identity()
         } else {
             // Decompose scalar into 251 bits (BabyJubJub scalar field size)
-            let bits: [u1; 251] = scalar.to_le_bits();
+            let bits: [bool; 251] = scalar.to_le_bits();
             self.scalar_mul_bits(bits)
         }
     }
@@ -152,7 +152,7 @@ impl BabyJubJubPoint {
     /// For Variable-base: use double-and-add (~N doubles, ~N/2 adds).
     /// Window-w needs a per-point table (2^w) and a select each window
     /// so windowing is reserved for fixed-base (generator) where the table is precomputed.
-    pub fn scalar_mul_bits<let N: u32>(self, bits: [u1; N]) -> Self {
+    pub fn scalar_mul_bits<let N: u32>(self, bits: [bool; N]) -> Self {
         assert(self.is_on_curve(), "Point must be on curve");
 
         let mut result = BabyJubJubPoint::identity();
@@ -160,7 +160,7 @@ impl BabyJubJubPoint {
         for i in 0..N {
             result = result.double();
 
-            if bits[N - 1 - i] == 1 {
+            if bits[N - 1 - i] {
                 result = result.add(self);
             }
         }
@@ -174,7 +174,7 @@ impl BabyJubJubPoint {
             BabyJubJubPoint::identity()
         } else {
             // Decompose to 254 bits
-            let bits: [u1; 254] = scalar_fq.to_le_bits();
+            let bits: [bool; 254] = scalar_fq.to_le_bits();
 
             self.scalar_mul_bits(bits)
         }
@@ -185,24 +185,14 @@ impl BabyJubJubPoint {
         bn254::assert_lt(field_element, BABYJUBJUB_Fr );
     }
 
-    pub fn validate_scalar_field_with_bits(field_element: Field) -> [u1; 251] {
+    pub fn validate_scalar_field_with_bits(field_element: Field) -> [bool; 251] {
         BabyJubJubPoint::validate_babyjubjub_field(field_element);
-        let bits: [u1; 251] = field_element.to_le_bits();
+        let bits: [bool; 251] = field_element.to_le_bits();
         bits
     }
 
     pub fn check_sub_group(self) -> bool {
-        let characteristic: [u1; 251] = [
-            1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1,
-            1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 1, 1,
-            1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0,
-            0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1,
-            1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0,
-            0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 0,
-            0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1,
-            0, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 1, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1,
-            1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 1,
-        ];
+        let characteristic: [bool; 251] = BABYJUBJUB_Fr.to_le_bits();
 
         let res = esc_mul_fix_scalar(characteristic, self);
         res.is_identity()
