@@ -3988,7 +3988,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-cli"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "argh",
@@ -4017,7 +4017,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-common"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "ark-bn254 0.5.0",
@@ -4066,7 +4066,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-gnark"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "ark-poly 0.5.0",
  "provekit-common",
@@ -4078,7 +4078,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-prover"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "ark-ff 0.5.0",
@@ -4097,7 +4097,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-r1cs-compiler"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "ark-bn254 0.5.0",
@@ -4148,7 +4148,7 @@ dependencies = [
 
 [[package]]
 name = "provekit-verifier"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "anyhow",
  "ark-std 0.5.0",
