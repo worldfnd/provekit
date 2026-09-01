@@ -44,11 +44,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
 
         // Extract bits from Program Artifact.
         let main = &program.bytecode.functions[0];
-        info!(
-            "ACIR: {} witnesses, {} opcodes.",
-            main.current_witness_index,
-            main.opcodes.len()
-        );
+        info!("ACIR: {} opcodes.", main.opcodes.len());
 
         // Compile to R1CS schemes
         let (r1cs, witness_map, witness_builders) = noir_to_r1cs(main)?;

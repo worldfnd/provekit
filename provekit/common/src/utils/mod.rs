@@ -9,7 +9,8 @@ pub mod sumcheck;
 pub use self::print_abi::PrintAbi;
 use {
     crate::{FieldElement, NoirElement},
-    ark_ff::{BigInt, Field, PrimeField},
+    ark_ff::{BigInt, Field},
+    ark_ff_v06::PrimeField as _,
     ruint::{aliases::U256, uint},
     std::{
         fmt::{Display, Formatter, Result as FmtResult},
@@ -63,8 +64,7 @@ pub const fn uint_to_field(i: U256) -> FieldElement {
 /// Convert a Noir field element to a native `FieldElement`
 #[inline(always)]
 pub fn noir_to_native(n: NoirElement) -> FieldElement {
-    let limbs = n.into_repr().into_bigint().0;
-    FieldElement::from(BigInt(limbs))
+    FieldElement::from(BigInt(n.into_repr().into_bigint().0))
 }
 
 /// Calculates the degree of the next smallest power of two
