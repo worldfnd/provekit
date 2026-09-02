@@ -99,13 +99,13 @@ ntt = { package = "provekit-ntt", version = "0.1.0" }
 
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
-provekit-cli = { path = "tooling/cli", version = "1.1.0" }
-provekit-common = { path = "provekit/common", version = "1.1.0" }
+provekit-cli = { path = "tooling/cli", version = "1.0.1" }
+provekit-common = { path = "provekit/common", version = "1.0.1" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
-provekit-gnark = { path = "tooling/provekit-gnark", version = "1.1.0" }
-provekit-prover = { path = "provekit/prover", version = "1.1.0" }
-provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "1.1.0" }
-provekit-verifier = { path = "provekit/verifier", version = "1.1.0" }
+provekit-gnark = { path = "tooling/provekit-gnark", version = "1.0.1" }
+provekit-prover = { path = "provekit/prover", version = "1.0.1" }
+provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "1.0.1" }
+provekit-verifier = { path = "provekit/verifier", version = "1.0.1" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
 provekit-wasm = { path = "tooling/provekit-wasm" }
 
