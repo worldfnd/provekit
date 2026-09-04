@@ -36,8 +36,8 @@
 
 \usepackage[bookmarks, 
     colorlinks=false, 
-    pdftitle={ProveKit v2 Whitepaper (WIP)},
-    pdfauthor={World Foundation}
+    pdftitle={S-two Whitepaper}, 
+    pdfauthor={StarkWare Team}
 ]{hyperref}
 
 %comment out watermarks when not needed
@@ -154,7 +154,7 @@ Provekit Whitepaper
 %%%
 \usepackage{lipsum}
 
-\title{ProveKit v2 Whitepaper (WIP)}
+\title{Provekit R1CS prover}
 % \author{Ulrich Hab{\"o}ck\textsuperscript{1}
 % %\\
 % %\texttt{ulrich.haboeck@gmail.com},
@@ -244,7 +244,10 @@ subject to $M\geq 1$ constraints
 with $A, B, C\in \mathbb F^{K\times N}$, and where $\odot$ is the entrywise (Hadamard) product.
 As for the witness, we split the matrices $M= A, B, C$ into 
 \begin{equation*}
-M = \bigl( M_1 \mid M_2 \bigr),
+M = 
+\begin{pmatrix}
+M_1 | M_2
+\end{pmatrix}, 
 \end{equation*}
 with $M_1\in \mathbb F_q^{K \times N_1}$ and $M_2\in \mathbb F_q^{K\times N_2}$ corresponding to the $\vec w_1$- and $\vec w_2$-parts. 
 % \ulrich{Would $M_2$ over $F$ make sense?}
@@ -1598,9 +1601,11 @@ For the soundness analysis, one may alternatively use the high-level notion of m
 
 
 \section{Adding zero-knowledge}
+\label{s:zk}
 
 
 \subsection{Randomizing $w_M(\vec\alpha)$.}
+\label{s:randomizing:w_M}
 
 Recall that in the end of Phase \ref{i:main:phase:2} of Protocol \ref{prot:main}, the prover reveals the values
 $w_A(\vec\alpha)$, $w_B(\vec\alpha)$, $w_C(\vec\alpha)$, which are subject to 
@@ -1828,6 +1833,7 @@ The crux is that for each such set $\Omega_j$, we can drop its fixed variables i
 The exceptional set for $\Omega_j$ is only in the variables $Y_{i_j(1)}, \ldots, Y_{i_j(t)}$, independent of the other variables, and we arrive at the following statement.
 
 \begin{lem}
+\label{lem:zk:basefield:randomization}
 With $\Omega_1,\ldots, \Omega_s \subset H_{m}$ as above.
 Then except for an $\varepsilon$-fraction of points $\vec\alpha\in F^m$, where
 \begin{equation}
@@ -2029,6 +2035,7 @@ We concatenate their coefficient vectors, append $q_{zk}$ additional random coef
 C_{zk} = \RS[F,D_{zk}, d_{zk}].
 \end{equation}
 Here the degree bound $d_{zk}$ is at least $q_{zk}$ larger than the total of all mask lengths, and can be chosen again a power of two, if this helps encoding performance.
+See Section \ref{s:zook} for details.
 (The choice of $q_{zk}$ depends on the number of openings in the final proof of proximity, Protocol \ref{prot:zook:final:opening}.)
 
 The rationale behind masked commitments is the following.
@@ -2105,28 +2112,36 @@ from $h_{i,0}\sample F$, and $h_{i,j}\sample F[X]^{<2}$, appended by the coeffic
 \label{e:zook:commitment:mask:coeffs}
 msk_i \in F^{q_i},  \quad i=0,\ldots,r,
 \end{align}
-from $\msk_i \sample F[X]^{< q_i}$, where $msk_0$ can be taken from the subfield $\mathbb F_q$, assuming that the first witness polynomial $p_0$ is over $\mathbb F_q$.
-(In our application, our $p_0$ is the composite witness polynomial, both of which have their own basefield mask.)
+from $\msk_i \sample F[X]^{< q_i}$, where $msk_0$ is taken from the subfield $\mathbb F_q$, assuming that the first witness polynomial $p_0$ is over $\mathbb F_q$.
+(In our application, our $p_0$ is the composite witness polynomial, both of which have their own basefield mask, and $msk_0 = msk_{0,1} \| msk_{0,2}$.)
 The number of coefficients is chosen according to how often the commitment of $p_i + \msk_i$ is queried in the course of WHIR:
 \begin{align}
 q_0 &= s_{1}, 
 \\
 q_i &= s_{i+1} + 1 \text{ for } 1\leq i\leq r-1,
 \\\intertext{assuming a single DEEP query in each of the rounds, and}
-q_r &= s_\text{zk},
+q_r &= s_\text{final},
 \end{align}
 the number of queries on $\hat p_r$ in the final opening protocol, Protocol \ref{prot:zook:final:opening}.
-The concatenated coefficient vectors \eqref{e:zook:sumcheck:mask:coeffs} and \eqref{e:zook:commitment:mask:coeffs} are encoded in zero-knowlege manner, by appending to the message another $q_{zk}$ random coefficients
+The concatenated coefficient vectors \eqref{e:zook:sumcheck:mask:coeffs} and \eqref{e:zook:commitment:mask:coeffs} are encoded in zero-knowlege manner, by appending to the message another $q_{zk} = s_\text{zk} + 1$ random coefficients
 \begin{equation}
 \label{e:zook:mask:blinder:coeffs}
-msk_{zk} \in F^{q^{zk}},
+msk_{zk} \in F^{q_{zk}},
 \end{equation}
 before the Reed--Solomon encoding. 
-That is, $C_{zk}$ encodes   
-\[
-h_1\|\ldots \|h_r \| msk_0 \|\ldots \| msk_r \| msk_{zk}
-\]
-parsed as coefficient vector from $F^{r + k_0 - k_r + q_0 + \ldots + q_r + q_{zk}}$ as Reed--Solomon codeword over $F$ with evaluation domain $D_{zk}$.
+For reasons to be explained later, another $e =[F:\mathbb F_q]$ random elements $r_0\sample \mathbb F_q^e$ are appended to it.
+Overall, $C_{zk}$ encodes the joint mask vector  
+\begin{equation}
+\label{e:all:masks:concatenated}
+\mathsf m = h_1\|\ldots \|h_r \| msk_0\| \ldots \| msk_r\| msk_{zk} \| r_0
+\end{equation}
+parsed as coefficient vector of $F^{m_\text{zk}}$,
+\begin{equation}
+\label{e:Czk:message:length}
+m_\text{zk}= r + k_0 - k_r + q_0  + \ldots + q_r + q_{zk} + e,
+\end{equation}
+as Reed--Solomon codeword over $F$ with evaluation domain $D_{zk}$.
+
 
 \subsubsection{Initialization.}
 The initial claim is on the unmasked polynomial $p_0 = \hat p_0 - \msk_0 \in \mathscr P_{k_1}^{e_1}(\mathbb F_q)$, and of the form
@@ -2296,16 +2311,8 @@ instead of \eqref{e:zook:in:domain:constraint}, leading to a different update ru
 \end{rem}
 
 
+
 \subsubsection{The final opening protocol.}
-
-
-% In a nutshell: 
-% \begin{itemize}
-% \item
-% random linear combination with a random polynomial (a full mask).
-% \item 
-% has a separate proof of proximity, decoupled from WHIR $\longrightarrow$ multiplicative blowup by list size.
-% \end{itemize}
 
 The final claim after round $r$ is of the form
 \begin{equation}
@@ -2314,39 +2321,131 @@ c_r  = \langle \hat p_r, K^{(r)} \rangle_{H_{k_r}}
 + \sum_{j=0}^r  \Gamma_j^{(r)}(\msk_j) + \sum_{j=1}^r \Lambda_j^{(r)}(h_j).
 \end{equation}
 % with $K = K^{(r)}$, $\Lambda_i = \Lambda_i^{(r)}$ and $\Gamma_i = \Gamma_i^{(r)}$.
-It is proven via the following elementary proof of proximity on $\hat p_r \in \mathscr P_r^{e_r}$, as a word of $C_{k_r}^{e_r}$, and the encoding of $\mathsf m = h_1\|\ldots \|h_r \| msk_0 \|\ldots \| msk_r \| msk_{zk} \in F^{m_{zk}}$ 
-as word of $C_{zk}$.
+It is proven via an independent proof of proximity to $\hat p_r(X) \in \mathscr P_{k_r}^{e_r}$, and $\mathsf m(X) \in F[X]^{<m_\text{zk}}$, satisfying the joint claim \eqref{e:zook:claim:r}.
+For improving soundness, we  constrain the prover to a single proximate mask by asking it for the value 
+\[
+v =\mathsf m(z)
+\]
+at a random out-of-domain point $z\sample F$, at commit time of $\mathsf m$. 
+(See the full protocol description in Section \ref{s:complete:protocol}.)
+We use the same random point to prove invariance of the mask component $msk_0$ under the Frobenius automorphism $\phi: F\longrightarrow F$, which leaves $\mathbb F_q$ invariant.
+The prover also provides the value of the component
+\begin{align}
+\hat\msk_0(X) = \msk_0(X) + X^{|\msk_0|}\cdot r_0(X)
+\end{align}
+at $z$, i.e.
+\begin{align}
+v' = V_z(\mathsf m) &=  \hat\msk_0(z).
+\end{align}
+If $\phi(v') = V_{\phi(z)}(\mathsf m)$, then with high probability $\hat \msk_0(X) = \phi(\hat\msk_0)(X)$, proving that $msk_0$ (and $r_0$) is over $\mathbb F_q$.
 
 \begin{protocol}
 \label{prot:zook:final:opening}
-The prover commits to a full entropy mask $H \sample \mathscr P_r^{e_r}$, $M\sample F^{m_{zk}}$, the latter parsed as $H_1\|\ldots\|H_r\|M_0\|\ldots\|M_r\|M_{zk}$, and claims
-\begin{equation}
+The prover commits to full entropy masks $H \sample \mathscr P_r^{e_r}$ and $M\sample F^{m_{zk}}$, as words from $C_r$ and $C_{zk}$, respectively.
+It parses $M$ as $H_1\|\ldots\|H_r\|$ $M_0 \| \ldots\|M_r\|M_{zk}\|R_0$ according to \eqref{e:all:masks:concatenated}, and claims
+\begin{align}
 \label{e:zook:claim:H}
-d  = \langle  H, K^{(r)} \rangle_{H_{k_r}}
-+ \sum_{j=0}^r \Gamma_j^{(r)}(M_j) + \sum_{j=1}^r \Lambda_j^{(r)}(H_j).
-\end{equation}
+d  &= \langle  H, K^{(r)} \rangle_{H_{k_r}}
++ \sum_{j=0}^r \Gamma_j^{(r)}(M_j) + \sum_{j=1}^r \Lambda_j^{(r)}(H_j),
+\end{align}
+and
+\begin{align}
+v_{M} = M(z), 
+\quad
+v_{M}' = V_{z}(M), 
+\quad
+v_M'' = V_{\phi(z)}(M).
+\end{align}
 The verifier replies with $\lambda\sample F$.
-The prover reveals the combined words $H' = \lambda\cdot \hat p_r + H$, $M' = \lambda\cdot \mathsf m + M$, the latter parsed as $H_1'\|\ldots\|H_r'\|M_0'\|\ldots\|M_r'\|M_{zk}'$.
+The prover reveals the combined messages $H' = \lambda\cdot \hat p_r + H$, $M' = \lambda\cdot \mathsf m + M$, the latter parsed as $H_1'\|\ldots\|H_r'\|M_0'\|\ldots\|M_r'\|$ $M_{zk}'\|R_0'$.
 
-% \ulrich{This needs a spec of how to commit to masks. }
-The verifier queries the commitments of $\hat p_r$ and $\mathsf m$ independently at random points $x_{1}, \ldots x_{s}\sample D_r$ and $y_1,\ldots, y_s\sample D_{zk}$, respectively, and checks collinearity of the revealed values with those of $H'$ and $M'$. 
+The verifier queries the commitments of $\hat p_r$ and $\mathsf m$ independently at random points $x_{1}, \ldots x_{s}\sample D_r$ and $y_1,\ldots, y_{s_\text{zk}}\sample D_{zk}$, respectively, and checks collinearity of the revealed values with those of the encodings of $H'$ and $M'$. 
 %the linear combination.
 If the collinearity checks hold, and if 
-\begin{equation}
+\begin{align}
 \label{e:zook:claim:combined}
-\lambda \cdot c_r + d  = \langle  H', K \rangle_{H_{k_r}}
+\lambda \cdot c_r + d  &= \langle  H', K \rangle_{H_{k_r}}
 + \sum_{j=0}^r \Gamma_j(M_j') + \sum_{j=1}^r \Lambda_j(H_j'),
-\end{equation}
+\end{align}
+and
+\begin{align}
+\lambda \cdot v + v_M =  M'(z),
+\:
+\lambda\cdot v'  + v_M' = V_z(M'),
+\:
+\lambda\cdot \phi(v') + v_M'' = V_{\phi(z)}(M'),
+\end{align}
 then the verifier accepts.
 \end{protocol}
 
 
 
+\subsection{Impact on soundness \textcolor{red}{(tbc)}}
+While all other measures from Section \ref{s:randomizing:w_M}, \ref{s:zk:zerocheck}, \ref{s:masked:commitments} do not affect soundness, except for introducing another round for combining 
 
+This is different for the ZO0K modification of WHIR, Section \ref{s:zook}. 
+The final opening proof, Protocol \ref{prot:zook:final:opening}, is an independent proof of proximity for the final masked WHIR oracle $\hat p_r$ and the joint commitment $\mathsf m$ of all masks and blinders.
+As a consequence we are only able to bound the number of proximates pairs by 
+\[
+\ell(\theta_r) \cdot \ell(\theta_\text{zk}), 
+\]
+and likewise the additional multiplier $\ell(\theta_\text{zk})$ is present in all other steps of the protocol.
 
+\begin{equation}
+\label{e:zkIOPP:main:R:0}
+\mathcal R_\theta = \left\{
+    \begin{matrix}
+    f\in \left(\mathbb F_q^{D}\right)^{e}, 
+    \\
+    g \in \mathbb F^{D_\text{zk}}
+    \end{matrix}
+    \::\:
+    \begin{matrix}
+    \exists 
+    \hat p(X) \in \mathscr P_{m_1}, 
+    \hat q(X) \in F[X]^{<q_\text{zk}},
+    \\
+    d(\hat p, f) \leq \theta \:\wedge\: d(\hat q,g)\leq \theta_\text{zk},
+    \\\text{and}
+    \\
+    \text{the coefficients $(c_i)$ of}
+    \\
+    p(X) = \hat p(X) - \msk_{0,0}(X)
+    \\
+    \text{satisfy 
+    }
+    \\
+    (c_i)  \in \mathscr R_{main} \cap \mathscr R_{aux},
+    \\
+    (c_1,\ldots,c_{t_1}) = \vec{in}
+    \end{matrix}
+\right\},
+\end{equation}
+where $\msk_{0,0}(X)$ are the corresponding 
 
-\section{The complete protocol \textcolor{red}{(tbc)}}
-\label{s:complete:protocol}
+\ulrich{It is sufficient to prove a proximate $\hat p(X)\in \mathscr P_{m_1}(F)$ that solves the $A_1$ $B_1$ and $C_1$ part. 
+Because the entries of the matrices are in $\mathbb F_q$, the $\mathbb F_q$-component of $p(X) = \hat p(X)-\msk_{0,0}(X)$ are a solution of $(A_1,B_1,C_1)$ with the corresponding inputs.
+WRONG! We need to prove that $\msk_{0}(X)$ is over $\mathbb F_q$.
+
+The prover declares the value 
+\begin{align*}
+v &= \langle  \pi_0(\hat q), L_{z} \rangle 
+\end{align*}
+at random $z\in F$, where $\pi_0$ grabs the coefficients for $\msk_0$,
+and $\hat q$ is subject to the invariance constraints
+\begin{align*}
+\langle  \pi_0(\hat q), L_{z} \rangle &=  v
+\\
+\langle  \pi_0(\hat q), L_{\phi(z)} \rangle &=  \phi(v),
+% \\
+% \vdots
+% \\
+% \langle  \pi_0(\hat q), L_{\phi^{e-1}(z)} \rangle &=  \phi^{e-1}(v).
+\end{align*}
+which prove that with high probability $\phi(\pi_0(\hat q)) = \pi_0(\hat q)$.
+However, to make this zk we need to append $e$ many $\mathbb F_q$ to $\msk_0$.
+We can use this value for reducing to a single proximate anyways.
+}
 
 
 
@@ -2355,6 +2454,8 @@ then the verifier accepts.
 \section{The non-interactive STARK \textcolor{red}{(tbc)}}
 
 \subsection{Merkle commitments \textcolor{red}{(tbc)}}
+
+\subsection{The }
 
 \subsection{Fiat--Shamir / BCS transform \textcolor{red}{(tbc)}}
 
@@ -2412,15 +2513,11 @@ then the verifier accepts.
 
 \appendix
 
+\input{Complete protocol}
+
 \input{Correlated agreement}
+
 \input{IOPP soundness}
-
-% \section{IOPP soundness}
-
-% \subsection{Joint WHIR}
-
-% \subsection{The complete protocol}
-
 
 \input{IOPP-zk}
 

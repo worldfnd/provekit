@@ -1,0 +1,116 @@
+\section{The complete protocol \textcolor{red}{(tbc)}}
+\label{s:complete:protocol}
+
+The complete protocol takes all the measures from Section \ref{s:zk} into account.
+
+\begin{enumerate}
+\item 
+The first stage witness $\vec w_1$ is 
+\begin{enumerate}
+    \item 
+    Appended by the zero-check masks $h_0\in F, h_1,\ldots, h_m \in F^{3}$ laid out as basefield vectors. 
+    \item 
+    Appended by $e^2 = [F:\mathbb F_q]^2$ basefield randomizers for $w_A, w_B, w_C$ at $\vec\alpha$, as described in Section \ref{s:randomizing:w_M} (at any position)
+\end{enumerate}
+The propagation constraints for the basefield randomizers are placed according to Lemma \ref{lem:zk:basefield:randomization}.
+No randomness appended to $\vec w_2$. 
+
+\item 
+Commitment masks as in Section \ref{s:zook}:
+The masks $msk_0,\ldots, msk_r$ and $h_1,\ldots, h_r$ are committed as codeword in $C_{zk}$.
+Here $msk_0$ for the combined witness poly splits as $msk_{0,1}, msk_{0,2}\in \mathbb F_q^{s_1}$, and is over the basefield. 
+(The other masks are over $F$.)
+\end{enumerate}
+
+% \begin{protocol}[zk-IOPP]
+% \label{prot:main:zk}
+% The R1CS matrices $A_i,B_i,C_i \in \mathbb F_q^{m\times m_i}$, $i=1,2$, and public inputs $\vec{in} = (in_0,\ldots, in_{t})\in \mathbb F_q^t$ are known to both the prover and the verifier. 
+% The prover has committed to the first-stage witness $\vec w_1\in \mathbb F_q^{m_1}$ as interleaved Reed--Solomon codeword $f_1\in C^e$ as described above, and provided the verifier oracle access.
+% \begin{enumerate}
+% \item
+% \label{i:main:phase:1}
+% R1CS second stage:
+% % \begin{enumerate}
+% % \item
+% % \label{i:main:DEEP:w1}
+% % The verifier sends a random $z_1\sample F$ to the prover, which answers with the value $v_1$ of the univariate representation $w_1(X)$ at $z_1$.
+% % %
+% % \item
+% % \label{i:main:logUp}
+% The verifier samples the stage-2 challenge
+% \[
+% \vec\xi \sample \mathbb F_q^{t}
+% \]
+% and sends them to the prover.
+% The prover computes $\vec w_2 \in \mathbb F_q^{m_2}$  the second-stage witness of the R1CS, commits to it as codeword $f_2\in C^e$, as described above, and provides the verifier oracle access.
+% %(the logUp inverses and their sums), 
+% % commits to it as interleaved Reed--Solomon codeword $f_2$ associated with $\mathscr P_{m_2}(\mathbb F_q)$, and provides the verifier oracle access. 
+% %
+% % \item 
+% % \label{i:main:DEEP:w2}
+% % The verifier sends a random $z_2\sample F$ to the prover, which answers with the value of the univariate representation $w_2(X)$ at $z_2$.
+% % \end{enumerate}
+% %answers with the logUp R1CS witnesses $\vec w_2$, so that the 
+
+% \item 
+% \label{i:main:phase:2}
+% R1CS zero-check:
+% % Both prover and verifier engage in a \textit{zero-check} for the domain identity
+% % \begin{equation}
+% % a(\vec x) \cdot b(\vec x) = c(\vec x), \quad \vec x\in H_n = \{0,1\}^n
+% % \end{equation}
+% % where $a, b$ and $c$ are the multilinear extensions of the implicitly committed matrix-images
+% % \[
+% % \vec a = A\cdot \vec w, \vec b = B\cdot \vec w, \vec c = C\cdot \vec w.
+% % \]
+% The verifier sends a random 
+% \[
+% \vec\rho \sample F^m,
+% \]
+% and both prover and verifier engage in the sumcheck protocol for %the R1CS constraints
+% \begin{align}
+% \label{e:R1CS:zerocheck}
+% \sum_{\vec x\in H_m} \left(w_A(\vec x)\cdot w_B(\vec x) - w_C(\vec x)\right)\cdot eq(\vec x, \vec\rho) = 0,
+% \end{align}
+% where $w_A(\vec x), w_B(\vec x), w_C(\vec x)$ are the multilinears as specified in \eqref{e:a:poly}.
+% After the last round of the sumcheck, the prover sends 
+% % (The protocol reduces the claim on the hypercube sum \eqref{e:R1CS:zerocheck} to a quadratic check on the evaluation claims 
+% \begin{equation*}
+% v_A = w_A(\vec\alpha),  \quad v_B = w_B(\vec\alpha), \quad v_C = w_C(\vec\alpha),
+% \end{equation*}
+% where $\vec\alpha \in F^m$ are the verifier challenges drawn in the course of the sumcheck, and the verifier checks if 
+% $q_m(\alpha_m) = (v_A\cdot v_B - v_C) \cdot eq(\alpha,\rho)$.
+% %These claims are announced by the prover in the last round. 
+
+% \item 
+% \label{i:main:phase:3}
+% WHIR: 
+% % The verifier samples a random $\lambda\sample F$, 
+% Both prover and verifier run WHIR for the following linear constraints on the combined witness polynomial $w$:
+% \begin{align}
+% \label{e:phase3:claim:vM}
+% v_M = \sum_{\vec x\in H_{m_1}} M_1(\vec\alpha, \vec x) \cdot w_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec\alpha,\vec x)\cdot w_2^*(\vec x)
+% \end{align}
+% with $M = A,B,C$, and
+% \begin{align}
+% \label{e:phase3:claim:inputs}
+% in_i = \sum_{\vec x \in H_{m_1}} eq(i, \vec x) \cdot w_1(\vec x),
+% \quad 
+% \xi_i = \sum_{\vec x \in H_{m_2}} eq^*(i, \vec x) \cdot w_2^*(\vec x),
+% \end{align}
+% for $i = 0,\ldots, t$.
+% % (The concrete form of the linear combination is described below.)
+% (This phase reduces the validity of the linear constraints to claims on the combined matrix polynomials
+% \begin{equation}
+% \label{e:split:matrix:values}
+% A(\vec\alpha,\vec\beta), 
+% \quad 
+% B(\vec\alpha,\vec\beta), 
+% \quad 
+% C(\vec\alpha,\vec\beta),
+% \end{equation}
+% where $\vec\beta \in F^{m_1}$ are the folding randomnesses drawn in the course of WHIR.)
+% \end{enumerate}
+% If all verifier checks in Phase \ref{i:main:phase:2} and Phase \ref{i:main:phase:3}, including that of the final matrix values \eqref{e:split:matrix:values}, pass, then the verifier accepts.
+% Otherwise, it rejects.
+% \end{protocol}
