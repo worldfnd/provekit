@@ -6,14 +6,6 @@ const repoRoot = path.resolve(docsRoot, '..');
 const sourceRoot = path.join(repoRoot, 'whitepaper');
 const outputPath = path.join(docsRoot, 'src/content/docs/whitepaper.mdx');
 
-const sourceFiles = new Map([
-  ['Correlated agreement', 'Correlated agreement.tex'],
-  ['IOPP soundness', 'IOPP soundness.tex'],
-  ['IOPP-zk', 'IOPP-zk.tex'],
-  ['Veil', 'Veil.tex'],
-  ['oldstuff', 'oldstuff.tex'],
-]);
-
 const theoremLabels = {
   thm: 'Theorem',
   'thm*': 'Theorem',
@@ -350,11 +342,32 @@ const removeInternalNotes = (value) => {
   return result.replaceAll('\\footnotemark', '');
 };
 
-const inlineInputs = async (value) => {
-  let result = value;
-  for (const [inputName, fileName] of sourceFiles) {
-    const input = await readFile(path.join(sourceRoot, fileName), 'utf8');
-    result = result.replaceAll('\\input{' + inputName + '}', '\n' + input + '\n');
+const inlineInputs = async (value, ancestry = []) => {
+  const inputPattern = /\\input\s*\{([^{}]+)\}/;
+  let result = stripComments(value);
+  let match = result.match(inputPattern);
+  while (match) {
+    const inputName = match[1].trim();
+    const fileName = path.extname(inputName) ? inputName : inputName + '.tex';
+    const relativePath = path.normalize(fileName);
+    if (path.isAbsolute(relativePath) || relativePath === '..'
+      || relativePath.startsWith('..' + path.sep)) {
+      throw new Error('Whitepaper input must stay inside whitepaper/: ' + inputName);
+    }
+    if (ancestry.includes(relativePath)) {
+      throw new Error('Circular whitepaper input: ' + [...ancestry, relativePath].join(' -> '));
+    }
+    let input;
+    try {
+      input = await readFile(path.join(sourceRoot, relativePath), 'utf8');
+    } catch (error) {
+      if (error?.code === 'ENOENT') throw new Error('Whitepaper input not found: ' + relativePath);
+      throw error;
+    }
+    const expanded = await inlineInputs(input, [...ancestry, relativePath]);
+    result = result.slice(0, match.index) + '\n' + expanded + '\n'
+      + result.slice(match.index + match[0].length);
+    match = result.match(inputPattern);
   }
   return result;
 };
@@ -766,7 +779,7 @@ const mainSource = await readFile(path.join(sourceRoot, 'main.tex'), 'utf8');
 const mainMatterIndex = mainSource.lastIndexOf('\\mainmatter');
 const body = mainMatterIndex === -1 ? mainSource : mainSource.slice(mainMatterIndex + '\\mainmatter'.length);
 const expanded = await inlineInputs(body);
-const cleaned = removeInternalNotes(stripComments(expanded));
+const cleaned = removeInternalNotes(expanded);
 referenceLabels = indexReferences(cleaned);
 bibliographyEntries = parseBibliography(await readFile(path.join(sourceRoot, 'SNARKs.bib'), 'utf8'));
 citationLabels = indexCitations(cleaned);

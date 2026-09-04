@@ -35,4 +35,11 @@ describe('whitepaper citations', () => {
     expect(generated).toContain('Ulrich Haböck, Adrian Hamelink, Andrew Milson');
     expect(generated).not.toContain('[ProximityGaps:improved]');
   });
+
+  test('automatically expands local TeX inputs', async () => {
+    generated = await render();
+
+    expect(generated).toContain('id="the-complete-protocol-tbc"');
+    expect(generated).not.toContain('\\input{Complete protocol}');
+  });
 });
