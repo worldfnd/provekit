@@ -47,6 +47,14 @@ jobs:
         run: bench-mobile/scripts/generate-fixtures.sh
         env:
           MOBENCH_CI_PREPARE: "1"
+      - name: Reject arkworks 0.5 in the production graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          if cargo tree --workspace --edges normal --prefix none | rg '^ark-(bn254|ec|ff|ff-asm|ff-macros|poly|serialize|serialize-derive|std) v0\.5\.'; then
+            echo "arkworks 0.5 remains in the production dependency graph"
+            exit 1
+          fi
       - run: cargo build --all-targets --all-features
       - run: cargo test --no-fail-fast --all-features --lib --tests --bins -- --nocapture
         env:
