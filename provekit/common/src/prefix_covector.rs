@@ -1,6 +1,7 @@
 use {
     crate::FieldElement,
     ark_std::{One, Zero},
+    rayon::prelude::*,
     whir::algebra::{dot, linear_form::LinearForm, multilinear_extend},
 };
 
@@ -165,6 +166,19 @@ pub fn expand_powers<const D: usize>(values: &[FieldElement]) -> Vec<FieldElemen
     result
 }
 
+/// Geometric series `[1, x, x², …, x^{N-1}]` as a fixed-size array.
+///
+/// Used to expand a single Fiat-Shamir RLC challenge into the coefficient
+/// vector that collapses `N` parallel claims into one.
+#[must_use]
+pub fn rlc_powers<const N: usize>(x: FieldElement) -> [FieldElement; N] {
+    let mut out = [FieldElement::one(); N];
+    for i in 1..N {
+        out[i] = out[i - 1] * x;
+    }
+    out
+}
+
 /// Create a public weight [`PrefixCovector`] from Fiat-Shamir randomness `x`.
 ///
 /// Builds the vector `[1, x, x², …, x^{n-1}]` where `n = num_public_inputs +
@@ -185,24 +199,64 @@ pub fn make_public_weight(x: FieldElement, num_public_inputs: usize, m: usize) -
     PrefixCovector::new(public_weights, domain_size)
 }
 
-/// Build [`PrefixCovector`] weights from alpha vectors, consuming the alphas.
+/// Build a single [`PrefixCovector`] equal to `Σᵢ coeffs[i] · alphas[i]`,
+/// consuming the inputs.
 ///
-/// Each alpha vector is padded to a power-of-two length (min 2) and wrapped
-/// in a `PrefixCovector` with the given domain size `2^m`.
+/// Allocates one combined vector instead of `N` independent
+/// [`PrefixCovector`]s — saving `(N − 1) × base_len` field elements at peak
+/// for callers that would otherwise materialise all of them simultaneously
+/// (e.g. the three R1CS matrix covectors A, B, C).
+///
+/// All input vectors must share the same length; the result is padded to
+/// the next power of two (min 2) to match [`PrefixCovector`]'s convention.
 #[must_use]
-pub fn build_prefix_covectors<const N: usize>(
-    m: usize,
+pub fn build_combined_prefix_covector<const N: usize>(
     alphas: [Vec<FieldElement>; N],
-) -> Vec<PrefixCovector> {
-    let domain_size = 1usize << m;
-    alphas
-        .into_iter()
-        .map(|mut w| {
-            let base_len = w.len().next_power_of_two().max(2);
-            w.resize(base_len, FieldElement::zero());
-            PrefixCovector::new(w, domain_size)
-        })
-        .collect()
+    coeffs: &[FieldElement; N],
+    domain_size: usize,
+) -> PrefixCovector {
+    const { assert!(N > 0, "need at least one input vector") };
+    let raw_len = alphas[0].len();
+    debug_assert!(
+        alphas.iter().all(|v| v.len() == raw_len),
+        "all input vectors must share the same length"
+    );
+    let base_len = raw_len.next_power_of_two().max(2);
+
+    let mut iter = alphas.into_iter();
+    let mut combined = iter.next().expect("N > 0 enforced at compile time");
+    combined.resize(base_len, FieldElement::zero());
+
+    // Scale the first vector by coeffs[0]. For geometric-RLC weights this is
+    // one() and the multiply is a no-op, but the cost is negligible vs. the
+    // accumulation that follows and a branchless path keeps the helper
+    // general for non-geometric callers.
+    let c0 = coeffs[0];
+    if raw_len > whir::utils::workload_size::<FieldElement>() {
+        combined[..raw_len].par_iter_mut().for_each(|v| *v *= c0);
+    } else {
+        for v in &mut combined[..raw_len] {
+            *v *= c0;
+        }
+    }
+
+    // Accumulate the remaining vectors. The padded tail of `combined` stays
+    // zero throughout, so we only walk `raw_len` positions per source.
+    for (i, src) in iter.enumerate() {
+        let c = coeffs[i + 1];
+        let dst = &mut combined[..raw_len];
+        if raw_len > whir::utils::workload_size::<FieldElement>() {
+            dst.par_iter_mut().zip(src.par_iter()).for_each(|(d, &s)| {
+                *d += c * s;
+            });
+        } else {
+            for (d, &s) in dst.iter_mut().zip(src.iter()) {
+                *d += c * s;
+            }
+        }
+    }
+
+    PrefixCovector::new(combined, domain_size)
 }
 
 /// Compute dot products of alpha vectors against a polynomial without

@@ -4,9 +4,9 @@ use {
     ark_std::{One, Zero},
     provekit_common::{
         prefix_covector::{
-            build_prefix_covectors, compute_alpha_evals, compute_challenge_eval,
+            build_combined_prefix_covector, compute_alpha_evals, compute_challenge_eval,
             compute_public_eval, expand_powers, make_challenge_weight, make_public_weight,
-            OffsetCovector,
+            rlc_powers, OffsetCovector,
         },
         utils::{
             pad_to_power_of_two,
@@ -17,8 +17,7 @@ use {
             },
             HALF,
         },
-        FieldElement, PrefixCovector, PublicInputs, TranscriptSponge, WhirR1CSProof,
-        WhirR1CSScheme, R1CS,
+        FieldElement, PublicInputs, TranscriptSponge, WhirR1CSProof, WhirR1CSScheme, R1CS,
     },
     std::borrow::Cow,
     tracing::instrument,
@@ -152,7 +151,7 @@ impl WhirR1CSProver for WhirR1CSScheme {
         drop(full_witness);
 
         let alphas = calculate_external_row_of_r1cs_matrices(&alpha, &r1cs);
-        let (x, public_weight) = get_public_weights(public_inputs, &mut merlin, self.m);
+        let x = read_public_inputs_challenge(public_inputs, &mut merlin);
 
         let blinding_offset = blinding.offset;
         let blinding_weights = expand_powers::<4>(&alpha);
@@ -161,33 +160,41 @@ impl WhirR1CSProver for WhirR1CSScheme {
         if is_single {
             // Single commitment path
             let commitment = commitments.into_iter().next().unwrap();
-            let (mut weights, evals) =
-                create_weights_and_evaluations::<3>(self.m, &commitment.polynomial, alphas);
 
+            let evals = compute_alpha_evals(&commitment.polynomial, &alphas);
             for eval in &evals {
                 merlin.prover_message(eval);
             }
 
-            if !public_inputs.is_empty() {
-                let public_eval = compute_public_weight_evaluation(
-                    &mut weights,
-                    &commitment.polynomial,
-                    public_weight,
-                );
-                merlin.prover_message(&public_eval);
-            }
+            let public_eval = if !public_inputs.is_empty() {
+                let pe = compute_public_eval(x, public_inputs.len(), &commitment.polynomial);
+                merlin.prover_message(&pe);
+                Some(pe)
+            } else {
+                None
+            };
 
-            let mut evaluations = compute_evaluations(&weights, &commitment.polynomial);
-            evaluations.push(blinding_eval);
+            // Sample `inner_rlc` only after every alpha eval (and the optional
+            // public eval) is absorbed into the transcript. By Schwartz-Zippel
+            // on the degree-2 polynomial `A + r·B + r²·C`, a false (A, B, C)
+            // claim collapses to a true combined claim with probability at
+            // most 2/|F|.
+            let powers = rlc_powers::<3>(merlin.verifier_message());
+            let combined_eval = dot(&powers, &evals);
+            let combined_lf = build_combined_prefix_covector(alphas, &powers, domain_size);
 
             let blinding_covector =
                 OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
-
-            let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
-                .into_iter()
-                .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
-                .collect();
+            let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = Vec::new();
+            let mut evaluations: Vec<FieldElement> = Vec::new();
+            if let Some(pe) = public_eval {
+                boxed_weights.push(Box::new(make_public_weight(x, public_inputs.len(), self.m)));
+                evaluations.push(pe);
+            }
+            boxed_weights.push(Box::new(combined_lf));
+            evaluations.push(combined_eval);
             boxed_weights.push(Box::new(blinding_covector));
+            evaluations.push(blinding_eval);
 
             let _ = self.whir_witness.prove(
                 &mut merlin,
@@ -242,29 +249,42 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 None
             };
 
+            // One `inner_rlc` is reused across c1 and c2: it is sampled only
+            // after every alpha eval (plus optional public/challenge evals)
+            // for both halves is absorbed, so the prover cannot adversarially
+            // align one half against the other. Sharing the challenge does
+            // not degrade soundness: by Schwartz-Zippel on the degree-2
+            // collapse, each individual false claim still folds to a true
+            // combined claim with probability at most 2/|F|.
+            let powers = rlc_powers::<3>(merlin.verifier_message());
+            let combined_eval_1 = dot(&powers, &evals_1);
+            let combined_eval_2 = dot(&powers, &evals_2);
+            let combined_lf_1 = build_combined_prefix_covector(alphas_1, &powers, domain_size);
+            let combined_lf_2 = build_combined_prefix_covector(alphas_2, &powers, domain_size);
+
             let WhirR1CSCommitment {
                 witness: w1,
                 polynomial: p1,
                 ..
             } = c1;
             {
-                let mut weights = build_prefix_covectors(self.m, alphas_1);
+                let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = Vec::new();
                 let mut evaluations: Vec<FieldElement> = Vec::new();
                 if let Some(pe) = public_1 {
-                    weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
+                    boxed_weights.push(Box::new(make_public_weight(
+                        x,
+                        public_inputs.len(),
+                        self.m,
+                    )));
                     evaluations.push(pe);
                 }
-                evaluations.extend_from_slice(&evals_1);
-                evaluations.push(blinding_eval);
+                boxed_weights.push(Box::new(combined_lf_1));
+                evaluations.push(combined_eval_1);
 
                 let blinding_covector =
                     OffsetCovector::new(blinding_weights, blinding_offset, domain_size);
-
-                let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
-                    .into_iter()
-                    .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
-                    .collect();
                 boxed_weights.push(Box::new(blinding_covector));
+                evaluations.push(blinding_eval);
 
                 let _ = self.whir_witness.prove(
                     &mut merlin,
@@ -282,13 +302,9 @@ impl WhirR1CSProver for WhirR1CSScheme {
                 ..
             } = c2;
             {
-                let weights = build_prefix_covectors(self.m, alphas_2);
-                let mut evaluations: Vec<FieldElement> = evals_2;
-
-                let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> = weights
-                    .into_iter()
-                    .map(|w| Box::new(w) as Box<dyn LinearForm<FieldElement>>)
-                    .collect();
+                let mut boxed_weights: Vec<Box<dyn LinearForm<FieldElement>>> =
+                    vec![Box::new(combined_lf_2)];
+                let mut evaluations: Vec<FieldElement> = vec![combined_eval_2];
 
                 if let Some(ce) = challenge_eval {
                     let challenge_weight =
@@ -515,57 +531,12 @@ pub fn run_zk_sumcheck_prover(
     (alpha, blinding_eval)
 }
 
-fn create_weights_and_evaluations<const N: usize>(
-    m: usize,
-    polynomial: &[FieldElement],
-    alphas: [Vec<FieldElement>; N],
-) -> (Vec<PrefixCovector>, Vec<FieldElement>) {
-    let domain_size = 1usize << m;
-
-    let mut weights = Vec::with_capacity(N);
-    let mut evals = Vec::with_capacity(N);
-
-    for mut w in alphas {
-        let base_len = w.len().next_power_of_two().max(2);
-        w.resize(base_len, FieldElement::zero());
-
-        evals.push(dot(&w, &polynomial[..base_len]));
-        weights.push(PrefixCovector::new(w, domain_size));
-    }
-
-    (weights, evals)
-}
-
-fn compute_evaluations(
-    weights: &[PrefixCovector],
-    polynomial: &[FieldElement],
-) -> Vec<FieldElement> {
-    weights
-        .iter()
-        .map(|w| dot(w.vector(), &polynomial[..w.vector().len()]))
-        .collect()
-}
-
-fn compute_public_weight_evaluation(
-    weights: &mut Vec<PrefixCovector>,
-    polynomial: &[FieldElement],
-    public_weights: PrefixCovector,
-) -> FieldElement {
-    let n = public_weights.vector().len();
-    let eval = dot(public_weights.vector(), &polynomial[..n]);
-    weights.insert(0, public_weights);
-    eval
-}
-
-fn get_public_weights(
+/// Bind the public-inputs hash to the transcript and sample the FS challenge
+/// `x` used by both the public-input weight and the challenge-binding weight.
+fn read_public_inputs_challenge(
     public_inputs: &PublicInputs,
     merlin: &mut ProverState<TranscriptSponge>,
-    m: usize,
-) -> (FieldElement, PrefixCovector) {
-    let public_inputs_hash = public_inputs.hash();
-    merlin.prover_message(&public_inputs_hash);
-
-    let x: FieldElement = merlin.verifier_message();
-
-    (x, make_public_weight(x, public_inputs.len(), m))
+) -> FieldElement {
+    merlin.prover_message(&public_inputs.hash());
+    merlin.verifier_message()
 }
