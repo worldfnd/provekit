@@ -99,13 +99,13 @@ ntt = { package = "provekit-ntt", version = "0.1.0" }
 
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
-provekit-cli = { path = "tooling/cli", version = "1.0.1" }
-provekit-common = { path = "provekit/common", version = "1.0.1" }
+provekit-cli = { path = "tooling/cli", version = "1.0.2" }
+provekit-common = { path = "provekit/common", version = "1.0.2" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
-provekit-gnark = { path = "tooling/provekit-gnark", version = "1.0.1" }
-provekit-prover = { path = "provekit/prover", version = "1.0.1" }
-provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "1.0.1" }
-provekit-verifier = { path = "provekit/verifier", version = "1.0.1" }
+provekit-gnark = { path = "tooling/provekit-gnark", version = "1.0.2" }
+provekit-prover = { path = "provekit/prover", version = "1.0.2" }
+provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "1.0.2" }
+provekit-verifier = { path = "provekit/verifier", version = "1.0.2" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
 provekit-wasm = { path = "tooling/provekit-wasm" }
 
@@ -184,18 +184,16 @@ noirc_artifacts = { package = "provekit_noirc_artifacts", version = "=1.0.0-beta
 noirc_driver = { package = "provekit_noirc_driver", version = "=1.0.0-beta.26" }
 
 # Cryptography and proof systems
-ark-bn254 = { version = "0.5.0", default-features = false, features = [
+ark-bn254 = { version = "0.6.0", default-features = false, features = [
   "scalar_field",
 ] }
-ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
-ark-ff = { version = "0.5", features = ["asm", "std"] }
-ark-ff-v06 = { package = "ark-ff", version = "0.6" }
-ark-poly = "0.5"
-ark-serialize = "0.5"
-ark-std = { version = "0.5", features = ["std"] }
-spongefish = { package = "provekit-spongefish", version = "0.1.0", features = [
+ark-ff = { version = "0.6", features = ["asm", "std"] }
+ark-poly = "0.6"
+ark-serialize = "0.6"
+ark-std = { version = "0.6", features = ["std"] }
+spongefish = { package = "provekit-spongefish", version = "0.2.0", features = [
   "ark-ff",
   "sha2",
 ] }
-spongefish-pow = { package = "provekit-spongefish-pow", version = "0.1.0" }
-whir = { package = "provekit-whir", version = "0.1.1", features = ["tracing"] }
+spongefish-pow = { package = "provekit-spongefish-pow", version = "0.2.0" }
+whir = { package = "provekit-whir", version = "0.2.0", features = ["tracing"] }

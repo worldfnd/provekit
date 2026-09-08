@@ -1,6 +1,6 @@
 [package]
 name = "provekit-cli"
-version = "1.0.1"
+version = "1.0.2"
 description = "ProveKit CLI for generating and verifying zero-knowledge proofs"
 edition.workspace = true
 rust-version.workspace = true

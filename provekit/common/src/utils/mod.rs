@@ -9,8 +9,7 @@ pub mod sumcheck;
 pub use self::print_abi::PrintAbi;
 use {
     crate::{FieldElement, NoirElement},
-    ark_ff::{BigInt, Field},
-    ark_ff_v06::PrimeField as _,
+    ark_ff::{BigInt, Field, PrimeField as _},
     ruint::{aliases::U256, uint},
     std::{
         fmt::{Display, Formatter, Result as FmtResult},
