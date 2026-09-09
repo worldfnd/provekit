@@ -111,9 +111,9 @@ pub struct Args {
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
     hash: String,
 
-    /// witness commitment mode: "standard" (non-hiding) or "zk" (hiding,
-    /// larger proofs); recorded in the keys
-    #[argh(option, long = "witness-mode", default = "String::from(\"standard\")")]
+    /// witness commitment mode: "zk" (hiding) or "standard" (non-hiding,
+    /// smaller proofs); recorded in the keys
+    #[argh(option, long = "witness-mode", default = "String::from(\"zk\")")]
     witness_mode: String,
 
     /// also run SPARK preprocessing; the setup is folded into the PKV and the

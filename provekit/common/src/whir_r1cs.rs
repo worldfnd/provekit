@@ -38,8 +38,8 @@ use {
 /// and verifying follow it without further configuration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum WitnessCommitmentMode {
-    #[default]
     Standard,
+    #[default]
     ZeroKnowledge,
 }
 
@@ -143,9 +143,9 @@ impl R1csHash {
 /// - Sumcheck ZK is always on: the Spartan sumcheck rounds are masked by a
 ///   blinding polynomial `g`, committed separately in `whir_blinding`.
 /// - Witness ZK follows the [`WitnessCommitmentMode`] the scheme was built
-///   with, recorded in `whir_witness`: [`Mode::Standard`] (the default) is
-///   non-hiding, [`Mode::ZeroKnowledge`] hiding. A hiding commitment alone is
-///   not full proof ZK — the alpha, public-input, and challenge evaluations are
+///   with, recorded in `whir_witness`: [`Mode::ZeroKnowledge`] (the default) is
+///   hiding, [`Mode::Standard`] non-hiding. A hiding commitment alone is not
+///   full proof ZK — the alpha, public-input, and challenge evaluations are
 ///   still sent in the clear.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
