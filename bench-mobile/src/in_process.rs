@@ -6,7 +6,7 @@ use {
     noirc_abi::{input_parser::Format, InputMap},
     noirc_artifacts::program::ProgramArtifact,
     provekit_backend_bn254::{Bn254Field, Prove, ProvekitProof, Prover, Verifier, Verify},
-    provekit_common::HashConfig,
+    provekit_common::{HashConfig, WitnessCommitmentMode},
     provekit_r1cs_compiler::NoirCompiler,
 };
 
@@ -118,8 +118,12 @@ pub fn prepare_noir_program_from_json(
     let name = name.into();
     let program: ProgramArtifact = serde_json::from_str(program_json)
         .with_context(|| format!("while deserializing {name} program artifact"))?;
-    let scheme = NoirCompiler::from_program(program, HashConfig::default())
-        .with_context(|| format!("while preparing {name} noir proof scheme"))?;
+    let scheme = NoirCompiler::from_program(
+        program,
+        HashConfig::default(),
+        WitnessCommitmentMode::default(),
+    )
+    .with_context(|| format!("while preparing {name} noir proof scheme"))?;
     let input_map = Format::Toml
         .parse(prover_toml, scheme.abi())
         .with_context(|| format!("while parsing {name} prover inputs"))?;

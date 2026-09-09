@@ -33,9 +33,38 @@ use {
     },
 };
 
-/// Zook mode for the witness commitment; [`Mode::ZeroKnowledge`] makes it
-/// hiding.
-const ZOOK_MODE: Mode = Mode::Standard;
+/// Hiding property of the zook witness commitment. Chosen when the scheme is
+/// built (`prepare --witness-mode`) and recorded in `whir_witness`, so proving
+/// and verifying follow it without further configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WitnessCommitmentMode {
+    #[default]
+    Standard,
+    ZeroKnowledge,
+}
+
+impl From<WitnessCommitmentMode> for Mode {
+    fn from(mode: WitnessCommitmentMode) -> Self {
+        match mode {
+            WitnessCommitmentMode::Standard => Self::Standard,
+            WitnessCommitmentMode::ZeroKnowledge => Self::ZeroKnowledge,
+        }
+    }
+}
+
+impl std::str::FromStr for WitnessCommitmentMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "standard" => Ok(Self::Standard),
+            "zk" => Ok(Self::ZeroKnowledge),
+            _ => Err(format!(
+                "Invalid witness commitment mode: '{s}'. Valid options: standard, zk"
+            )),
+        }
+    }
+}
 
 /// Adaptive per-round rate schedule at the balanced (0.5) prover-time /
 /// proof-size knee.
@@ -113,11 +142,11 @@ impl R1csHash {
 ///
 /// - Sumcheck ZK is always on: the Spartan sumcheck rounds are masked by a
 ///   blinding polynomial `g`, committed separately in `whir_blinding`.
-/// - Witness ZK follows the [`Mode`] recorded in `whir_witness` (new schemes
-///   use `ZOOK_MODE`): [`Mode::Standard`] is non-hiding,
-///   [`Mode::ZeroKnowledge`] hiding. A hiding commitment alone is not full
-///   proof ZK — the alpha, public-input, and challenge evaluations are still
-///   sent in the clear.
+/// - Witness ZK follows the [`WitnessCommitmentMode`] the scheme was built
+///   with, recorded in `whir_witness`: [`Mode::Standard`] (the default) is
+///   non-hiding, [`Mode::ZeroKnowledge`] hiding. A hiding commitment alone is
+///   not full proof ZK — the alpha, public-input, and challenge evaluations are
+///   still sent in the clear.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct WhirR1CSScheme<P: ProofField> {
@@ -181,6 +210,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
+        witness_mode: WitnessCommitmentMode,
     ) -> anyhow::Result<Self> {
         let mut scheme = Self::new_from_dimensions(
             r1cs.num_witnesses(),
@@ -191,6 +221,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             challenge_offsets,
             has_public_inputs,
             hash_config,
+            witness_mode,
         )?;
         scheme.r1cs_hash = r1cs.hash();
         Ok(scheme)
@@ -208,6 +239,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
+        witness_mode: WitnessCommitmentMode,
     ) -> anyhow::Result<Self> {
         anyhow::ensure!(
             num_challenges == challenge_offsets.len(),
@@ -228,7 +260,11 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
-            whir_witness: Self::new_witness_config_for_size(m, hash_config.engine_id())?,
+            whir_witness: Self::new_witness_config_for_size(
+                m,
+                hash_config.engine_id(),
+                witness_mode,
+            )?,
             whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             w1_size,
             num_challenges,
@@ -244,11 +280,12 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
     pub fn new_witness_config_for_size(
         num_variables: usize,
         hash_id: EngineId,
+        witness_mode: WitnessCommitmentMode,
     ) -> anyhow::Result<ZookConfig<P::Embedding>> {
         P::register();
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
         let security = SecuritySpec {
-            mode: ZOOK_MODE,
+            mode: witness_mode.into(),
             decoding_regime: DecodingRegime::Johnson,
             target_security_bits: WHIR_SECURITY_BITS,
             pow_budget: PowBudget::per_slot(WHIR_POW_BITS),

@@ -12,7 +12,9 @@ use {
     noir_artifact_cli::fs::artifact::save_program_to_file,
     noirc_driver::{CompilationResult, CompileOptions, CrateName, NOIR_ARTIFACT_VERSION_STRING},
     provekit_backend_bn254::{FieldElement, NoirProofScheme, Prover, SparkSetup, Verifier},
-    provekit_common::{file::write, utils::next_power_of_two, HashConfig, R1CS},
+    provekit_common::{
+        file::write, utils::next_power_of_two, HashConfig, WitnessCommitmentMode, R1CS,
+    },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     provekit_spark::SparkMatrix,
     rayon::prelude::*,
@@ -109,6 +111,11 @@ pub struct Args {
     #[argh(option, long = "hash", default = "String::from(\"skyscraper\")")]
     hash: String,
 
+    /// witness commitment mode: "standard" (non-hiding) or "zk" (hiding,
+    /// larger proofs); recorded in the keys
+    #[argh(option, long = "witness-mode", default = "String::from(\"standard\")")]
+    witness_mode: String,
+
     /// also run SPARK preprocessing; the setup is folded into the PKV and the
     /// prover context is written to `--spctx`
     #[argh(switch, long = "spark")]
@@ -128,15 +135,17 @@ impl Command for Args {
     #[instrument(skip_all)]
     fn run(&self) -> Result<()> {
         let hash_config = HashConfig::from_str(&self.hash).map_err(|e| anyhow!("{}", e))?;
+        let witness_mode =
+            WitnessCommitmentMode::from_str(&self.witness_mode).map_err(|e| anyhow!("{}", e))?;
         match self.compiler {
-            Compiler::Noir => self.run_noir(hash_config),
-            Compiler::Mavros => self.run_mavros(hash_config),
+            Compiler::Noir => self.run_noir(hash_config, witness_mode),
+            Compiler::Mavros => self.run_mavros(hash_config, witness_mode),
         }
     }
 }
 
 impl Args {
-    fn run_noir(&self, hash_config: HashConfig) -> Result<()> {
+    fn run_noir(&self, hash_config: HashConfig, witness_mode: WitnessCommitmentMode) -> Result<()> {
         // Canonicalize so compiled artifacts embed absolute source paths,
         // matching `nargo compile` byte-for-byte in the `file_map` field.
         let program_dir = std::fs::canonicalize(&self.program_path)
@@ -204,7 +213,7 @@ impl Args {
         )?;
 
         for (package, artifact) in binary_packages.iter().zip(artifacts) {
-            let scheme = NoirCompiler::from_program(artifact, hash_config)
+            let scheme = NoirCompiler::from_program(artifact, hash_config, witness_mode)
                 .context("while building Noir proof scheme")?;
             let spark_setup = self.maybe_build_spark(&scheme, hash_config)?;
             let pkp_path = self
@@ -224,13 +233,18 @@ impl Args {
         Ok(())
     }
 
-    fn run_mavros(&self, hash_config: HashConfig) -> Result<()> {
+    fn run_mavros(
+        &self,
+        hash_config: HashConfig,
+        witness_mode: WitnessCommitmentMode,
+    ) -> Result<()> {
         let r1cs_path = self
             .r1cs_path
             .as_ref()
             .context("--r1cs is required when using the mavros compiler")?;
-        let scheme = MavrosCompiler::compile(&self.program_path, r1cs_path, hash_config)
-            .context("while compiling with Mavros")?;
+        let scheme =
+            MavrosCompiler::compile(&self.program_path, r1cs_path, hash_config, witness_mode)
+                .context("while compiling with Mavros")?;
         let spark_setup = self.maybe_build_spark(&scheme, hash_config)?;
         let pkp_path = resolve_key_path(self.pkp_path.as_deref(), "pkp")?;
         let pkv_path = resolve_key_path(self.pkv_path.as_deref(), "pkv")?;

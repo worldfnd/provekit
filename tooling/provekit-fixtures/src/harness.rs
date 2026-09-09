@@ -12,7 +12,7 @@ use {
     ark_std::rand::distributions::{Distribution, Standard},
     provekit_common::{
         Base, Ext, FieldHash, HashConfig, PublicInputs, PublicInputsHash, WhirR1CSProof,
-        WhirR1CSScheme, R1CS,
+        WhirR1CSScheme, WitnessCommitmentMode, R1CS,
     },
     provekit_prover::WhirR1CSProver,
     provekit_verifier::WhirR1CSVerifier,
@@ -48,6 +48,7 @@ where
         Vec::new(),
         !public_inputs.is_empty(),
         HASH,
+        WitnessCommitmentMode::default(),
     )?;
 
     let instance = public_inputs.hash_bytes::<P>(HASH);
@@ -182,6 +183,7 @@ where
         challenge_offsets.clone(),
         !public.is_empty(),
         hash,
+        WitnessCommitmentMode::default(),
     )?;
 
     let num_witnesses = r1cs.num_witnesses();
@@ -265,6 +267,7 @@ where
         challenge_offsets,
         false,
         HASH,
+        WitnessCommitmentMode::default(),
     )?;
 
     let num_witnesses = r1cs.num_witnesses();
@@ -307,7 +310,15 @@ where
     P: FieldHash,
     Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
-    let scheme = WhirR1CSScheme::<P>::new_for_r1cs(r1cs, witness.len(), 0, Vec::new(), true, HASH)?;
+    let scheme = WhirR1CSScheme::<P>::new_for_r1cs(
+        r1cs,
+        witness.len(),
+        0,
+        Vec::new(),
+        true,
+        HASH,
+        WitnessCommitmentMode::default(),
+    )?;
     Ok(ProveInputs {
         scheme,
         r1cs: r1cs.clone(),
