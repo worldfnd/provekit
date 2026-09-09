@@ -91,13 +91,8 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         );
         let x: FieldElement = arthur.verifier_message();
 
-        let alphas = multiply_transposed_by_eq_alpha(
-            &at,
-            &bt,
-            &ct,
-            &data_from_sumcheck_verifier.alpha,
-            r1cs,
-        );
+        let alphas =
+            multiply_transposed_by_eq_alpha(at, bt, ct, &data_from_sumcheck_verifier.alpha, r1cs);
 
         let blinding_eval = data_from_sumcheck_verifier.blinding_eval;
         let blinding_weights = expand_powers::<4>(&data_from_sumcheck_verifier.alpha);
