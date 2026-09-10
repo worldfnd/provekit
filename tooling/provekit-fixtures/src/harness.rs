@@ -12,7 +12,7 @@ use {
     ark_std::rand::distributions::{Distribution, Standard},
     provekit_common::{
         Base, Ext, FieldHash, HashConfig, PublicInputs, PublicInputsHash, WhirR1CSProof,
-        WhirR1CSScheme, R1CS,
+        WhirR1CSScheme, WitnessCommitmentMode, R1CS,
     },
     provekit_prover::WhirR1CSProver,
     provekit_verifier::WhirR1CSVerifier,
@@ -48,7 +48,8 @@ where
         Vec::new(),
         !public_inputs.is_empty(),
         HASH,
-    );
+        WitnessCommitmentMode::default(),
+    )?;
 
     let instance = public_inputs.hash_bytes::<P>(HASH);
     let ds = scheme.create_domain_separator().instance(&instance);
@@ -182,7 +183,8 @@ where
         challenge_offsets.clone(),
         !public.is_empty(),
         hash,
-    );
+        WitnessCommitmentMode::default(),
+    )?;
 
     let num_witnesses = r1cs.num_witnesses();
     let num_constraints = r1cs.num_constraints();
@@ -265,7 +267,8 @@ where
         challenge_offsets,
         false,
         HASH,
-    );
+        WitnessCommitmentMode::default(),
+    )?;
 
     let num_witnesses = r1cs.num_witnesses();
     let num_constraints = r1cs.num_constraints();
@@ -302,18 +305,26 @@ pub struct ProveInputs<P: FieldHash> {
 /// Build the scheme and owned witness copies for a single-commit prove. Kept
 /// separate from [`time_prove_core`] so a profiler can install its subscriber
 /// between setup and the timed region (only the latter is captured).
-pub fn prove_setup<P>(r1cs: &R1CS<Base<P>>, witness: &[Base<P>]) -> ProveInputs<P>
+pub fn prove_setup<P>(r1cs: &R1CS<Base<P>>, witness: &[Base<P>]) -> Result<ProveInputs<P>>
 where
     P: FieldHash,
     Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
-    let scheme = WhirR1CSScheme::<P>::new_for_r1cs(r1cs, witness.len(), 0, Vec::new(), true, HASH);
-    ProveInputs {
+    let scheme = WhirR1CSScheme::<P>::new_for_r1cs(
+        r1cs,
+        witness.len(),
+        0,
+        Vec::new(),
+        true,
+        HASH,
+        WitnessCommitmentMode::default(),
+    )?;
+    Ok(ProveInputs {
         scheme,
         r1cs: r1cs.clone(),
         witness_commit: witness.to_vec(),
         witness_prove: witness.to_vec(),
-    }
+    })
 }
 
 /// Time the single-commit proving core — `commit` + `prove_noir` — from

@@ -1,7 +1,7 @@
 use {
     mavros_artifacts::R1CS as MavrosR1CS,
     provekit_backend_bn254::Bn254Field,
-    provekit_common::{HashConfig, WhirR1CSScheme},
+    provekit_common::{HashConfig, WhirR1CSScheme, WitnessCommitmentMode},
 };
 
 /// bn254-only scheme construction from a Mavros R1CS instance.
@@ -22,7 +22,10 @@ pub trait MavrosSchemeBuilder {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self;
+        witness_mode: WitnessCommitmentMode,
+    ) -> anyhow::Result<Self>
+    where
+        Self: Sized;
 }
 
 impl MavrosSchemeBuilder for WhirR1CSScheme<Bn254Field> {
@@ -33,7 +36,10 @@ impl MavrosSchemeBuilder for WhirR1CSScheme<Bn254Field> {
         challenge_offsets: Vec<usize>,
         has_public_inputs: bool,
         hash_config: HashConfig,
-    ) -> Self {
+        witness_mode: WitnessCommitmentMode,
+    ) -> anyhow::Result<Self> {
+        provekit_backend_bn254::register();
+
         let num_witnesses = r1cs.witness_layout.size();
         let num_constraints = r1cs.constraints.len();
         let a_num_entries: usize = r1cs.constraints.iter().map(|c| c.a.len()).sum();
@@ -47,6 +53,7 @@ impl MavrosSchemeBuilder for WhirR1CSScheme<Bn254Field> {
             challenge_offsets,
             has_public_inputs,
             hash_config,
+            witness_mode,
         )
     }
 }
@@ -82,7 +89,9 @@ mod tests {
             vec![],
             false,
             HashConfig::Sha256,
-        );
+            WitnessCommitmentMode::default(),
+        )
+        .expect("scheme from dimensions");
         assert_eq!(from_dimensions.m, expected_m);
         assert_eq!(from_dimensions.m_0, expected_m_0);
         assert_eq!(from_dimensions.w1_size, w1_size);
@@ -95,7 +104,9 @@ mod tests {
             vec![],
             false,
             HashConfig::Sha256,
-        );
+            WitnessCommitmentMode::default(),
+        )
+        .expect("scheme from r1cs");
         assert_eq!(from_r1cs.m, expected_m);
         assert_eq!(from_r1cs.m_0, expected_m_0);
         assert_eq!(from_r1cs.w1_size, w1_size);
@@ -105,17 +116,28 @@ mod tests {
     }
 
     /// Assert both WHIR commitments reach 128-bit security for field `P`.
-
     fn assert_configs_secure<P: FieldHash>(size: usize) {
         let field = std::any::type_name::<P>();
-        let witness = WhirR1CSScheme::<P>::new_witness_config_for_size(size, whir::hash::SHA2);
+        let witness = WhirR1CSScheme::<P>::new_witness_config_for_size(
+            size,
+            whir::hash::SHA2,
+            WitnessCommitmentMode::default(),
+        )
+        .expect("witness config derivation");
         let blinding = WhirR1CSScheme::<P>::new_blinding_config_for_size(size, whir::hash::SHA2);
-        let sec_witness = witness.security_level(witness.initial_committer.num_vectors(), 1);
-        let sec_blinding = blinding.security_level(blinding.initial_committer.num_vectors(), 1);
-        assert!(
-            sec_witness >= 128.0,
-            "Witness commitment security {sec_witness:.2} < 128 bits at size {size} for {field}"
+
+        // zook's `validate` checks the plan against its own `SecuritySpec`.
+        witness.validate().unwrap_or_else(|e| {
+            panic!("Witness commitment fails zook validation at size {size} for {field}: {e:?}")
+        });
+        assert_eq!(
+            witness.security().target_security_bits,
+            128,
+            "Witness commitment target must stay at 128 bits at size {size} for {field}"
         );
+
+        // The blinding commitment is still a plain WHIR config.
+        let sec_blinding = blinding.security_level(blinding.initial_committer.num_vectors(), 1);
         assert!(
             sec_blinding >= 128.0,
             "Blinding commitment security {sec_blinding:.2} < 128 bits at size {size} for {field}"
@@ -145,7 +167,9 @@ mod tests {
             vec![0, 1],
             false,
             HashConfig::Sha256,
-        );
+            WitnessCommitmentMode::default(),
+        )
+        .expect("mavros-sized scheme");
 
         assert_eq!(scheme.m, 19);
     }

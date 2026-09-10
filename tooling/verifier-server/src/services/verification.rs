@@ -10,7 +10,6 @@ use {
         services::artifact::ArtifactPaths,
     },
     provekit_backend_bn254::{Bn254Field, ProvekitProof, Verifier},
-    provekit_gnark::write_gnark_parameters_to_file,
     std::time::Instant,
     tokio_util::sync::CancellationToken,
     tracing::{info, warn},
@@ -35,6 +34,9 @@ impl VerificationService {
     }
 
     /// Perform complete proof verification
+    ///
+    /// Currently always fails: gnark parameters cannot be exported with the
+    /// zook witness commitment (see `Self::prepare_gnark_parameters`).
     pub async fn verify_proof(
         &self,
         request: &VerifyRequest,
@@ -66,43 +68,20 @@ impl VerificationService {
     }
 
     /// Prepare gnark parameters file for verification
+    ///
+    /// The gnark exporter cannot describe zook's `ProtocolConfig`; the Go
+    /// recursive verifier needs a paired update before this can be restored.
     fn prepare_gnark_parameters(
         &self,
-        proof: &ProvekitProof<Bn254Field>,
-        verifier: &Verifier,
-        paths: &ArtifactPaths,
+        _proof: &ProvekitProof<Bn254Field>,
+        _verifier: &Verifier,
+        _paths: &ArtifactPaths,
     ) -> AppResult<()> {
-        info!(
-            gnark_params_file = %paths.gnark_params_file.display(),
-            "Preparing gnark parameters"
-        );
-
-        let gnark_params_path = paths
-            .gnark_params_file
-            .to_str()
-            .ok_or_else(|| AppError::Internal("Invalid gnark params path".to_string()))?;
-
-        let whir_scheme = verifier
-            .whir_for_witness
-            .as_ref()
-            .ok_or_else(|| AppError::Internal("WHIR scheme not found in verifier".to_string()))?;
-
-        write_gnark_parameters_to_file(
-            whir_scheme,
-            &whir_scheme.whir_witness,
-            &whir_scheme.whir_blinding,
-            &proof.whir_r1cs_proof,
-            whir_scheme.m_0,
-            whir_scheme.m,
-            whir_scheme.a_num_terms,
-            whir_scheme.num_challenges,
-            whir_scheme.w1_size,
-            &proof.public_inputs,
-            gnark_params_path,
-        );
-
-        info!("Gnark parameters prepared successfully");
-        Ok(())
+        Err(AppError::Internal(
+            "gnark parameter export is not supported with the zook witness commitment; the Go \
+             recursive verifier needs a paired update"
+                .to_string(),
+        ))
     }
 
     /// Execute the external verifier binary
@@ -181,7 +160,6 @@ impl VerificationService {
                 tokio::select! {
                     _ = token.cancelled() => {
                         info!("Stdout logging task cancelled");
-                        return;
                     }
                     _ = async {
                         while let Ok(Some(line)) = lines.next_line().await {
@@ -206,7 +184,6 @@ impl VerificationService {
                 tokio::select! {
                     _ = token.cancelled() => {
                         warn!("Stderr logging task cancelled");
-                        return;
                     }
                     _ = async {
                         while let Ok(Some(line)) = lines.next_line().await {

@@ -5,7 +5,7 @@ use {
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
     noirc_driver::CompileOptions,
     provekit_backend_bn254::{Prove, Prover, Verifier, Verify},
-    provekit_common::HashConfig,
+    provekit_common::{HashConfig, WitnessCommitmentMode},
     provekit_r1cs_compiler::NoirCompiler,
     serde::Deserialize,
     std::path::{Path, PathBuf},
@@ -82,7 +82,9 @@ fn test_noir_compiler_with_hash_config(
 ) {
     let (circuit_path, witness_file_path) = load_noir_artifact_paths(test_case_path, witness_file);
 
-    let schema = NoirCompiler::from_file(&circuit_path, hash_config).expect("Reading proof scheme");
+    let schema =
+        NoirCompiler::from_file(&circuit_path, hash_config, WitnessCommitmentMode::default())
+            .expect("Reading proof scheme");
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
@@ -262,8 +264,12 @@ fn test_public_input_binding_exploit() {
 
     let (circuit_path, witness_file_path) = load_noir_artifact_paths(test_case_path, "Prover.toml");
 
-    let schema = NoirCompiler::from_file(&circuit_path, HashConfig::default())
-        .expect("Reading proof scheme");
+    let schema = NoirCompiler::from_file(
+        &circuit_path,
+        HashConfig::default(),
+        WitnessCommitmentMode::default(),
+    )
+    .expect("Reading proof scheme");
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
@@ -312,10 +318,18 @@ fn test_verifier_rejects_mismatched_hash_config() {
     let test_case_path = Path::new("../../noir-examples/basic-4");
     let (circuit_path, witness_file_path) = load_noir_artifact_paths(test_case_path, "Prover.toml");
 
-    let prover_schema =
-        NoirCompiler::from_file(&circuit_path, HashConfig::Sha256).expect("Reading prover schema");
-    let verifier_schema = NoirCompiler::from_file(&circuit_path, HashConfig::Keccak)
-        .expect("Reading verifier schema");
+    let prover_schema = NoirCompiler::from_file(
+        &circuit_path,
+        HashConfig::Sha256,
+        WitnessCommitmentMode::default(),
+    )
+    .expect("Reading prover schema");
+    let verifier_schema = NoirCompiler::from_file(
+        &circuit_path,
+        HashConfig::Keccak,
+        WitnessCommitmentMode::default(),
+    )
+    .expect("Reading verifier schema");
 
     let prover = Prover::from_noir_proof_scheme(prover_schema.clone());
     let mut matching_verifier = Verifier::from_noir_proof_scheme(prover_schema);

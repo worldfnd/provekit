@@ -186,6 +186,12 @@ pub fn make_public_weight<F: Field>(x: F, num_public_inputs: usize, m: usize) ->
     PrefixCovector::new(public_weights, domain_size)
 }
 
+/// Collect `&dyn LinearForm` references to a slice of covectors.
+#[must_use]
+pub fn linear_form_refs<F: Field, W: LinearForm<F>>(weights: &[W]) -> Vec<&dyn LinearForm<F>> {
+    weights.iter().map(|w| w as &dyn LinearForm<F>).collect()
+}
+
 /// Build [`PrefixCovector`] weights from alpha vectors, consuming the alphas.
 ///
 /// Each alpha vector is padded to a power-of-two length (min 2) and wrapped

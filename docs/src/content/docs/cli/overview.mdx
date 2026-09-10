@@ -89,6 +89,7 @@ provekit-cli prepare [program_path] [options]
 | `--pkp`, `-p <path>` | Output prover key path. Defaults to `<circuit>.pkp`. |
 | `--pkv`, `-v <path>` | Output verifier key path. Defaults to `<circuit>.pkv`. |
 | `--hash <name>` | Merkle commitment hash: `skyscraper`, `sha256`, `keccak`, `blake3`, or `poseidon2`. Defaults to `skyscraper`. |
+| `--witness-mode <mode>` | Witness commitment mode: `zk` (hiding) or `standard` (non-hiding, smaller proofs). Recorded in the keys; `prove` and `verify` follow it. Defaults to `zk`. |
 
 `--pkp` and `--pkv` cannot be used when compiling multiple binary packages.
 

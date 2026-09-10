@@ -1,11 +1,14 @@
 use {
     anyhow::{ensure, Context, Result},
     ark_ff::Field,
-    ark_std::One,
+    ark_std::{
+        rand::distributions::{Distribution, Standard},
+        One,
+    },
     provekit_common::{
         prefix_covector::{
-            build_prefix_covectors, expand_powers, make_challenge_weight, make_public_weight,
-            OffsetCovector,
+            build_prefix_covectors, expand_powers, linear_form_refs, make_challenge_weight,
+            make_public_weight, OffsetCovector,
         },
         utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
@@ -36,7 +39,10 @@ pub trait WhirR1CSVerifier<P: ProofField> {
     ) -> Result<()>;
 }
 
-impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
+impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P>
+where
+    Standard: Distribution<Ext<P>>,
+{
     #[instrument(skip_all)]
     fn verify(
         &self,
@@ -184,30 +190,24 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
                 None
             };
 
-            let weight_refs_1: Vec<&dyn LinearForm<Ext<P>>> = weights_1
-                .iter()
-                .map(|w| w as &dyn LinearForm<Ext<P>>)
-                .collect();
+            let weight_refs_1 = linear_form_refs(&weights_1);
 
             let fc_1 = self
                 .whir_witness
-                .verify(&mut arthur, &[&commitment_1], &evaluations_1)
+                .verify(&mut arthur, commitment_1, &weight_refs_1, &evaluations_1)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
-            fc_1.verify(weight_refs_1.iter().copied())
+            fc_1.verify(&weight_refs_1)
                 .map_err(|_| anyhow::anyhow!("WHIR final-claim check failed for c1"))?;
 
-            let mut weight_refs_2: Vec<&dyn LinearForm<Ext<P>>> = weights_2
-                .iter()
-                .map(|w| w as &dyn LinearForm<Ext<P>>)
-                .collect();
+            let mut weight_refs_2 = linear_form_refs(&weights_2);
             if let Some(ref cw) = challenge_covector {
                 weight_refs_2.push(cw as &dyn LinearForm<Ext<P>>);
             }
             let fc_2 = self
                 .whir_witness
-                .verify(&mut arthur, &[&commitment_2], &evaluations_2)
+                .verify(&mut arthur, commitment_2, &weight_refs_2, &evaluations_2)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed for c2"))?;
-            fc_2.verify(weight_refs_2.iter().copied())
+            fc_2.verify(&weight_refs_2)
                 .map_err(|_| anyhow::anyhow!("WHIR final-claim check failed for c2"))?;
 
             (
@@ -241,16 +241,13 @@ impl<P: FieldHash> WhirR1CSVerifier<P> for WhirR1CSScheme<P> {
                 evals.to_vec()
             };
 
-            let weight_refs: Vec<&dyn LinearForm<Ext<P>>> = weights
-                .iter()
-                .map(|w| w as &dyn LinearForm<Ext<P>>)
-                .collect();
+            let weight_refs = linear_form_refs(&weights);
 
             let fc = self
                 .whir_witness
-                .verify(&mut arthur, &[&commitment_1], &evaluations)
+                .verify(&mut arthur, commitment_1, &weight_refs, &evaluations)
                 .map_err(|_| anyhow::anyhow!("WHIR verification failed"))?;
-            fc.verify(weight_refs.iter().copied())
+            fc.verify(&weight_refs)
                 .map_err(|_| anyhow::anyhow!("WHIR final-claim check failed"))?;
 
             (evals[0], evals[1], evals[2])

@@ -144,7 +144,9 @@ reqwest = "0.12.23"
 ruint = { version = "1.12.3", features = ["num-traits", "rand"] }
 seq-macro = "0.3.6"
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# `float_roundtrip`: zook configs carry f64s; the default fast parser is off
+# by one ULP on read-back, breaking scheme JSON roundtrips.
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
 # Pinned: blake3 1.8.4+ depends on digest 0.11, but the `whir` crate's
 # blake3 engine is built against digest 0.10. Bumping breaks compilation.
 blake3 = "=1.8.3"
@@ -212,4 +214,4 @@ spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
   "sha2",
 ], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { git = "https://github.com/worldfnd/whir.git", rev = "8804e80e8e890d01bb585f2bd5e5b564ac0fd80d", features = ["tracing", "rs_in_order"] }
+whir = { git = "https://github.com/worldfnd/whir.git", rev = "78e9460420da0954768feb1e52f581a0529c2124", features = ["tracing", "rs_in_order"] }

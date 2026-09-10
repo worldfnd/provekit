@@ -79,17 +79,19 @@ impl NoirCompiler {
     pub fn from_file(
         path: impl AsRef<Path> + std::fmt::Debug,
         hash_config: provekit_common::HashConfig,
+        witness_mode: provekit_common::WitnessCommitmentMode,
     ) -> Result<NoirProofScheme> {
         let file = File::open(path).context("while opening Noir program")?;
         let program = serde_json::from_reader(file).context("while reading Noir program")?;
 
-        Self::from_program(program, hash_config)
+        Self::from_program(program, hash_config, witness_mode)
     }
 
     #[instrument(skip_all)]
     pub fn from_program(
         program: ProgramArtifact,
         hash_config: provekit_common::HashConfig,
+        witness_mode: provekit_common::WitnessCommitmentMode,
     ) -> Result<NoirProofScheme> {
         provekit_backend_bn254::register();
 
@@ -165,7 +167,8 @@ impl NoirCompiler {
             challenge_offsets,
             has_public_inputs,
             hash_config,
-        );
+            witness_mode,
+        )?;
 
         Ok(NoirProofScheme::Noir(NoirSchemeData {
             program: program.bytecode,
@@ -192,6 +195,7 @@ impl MavrosCompiler {
         basic_path: impl AsRef<Path> + std::fmt::Debug,
         r1cs_path: impl AsRef<Path> + std::fmt::Debug,
         hash_config: provekit_common::HashConfig,
+        witness_mode: provekit_common::WitnessCommitmentMode,
     ) -> Result<NoirProofScheme> {
         info!("Reading basic artifacts from {:?}", basic_path);
         let basic_file = File::open(&basic_path).context("while opening basic artifacts")?;
@@ -237,7 +241,8 @@ impl MavrosCompiler {
             challenge_offsets,
             num_public_inputs > 0,
             hash_config,
-        );
+            witness_mode,
+        )?;
         whir_for_witness.r1cs_hash = r1cs.hash();
 
         Ok(NoirProofScheme::Mavros(MavrosSchemeData {
@@ -283,8 +288,12 @@ mod tests {
     #[test]
     fn test_noir_proof_scheme_serde() {
         let path = PathBuf::from("../../tooling/provekit-bench/benches/poseidon_rounds.json");
-        let proof_scheme =
-            NoirCompiler::from_file(path, provekit_common::HashConfig::default()).unwrap();
+        let proof_scheme = NoirCompiler::from_file(
+            path,
+            provekit_common::HashConfig::default(),
+            provekit_common::WitnessCommitmentMode::default(),
+        )
+        .unwrap();
 
         if let NoirProofScheme::Noir(d) = &proof_scheme {
             test_serde(&d.r1cs);

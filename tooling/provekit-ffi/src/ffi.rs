@@ -11,7 +11,7 @@ use {
     },
     noirc_abi::input_parser::Format,
     provekit_backend_bn254::{Bn254Field, Prove, ProvekitProof, Prover, Verifier, Verify},
-    provekit_common::{file, HashConfig},
+    provekit_common::{file, HashConfig, WitnessCommitmentMode},
     provekit_r1cs_compiler::NoirCompiler,
     std::{
         cell::RefCell,
@@ -191,7 +191,12 @@ pub unsafe extern "C" fn pk_prepare(
                     PKStatus::InvalidInput
                 })?;
 
-            let scheme = NoirCompiler::from_file(Path::new(&circuit_path), hash).map_err(|e| {
+            let scheme = NoirCompiler::from_file(
+                Path::new(&circuit_path),
+                hash,
+                WitnessCommitmentMode::default(),
+            )
+            .map_err(|e| {
                 set_last_error(format!("{e:#}"));
                 PKStatus::CompilationError
             })?;
