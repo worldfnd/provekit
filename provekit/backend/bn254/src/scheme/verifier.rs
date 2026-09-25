@@ -1,7 +1,7 @@
 use {
     crate::{spark::SparkSetup, Bn254Field, FieldElement, NoirProofScheme},
     noirc_abi::Abi,
-    provekit_common::{utils::serde_jsonify, HashConfig, WhirR1CSScheme, R1CS},
+    provekit_common::{utils::serde_cborify, HashConfig, WhirR1CSScheme, R1CS},
     serde::{Deserialize, Serialize},
 };
 
@@ -18,7 +18,7 @@ pub struct Verifier {
     pub r1cs:             R1CS<FieldElement>,
     pub whir_for_witness: Option<WhirR1CSScheme<Bn254Field>>,
     pub spark_setup:      Option<SparkSetup>,
-    #[serde(with = "serde_jsonify")]
+    #[serde(with = "serde_cborify")]
     pub abi:              Abi,
 }
 
