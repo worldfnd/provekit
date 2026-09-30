@@ -13,7 +13,7 @@ By the end you'll understand the full ProveKit loop and be ready to apply it to 
 
 ## What you'll build
 
-A circuit that proves *"I know two field elements whose Poseidon2 hash equals this public commitment"*, and a Rust program that loads the resulting proof, verifies it, and prints the public commitment.
+A circuit that proves *"I know two field elements whose Poseidon2 hash equals this public commitment"*, and a Rust program that loads the resulting proof and reports whether verification succeeds.
 
 In a real application the "two field elements" might be the components of a private identity key; the "public commitment" is the hash that gets stored on-chain or in a server. Verification proves the prover holds the secret without revealing it.
 
@@ -102,7 +102,7 @@ cargo run --release --bin provekit-cli -- prepare
 </Steps>
 
 <Aside type="tip" title="What just happened">
-The CLI exercised the whole pipeline: compiled your Noir source through ACIR into R1CS, wrote prover and verifier keys, generated a WHIR proof from your inputs, then verified that proof against the verifier key. The same artifacts (`.pkp`, `.pkv`, `proof.np`) work in every other integration, what we'll demonstrate next.
+The CLI exercised the whole pipeline: compiled your Noir source through ACIR into R1CS, wrote prover and verifier keys, generated a WHIR proof from your inputs, then verified that proof against the verifier key. The next step uses the matching verifier key and proof with the published v1.0.2 Rust crates.
 </Aside>
 
 ## Step 4: verify from your own Rust program
