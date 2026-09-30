@@ -10,7 +10,7 @@ Use this glossary when reading ProveKit docs, debugging artifacts, or writing in
 | Term | Meaning |
 | :--- | :--- |
 | <span id="acir">**ACIR**</span> | Abstract Circuit Intermediate Representation emitted by Noir before backend-specific lowering. |
-| <span id="artifact-provenance">**Artifact provenance**</span> | The branch, commit, toolchain, lockfile, command line, feature flags, hash choice, and checksum record for a generated file. |
+| <span id="artifact-provenance">**Artifact provenance**</span> | The release tag, commit, toolchain, lockfile, command line, feature flags, and checksum record for a generated file. |
 | <span id="bn254">**BN254**</span> | Elliptic curve whose scalar field is used for ProveKit's field arithmetic. Well-supported on EVM chains, making it a natural fit for the Groth16 recursive wrap. |
 | <span id="circuit">**Circuit**</span> | The constrained computation being proven. In the default flow it is authored as a Noir package. |
 
@@ -19,7 +19,6 @@ Use this glossary when reading ProveKit docs, debugging artifacts, or writing in
 | Term | Meaning |
 | :--- | :--- |
 | <span id="ffi">**FFI**</span> | Foreign Function Interface. ProveKit exposes a C ABI for mobile and native hosts that cannot link Rust directly. |
-| <span id="hash-choice">**Hash choice**</span> | The Merkle commitment hash selected by `prepare --hash`: `skyscraper`, `sha256`, `keccak`, `blake3`, or `poseidon2`. |
 | <span id="noir">**Noir**</span> | Circuit language used by ProveKit's primary authoring flow. |
 | <span id="pkp">**PKP**</span> | ProveKit prover key file (`.pkp`), produced by `prepare`, consumed by provers. |
 | <span id="pkv">**PKV**</span> | ProveKit verifier key file (`.pkv`), produced by `prepare`, consumed by verifiers. |

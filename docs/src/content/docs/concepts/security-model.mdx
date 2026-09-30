@@ -8,14 +8,14 @@ import { Aside } from '@astrojs/starlight/components';
 This page documents integration-level security expectations. It supplements but does not replace ProveKit's audit, the formal proof-system specification, or your own production-readiness review; use it to decide where artifacts live, who may generate them, and which checks must run before accepting a proof.
 
 <Aside type="caution" title="Pin v1 for production">
-The `v1` branch is the current stable, audited release. The `main` branch is the rolling-development line and may change proof, key, or recursive-verifier formats between commits. Pin a release tag or the `v1` branch for any user-facing workflow, and walk through the [production checklist](/reference/production-checklist/) before shipping.
+The `v1.0.2` tag is the release used throughout these guides. The `main` branch is the rolling-development line and may change proof, key, or recursive-verifier formats between commits. Pin the release tag for a user-facing workflow, and walk through the [production checklist](/reference/production-checklist/) before shipping.
 </Aside>
 
 ## Trust boundaries
 
 | Boundary | What crosses it | Required control |
 | :--- | :--- | :--- |
-| Circuit authoring → key preparation | Noir source, hash choice | Code review, pinned commit, reproducible command line. |
+| Circuit authoring → key preparation | Noir source, release tag | Code review, pinned commit, reproducible command line. |
 | Key preparation → prover runtime | `.pkp` | Access control, integrity checks, recorded provenance. |
 | Prover runtime → verifier runtime | `proof.np` / proof JSON and public inputs | Verification with the matching `.pkv`; public-input review. |
 | Verifier runtime → application decision | Boolean validity plus decoded public inputs | Application-level authorization and policy checks. |
@@ -46,5 +46,5 @@ If post-quantum security is part of your threat model, scope on-chain settlement
 For the broader pre-launch checklist, see [Production checklist](/reference/production-checklist/). The ProveKit-specific items:
 
 - Use `provekit-cli show-inputs --hex` for byte-exact comparison of public inputs before accepting a proof.
-- Pin artifacts to a specific commit or release tag, and reject proofs whose `.pkv` / `r1cs.json` / hash configuration mismatches the expected build.
+- Pin artifacts to a specific commit or release tag, and reject proofs whose `.pkv` or `r1cs.json` mismatches the expected build.
 - In the verifier server, restrict `pkvUrl` / `r1csUrl` to trusted sources (or proxy downloads through trusted storage) and tune the `VERIFIER_*` concurrency and timeout limits for your traffic profile.

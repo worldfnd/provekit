@@ -7,8 +7,8 @@ Use this checklist before shipping a workflow backed by ProveKit. It is intentio
 
 ## 1. Pin the implementation
 
-- Use `v1` for the current stable interface; use `main` only for early-adopter work, with a migration or rollback plan.
-- Record the git commit, lockfile, toolchain, exact CLI commands, and the `prepare --hash` value used to generate every artifact set.
+- Use the `v1.0.2` tag for the current documented interface; use `main` only for early-adopter work, with a migration or rollback plan.
+- Record the git commit, lockfile, toolchain, and exact CLI commands used to generate every artifact set.
 
 ## 2. Control and handle artifacts
 
@@ -16,16 +16,16 @@ For every generated artifact, record the provenance below:
 
 | Artifact | Required provenance |
 | :--- | :--- |
-| `.pkp` | Circuit source, hash, commit, generating command. |
+| `.pkp` | Circuit source, release, commit, generating command. |
 | `.pkv` | Same generation record as the matching `.pkp`. |
 | `proof.np` or JSON proof | Matching `.pkp`, input file, public inputs, commit. |
-| `params_for_recursive_verifier` | Matching `.pkv` and proof. |
-| `r1cs.json` | Matching `.pkv` and recursive-verifier export command. |
+| `params_for_recursive_verifier` | Matching `.pkp` and proof. |
+| `r1cs.json` | Matching `.pkp` and recursive-verifier export command. |
 | Groth16 `pk` / `vk` | Setup ceremony or development-only generation record. |
 
 Handling rules:
 
-- Do not mix artifacts generated from different branches, commits, hash choices, circuits, or verifier/proof pairs.
+- Do not mix artifacts generated from different releases, commits, circuits, or verifier/proof pairs.
 - Treat public input encoding as an API contract; review `show-inputs --hex` output as part of release sign-off.
 - Keep private witness values and prover keys out of logs unless explicitly approved.
 
@@ -55,7 +55,7 @@ If recursive verification is part of the product, add the export step and verify
 
 ```sh
 cargo run --release --bin provekit-cli -- generate-gnark-inputs \
-  artifacts/app.pkv \
+  artifacts/app.pkp \
   artifacts/proof.np \
   --params artifacts/params_for_recursive_verifier \
   --r1cs artifacts/r1cs.json
@@ -66,7 +66,7 @@ cargo run --release --bin provekit-cli -- generate-gnark-inputs \
 ### Rust services
 
 - Reload or clone verifier state when verifying multiple proofs in one process.
-- Expose the `--hash` choice in configuration so the proving and verifying hosts stay aligned.
+- Keep the prover and verifier on the same release as the artifact set.
 - Add regression tests that confirm mismatched key/proof pairs are rejected.
 
 ### WASM / JavaScript
@@ -93,7 +93,7 @@ cargo run --release --bin provekit-cli -- generate-gnark-inputs \
 ### Recursive verifier
 
 - Generate the Groth16 trusted-setup proving and verifying keys with a production-grade ceremony, not the development helper.
-- Re-run the recursive export after changing the proof, verifier key, branch, circuit, or hash configuration.
+- Re-run the recursive export after changing the proof, prover key, release, or circuit.
 
 ## 5. Red flags
 

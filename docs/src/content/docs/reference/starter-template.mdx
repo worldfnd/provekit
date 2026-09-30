@@ -26,8 +26,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-provekit-common   = "1.0.0"
-provekit-verifier = "1.0.0"
+provekit-common   = "=1.0.2"
+provekit-verifier = "=1.0.2"
 axum              = "0.7"      # or actix, tonic, etc.
 serde             = { version = "1", features = ["derive"] }
 tokio             = { version = "1", features = ["full"] }
@@ -40,19 +40,7 @@ anyhow            = "1"
 
 Use this when the user's device holds the secret and proves on-device, the canonical privacy-preserving pattern.
 
-**Skeleton:**
-
-```ts title="package.json (dependencies)"
-{
-  "dependencies": {
-    "@atheonxyz/verity": "^0.3.2",
-    "@noir-lang/noir_js": "^0.x",
-    "@noir-lang/acvm_js": "^0.x"
-  }
-}
-```
-
-**Implementation guide:** [JS / TypeScript end-to-end](/e2e/js-typescript/). Notes:
+The previous Verity package skeleton did not pin a v1.0.2-compatible Noir witness generator. See [JS / TypeScript compatibility](/e2e/js-typescript/) before building this path. General hosting notes:
 
 - For Next.js, place WASM artifacts under `public/` and configure headers for `SharedArrayBuffer` (`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`).
 - For Vite, copy WASM artifacts via `assetsInclude` or a plugin and serve with the same headers.
@@ -63,8 +51,8 @@ Use this when the user is on iOS or Android and the secret never leaves their de
 
 | Platform | Starting point |
 | :--- | :--- |
-| iOS | [Swift end-to-end](/e2e/swift/), SPM package, three build modes. macOS is not supported. |
-| Android | [Kotlin end-to-end](/e2e/kotlin/), AAR + JNI, ABI packaging guidance. |
+| iOS | [Swift compatibility](/e2e/swift/), native FFI and SDK release checks. |
+| Android | [Kotlin compatibility](/e2e/kotlin/), native FFI and SDK release checks. |
 
 Plan ahead for memory configuration (`pk_configure_memory` / `Verity.configureMemory`) before backend initialization, mobile circuits routinely require file-backed mmap.
 
@@ -87,7 +75,7 @@ Use when the verification result needs to settle on-chain.
 ```sh
 # 1. Produce the recursive-verifier inputs.
 cargo run --release --bin provekit-cli -- generate-gnark-inputs \
-  circuit.pkv proof.np \
+  circuit.pkp proof.np \
   --params recursive/params --r1cs recursive/r1cs.json
 
 # 2. Run the Go/gnark wrapper.

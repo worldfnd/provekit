@@ -21,8 +21,8 @@ This writes:
 
 | File | Created by | Consumed by |
 | :--- | :--- | :--- |
-| `basic.pkp` | `prepare` | `prove` |
-| `basic.pkv` | `prepare` | `verify`, `show-inputs`, `generate-gnark-inputs` |
+| `basic.pkp` | `prepare` | `prove`, `generate-gnark-inputs` |
+| `basic.pkv` | `prepare` | `verify`, `show-inputs` |
 | `proof.np` | `prove` | `verify`, `show-inputs`, `generate-gnark-inputs` |
 | `target/basic.json` | Noir compilation during `prepare` | ProveKit internals and inspection workflows |
 
@@ -62,19 +62,9 @@ This writes:
    ```
 </Steps>
 
-## Hash choice
+## Release compatibility
 
-`prepare` defaults to `skyscraper`. The CLI also accepts `sha256`, `keccak`, `blake3`, and `poseidon2` via `--hash`:
-
-```sh
-cargo run --release --bin provekit-cli -- prepare . --hash blake3
-```
-
-The hash is part of the artifact's identity. Regenerate the prover key, verifier key, and every proof after changing it.
-
-<Aside type="caution" title="Record the hash choice">
-Include the `--hash` value in release notes, CI logs, checksums, and any manifest that ships with `.pkp`, `.pkv`, proof, or recursive-verifier files.
-</Aside>
+Generate the prover key, verifier key, proof, and recursive-verifier exports with the same v1.0.2 release. The v1.0.2 CLI has no `prepare --hash` option. If you change the release or circuit, regenerate the entire artifact set.
 
 ## Inspect public inputs
 
@@ -82,7 +72,7 @@ Decode public inputs as part of integration testing:
 
 ```sh
 cargo run --release --bin provekit-cli -- show-inputs --hex \
-  ./artifacts/basic.pkv \
+  ./artifacts/basic.pkp \
   ./artifacts/proof.np
 ```
 
@@ -100,7 +90,7 @@ cargo run --release --bin provekit-cli -- generate-gnark-inputs \
   --r1cs ./artifacts/r1cs.json
 ```
 
-The command reads the verifier key and proof, then writes the recursive parameters and an R1CS JSON. Keep those outputs paired with the exact `basic.pkv` and `proof.np` that produced them.
+The command reads the prover key and proof, then writes the recursive parameters and an R1CS JSON. Keep those outputs paired with the exact `basic.pkp` and `proof.np` that produced them.
 
 ## CI evidence template
 
@@ -111,7 +101,6 @@ commit:          <git sha>
 rust-toolchain:  <contents of rust-toolchain.toml>
 lockfile:        Cargo.lock
 compiler:        noir
-prepare_hash:    skyscraper
 commands:
   - cargo run --release --bin provekit-cli -- prepare ...
   - cargo run --release --bin provekit-cli -- prove ...

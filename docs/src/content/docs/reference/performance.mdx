@@ -8,7 +8,7 @@ import { Aside } from '@astrojs/starlight/components';
 Proving time depends almost entirely on circuit shape. This page tells you how to measure your circuit honestly, what dimensions matter, and where the benchmark suite lives.
 
 <Aside type="note" title="Why we don't publish a headline number">
-A single "ProveKit proves in X ms" number would be misleading. Proving time scales with R1CS constraint count, hash choice, witness layout, host platform, and SIMD availability. The right move is to measure your circuit on your target host, this page shows you how.
+A single "ProveKit proves in X ms" number would be misleading. Proving time scales with R1CS constraint count, witness layout, host platform, and SIMD availability. Measure your circuit on your target host using the v1.0.2 release.
 </Aside>
 
 ## What drives performance
@@ -16,7 +16,6 @@ A single "ProveKit proves in X ms" number would be misleading. Proving time scal
 | Dimension | Effect |
 | :--- | :--- |
 | **Witness count** | The dominant scaling factor for proving time. The witness vector is what gets committed via Merkle tree, and the prover's main work (witness solve, commitment, sumcheck) is over the witness space. R1CS constraint count grows alongside witness count for most circuits but doesn't drive proving time directly. |
-| **Merkle commitment hash** (`--hash`) | Sets the hash used for WHIR's Merkle commitments. `sha256` and `blake3` are the fastest in proving thanks to hardware acceleration. `skyscraper` is the default because it's BN254-friendly: slower to prove natively, but dramatically cheaper inside the Groth16 recursive wrap. `keccak` and `poseidon2` are also available for specific interop scenarios. |
 | **Witness layer count** | Witness builders execute in layers (see [Proving flow](/concepts/proving-flow/)). Deep layer graphs add coordination overhead. |
 | **CPU architecture** | `aarch64` benefits from SIMD-accelerated BN254 arithmetic in `skyscraper/core`. x86_64 falls back to portable arithmetic. |
 | **Parallelism** | Proving uses [Rayon](https://github.com/rayon-rs/rayon). More cores help up to the parallelism inherent in the circuit. WASM threading depends on `SharedArrayBuffer`. |
@@ -55,26 +54,16 @@ Use `circuit-stats` to confirm witness and constraint counts match your expectat
 
 ## The ProveKit benchmark suite
 
-`noir-examples/csp-benchmarks/` contains the [Ethproofs CSP benchmarks](https://ethproofs.org/csp-benchmarks), a standardized suite of client-side proving targets used to compare proof systems on common workloads.
-
-| Target | Circuit sizes | Implementation note |
-| :--- | :--- | :--- |
-| **SHA-256** | 128, 256, 512, 1024, 2048 bytes | Uses `noir-lang/sha256::sha256_var`, lowering compression through Noir's SHA-256 blackbox. |
-| **Keccak-256** | 128, 256, 512, 1024, 2048 bytes | Native Noir Keccak circuit with a witness-focused u32 lane representation. |
-| **Poseidon** | 2, 4, 8, 12, 16 field elements | `noir-lang/poseidon` BN254 native Noir helpers. |
-| **Poseidon2** | 2, 4, 8, 12, 16 field elements | `TaceoLabs/noir-poseidon` for states 2, 8, 12, 16; state 4 intentionally exercises Noir's Poseidon2 blackbox. |
-| **ECDSA** | secp256r1 over a 32-byte digest | `zkpassport/noir-ecdsa` native P-256 verification (P-256 blackbox is not yet lowered by ProveKit). |
-
-To run any benchmark target:
+The v1.0.2 tag includes `tooling/provekit-bench/` and `noir-examples/poseidon-rounds/`. The latter completed `prepare`, `prove`, and `verify` during this documentation check. To measure its proof flow on your host:
 
 ```sh
-cd noir-examples/csp-benchmarks/sha256_512
+cd noir-examples/poseidon-rounds
 cargo run --release --bin provekit-cli -- prepare
 cargo run --release --bin provekit-cli -- prove
 cargo run --release --bin provekit-cli -- verify
 ```
 
-Combine that with the CLI's timing output (or the `provekit-bench` harness) to capture proving time, verification time, and memory for each target on your machine.
+Use the CLI's timing output or the `provekit-bench` harness for repeated measurements. The `noir-examples/csp-benchmarks/` directory is not part of the v1.0.2 tag.
 
 ## What to expect across hosts
 
@@ -100,9 +89,8 @@ Measure both costs separately when benchmarking on-chain end-to-end latency.
 If proving is slower than you need:
 
 1. **Run `circuit-stats`.** Confirm witness and constraint counts match expectations. Unexpected blowups in witness count are the strongest signal of accidentally-quadratic constraint generation.
-2. **Pick `--hash` for your settlement path.** `skyscraper` (default) is optimal when you're wrapping the proof with Groth16 for on-chain verification. If you only verify off-chain, `sha256` or `blake3` will prove faster thanks to hardware acceleration.
-3. **Audit black-box vs native lowerings.** Some Noir black boxes (SHA-256, Keccak) are heavier in ProveKit than their native R1CS implementations. The CSP benchmarks call this out explicitly.
-4. **Profile with Tracy.** Run `cargo run --release --features tracy --bin provekit-cli -- --tracy prove` and inspect span timings. Look for layers that dominate the witness solve.
+2. **Audit black-box vs native lowerings.** Some Noir black boxes (SHA-256, Keccak) are heavier in ProveKit than their native R1CS implementations. The CSP benchmarks call this out explicitly.
+3. **Profile with Tracy.** Run `cargo run --release --features tracy --bin provekit-cli -- --tracy prove` and inspect span timings. Look for layers that dominate the witness solve.
 
 ## Related pages
 
