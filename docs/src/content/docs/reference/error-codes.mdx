@@ -7,7 +7,7 @@ import { Aside } from '@astrojs/starlight/components';
 
 The ProveKit C FFI (`tooling/provekit-ffi/`) returns a `PKError` code on every function call. `PK_SUCCESS` (0) means success; any other value indicates failure. Hosts (Swift, Kotlin, Python, custom C/C++) should branch on the numeric code in production paths.
 
-The codes below are mirrored from [`provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/main/tooling/provekit-ffi/include/provekit_ffi.h).
+The codes below are mirrored from [`provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/v1.0.2/tooling/provekit-ffi/include/provekit_ffi.h).
 
 ## Error code reference
 
@@ -23,7 +23,7 @@ The codes below are mirrored from [`provekit_ffi.h`](https://github.com/worldfnd
 | 7 | `PK_FILE_WRITE_ERROR` | Failed to write an output file. | Check the output directory exists, is writable, and has free space. |
 
 <Aside type="note" title="No verify error code today">
-There is no dedicated verification error code in the current FFI surface. Verification is performed inside Rust callers of the FFI's proof outputs; verification failures surface through whichever host code wraps `Verifier::verify()`. Track [`tooling/provekit-ffi/include/provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/main/tooling/provekit-ffi/include/provekit_ffi.h) for changes, new codes may be added as the FFI surface expands.
+There is no dedicated verification error code in the current FFI surface. Verification is performed inside Rust callers of the FFI's proof outputs; verification failures surface through whichever host code wraps `Verifier::verify()`. Track [`tooling/provekit-ffi/include/provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/v1.0.2/tooling/provekit-ffi/include/provekit_ffi.h) for changes, new codes may be added as the FFI surface expands.
 </Aside>
 
 ## Functions that return error codes
@@ -38,7 +38,7 @@ Every FFI entry point that performs work returns a `PKError` (as `int`):
 | `pk_configure_memory` | Configure the mmap allocator. **Must be called before `pk_init`.** | `PK_SUCCESS` or `PK_INVALID_INPUT` |
 | `pk_get_memory_stats` | Read RAM, swap, and peak memory statistics. | `PK_SUCCESS` |
 
-`pk_free_buf` and `pk_set_allocator` return `void`. For exact signatures, see [`provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/main/tooling/provekit-ffi/include/provekit_ffi.h).
+`pk_free_buf` and `pk_set_allocator` return `void`. For exact signatures, see [`provekit_ffi.h`](https://github.com/worldfnd/provekit/blob/v1.0.2/tooling/provekit-ffi/include/provekit_ffi.h).
 
 ## Recovery patterns
 

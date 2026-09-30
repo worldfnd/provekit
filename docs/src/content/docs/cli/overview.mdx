@@ -7,7 +7,7 @@ Two equivalent ways to invoke the CLI:
 
 ```sh
 # Installed binary
-cargo install provekit-cli
+cargo install provekit-cli --version 1.0.2 --locked
 provekit-cli <command> [options]
 
 # From a source checkout
@@ -27,8 +27,8 @@ Unfamiliar terms? See the [glossary](/reference/glossary/).
 
 | Artifact | Default path | Produced by | Consumed by |
 | :--- | :--- | :--- | :--- |
-| Prover key | `<circuit>.pkp` | `prepare` | `prove`, `analyze-pkp`, FFI/WASM provers |
-| Verifier key | `<circuit>.pkv` | `prepare` | `verify`, `show-inputs`, `generate-gnark-inputs`, verifier server |
+| Prover key | `<circuit>.pkp` | `prepare` | `prove`, `analyze-pkp`, `generate-gnark-inputs`, FFI/WASM provers |
+| Verifier key | `<circuit>.pkv` | `prepare` | `verify`, `show-inputs`, verifier server |
 | Proof | `./proof.np` | `prove` | `verify`, `show-inputs`, `generate-gnark-inputs` |
 | Noir inputs | `./Prover.toml` | User / Noir tooling | `prove` |
 | Recursive params | `./params_for_recursive_verifier` | `generate-gnark-inputs` | Go/gnark recursive verifier |
@@ -51,8 +51,7 @@ The same workflow with explicit paths:
 cargo run --release --bin provekit-cli -- prepare \
   . \
   --pkp artifacts/basic.pkp \
-  --pkv artifacts/basic.pkv \
-  --hash skyscraper
+  --pkv artifacts/basic.pkv
 
 cargo run --release --bin provekit-cli -- prove \
   --prover artifacts/basic.pkp \
@@ -64,7 +63,7 @@ cargo run --release --bin provekit-cli -- verify \
   --proof artifacts/proof.np
 ```
 
-Keep the `.pkp`, `.pkv`, proof, inputs, circuit source, and `--hash` choice aligned. Regenerate artifacts after any change to the circuit, inputs, branch, or hash.
+Keep the `.pkp`, `.pkv`, proof, inputs, and circuit source aligned with the v1.0.2 release. Regenerate artifacts after any change to the circuit, inputs, or release.
 
 ## `prepare`
 
@@ -88,8 +87,6 @@ provekit-cli prepare [program_path] [options]
 | `--force` | Force recompilation, ignoring cached artifacts. |
 | `--pkp`, `-p <path>` | Output prover key path. Defaults to `<circuit>.pkp`. |
 | `--pkv`, `-v <path>` | Output verifier key path. Defaults to `<circuit>.pkv`. |
-| `--hash <name>` | Merkle commitment hash: `skyscraper`, `sha256`, `keccak`, `blake3`, or `poseidon2`. Defaults to `skyscraper`. |
-| `--witness-mode <mode>` | Witness commitment mode: `zk` (hiding) or `standard` (non-hiding, smaller proofs). Recorded in the keys; `prove` and `verify` follow it. Defaults to `zk`. |
 
 `--pkp` and `--pkv` cannot be used when compiling multiple binary packages.
 
@@ -122,7 +119,7 @@ provekit-cli verify [options]
 | `--verifier`, `-v <path>` | Verifier key path. Defaults to `<circuit>.pkv`. |
 | `--proof <path>` | Proof path. Defaults to `./proof.np`. |
 
-A verification failure usually means the proof, verifier key, public inputs, circuit, branch, or hash configuration don't match. Regenerate from `prepare` when any of those inputs change.
+A verification failure usually means the proof, verifier key, public inputs, circuit, or release don't match. Regenerate from `prepare` when any of those inputs change.
 
 ## Inspection and export commands
 
@@ -155,7 +152,7 @@ provekit-cli show-inputs [--hex] <verifier.pkv> <proof.np>
 Export recursive-verifier parameters and an R1CS JSON file for the Go/gnark wrapper.
 
 ```sh
-provekit-cli generate-gnark-inputs <verifier.pkv> <proof.np> \
+provekit-cli generate-gnark-inputs <prover.pkp> <proof.np> \
   [--params <path>] \
   [--r1cs <path>]
 ```
@@ -164,7 +161,7 @@ Example with full paths:
 
 ```sh
 cargo run --release --bin provekit-cli -- generate-gnark-inputs \
-  artifacts/basic.pkv \
+  artifacts/basic.pkp \
   artifacts/proof.np \
   --params artifacts/params_for_recursive_verifier \
   --r1cs artifacts/r1cs.json
@@ -189,5 +186,5 @@ cargo run --release --features tracy --bin provekit-cli -- --tracy prepare
 ## Troubleshooting quick links
 
 - [Common errors](/troubleshooting/common-errors/), setup, artifact mismatch, WASM, and verifier-server failures.
-- [Project status and versioning](/reference/project-status/), read before mixing artifacts across branches.
+- [Project status and versioning](/reference/project-status/), read before mixing artifacts across releases.
 - [Production checklist](/reference/production-checklist/), pre-launch checks for ProveKit-backed workflows.

@@ -3,7 +3,7 @@ title: Common errors
 description: Diagnose setup, proving, verification, integration, and deployment failures.
 ---
 
-Use this page to diagnose setup, CLI, WASM, FFI, verifier-server, and recursive-verifier failures. The first question to ask every time: *which artifact was produced by which command, branch, and hash configuration?*
+Use this page to diagnose setup, CLI, WASM, FFI, verifier-server, and recursive-verifier failures. The first question to ask every time: *which artifact was produced by which command and release?*
 
 ## Setup
 
@@ -45,19 +45,17 @@ find .. -name Nargo.toml -maxdepth 4
 
 **Fix.** Either compile one package with `--package <name>`, or omit `--pkp`/`--pkv` so each binary package uses its package-derived output names.
 
-### Unsupported hash choice
+### Unsupported `--hash` or `--witness-mode` option
 
-**Symptom.** `prepare --hash <name>` rejects the hash argument.
+**Symptom.** `prepare` rejects one of these options.
 
-**Fix.** Use one of the supported names:
+**Fix.** The v1.0.2 CLI does not expose them. Remove the option and regenerate the prover key, verifier key, and proof with the v1.0.2 release.
 
-- `skyscraper`
-- `sha256`
-- `keccak`
-- `blake3`
-- `poseidon2`
+### Incompatible format major version
 
-Regenerate the prover key, verifier key, and every proof after changing the hash.
+**Symptom.** A Rust verifier built with v1 crates cannot read a key or proof generated from `main`.
+
+**Fix.** Check out the `v1.0.2` tag, rerun `prepare` and `prove`, and use `provekit-common = "=1.0.2"` and `provekit-verifier = "=1.0.2"` in the Rust verifier. Do not mix newly generated artifacts with older ones.
 
 ### Missing or stale artifacts
 
@@ -96,11 +94,10 @@ cargo run --release --bin provekit-cli -- verify \
 - The circuit source or Noir package changed after `prepare`.
 - The proof was generated from inputs that don't satisfy the circuit.
 - The branch changed between artifact generation and verification.
-- The hash configuration changed.
 - Public inputs were serialized or transported incorrectly.
 - The proof JSON was modified or truncated by hand.
 
-**Fix.** Regenerate `.pkp`, `.pkv`, and `proof.np` from the same checkout and hash choice. Use `show-inputs` to inspect public inputs:
+**Fix.** Regenerate `.pkp`, `.pkv`, and `proof.np` from the same v1.0.2 checkout. Use `show-inputs` to inspect public inputs:
 
 ```sh
 cargo run --release --bin provekit-cli -- show-inputs --hex artifacts/app.pkv artifacts/proof.np
@@ -178,17 +175,17 @@ Confirm the request body has:
 
 **Symptom.** The Go recursive verifier fails with config, R1CS, or key errors.
 
-**Fix.** Re-run `generate-gnark-inputs` from the same `.pkv` and proof you plan to verify:
+**Fix.** Re-run `generate-gnark-inputs` from the same `.pkp` and proof you plan to verify:
 
 ```sh
 cargo run --release --bin provekit-cli -- generate-gnark-inputs \
-  artifacts/app.pkv \
+  artifacts/app.pkp \
   artifacts/proof.np \
   --params artifacts/params_for_recursive_verifier \
   --r1cs artifacts/r1cs.json
 ```
 
-Pass those exact files to the Go CLI or server. Do not reuse recursive params after changing the proof, verifier key, branch, circuit, or hash configuration.
+Pass those exact files to the Go CLI or server. Do not reuse recursive params after changing the proof, prover key, release, or circuit.
 
 ## Still stuck?
 
@@ -197,8 +194,7 @@ Collect this information before opening an issue or escalating internally:
 - Git branch and commit.
 - Rust toolchain from `rustup show`.
 - Full command line and stderr.
-- Whether artifacts were generated on `v1` or `main`.
-- The `prepare --hash` value.
+- Whether artifacts were generated from `v1.0.2` or `main`.
 - File sizes and modification times for `.pkp`, `.pkv`, `proof.np`, `r1cs.json`, and recursive params.
 - Whether the same proof verifies with the local CLI.
 

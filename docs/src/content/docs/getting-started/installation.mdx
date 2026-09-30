@@ -20,21 +20,15 @@ There are two ways to get `provekit-cli` on a machine. Use **`cargo install`** w
 <Tabs>
 <TabItem label="cargo install">
 ```sh
-cargo install provekit-cli
+cargo install provekit-cli --version 1.0.2 --locked
 provekit-cli --help
 ```
 
-This builds and installs the latest published release into `~/.cargo/bin/`. Use this when you have your own Noir package and don't need the bundled examples or extra tooling.
-
-Pin a specific version for reproducible CI:
-
-```sh
-cargo install provekit-cli --version 1.0.0 --locked
-```
+This installs the v1.0.2 release into `~/.cargo/bin/`. Use this when you have your own Noir package and don't need the bundled examples or extra tooling.
 </TabItem>
 <TabItem label="source checkout">
 ```sh
-git clone https://github.com/worldfnd/provekit.git
+git clone --branch v1.0.2 --depth 1 https://github.com/worldfnd/provekit.git
 cd provekit
 rustup show               # confirms the pinned nightly is selected
 cargo run --release --bin provekit-cli -- --help
@@ -63,7 +57,7 @@ cargo run --release --bin provekit-cli -- verify
 </TabItem>
 <TabItem label="With cargo install">
 ```sh
-git clone --depth 1 https://github.com/worldfnd/provekit.git
+git clone --branch v1.0.2 --depth 1 https://github.com/worldfnd/provekit.git
 cd provekit/noir-examples/basic
 provekit-cli prepare
 provekit-cli prove

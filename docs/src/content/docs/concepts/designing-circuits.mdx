@@ -12,15 +12,9 @@ ProveKit doesn't constrain how you build circuits; that's Noir's job. But a hand
 ProveKit uses hashes in two independent places:
 
 - **Inside the circuit**, whatever your Noir code calls (`poseidon2::bn254::hash_*`, `sha256`, etc.).
-- **Outside the circuit, for Merkle commitments and the Fiat-Shamir transcript**, controlled by `prepare --hash`.
+- **Outside the circuit, for commitments and the Fiat-Shamir transcript**, selected by the ProveKit release.
 
-They are independent choices. The default `prepare --hash skyscraper` works for almost every circuit. Skyscraper is ProveKit's custom BN254-tuned hash engine (in [`skyscraper/`](https://github.com/worldfnd/provekit/tree/main/skyscraper)), with SIMD-accelerated arithmetic on `aarch64` and the smallest transcript-side overhead of the options. Override `--hash` only when a downstream consumer (an EVM contract checking the transcript hash, for example) demands a specific algorithm.
-
-Available `--hash` values: `skyscraper` *(default)*, `sha256`, `keccak`, `blake3`, `poseidon2`.
-
-<Aside type="caution" title="Hash choice is part of artifact identity">
-Keys and proofs are bound to the transcript hash chosen at `prepare`. Switching `--hash` requires regenerating `.pkp`, `.pkv`, and every proof; there is no in-place migration.
-</Aside>
+They are independent choices. The v1.0.2 CLI does not expose a `prepare --hash` option. Changing the in-circuit hash changes the circuit, so regenerate `.pkp`, `.pkv`, and every proof after such a change.
 
 ## Public-input ABI is a contract
 
@@ -63,7 +57,7 @@ The error message on the second use of a stale verifier is `Verifier has already
 
 ## Artifact compatibility is by construction
 
-ProveKit doesn't need a circuit-version field in your proof. The `.pkp` and `.pkv` pair is bound to the exact circuit, branch, hash choice, and lockfile from one `prepare` run. Cross-circuit replay is impossible: a proof made with `circuit_v1.pkp` cannot verify against `circuit_v2.pkv`, even if both came from "the same Noir source" with a comma changed.
+ProveKit doesn't need a circuit-version field in your proof. The `.pkp` and `.pkv` pair is bound to the exact circuit, release, and lockfile from one `prepare` run. Cross-circuit replay is impossible: a proof made with `circuit_v1.pkp` cannot verify against `circuit_v2.pkv`, even if both came from "the same Noir source" with a comma changed.
 
 This means:
 
@@ -74,16 +68,16 @@ See [Artifact lifecycle](/concepts/artifact-lifecycle/) for the full pairing rul
 
 ## Recursive verifier exposes public inputs
 
-`provekit-cli generate-gnark-inputs` produces `params_for_recursive_verifier` and `r1cs.json` from a matching `.pkv` and proof. When wrapped in Groth16 by the Go/gnark recursive verifier, those public inputs become the on-chain public inputs of the outer proof. Two implications:
+`provekit-cli generate-gnark-inputs` produces `params_for_recursive_verifier` and `r1cs.json` from a matching `.pkp` and proof. When wrapped in Groth16 by the Go/gnark recursive verifier, those public inputs become the on-chain public inputs of the outer proof. Two implications:
 
 - **Anything in public inputs gets stored on-chain** after Groth16 wrapping. Don't put privacy-sensitive values there.
-- **Match the `--hash` between base proof and recursive verifier expectations.** If the recursive verifier was built against a different transcript hash, the wrap fails.
+- **Use recursive-verifier code from the same release as the base proof.** Different proof formats or transcript rules can make the wrap fail.
 
 ## External references for general ZK design
 
 The patterns below show up in every ZK application. They aren't ProveKit-specific, so we link rather than duplicate:
 
-- **Merkle membership proofs**, prove "this leaf is in a set with this root." See the [Aztec Noir tutorials](https://noir-lang.org/docs/) and the [`noir-passport`](https://github.com/worldfnd/provekit/tree/main/noir-examples/noir-passport) example for production-scale instances.
+- **Merkle membership proofs**, prove "this leaf is in a set with this root." See the [Aztec Noir tutorials](https://noir-lang.org/docs/) and the [`noir-passport`](https://github.com/worldfnd/provekit/tree/v1.0.2/noir-examples/noir-passport) example for production-scale instances.
 - **Nullifiers**, public, deterministic, one-way functions of a secret bound to a context, used to prevent replay. Common in vote schemes, airdrops, and credential systems. See [ZK Hack write-ups](https://zkhack.dev/) and the [Aztec privacy docs](https://docs.aztec.network/) for canonical treatments.
 - **Hash selection for in-circuit work**, Poseidon2 is cheapest in-circuit on BN254; SHA-256 and Keccak cost roughly 100× more constraints but match what EVM contracts already expect. See the [Ethproofs CSP benchmarks](https://ethproofs.org/csp-benchmarks) for measured comparisons across hashes and proof systems.
 
@@ -94,4 +88,4 @@ If your circuit pulls one of these patterns from a published library (e.g., a No
 - [Proving flow](/concepts/proving-flow/), the conceptual pipeline.
 - [Artifact lifecycle](/concepts/artifact-lifecycle/), pairing and regeneration rules.
 - [Security and trust model](/concepts/security-model/), what verification proves and what it doesn't.
-- [CLI reference](/cli/overview/), `prepare --hash`, `show-inputs`, `generate-gnark-inputs`.
+- [CLI reference](/cli/overview/), `prepare`, `show-inputs`, `generate-gnark-inputs`.

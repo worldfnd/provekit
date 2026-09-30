@@ -19,12 +19,12 @@ hero:
 import { Aside, Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 <p class="lead">
-ProveKit turns a Noir circuit into a verifiable WHIR proof, then lets you verify that proof wherever you need it, locally, in a Rust service, in the browser, on iOS or Android, or on-chain through a Groth16 recursive verifier.
+ProveKit turns a Noir circuit into a verifiable WHIR proof. These v1.0.2 guides show the tested CLI and Rust flows, plus the compatibility status of other integration paths.
 </p>
 
 ## See it in three commands
 
-From a fresh checkout of the [ProveKit repository](https://github.com/worldfnd/provekit):
+From a checkout of the [v1.0.2 release](https://github.com/worldfnd/provekit/releases/tag/v1.0.2):
 
 ```sh
 cd noir-examples/basic
@@ -33,7 +33,7 @@ cargo run --release --bin provekit-cli -- prove     # .pkp + Prover.toml → pro
 cargo run --release --bin provekit-cli -- verify    # .pkv + proof.np → exit 0
 ```
 
-That's the whole proving pipeline. Every other integration, Rust, WASM, mobile, is the same flow against the same artifacts. [Walk through it step by step →](/getting-started/quickstart/)
+That's the CLI proving pipeline. The Rust integration was also verified with v1.0.2 artifacts; check each platform guide before using those artifacts in another runtime. [Walk through it step by step →](/getting-started/quickstart/)
 
 ## Get started
 
@@ -62,7 +62,7 @@ That's the whole proving pipeline. Every other integration, Rust, WASM, mobile, 
 
 ## Host integrations
 
-ProveKit runs the same proof artifacts across server, browser, and mobile. For the full menu, including CLI, HTTP verifier, and recursive paths, see [Integrations overview](/integrations/overview/).
+For the full integration menu, including CLI, HTTP verifier, and recursive paths, see [Integrations overview](/integrations/overview/).
 
 <LinkCard
   href="/e2e/rust/"
@@ -71,31 +71,31 @@ ProveKit runs the same proof artifacts across server, browser, and mobile. For t
 />
 <LinkCard
   href="/e2e/js-typescript/"
-  title="Browser or Node.js application"
-  description="Drive proving and verification from JavaScript or TypeScript through WASM-backed bindings."
+  title="Browser or Node.js compatibility"
+  description="Check v1.0.2 WASM and JavaScript SDK compatibility before integrating."
 />
 <LinkCard
   href="/e2e/swift/"
-  title="iOS app"
-  description="Integrate via the Swift SDK with SPM source-only, native, or release modes."
+  title="iOS compatibility"
+  description="Check native FFI and Swift SDK compatibility with v1.0.2 artifacts."
 />
 <LinkCard
   href="/e2e/kotlin/"
-  title="Android app"
-  description="Integrate via the Kotlin SDK with the JNI bridge and ABI packaging guidance."
+  title="Android compatibility"
+  description="Check native FFI and Kotlin SDK compatibility with v1.0.2 artifacts."
 />
 
 ## Core artifacts at a glance
 
 <div class="pk-metric-grid">
-  <div class="pk-metric"><strong>.pkp</strong><span>Prover key, produced by `prepare`, consumed by `prove`.</span></div>
-  <div class="pk-metric"><strong>.pkv</strong><span>Verifier key, produced by `prepare`, consumed by `verify` and recursive export.</span></div>
+  <div class="pk-metric"><strong>.pkp</strong><span>Prover key, produced by `prepare`, consumed by `prove` and recursive export.</span></div>
+  <div class="pk-metric"><strong>.pkv</strong><span>Verifier key, produced by `prepare`, consumed by `verify`.</span></div>
   <div class="pk-metric"><strong>proof.np</strong><span>WHIR proof, produced by `prove`, consumed by every verification path.</span></div>
-  <div class="pk-metric"><strong>r1cs.json</strong><span>Recursive-verifier R1CS, exported from a matching `.pkv` and proof.</span></div>
+  <div class="pk-metric"><strong>r1cs.json</strong><span>Recursive-verifier R1CS, exported from a matching `.pkp` and proof.</span></div>
 </div>
 
-Every artifact is bound to a specific circuit, commit, and hash choice. Treat them as versioned deployment objects. See [Artifact lifecycle](/concepts/artifact-lifecycle/) for the full pairing rules.
+Every artifact is bound to a specific circuit and release. Treat them as versioned deployment objects. See [Artifact lifecycle](/concepts/artifact-lifecycle/) for the full pairing rules.
 
-<Aside type="tip" title="Stable release: v1">
-The **`v1`** branch is the current stable, audited release ([v1.0.0](https://github.com/worldfnd/provekit/releases/tag/v1.0.0) on crates.io). It supports Noir `v1.0.0-beta.11`. Pin a release tag or the `v1` branch for reproducible artifacts; `main` is the rolling-development line and may change proof formats, key formats, recursive-verifier inputs, or integration APIs between commits. See [Project status](/reference/project-status/).
+<Aside type="tip" title="Stable release: v1.0.2">
+These guides use the [v1.0.2 release](https://github.com/worldfnd/provekit/releases/tag/v1.0.2), which pins Noir `v1.0.0-beta.26`. `main` is the rolling-development line and may change proof formats, key formats, recursive-verifier inputs, or integration APIs between commits. See [Project status](/reference/project-status/).
 </Aside>

@@ -33,15 +33,15 @@ ProveKit is a workspace of focused Rust crates plus tooling. Each piece has one 
 
 | Crate / tool                                                                                      | Job                                                                                                                                                  |
 | :------------------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`provekit-r1cs-compiler`](https://github.com/worldfnd/provekit/tree/main/provekit/r1cs-compiler) | Lower Noir's ACIR into R1CS, with specialized handling for Poseidon2, SHA-256 compression, range checks, multi-scalar multiplication.                |
-| [`provekit-prover`](https://github.com/worldfnd/provekit/tree/main/provekit/prover)               | Solve the witness in layers, commit via Merkle hashing, and produce the WHIR proof via Spartan-style sumcheck.                                       |
-| [`provekit-verifier`](https://github.com/worldfnd/provekit/tree/main/provekit/verifier)           | Replay the Fiat-Shamir transcript, run sumcheck verification, and bind the public inputs.                                                            |
-| [`provekit-cli`](https://github.com/worldfnd/provekit/tree/main/tooling/cli)                      | The command-line entry point. Subcommands: `prepare`, `prove`, `verify`, plus inspection and recursive-verifier export.                              |
-| [`provekit-wasm`](https://github.com/worldfnd/provekit/tree/main/tooling/provekit-wasm)           | Browser and Node.js bindings using `wasm-bindgen-rayon` for in-browser parallel proving when `SharedArrayBuffer` is available.                       |
-| [`provekit-ffi`](https://github.com/worldfnd/provekit/tree/main/tooling/provekit-ffi)             | C ABI for Swift, Kotlin, Python, and any host that can call a shared library. Includes an mmap-backed allocator for mobile circuits that exceed RAM. |
-| [`verifier-server`](https://github.com/worldfnd/provekit/tree/main/tooling/verifier-server)       | An Axum HTTP service that downloads artifacts and orchestrates verification with configurable concurrency and timeouts.                              |
-| [`recursive-verifier/`](https://github.com/worldfnd/provekit/tree/main/recursive-verifier)        | A Go/gnark module that wraps a ProveKit proof in Groth16 so it can be verified by an EVM contract.                                                   |
-| [`skyscraper`](https://github.com/worldfnd/provekit/tree/main/skyscraper)                         | A custom BN254 hash engine with SIMD-accelerated field arithmetic.                                                                                   |
+| [`provekit-r1cs-compiler`](https://github.com/worldfnd/provekit/tree/v1.0.2/provekit/r1cs-compiler) | Lower Noir's ACIR into R1CS, with specialized handling for Poseidon2, SHA-256 compression, range checks, multi-scalar multiplication.                |
+| [`provekit-prover`](https://github.com/worldfnd/provekit/tree/v1.0.2/provekit/prover)               | Solve the witness in layers, commit via Merkle hashing, and produce the WHIR proof via Spartan-style sumcheck.                                       |
+| [`provekit-verifier`](https://github.com/worldfnd/provekit/tree/v1.0.2/provekit/verifier)           | Replay the Fiat-Shamir transcript, run sumcheck verification, and bind the public inputs.                                                            |
+| [`provekit-cli`](https://github.com/worldfnd/provekit/tree/v1.0.2/tooling/cli)                      | The command-line entry point. Subcommands: `prepare`, `prove`, `verify`, plus inspection and recursive-verifier export.                              |
+| [`provekit-wasm`](https://github.com/worldfnd/provekit/tree/v1.0.2/tooling/provekit-wasm)           | Browser and Node.js bindings using `wasm-bindgen-rayon` for in-browser parallel proving when `SharedArrayBuffer` is available.                       |
+| [`provekit-ffi`](https://github.com/worldfnd/provekit/tree/v1.0.2/tooling/provekit-ffi)             | C ABI for Swift, Kotlin, Python, and any host that can call a shared library. Includes an mmap-backed allocator for mobile circuits that exceed RAM. |
+| [`verifier-server`](https://github.com/worldfnd/provekit/tree/v1.0.2/tooling/verifier-server)       | An Axum HTTP service that downloads artifacts and orchestrates verification with configurable concurrency and timeouts.                              |
+| [`recursive-verifier/`](https://github.com/worldfnd/provekit/tree/v1.0.2/recursive-verifier)        | A Go/gnark module that wraps a ProveKit proof in Groth16 so it can be verified by an EVM contract.                                                   |
+| [`skyscraper`](https://github.com/worldfnd/provekit/tree/v1.0.2/skyscraper)                         | A custom BN254 hash engine with SIMD-accelerated field arithmetic.                                                                                   |
 
 ## What makes ProveKit specifically different
 
@@ -54,18 +54,18 @@ Two pages matter on day one: [Artifact lifecycle](/concepts/artifact-lifecycle/)
 
 ## A worked picture
 
-The checked-in `noir-examples/basic` circuit proves you know two field elements that hash (via Poseidon2) to a known commitment:
+The v1.0.2 `noir-examples/basic` circuit checks a Poseidon2 permutation result:
 
 ```rust
-use dep::poseidon2;
+use ::poseidon2;
 
-fn main(plains: [Field; 2], result: pub Field) {
-    let hash = poseidon2::bn254::hash_2(plains);
+fn main(plains: [Field; 2], result: Field) {
+    let hash = poseidon2::bn254::permutation::t2(plains)[0];
     assert(hash == result);
 }
 ```
 
-`plains` stays private; only the prover sees it. `result` is the public input that goes into the proof. A successful verification means _the prover knows two field elements that hash to `result`_, and the verifier learns the prover does, without learning `plains`.
+Both `plains` and `result` are private in this checked-in example, so the proof exposes no public input. The [tutorial](/getting-started/tutorial/) turns this shape into a useful application by marking the commitment public and verifying it from a separate Rust program.
 
 That tiny circuit is the same shape as much bigger ones: identity attestation, set membership, off-chain computation, range proofs. Once you can build, prove, and verify this one, every other circuit follows the same workflow.
 

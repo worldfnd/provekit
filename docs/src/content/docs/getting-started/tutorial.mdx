@@ -9,11 +9,11 @@ This tutorial walks you through the smallest meaningful zero-knowledge applicati
 
 By the end you'll understand the full ProveKit loop and be ready to apply it to real workloads like credential verification, vote eligibility, or off-chain computation attestation.
 
-**Time:** about 20 minutes. **Prerequisites:** a working ProveKit checkout, see [Installation](/getting-started/installation/).
+**Time:** about 20 minutes. **Prerequisites:** a ProveKit checkout at the `v1.0.2` tag, see [Installation](/getting-started/installation/). The Rust verifier below must use crates from the same release as the keys and proof.
 
 ## What you'll build
 
-A circuit that proves *"I know two field elements whose Poseidon2 hash equals this public commitment"*, and a Rust program that loads the resulting proof, verifies it, and prints the public commitment.
+A circuit that proves *"I know two field elements whose Poseidon2 hash equals this public commitment"*, and a Rust program that loads the resulting proof and reports whether verification succeeds.
 
 In a real application the "two field elements" might be the components of a private identity key; the "public commitment" is the hash that gets stored on-chain or in a server. Verification proves the prover holds the secret without revealing it.
 
@@ -37,21 +37,21 @@ In a real application the "two field elements" might be the components of a priv
    compiler_version = ">=0.22.0"
 
    [dependencies]
-   poseidon2 = { tag = "v0.5.0-beta.0", git = "https://github.com/TaceoLabs/noir-poseidon", directory = "poseidon2" }
+   poseidon2 = { tag = "v0.6.2", git = "https://github.com/TaceoLabs/noir-poseidon", directory = "poseidon2" }
    ```
 
 3. Write the circuit. Public inputs go in the function signature *after* private ones, but you mark public inputs with the `pub` keyword.
 
    ```rust title="src/main.nr"
-   use dep::poseidon2;
+   use ::poseidon2;
 
    fn main(secret: [Field; 2], commitment: pub Field) {
-       let computed = poseidon2::bn254::hash_2(secret);
+       let computed = poseidon2::bn254::permutation::t2(secret)[0];
        assert(computed == commitment);
    }
    ```
 
-   This circuit enforces one constraint: that `poseidon2(secret) == commitment`. Because `secret` is private and `commitment` is public, the resulting proof says "the prover knows a secret that hashes to commitment", and nothing else.
+   This circuit enforces that the first output of the Poseidon2 `t2` permutation equals `commitment`. Because `secret` is private and `commitment` is public, the resulting proof says "the prover knows a secret that hashes to commitment", and nothing else.
 </Steps>
 
 ## Step 2: pick inputs
@@ -102,7 +102,7 @@ cargo run --release --bin provekit-cli -- prepare
 </Steps>
 
 <Aside type="tip" title="What just happened">
-The CLI exercised the whole pipeline: compiled your Noir source through ACIR into R1CS, wrote prover and verifier keys, generated a WHIR proof from your inputs, then verified that proof against the verifier key. The same artifacts (`.pkp`, `.pkv`, `proof.np`) work in every other integration, what we'll demonstrate next.
+The CLI exercised the whole pipeline: compiled your Noir source through ACIR into R1CS, wrote prover and verifier keys, generated a WHIR proof from your inputs, then verified that proof against the verifier key. The next step uses the matching verifier key and proof with the published v1.0.2 Rust crates.
 </Aside>
 
 ## Step 4: verify from your own Rust program
@@ -128,8 +128,8 @@ The CLI is great for development. In production, the verifier usually runs insid
    edition = "2021"
 
    [dependencies]
-   provekit-common   = "1.0.0"
-   provekit-verifier = "1.0.0"
+   provekit-common   = "=1.0.2"
+   provekit-verifier = "=1.0.2"
    anyhow            = "1"
    ```
 
@@ -167,7 +167,7 @@ The CLI is great for development. In production, the verifier usually runs insid
 
 A user with a `Prover.toml` can convince anyone with the matching `.pkv` and `proof.np` that they know two field elements that hash to the commitment, **without ever transmitting those elements**.
 
-That's the whole zero-knowledge claim. Everything else in ProveKit is plumbing around this shape: bigger circuits, more complex public input contracts, different hash configurations, different transport layers.
+That's the whole zero-knowledge claim. Larger applications add bigger circuits, more complex public input contracts, and different transport layers.
 
 ## Clean up
 

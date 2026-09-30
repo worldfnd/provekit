@@ -5,7 +5,7 @@ description: How a ProveKit run moves from Noir source to a verified proof and (
 
 import { Aside, Card, CardGrid, Steps } from '@astrojs/starlight/components';
 
-A complete ProveKit run starts with one Noir package and ends with a verified proof. The same `.pkp`, `.pkv`, and `proof.np` files flow through every integration path, CLI workflows, SDK examples, the verifier service, and recursive-verifier export.
+A complete ProveKit run starts with one Noir package and ends with a verified proof. The v1.0.2 CLI and Rust flows below use matching `.pkp`, `.pkv`, and `proof.np` artifacts. Other host integrations need their own compatibility checks.
 
 ## The full path
 
@@ -30,7 +30,7 @@ A complete ProveKit run starts with one Noir package and ends with a verified pr
     <div class="pk-flow-node">verify</div>
   </div>
   <div class="pk-flow-row pk-flow-row--wide pk-flow-split">
-    <div class="pk-flow-node pk-flow-node--output">.pkv + proof.np</div>
+    <div class="pk-flow-node pk-flow-node--output">.pkp + proof.np</div>
     <div class="pk-flow-arrow">→</div>
     <div class="pk-flow-node">generate-gnark-inputs</div>
     <div class="pk-flow-arrow">→</div>
@@ -56,18 +56,18 @@ Defaults are convenient locally, but CI jobs, services, and reproducible fixture
 
 | File | Owner | Regenerate when |
 | :--- | :--- | :--- |
-| `<package>.pkp` | Prover-side runtime | Circuit, branch/commit, hash, or proving configuration changes. |
+| `<package>.pkp` | Prover-side runtime | Circuit, release/commit, or proving configuration changes. |
 | `<package>.pkv` | Verifier-side runtime | The prover key is regenerated, or verifier configuration changes. |
 | `proof.np` | Proof transport / storage layer | Inputs change, the prover key changes, or a fresh proof is required. |
 | `params_for_recursive_verifier` + `r1cs.json` | Recursive-verifier integration | The verifier key or proof changes. |
 
-For the actual command flow, use [Quickstart](/getting-started/quickstart/) for the default paths or [Generate artifacts](/e2e/generate-artifacts/) for explicit output paths, hash choice, and recursive export.
+For the actual command flow, use [Quickstart](/getting-started/quickstart/) for the default paths or [Generate artifacts](/e2e/generate-artifacts/) for explicit output paths and recursive export.
 
 ## Pick the next guide
 
 <CardGrid>
   <Card title="Generate CI artifacts">
-    Deterministic paths, pinned hash choices, and recursive-verifier export.
+    Deterministic paths, pinned release, and recursive-verifier export.
 
     [Generate artifacts →](/e2e/generate-artifacts/)
   </Card>
@@ -76,13 +76,13 @@ For the actual command flow, use [Quickstart](/getting-started/quickstart/) for 
 
     [Rust guide →](/e2e/rust/)
   </Card>
-  <Card title="Use JavaScript or TypeScript">
-    Load `.pkp` / `.pkv` bytes and use WASM-backed proving and verification.
+  <Card title="Check JavaScript compatibility">
+    Review the v1.0.2 WASM and SDK compatibility boundary before using browser or Node.js code.
 
     [JS / TypeScript guide →](/e2e/js-typescript/)
   </Card>
-  <Card title="Use Swift or Kotlin">
-    Integrate through the mobile SDKs and their native/FFI packaging.
+  <Card title="Check Swift or Kotlin compatibility">
+    Review native FFI and SDK compatibility before using v1.0.2 artifacts on mobile.
 
     [Swift →](/e2e/swift/) · [Kotlin →](/e2e/kotlin/)
   </Card>
@@ -97,4 +97,4 @@ For the actual command flow, use [Quickstart](/getting-started/quickstart/) for 
 
 - [Quickstart](/getting-started/quickstart/), runs the default-path flow.
 - [Artifact lifecycle](/concepts/artifact-lifecycle/), pairing and regeneration rules.
-- [CLI overview](/cli/overview/), every command option and hash choice.
+- [CLI overview](/cli/overview/), every command option.
