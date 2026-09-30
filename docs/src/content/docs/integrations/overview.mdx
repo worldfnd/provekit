@@ -43,7 +43,7 @@ Verification usually lives in a backend, a contract gateway, or an HTTP service.
 | `/health` | `GET` | Server health, version, and timestamp. |
 | `/verify` | `POST` | Verify a JSON proof using downloaded artifacts. |
 
-A verification request looks like:
+The server accepts this request shape. The URLs and `np` value below are placeholders, so this JSON is not a runnable verification example:
 
 ```json
 {
@@ -57,7 +57,7 @@ A verification request looks like:
 }
 ```
 
-`pkUrl`, `vkUrl`, `verificationParams`, and `metadata` are optional. Artifact URLs must use HTTP or HTTPS. The server defaults to one concurrent verification (`VERIFIER_SEMAPHORE_LIMIT=1`) and a 10 MB request body limit; tune both through the `VERIFIER_*` environment variables documented in [`tooling/verifier-server/README.md`](https://github.com/worldfnd/provekit/tree/v1.0.2/tooling/verifier-server).
+`pkUrl`, `vkUrl`, `verificationParams`, and `metadata` are optional. Supply a real JSON-serialized `NoirProof` and matching artifacts over HTTP or HTTPS. This server route was not exercised end to end in the v1.0.2 documentation check. The server defaults to one concurrent verification (`VERIFIER_SEMAPHORE_LIMIT=1`) and a 10 MB request body limit; tune both through the `VERIFIER_*` environment variables documented in [`tooling/verifier-server/README.md`](https://github.com/worldfnd/provekit/tree/v1.0.2/tooling/verifier-server).
 
 ## Recursive verifier / gnark
 
@@ -71,7 +71,7 @@ provekit-cli generate-gnark-inputs \
   --r1cs   artifacts/r1cs.json
 ```
 
-Then run the Go CLI or server from [`recursive-verifier/`](https://github.com/worldfnd/provekit/tree/v1.0.2/recursive-verifier) with those files. If you omit the recursive proving and verifying keys, the Go tool can generate them for development; production deployments should manage trusted-setup keys explicitly.
+The command above generated the recursive input files in the v1.0.2 documentation check. The Go proving and verification step was not run. The [`recursive-verifier/`](https://github.com/worldfnd/provekit/tree/v1.0.2/recursive-verifier) CLI or server consumes those files; if you omit its recursive proving and verifying keys, it can generate them for development. Production deployments should manage trusted setup keys explicitly.
 
 ## Where to go next
 
