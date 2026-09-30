@@ -47,7 +47,7 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
         info!("ACIR: {} opcodes.", main.opcodes.len());
 
         // Compile to R1CS schemes
-        let (r1cs, witness_map, witness_builders) = noir_to_r1cs(main)?;
+        let (mut r1cs, witness_map, witness_builders) = noir_to_r1cs(main)?;
         info!(
             "R1CS {} constraints, {} witnesses, A {} entries, B {} entries, C {} entries",
             r1cs.num_constraints(),
@@ -61,7 +61,8 @@ impl NoirProofSchemeBuilder for NoirProofScheme {
         let acir_public_inputs_indices_set: HashSet<u32> =
             main.public_inputs().indices().iter().cloned().collect();
 
-        let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
+        r1cs.num_public_inputs = acir_public_inputs_indices_set.len();
+        let has_public_inputs = r1cs.num_public_inputs > 0;
         // Split witness builders and remap indices for sound challenge generation
         let (split_witness_builders, remapped_r1cs, remapped_witness_map, challenge_offsets) =
             WitnessBuilder::split_and_prepare_layers(

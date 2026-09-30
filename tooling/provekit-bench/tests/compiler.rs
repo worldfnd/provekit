@@ -200,6 +200,7 @@ fn test_public_input_binding_exploit() {
     let witness_file_path = test_case_path.join("Prover.toml");
 
     let schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
+    assert_eq!(schema.r1cs.num_public_inputs, 1);
     let prover = Prover::from_noir_proof_scheme(schema.clone());
     let mut verifier = Verifier::from_noir_proof_scheme(schema.clone());
 
@@ -210,11 +211,38 @@ fn test_public_input_binding_exploit() {
 
     // Sanity: honest proof should verify
     {
-        let mut honest_verifier = Verifier::from_noir_proof_scheme(schema);
+        let mut honest_verifier = Verifier::from_noir_proof_scheme(schema.clone());
         honest_verifier
             .verify(&proof)
             .expect("Honest proof should verify");
     }
+
+    for values in [vec![], vec![
+        FieldElement::from(16u64),
+        FieldElement::from(42u64),
+    ]] {
+        let mut wrong_count = proof.clone();
+        wrong_count.public_inputs = PublicInputs::from_vec(values);
+        let error = Verifier::from_noir_proof_scheme(schema.clone())
+            .verify(&wrong_count)
+            .expect_err("Wrong public-input count should fail");
+        assert!(error.to_string().contains("Public input count mismatch"));
+    }
+
+    let mut legacy_schema = schema.clone();
+    legacy_schema.r1cs.num_public_inputs = 0;
+    legacy_schema.whir_for_witness.r1cs_hash = legacy_schema.r1cs.hash();
+    let error = Verifier::from_noir_proof_scheme(legacy_schema)
+        .verify(&proof)
+        .expect_err("Legacy public-input declaration should fail");
+    assert!(error.to_string().contains("public-input declaration"));
+
+    let mut mismatched_schema = schema.clone();
+    mismatched_schema.r1cs.num_public_inputs = 2;
+    let error = Verifier::from_noir_proof_scheme(mismatched_schema)
+        .verify(&proof)
+        .expect_err("Unauthenticated public-input count should fail");
+    assert!(error.to_string().contains("R1CS hash mismatch"));
 
     // Tamper: the committed polynomial encodes result=16 at position 1, but we
     // claim result=42. The verifier should reject this.

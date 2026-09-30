@@ -42,6 +42,18 @@ impl WhirR1CSVerifier for WhirR1CSScheme {
         public_inputs: &PublicInputs,
         r1cs: &R1CS,
     ) -> Result<()> {
+        ensure!(r1cs.hash() == self.r1cs_hash, "R1CS hash mismatch");
+        ensure!(
+            self.has_public_inputs == (r1cs.num_public_inputs > 0),
+            "WHIR scheme public-input declaration does not match R1CS"
+        );
+        ensure!(
+            public_inputs.len() == r1cs.num_public_inputs,
+            "Public input count mismatch: expected {}, got {}",
+            r1cs.num_public_inputs,
+            public_inputs.len()
+        );
+
         let instance = public_inputs.hash_bytes();
         let ds = self.create_domain_separator().instance(&instance);
         let whir_proof = Proof {
