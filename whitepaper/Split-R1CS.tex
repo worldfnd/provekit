@@ -1,0 +1,113 @@
+
+\section{R1CS with scheduled witnesses. \tbc}
+Two-round R1CS, to support lookups into tables, which are baked into the R1CS matrices.
+The witness $\vec w$ consists of 
+\begin{enumerate}
+    \item 
+    Round-1 witness $\vec w_1$: 
+    These witnesses are independent of the verifier challenge
+    Includes public inputs, constants, and lookup table multiplicities.
+    \item 
+    Round-2 witness $\vec w_2$: 
+    These witnesses depend on the verifier challenges.
+    These are the verifier challenges themselves, the logUp inverses and their sums.
+\end{enumerate}
+\ulrich{Let us elaborate on the usefulness of 2-stage R1CS beyond lookups.}
+\ulrich{%
+Need to define $\mathscr R_{main}$ and $\mathscr R_{aux}$.
+Target $\vec w_1\in \mathscr R_{main} \cap \mathscr R_{aux}$
+}
+% The verifier challenges for logUp are dedicated inputs of the circuit, and the matrices $A$, $B$, $C$ cover the logUp logic. 
+The complete witness for the constraint system is of the form 
+\begin{equation*}
+%\label{e:witness:split}
+\vec w = \vec w_1\| \vec w_2,
+\end{equation*}
+with $\vec w_1\in \mathbb F_q^{N_1}$ and $\vec w_2\in \mathbb F_q^{N_2}$, 
+\ulrich{Concatenation is never used anywhere.}
+\ulrich{%
+It seems more efficient to treat logup with several basefield challenges.
+This is for sure the case for the witness builder.
+Memory constraints in the zerocheck (due to the higher-dimensional hypercube) can be overcome by univariate skip.
+}
+subject to $M\geq 1$ constraints
+\begin{equation*}
+% \label{e:R1CS}
+(A\cdot \vec w) \odot (B\cdot \vec w) = C\cdot \vec w,
+\end{equation*}
+with $A, B, C\in \mathbb F^{K\times N}$, and where $\odot$ is the entrywise (Hadamard) product.
+As for the witness, we split the matrices $M= A, B, C$ into 
+\begin{equation*}
+M = 
+\begin{pmatrix}
+M_1 | M_2
+\end{pmatrix}, 
+\end{equation*}
+with $M_1\in \mathbb F_q^{K \times N_1}$ and $M_2\in \mathbb F_q^{K\times N_2}$ corresponding to the $\vec w_1$- and $\vec w_2$-parts. 
+% \ulrich{Would $M_2$ over $F$ make sense?}
+Typically the system is partially decoupled, with each $A_2, B_2, C_2$ starting with a large block of zero rows, but we currently do not leverage simpler representations than the ones above. 
+% \ulrich{Do we?}
+
+% \[
+% \left[
+% \left(
+% \begin{array}{c|c}
+% A_{1,1}  & 0
+% \\\hline
+% A_{2,1} & A_{2,2} 
+% \end{array}
+% \right) 
+% \cdot
+% \begin{pmatrix}
+% \vec w_1 \\ \vec w_2
+% \end{pmatrix}
+% \right]
+% \odot
+% \left[
+% \left(
+% \begin{array}{c|c}
+% B_{1,1}  & 0
+% \\\hline
+% B_{2,1} & B_{2,2} 
+% \end{array}
+% \right) 
+% \cdot
+% \begin{pmatrix}
+% \vec w_1 \\ \vec w_2
+% \end{pmatrix}
+% \right]
+% =
+% \left(
+% \begin{array}{c|c}
+% C_{1,1}  & 0
+% \\\hline
+% C_{2,1} & C_{2,2} 
+% \end{array}
+% \right) 
+% \cdot
+% \begin{pmatrix}
+% \vec w_1 \\ \vec w_2
+% \end{pmatrix}
+% \]
+% \[
+% M = 
+% \left(
+% \begin{array}{c|c}
+% M_{1,1}  & 0
+% \\\hline
+% M_{2,1} & M_{2,2} 
+% \end{array}
+% \right) 
+% \]
+% with $M_{2,1}$ and $M_{2,2}$ very sparse (most of the rows have at most 2 entries).
+
+We need:
+\begin{itemize}
+    \item 
+    Definition of the first stage R1CS with auxiliary lookup relation $\mathscr R_\text{R1CS} \cap \mathscr R_\text{aux}$
+    \item
+    Definition of randomized R1CS (with two stages), and its soundness error
+\end{itemize}
+
+\subsubsection{Split-witness builder.}
+There is a split-witness builder for stepwise computation of the complete witness.

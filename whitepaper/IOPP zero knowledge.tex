@@ -1,0 +1,28 @@
+\section{Proofs: IOPP zero-knowledge \textcolor{red}{(tbc)}}
+\label{s:IOPPzk}
+
+
+\subsection{ZO0K \textcolor{red}{(tbc)}}
+\label{s:IOPPzk:zook}
+
+Perfect zero-knowledge of ZO0K follows from the following facts:
+\begin{itemize}
+    \item
+    By Section \ref{s:randomizing:w_M}, Lemma \ref{lem:zk:basefield:randomization}, the $e^2$ random values in the trace of $w_1$ produce uniformly distributed values $w_A(\vec\alpha), w_B(\vec\alpha), w_C(\vec\alpha)$, given that the sumcheck randomnesses $\vec \alpha$ is not from the small exceptional set of size
+    \begin{equation}
+    \varepsilon < e\cdot \frac{m-t}{|F|} + \left(\frac{t}{q-1}\right)^e. 
+    \end{equation}
+    This set is where one of the Moore determinants vanishes at $\vec Y =\vec \alpha$, which makes the prover abort. 
+ 
+    \item 
+    As in Section \ref{s:zk:zerocheck}, the sumcheck polynomials of each round will be uniformly distributed over the relation of consistent polynomials, independent of the witness. 
+    \item 
+    By construction the queried values (in- and out of domain) are identically distributed field elements ($F$ or $\mathbb F_q$ if the first round oracles), independent of the witness. 
+\end{itemize}
+
+
+The simulator can be constructed similar to the sumcheck simulator.
+
+
+\subsection{The complete protocol \textcolor{red}{(tbc)}}
+\label{s:IOPPzk:complete}

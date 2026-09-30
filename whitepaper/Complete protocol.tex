@@ -1,105 +1,446 @@
-\section{The complete protocol \textcolor{red}{(tbc)}}
-\label{s:complete:protocol}
+\section{The complete protocol}
+\label{s:complete protocol}
 
-The complete protocol takes all the measures from Section \ref{s:zk} into account.
+The complete IOPP is the combination of Protocol \ref{prot:main} with the zero-knowledge measures described in Section \ref{s:zk}.
 
+\subsection{On-domain randomization of $w_1$.}
+
+To randomize the values $w_A(\vec\alpha)$, $w_B(\vec\alpha)$ we choose the basefield strategy explained in Section \ref{s:randomizing:w_M}. 
+We apply Lemma \ref{lem:zk:basefield:randomization} to the multilinears $w_A$ and $w_B$ separately.
+Concretely, we do the following.
 \begin{enumerate}
+\item  
+    We select $s =e$ sets 
+    \begin{equation}
+    \label{e:zk:propagation gates:points}
+    \Omega_j = \{\vec x_{j,1}, \ldots, \vec x_{j,e}\}\subset H_m, \quad j=1,\ldots, e,
+    \end{equation}
+    and with the property required by the lemma. 
 \item 
-The first stage witness $\vec w_1$ is 
+    For each $i=1,\ldots, e$, we allocate  $2e$ circuit variables in the first stage R1CS, and place their propagation gates in $A$ and $B$ at the points of $\Omega_j$. 
+    This results in overall $2e^2$ circuit variables, and their values are drawn uniformly from the basefield $\mathbb F_q$.
+\end{enumerate}
+
+
+
+\noindent
+By Lemma \ref{lem:zk:basefield:randomization}, the exceptional set on which all Moore determinants vanish, i.e.
+\begin{equation}
+\label{e:complete protocol:exceptional set}
+E = \bigcap_{i=1}^e \{\vec\alpha\in F^m \::\: 
+\det M_{F^2}(eq(\vec x_{i,1},\vec\alpha), \ldots, eq(\vec x_{i,e2},\vec\alpha)) = 0
+\},
+\end{equation}
+is at most of size
+\begin{equation}
+\label{e:completeness:error}
+\varepsilon < s\cdot \frac{m-t}{|F|} + \left(\frac{t}{q-1}\right)^e,
+\end{equation}
+with $t = \ceil{\log_2 (e)}$.
+For perfect zero-knowledge it is crucial to exclude this set of sumcheck randomnesses.
+
+% \ulrich{%
+% If we ever decide for $w_2$ as native in $F$, then I would opt for the simpler extension field strategy, and randomize only $w_2$.
+% }
+
+\subsection{Joint mask commitment.}
+
+We let the joint mask collection for WHIR/ZO0K also cover the sparse sumcheck mask for the zero-knowldege zero-check (Section \ref{s:zk:zerocheck}).
+% All masks together, the zerocheck masks plus .
+Overall, $C_{zk}$ encodes the randomized joint mask vector  
+\begin{equation}
+\label{e:complete:prot:masks}
+\hat{\mathsf m} = \overbrace{h_0}^\text{zero-check} \hspace*{-3mm}\| \underbrace{h_1\|\ldots \|h_r}_\text{WHIR} \| \overbrace{msk_0\| r_0}^\text{for $w_1$, $w_2$} \| \underbrace{msk_1\| \ldots \| msk_r}_\text{WHIR oracles}\| msk_{zk} 
+\in F^{m_\text{zk}},
+\end{equation}
+where all vector elements are drawn uniformly from $F$, except for $msk_0$ and $r_0$, which are sampled from the basefield $\mathbb F_q$.
+Recall that the sizes of $msk_0$, $msk_1,\ldots, msk_r$ and $msk_\text{zk}$ are chosen to obfuscate the number of queries of the oracles (in-domain and DEEP).
+We define the space of proper joint mask polynomials as
+\begin{equation}
+\label{e:space:mask:polys}
+\mathscr P_\text{zk} =
+\left\{
+\hat{\mathsf m}(X) \in F[X]^{<m_\text{zk}} \::\:
+\begin{matrix}
+\text{coeff. vector $\hat{\mathsf m}$  is as in \eqref{e:complete:prot:masks}},
+\\
+\text{with $msk_0, r_0$ over $\mathbb F_q$}
+\end{matrix}
+\right\}.
+\end{equation}
+To slightly optimize the proof size, the joint mask polynomial $\hat{\mathsf m}$ is committed together with the full-entropy mask 
+\begin{equation}
+\label{e:full:entropy:mask}
+\hat M = H_0 \| H_1\| \ldots \|H_r\|R_0\|MSK_0\|\ldots\|MSK_r\|MSK_\text{zk} \sample F^{m_\text{zk}}    
+\end{equation}
+for the ZO0K final opening proof as interleaved codeword from $C_\text{zk}^2$, but for simplicity of the presentation we assume that it is committed later on, in the subprotocol \ref{prot:zook:final:opening}.
+
+
+
+
+\subsection{The zk-IOPP}
+
+At start, the prover commits to the joint mask $\hat{\mathsf m}$ as codeword $\hat g \in C_{zk}$ and the randomized first stage witness $w_1$ as masked Reed--Solomon codeword $\hat f_1\in C_1^{e_1}$, using $\msk_{0,1}$ from $\hat{\mathsf m}$.
+% \ulrich{same notation for interleaving depth as for extension field degree, needs to be changed}
+The target of the IOPP is to prove that $\hat f_1$ and $\hat g$ are proximate to a solution of the R1CS, i.e. that they belong to
+\begin{equation}
+\label{e:zkIOPP:main:R}
+\mathcal R_\theta = \left\{
+    \begin{matrix}
+    \hat f_1\in \left(\mathbb F_q^{D_1}\right)^{e_1}, 
+    \\
+    \hat g\in F^{D_\text{zk}}
+    \end{matrix}
+    \::\:
+    \begin{matrix}
+    \exists 
+    \hat p(X) \in \mathscr P_{m_1}(\mathbb F_q), 
+    \hat{\mathsf m}(X) \in \mathscr P_\text{zk},
+    \\
+    d(\hat p, \hat f_1) \leq \theta \:\wedge\: d(\hat{\mathsf m},\hat g)\leq \theta_\text{zk},
+    \\\text{and}
+    \\
+    \text{the coefficients $(c_i)$ of}
+    \\
+    p(X) = \hat p(X) - \msk_{0,1}(X)
+    \\
+    \text{satisfy 
+    }
+    \\
+    (c_i)  \in \mathscr R_{main} \cap \mathscr R_{aux},
+    \\
+    (c_1,\ldots,c_{t_1}) = \vec{in}
+    \end{matrix}
+\right\}.
+\end{equation}
+Note that $\hat{\mathsf m}(X)\in\mathscr P_\text{zk}$ guarantees that the mask $\msk_{0,1}(X)$ is over the basefield $\mathbb F_q$, and so is the unmasked proximate $p(X)$ in \eqref{e:zkIOPP:main:R}.
+Thus the claimed solution is in fact as intended.
+
+The protocol consists of the following four phases, each consisting of one or several rounds which gradually reduce the main claim that $(\hat f_1, \hat g)\in \mathscr R_\theta$ to simpler claims on the prover messages. 
+% \[
+% \mathcal R_\theta \longrightarrow \mathcal R_\text{phase 0} \longrightarrow R_
+% \]
+
+\subsubsection{Phase 0.}
+This is the mask binding phase.
+It narrows down the prover to a single proximate of its mask commitment, and further ensures that it belongs to $\mathscr P_\text{zk}$.
+The verifier sends a random $z\sample F$, and the prover reveals the value $v = \hat{\mathsf m}(z)$, as well as of its randomized component $V_z(\hat{\mathsf m}) = \msk_0(z) + z^{|\msk_0|}\cdot r_0(z)$.
+Except with a probability of at most
+\begin{equation}
+\label{e:soundness:error:distinguishing}
+\varepsilon = \binom{\ell(\theta_\text{zk})}{2} \cdot \frac{m_\text{zk} - 1}{|F|},
+\end{equation}
+the random point $z\sample F$ belongs to the set of distinguishers 
+\begin{equation}
+\label{e:S}
+S = \left\{ z\in F 
+\::\: 
+\begin{matrix}
+\forall \hat q_1(X),\hat q_2(X)\in \mathcal L(\theta_\text{zk}),
+%F[X]^{<q_\text{zk}},
+\:
+q_1(X) \neq q_2(X),
+% \\
+% d(\hat q_i, g)\leq \theta_\text{zk}, \: i=1,2,
+\\
+\text{we have}
+\\
+\hat q_1(z)\neq \hat q_2(z) 
+\end{matrix}
+%\in \mathcal L(\theta_\text{zk})
+\right\},
+\end{equation}
+% \[
+% S = \left\{ z\in F 
+% \::\: 
+% \begin{matrix}
+% E_z: \mathcal L(\theta_\text{zk}) \longrightarrow F, \: \hat q(X) \mapsto q(z)
+% \\
+% \text{is injective}
+% \end{matrix}
+% %\in \mathcal L(\theta_\text{zk})
+% \right\},
+% \]
+where 
+\[
+\mathcal L(\theta_\text{zk}) = 
+\big\{\hat q(X) \in F[X]^{<q_\text{zk}} \::\: d(\hat q, \hat g) \leq \theta_\text{zk}
+\big\}
+\]
+is the set of $\theta_\text{zk}$-proximates of $\hat g$, and consequently the condition $\hat q(z) = v$ singles out a single proximate from $\mathcal L(\theta_\text{zk})$.
+The value $v' = V_z(\hat{\mathsf m})$ is used to demand that also $v' = V_{\phi(z)}(\hat{\mathsf m})$, where $\phi(z)$ is the Frobenius conjugate of $z$, which overwhelmingly assures that the mask component $\msk_0$ is over the basefield $\mathbb F_q$.
+Overall the phase is a randomized reduction 
+\[
+\mathcal R_{\vec\theta} \stackrel{z}{\longrightarrow} \mathcal R_\text{phase 0},
+\]
+with
+\begin{equation}
+\label{e:zkIOPP:R:phase:0}
+\mathcal R_\text{phase 0} = \left\{
+    \begin{matrix}
+    \hat f_1\in \left(\mathbb F_q^{D_1}\right)^{e_1}, 
+    \\
+    \hat g \in \mathbb F^{D_\text{zk}},
+    \\
+    v, v' \in F
+    \end{matrix}
+    \::\:
+    \begin{matrix}
+    z\in S, 
+    \\
+    \exists 
+    \hat p_1(X) \in \mathscr P_{m_1}, 
+    \hat q(X) \in F[X]^{< m_\text{zk}}\big|_{z,v,v'},
+    \\
+    d(\hat p_1, f) \leq \theta \:\wedge\: d(\hat q,g)\leq \theta_\text{zk},
+    \\\text{and}
+    \\
+    \text{the coefficients $(c_i)$ of}
+    \\
+    p_1(X) = \hat p_1(X) - \msk_{0,1}(X)
+    \\
+    \text{satisfy 
+    }
+    \\
+    (c_i)  \in \mathscr R_{main} \cap \mathscr R_{aux},
+    \\
+    (c_1,\ldots,c_{t_1}) = \vec{in}
+    \end{matrix}
+\right\},
+\end{equation}
+where 
+\begin{equation}
+\label{e:mask:poly:space:punctured}
+F[X]^{<m_\text{zk}}\big|_{z,v,v'} = \left\{
+\hat q(X)\in F[X]^{<m_\text{zk}} \::\:
+\begin{matrix}
+\hat q(z) = v, \\
+V_z(\hat q) = v', V_{\phi(z)}(\hat q) = \phi(v')
+\end{matrix}
+\right\}.
+\end{equation}
+The requirement that $z\in S$ in \eqref{e:zkIOPP:R:phase:0} assures that there is at most one proximate mask satisfying the conditions from \eqref{e:mask:poly:space:punctured}, and will be kept throught the following steps. 
+It allows to maintain the same soundness errors of the subsequent phases as in Theorem \ref{thm:main:soundness:informal}.
+
+
+
+\subsubsection{Phase 1.}
+The R1CS second stage, Phase \ref{i:main:phase:1} in Protocol \ref{prot:main}. 
+The only difference is that the second-stage witness $w_2$ is committed as masked codeword $\hat f_2\in C^{e}$, using $\msk_{0,2}$ from $\hat{\mathsf m}$.
+The phase is a reduction
+\[
+\mathcal R_\text{phase 0} \stackrel{\vec\xi}{\longrightarrow} \mathcal R_\text{phase 1}
+\]
+with %$R_\text{phase 1}$ also incooporating the assumption that $z\in S$.
+\begin{equation}
+\label{e:}
+\mathcal R_\text{phase 1} 
+=
+\left\{
+    \begin{matrix}
+        \hat f_1 \in \left(\mathbb F_q^{D_1}\right)^{e_1},
+        \\
+        \hat g \in \mathbb F^{D_\text{zk}},
+        \\
+        v, v' \in F
+        \\
+        \hat f_2^* \in \left(\mathbb F_q^{D_1}\right)^{e_1}%, v_2\in F 
+    \end{matrix}
+    \::\:
+    % \hspace*{-0.25cm}
+    \begin{matrix}
+        z\in S,
+        \\
+        \exists (\hat p_1(X),\hat p_2(X)) \in \mathscr P_{m_1}^2, 
+        \hat q(X) \in F[X]^{< m_\text{zk}}\big|_{z,v,v'},
+        \\
+        d((\hat p_1, \hat p_2), (\hat f_1,\hat f_2^*)) \leq \theta_1
+        \:\wedge \: 
+        d(\hat q, \hat g)\leq \theta_\text{zk},
+        \\
+        \text{and}
+        \\
+        \text{the coefficient vectors of }
+        \\
+        p_1(X) = \hat p_1(X) - \msk_{0,1}(X), \\ p_2(X) = \hat p_2(X) - \msk_{0,2}(X),
+        \\
+        \text{ satisfy the lifted R1CS }
+        \\
+        \text{on inputs }\vec{in} , \vec\xi 
+    \end{matrix}
+\right\}.
+\end{equation}
+
+
+
+\subsubsection{Phase 2.}
+This is zero-check, Phase \ref{i:main:phase:2} from Protocol \ref{prot:main}, modified by the zero-knowledge measures described in Section \ref{s:zk:zerocheck}, using the sparse mask $h_0$ from $\hat{\mathsf m}$.
+This phase reduces constraint satisfaction of the unmasked proximates $p_1(X)$, $p_2(X)$ to that their combined image polynomials $w_A$, $w_B$, $w_C$ satisfy the linear claims 
+\begin{align}
+\label{e:zkIOPP:phase3:claim:vM}
+v_M = \sum_{\vec x\in H_{m_1}} M_1(\vec\alpha, \vec x) \cdot p_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec\alpha,\vec x)\cdot p_2(\vec x)
+\end{align}
+with $M = A,B,C$, and
+\begin{align}
+\label{e:zkIOPP:phase3:claim:inputs}
+in_i = \sum_{\vec x \in H_{m_1}} eq(i, \vec x) \cdot p_1(\vec x),
+\quad 
+\xi_i = \sum_{\vec x \in H_{m_2}} eq^*(i, \vec x) \cdot p_2(\vec x),
+\end{align}
+given that all sumcheck consistency checks hold.
+Recall that $w_1$ is randomized, and so are the values $v_A$, $v_B$ and $v_C$, as long as the vector of sumcheck randomnesses $\vec\alpha$ is not contained in the exceptional set $E$ as in \eqref{e:complete protocol:exceptional set}. 
+Thus if all Moore determinants
+\[
+\det M(eq(\vec x_{i,1},\vec\alpha), \ldots, eq(\vec x_{i,2e},\vec\alpha) = 0,
+\]
+then the prover aborts. 
+%and reruns the protocol from the start.
+
+Formally, this phase is a randomized reduction 
+\[
+\mathcal R_\text{phase 1} \stackrel{\vec\rho, \alpha_0,\vec\alpha}{\longrightarrow} \mathcal R_\text{phase 2},
+\]
+where $\alpha_0$ denotes the randomness for combining the sumcheck mask, and
+\begin{equation}
+\mathcal R_\text{phase 2} =
+\left\{
+    \begin{matrix}
+        \hat f_1 \in \left(\mathbb F_q^{D_1}\right)^{e_1},
+        \\
+        \hat g \in \mathbb F^{D_\text{zk}},
+        \\
+        v, v' \in F
+        \\
+        \hat f_2^* \in \left(\mathbb F_q^{D_1}\right)^{e_1},
+        \\
+        q_1(X), \ldots, q_m(X) \in F[X]^{\leq 3}
+        \\
+        \hat v_A, \hat v_B, \hat v_C \in F
+    \end{matrix}
+    \::\:
+    \hspace*{-10mm}
+    \begin{matrix}
+        z\in S,
+        \\
+        \exists (\hat p_1(X),\hat p_2(X)) \in \mathscr P_{m_1}^2, 
+        \hat q(X) \in F[X]^{< m_\text{zk}}\big|_{z,v,v'},
+        \\
+        d((\hat p_1, \hat p_2), (\hat f_1,\hat f_2^*)) \leq \theta_1
+        \:\wedge \: 
+        d(\hat q, \hat g)\leq \theta_\text{zk},
+        \\
+        \text{and}
+        \\
+        \sum h_0(\vec x) = q_1(0) + q_1(1),
+        \\
+        q_i(\alpha_i) = q_{i+1}(0) + q_{i+1}(1),
+        \\
+        \text{for }i = 1,\ldots, m-1,
+        \\
+        q_m(\alpha_m) = (\hat v_A \cdot \hat v_B - \hat v_C)\cdot eq(\vec\alpha, \vec\rho),
+        \\
+        \text{and}
+        \\
+        p_1(X) = \hat p_1(X) - \msk_{0,1}(X), 
+        \\ 
+        p_2(X) = \hat p_2(X) - \msk_{0,2}(X),
+        \\
+        \text{satisfy the linear claims \eqref{e:zkIOPP:phase3:claim:vM} and \eqref{e:zkIOPP:phase3:claim:inputs}}
+    \end{matrix}
+\right\}.
+\end{equation}
+
+
+
+
+
+\subsubsection{Phase 3: ZO0K.}
+We run ZO0K as described in Section \ref{s:zook} on the joint claims \eqref{e:zkIOPP:phase3:claim:vM} and \eqref{e:zkIOPP:phase3:claim:inputs} for the combined polynomial $p(X)$ and $\hat{\mathsf m}$.
+To do so, the five claims are combined into one by another randomness.
+This phase is a reduction 
+\[
+\mathcal R_{phase 2} \stackrel{\vec\beta, \ldots}{\longrightarrow} \mathcal V,
+\]
+where $\mathcal V$ is the final verifier relation, which we defer to Appendix \ref{s:IOPPsoundness:complete}. 
+It includes the consistency checks of each ZO0K round, including the those of the final opening proof, and last but not least the final checks on the matrix polynomial specializations $M(\vec\alpha, \vec\beta,\:.\:)$, $M=A,B,C$.
+
+
+\subsubsection{Protocol summary.}
+We summarize the protocol, and highlight the differences to Protocol \ref{prot:main}.
+
+\begin{protocol}[zk-IOPP]
+\label{prot:complete}
+The R1CS matrices $A_i,B_i,C_i \in \mathbb F_q^{m\times m_i}$, $i=1,2$, and public inputs $\vec{in} = (in_0,\ldots, in_{t})\in \mathbb F_q^t$ are known to both the prover and the verifier. 
+The prover has committed to \textcolor{PineGreen}{the joint mask polynomial $\hat{\mathsf m}$ from \eqref{e:complete:prot:masks} as codeword $\hat g\in C_\text{zk}$}, and to the \textcolor{PineGreen}{randomized} first-stage witness $\vec w_1\in \mathbb F_q^{m_1}$ \textcolor{PineGreen}{(cf. Section \ref{s:randomizing:w_M} and Remark \ref{rem:propagation:constraints}} as \textcolor{PineGreen}{masked} Reed--Solomon codeword $\hat f_1\in C^e$. 
+The protocol consists of the following four phases.
 \begin{enumerate}
-    \item 
-    Appended by the zero-check masks $h_0\in F, h_1,\ldots, h_m \in F^{3}$ laid out as basefield vectors. 
-    \item 
-    Appended by $e^2 = [F:\mathbb F_q]^2$ basefield randomizers for $w_A, w_B, w_C$ at $\vec\alpha$, as described in Section \ref{s:randomizing:w_M} (at any position)
-\end{enumerate}
-The propagation constraints for the basefield randomizers are placed according to Lemma \ref{lem:zk:basefield:randomization}.
-No randomness appended to $\vec w_2$. 
+\setcounter{enumi}{-1}
+\textcolor{PineGreen}{
+\item 
+Mask binding: 
+\label{i:zk:phase:0}
+The verifier samples 
+\[
+z\sample F
+\]
+at random, and the prover answers with $v = \hat{\mathsf m}(z)$, $v' = V_z(\hat{\mathsf m})$ where $V_z$ is the above defined evaluation functional on the mask component $\hat\msk_0 = \msk_0\|r_0$.
+}
+
+\item
+\label{i:zk:phase:1}
+R1CS second stage:
+The verifier samples the stage-2 challenge
+\[
+\vec\xi \sample \mathbb F_q^{t}
+\]
+and sends them to the prover.
+The prover computes $\vec w_2 \in \mathbb F_q^{m_2}$  the second-stage witness of the R1CS, commits to it as \textcolor{PineGreen}{masked} codeword $\hat f_2\in C^e$.
 
 \item 
-Commitment masks as in Section \ref{s:zook}:
-The masks $msk_0,\ldots, msk_r$ and $h_1,\ldots, h_r$ are committed as codeword in $C_{zk}$.
-Here $msk_0$ for the combined witness poly splits as $msk_{0,1}, msk_{0,2}\in \mathbb F_q^{s_1}$, and is over the basefield. 
-(The other masks are over $F$.)
-\end{enumerate}
+\label{i:zk:phase:2}
+R1CS zero-check:
+The verifier sends a random 
+\[
+\vec\rho \sample F^m,
+\]
+and both prover and verifier engage in the \textcolor{PineGreen}{zk-sumcheck protocol as described in Section \ref{s:zk:zerocheck}} for 
+\begin{align}
+\label{e:R1CS:zerocheck}
+\sum_{\vec x\in H_m} \left(w_A(\vec x)\cdot w_B(\vec x) - w_C(\vec x)\right)\cdot eq(\vec x, \vec\rho) = 0,
+\end{align}
+where $w_A(\vec x), w_B(\vec x), w_C(\vec x)$ are the multilinears as specified in \eqref{e:a:poly}, using the unmasked combined witness polynomial $w$. 
+After the last round of the sumcheck, \textcolor{PineGreen}{the prover checks if the vector of verifier challenges $\vec\alpha\in F^m$ drawn in the course of the sumcheck, satisfies
+\begin{equation}
+\label{e:alph:notin:E}
+\alpha \notin E,
+\end{equation}
+with $E$ as in  \eqref{e:complete protocol:exceptional set}.}
+If this is the case the prover sends 
+% (The protocol reduces the claim on the hypercube sum \eqref{e:R1CS:zerocheck} to a quadratic check on the evaluation claims 
+\begin{equation*}
+v_A = w_A(\vec\alpha),  \quad v_B = w_B(\vec\alpha), \quad v_C = w_C(\vec\alpha).
+\end{equation*}
+\textcolor{PineGreen}{(Otherwise, it aborts.)}
+The verifier checks if $q_m(\alpha_m) = (v_A\cdot v_B - v_C) \cdot eq(\alpha,\rho)$.
 
-% \begin{protocol}[zk-IOPP]
-% \label{prot:main:zk}
-% The R1CS matrices $A_i,B_i,C_i \in \mathbb F_q^{m\times m_i}$, $i=1,2$, and public inputs $\vec{in} = (in_0,\ldots, in_{t})\in \mathbb F_q^t$ are known to both the prover and the verifier. 
-% The prover has committed to the first-stage witness $\vec w_1\in \mathbb F_q^{m_1}$ as interleaved Reed--Solomon codeword $f_1\in C^e$ as described above, and provided the verifier oracle access.
-% \begin{enumerate}
-% \item
-% \label{i:main:phase:1}
-% R1CS second stage:
-% % \begin{enumerate}
-% % \item
-% % \label{i:main:DEEP:w1}
-% % The verifier sends a random $z_1\sample F$ to the prover, which answers with the value $v_1$ of the univariate representation $w_1(X)$ at $z_1$.
-% % %
-% % \item
-% % \label{i:main:logUp}
-% The verifier samples the stage-2 challenge
-% \[
-% \vec\xi \sample \mathbb F_q^{t}
-% \]
-% and sends them to the prover.
-% The prover computes $\vec w_2 \in \mathbb F_q^{m_2}$  the second-stage witness of the R1CS, commits to it as codeword $f_2\in C^e$, as described above, and provides the verifier oracle access.
-% %(the logUp inverses and their sums), 
-% % commits to it as interleaved Reed--Solomon codeword $f_2$ associated with $\mathscr P_{m_2}(\mathbb F_q)$, and provides the verifier oracle access. 
-% %
-% % \item 
-% % \label{i:main:DEEP:w2}
-% % The verifier sends a random $z_2\sample F$ to the prover, which answers with the value of the univariate representation $w_2(X)$ at $z_2$.
-% % \end{enumerate}
-% %answers with the logUp R1CS witnesses $\vec w_2$, so that the 
-
-% \item 
-% \label{i:main:phase:2}
-% R1CS zero-check:
-% % Both prover and verifier engage in a \textit{zero-check} for the domain identity
-% % \begin{equation}
-% % a(\vec x) \cdot b(\vec x) = c(\vec x), \quad \vec x\in H_n = \{0,1\}^n
-% % \end{equation}
-% % where $a, b$ and $c$ are the multilinear extensions of the implicitly committed matrix-images
-% % \[
-% % \vec a = A\cdot \vec w, \vec b = B\cdot \vec w, \vec c = C\cdot \vec w.
-% % \]
-% The verifier sends a random 
-% \[
-% \vec\rho \sample F^m,
-% \]
-% and both prover and verifier engage in the sumcheck protocol for %the R1CS constraints
-% \begin{align}
-% \label{e:R1CS:zerocheck}
-% \sum_{\vec x\in H_m} \left(w_A(\vec x)\cdot w_B(\vec x) - w_C(\vec x)\right)\cdot eq(\vec x, \vec\rho) = 0,
-% \end{align}
-% where $w_A(\vec x), w_B(\vec x), w_C(\vec x)$ are the multilinears as specified in \eqref{e:a:poly}.
-% After the last round of the sumcheck, the prover sends 
-% % (The protocol reduces the claim on the hypercube sum \eqref{e:R1CS:zerocheck} to a quadratic check on the evaluation claims 
-% \begin{equation*}
-% v_A = w_A(\vec\alpha),  \quad v_B = w_B(\vec\alpha), \quad v_C = w_C(\vec\alpha),
-% \end{equation*}
-% where $\vec\alpha \in F^m$ are the verifier challenges drawn in the course of the sumcheck, and the verifier checks if 
-% $q_m(\alpha_m) = (v_A\cdot v_B - v_C) \cdot eq(\alpha,\rho)$.
-% %These claims are announced by the prover in the last round. 
-
-% \item 
-% \label{i:main:phase:3}
-% WHIR: 
-% % The verifier samples a random $\lambda\sample F$, 
-% Both prover and verifier run WHIR for the following linear constraints on the combined witness polynomial $w$:
-% \begin{align}
-% \label{e:phase3:claim:vM}
-% v_M = \sum_{\vec x\in H_{m_1}} M_1(\vec\alpha, \vec x) \cdot w_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec\alpha,\vec x)\cdot w_2^*(\vec x)
-% \end{align}
-% with $M = A,B,C$, and
-% \begin{align}
-% \label{e:phase3:claim:inputs}
-% in_i = \sum_{\vec x \in H_{m_1}} eq(i, \vec x) \cdot w_1(\vec x),
-% \quad 
-% \xi_i = \sum_{\vec x \in H_{m_2}} eq^*(i, \vec x) \cdot w_2^*(\vec x),
-% \end{align}
-% for $i = 0,\ldots, t$.
-% % (The concrete form of the linear combination is described below.)
+\item 
+\label{i:main:phase:3}
+ZO0K: 
+% The verifier samples a random $\lambda\sample F$, 
+Both prover and verifier run \textcolor{PineGreen}{ZO0K as in Section \ref{s:zook}} for the following linear constraints on the combined \textcolor{PineGreen}{masked} witness polynomial $\hat w$ \textcolor{PineGreen}{and $\hat{\mathsf m}$}:
+\begin{align}
+\label{e:phase3:claim:vM}
+v_M = \sum_{\vec x\in H_{m_1}} M_1(\vec\alpha, \vec x) \cdot w_1(\vec x) + \sum_{\vec x\in H_{m_1}} M_2^*(\vec\alpha,\vec x)\cdot w_2^*(\vec x)
+\end{align}
+with $M = A,B,C$, and
+\begin{align}
+\label{e:phase3:claim:inputs}
+in_i = \sum_{\vec x \in H_{m_1}} eq(i, \vec x) \cdot w_1(\vec x),
+\quad 
+\xi_i = \sum_{\vec x \in H_{m_2}} eq^*(i, \vec x) \cdot w_2^*(\vec x),
+\end{align}
+for $i = 0,\ldots, t$, \textcolor{PineGreen}{where $w_i = \hat w_i - \msk_{0,i}$, $i=1,2$, 
+with the additional mask constraints $\hat{\mathsf m}(z) = 0$, $V_z(\hat{\mathsf m}) = v'$, $V_{\phi(z)}(\hat{\mathsf m}) = \phi(v')$ taken into account in the final opening proof Protocol \ref{prot:zook:final:opening}}.
 % (This phase reduces the validity of the linear constraints to claims on the combined matrix polynomials
 % \begin{equation}
 % \label{e:split:matrix:values}
@@ -110,7 +451,163 @@ Here $msk_0$ for the combined witness poly splits as $msk_{0,1}, msk_{0,2}\in \m
 % C(\vec\alpha,\vec\beta),
 % \end{equation}
 % where $\vec\beta \in F^{m_1}$ are the folding randomnesses drawn in the course of WHIR.)
-% \end{enumerate}
-% If all verifier checks in Phase \ref{i:main:phase:2} and Phase \ref{i:main:phase:3}, including that of the final matrix values \eqref{e:split:matrix:values}, pass, then the verifier accepts.
-% Otherwise, it rejects.
-% \end{protocol}
+\end{enumerate}
+If all verifier checks in Phase \ref{i:main:phase:2} and Phase \ref{i:main:phase:3}, including that of the final opening Protocol \ref{prot:zook:final:opening}, pass, then the verifier accepts.
+Otherwise, it rejects.
+\end{protocol}
+
+\begin{rem}
+Filtering out the few exceptional sumcheck randomnesses $\vec\alpha$ hurts completeness in a negligible manner, with a failure probability of at most \eqref{e:completeness:error}.
+To patch completeness, the prover can rerun the protocol and receive a fresh $\vec\alpha$.
+\end{rem}
+
+
+
+\subsection{Soundness}
+\label{s:zkIOPP:soundness:discussion}
+
+Let us summarize the soundness properties of our zk-IOPP as chain of phase-wise interactive oracle reductions
+\[
+\mathcal R \longrightarrow \mathcal R_\text{phase 0} \longrightarrow \ldots \mathcal R_\text{phase 2} \longrightarrow \mathcal V,
+\]
+without going into details of their rounds. 
+% and likewise for each of the rounds within ZO0K, Phase 3.
+
+We again assume the proximity parameters $\theta_1,\ldots, \theta_r$ for the basecodes $C_1$,\ldots, $C_r$ in the Johnson regime, i.e. below the 
+\begin{equation}
+\label{e:theta:i:below:Johnson}
+\theta_i \in (0,  1 - \sqrt{1 -\delta_i}),
+\end{equation}
+where $\delta_i$ is the minimum distance of $C_i$, and $\ell_i(\theta_i)$ denote their corresponding list size bounds. 
+The same assumption is taken for $\theta_\text{zk}$ the proximity parameter imposed on $C_\text{zk}$,
+\begin{equation}
+\label{e:theta:zk:below:Johnson}
+\theta_\text{zk} \in (0, 1 - \sqrt{1 -\delta_\text{zk}}), 
+\end{equation}
+where $\delta_\text{zk}$ is the minimum distance of $C_\text{zk}$, and $\ell_\text{zk}(\theta_\text{zk})$ will denote the list size bound. 
+
+
+\begin{thm}[IOPP soundness]
+\label{thm:zk:soundness:informal}
+For proximity parameters $\theta_1,\ldots, \theta_r$ and $\theta_\text{zk}$ as above.
+Protocol \ref{prot:complete} is a round-by-round knowledge sound interactive oracle proof for that $(\hat f_1, \hat g)\in \mathcal R_{\theta_1}$ as specified in \eqref{e:zkIOPP:main:R}, with the following round-by-round soundness errors for the four phases:
+\begin{align}
+\label{e:zkIOPP:phase0:soundness:error}
+\varepsilon_\text{phase 0} 
+&< \frac{\ell_\text{zk}(\theta_\text{zk})\cdot (\ell_\text{zk}(\theta_\text{zk}) + 1)}{2} \cdot \frac{m_\text{zk}}{|F|},
+\\
+\label{e:zkIOPP:phase1:soundness:error}
+\varepsilon_\text{phase 1} 
+&\leq 
+    % % \max\left( 
+    % \binom{\ell_ 1}{2} \cdot \frac{2^{m_1}}{|F|} %\quad
+    % + \ell_2\cdot \varepsilon_{stage 2} %\quad
+    % + \binom{\ell_2}{2} \cdot \frac{2^{m_2}}{|F|},
+    % % \max\right)
+    \ell_1(\theta_1) \cdot \varepsilon_\text{R1CS} 
+\\\intertext{%
+where $\varepsilon_{R1CS}$ is the soundness error of the randomized AIR, 
+}\label{e:zkIOPP:phase2:soundness:error}
+\varepsilon_\text{phase 2}  
+&\leq \ell_1(\theta_1) \cdot \max\left\{\frac{m}{|F|}, \frac{1}{|F|}, \frac{3}{|F|}\right\},
+%\cdot \frac{|F|}{|F\setminus E|}, 
+\\\intertext{and}
+\label{e:zkIOPP:phase3:soundness:error}
+\varepsilon_\text{phase 3} &\leq 
+\varepsilon_\text{ZO0K}(\theta_1,\ldots, \theta_r,\theta_\text{zk})
+\end{align}
+for the round-by-round soundness error of ZO0K with $r$ rounds on the inner product claims \eqref{e:phase3:claim:vM} and \eqref{e:phase3:claim:inputs}.
+\end{thm}
+
+
+\begin{rem}
+The soundness error \eqref{e:zkIOPP:phase0:soundness:error} of Phase \ref{i:zk:phase:0} follows from the union bound  
+\begin{align*}
+\frac{\ell(\theta_\text{zk})\cdot (\ell(\theta_\text{zk})-1)}{2} \cdot \frac{m_\text{zk}}{|F|} + \ell(\theta_\text{zk})\cdot \frac{m_\text{zk}}{|F|},    
+\end{align*}
+where the first term is the probability for that $z\notin S$, and second term is a generous upper bound for the error of the Frobenius check imposed on the component $\hat\msk_0$.
+The soundness error \eqref{e:zkIOPP:phase2:soundness:error} of Phase \ref{i:zk:phase:2} now also covers the batching step with the sparse mask polynomial, which contributes to the additional $1/|F|$ term in the max.
+\end{rem}
+
+For a proof of Theorem \ref{thm:zk:soundness:informal}, which specifies the reductions of all intermediate steps of each phase, see Appendix \ref{s:IOPPsoundness}.
+Since Phase \ref{i:zk:phase:0} binds the prover to a single proximate of the mask commitment, reflected by the sets $\mathcal R_\text{phase 0}$, $\mathcal R_\text{phase 1}$, $\mathcal R_\text{phase 2}$, and $\mathcal V$ incorporating $z\in S$, the soundness error of the PIOP is scaled only by
+\[
+\ell_1(\theta_1) \cdot 1,
+\]
+instead of the combinatorial bound 
+\[
+\ell_1(\theta_1)\cdot \ell_\text{zk}(\theta_\text{zk}),
+\]
+when omitting Phase \ref{i:zk:phase:0}.
+The same principle applies to the roundwise errors of ZO0K, which we summarize now.
+
+\begin{thm}[ZO0K soundness under mask binding]
+\label{thm:zook:soundness}
+Assume that $z\in S$.
+Then round $i=1,\ldots, r$ in Protocol \ref{prot:WHIR} with the modifications of Section \ref{s:zook}
+is round-by-round (knowledge) sound oracle reduction with the following knowledge soundness errors for each of its steps.
+
+(There, $\varepsilon_\text{CA}(C,d,\theta)$ denotes the soundness error of the constrained correlated agreement theorem (Theorem \ref{thm:CAT:constrained}) for the Reed--Solomon code $C$, under degree-$d$ constraints, with proximity parameter $\theta$.)
+\begin{enumerate}
+    \item 
+    Sumcheck phase:
+    \begin{enumerate}
+        \item 
+        The step of combining the sparse sumcheck mask has error
+        \begin{align}
+        \label{e:zook:soundness:batching}
+        \varepsilon_{B,i} &= \varepsilon_{\text{CA}}(C_{i},1,\theta_{i}).
+        \end{align}
+        \item 
+        For each of the $r_i$ sumcheck steps,
+        \begin{align}
+        \label{e:zook:soundness:sumcheck}
+           \varepsilon_{S,i} &= \varepsilon_{\text{CA}}(C_{i},2,\theta_{i}).
+        \end{align}
+    \end{enumerate}
+    \item 
+    Query phase:
+    \begin{align}
+    \label{e:zook:soundness:query}
+        \varepsilon_{Q,i} = \frac{\ell_{i+1}(\theta_{i+1})^2}{2} \cdot \frac{2^{k_{i+1}}}{|F\setminus D_{i+1}|} + (1 -\theta_{i})^{s_i},
+    \end{align}
+    where $\ell_{i+1}(\theta_{i+1})$ is the list size bound for $C_{i+1}$ at distance $\theta_{i+1}$.
+    (In the last round $i=r$, no code switch is done, and $\ell_{r+1}(\theta_{r+1})$ above is replaced by $\ell_r(\theta_r)$.) 
+    \item 
+    Aggregation step:
+    \begin{align}
+    \label{e:zook:soundness:aggregation}
+        \varepsilon_{A,i} = \ell_{i+1}(\theta_{i+1}) \cdot \frac{s_{i}}{|F|},
+    \end{align}
+    again with the same list size bound as above.
+    (In the last round $i=r$, $\ell_{r+1}(\theta_{i+1})$ above is replaced by $\ell_r(\theta_r)$.) 
+\end{enumerate}
+The roundwise soundness errors of the final opening proof, Protocol \ref{prot:zook:final:opening}, are
+\begin{equation}
+\varepsilon_{fin,B} = \max\big\{
+\varepsilon_{CA}(C_r,1,\theta_r), \varepsilon_{CA}(C_\text{zk},1,\theta_\text{zk})
+\big\}
+\end{equation}
+for the batching step, and 
+\begin{equation}
+\varepsilon_{fin,Q} = (1 - \theta_r)^{s} + (1 - \theta_\text{zk})^{s_\text{zk}}
+\end{equation}
+for the query step.
+\end{thm}
+
+For a proof of the theorem, including the specifications of the oracle reductions, we refer to Appendix \ref{s:IOPPsoundness:zook}.
+
+
+
+\subsection{Zero-knowledge}
+
+Finally, and without specifying the formal notions, we summarize the zero-knowledge property of our zk-IOPP.
+
+\begin{thm}[IOPP perfect zero-knowledge]
+\label{thm:IOPPzk:complete:informal}
+Under the assumption that the masks are sampled as described above, and that $w_1$ incooporates the $e^2$ random field elements as described in Section \ref{s:randomizing:w_M}, 
+Protocol \ref{prot:complete} is perfect zero-knowledge. 
+\end{thm}
+
+The theorem follows from the corresponding properties of the zk-sumcheck (Section \ref{s:zk:zerocheck}) applied to the zero-check and the sumcheck rounds of ZO0K, the sizes of the random masks $\msk_0,\ldots, \msk_r$, and the zero-knowledge property of the final opening proof.
+For the detailed statement plus its proof we again refer to Appendix \ref{s:IOPPzk}.

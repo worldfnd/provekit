@@ -1,0 +1,193 @@
+\section{Notation \tbc}
+
+Although the entire construction described in the writeup applies to arbitrary prime fields, we confine ourselve to the the following choices.
+%
+Let $\mathbb F_q$ be the Goldilocks prime field \cite{}, with the Solinas prime
+\[
+q = 2^{64} - 2^{32} + 1
+\]
+as modulus. 
+We denote by $F\geq \mathbb F_q$ any cryptographically large extension, in our case the degree 3 extension $F = \mathbb F_{q^5}$, using...
+\ulrich{%
+Check which irreducible polynomial is best
+}
+
+
+% \subsection{Notation}
+Boolean Hypercube $H_n = \{0,1\}^n\subset \mathbb F_q^n$, indexing in natural order via $[0,2^n)$, 
+multivariate and multilinear polynomials,
+Lagrange polynomial
+\begin{equation}
+\label{e:eq}
+eq(\vec y, \vec\rho) = \prod_{i=1}^n (y_i \cdot \rho_i + (1 - y_i)\cdot (1-\rho_i))
+%= \prod_{i=1}^m (1 - y_i - \rho_i + 2 y_i  \rho_i),
+\end{equation}
+
+Inner product notation.
+
+
+\subsection{Multilinears and  univariates}
+
+ 
+Given a function $f\in \mathbb F^{H_n}$ (a vector of values) we will write
+\[
+f(X_1,\ldots, X_n) \in \mathbb F[X_1,\ldots, X_n]^{<2}
+\]
+for its multilinear extension, and 
+% multilinear $f(X_1,\ldots, X_n)\in $
+% %, given by its values over the Boolean hypercube $H_n$, %(the component of an interleaved representation) with the univariate polynomial
+associate to it the univariate polynomial
+\begin{equation}
+\label{e:values:to:coeffs}
+u_f(X) = \sum_{i=0}^{2^n-1} f(i_1,\ldots, i_n) \cdot X^i,
+\end{equation}
+defined by the values of $f$ over $H_n$,  where $i = i_1 + \ldots + 2^{n-1} i_n$ is the decomposition of the index into bits. 
+Under this \textit{values-to-coefficient} regime, we identify the space of multilinears (in $n$ variables) with the univariate space
+\begin{equation}
+\mathscr P_{n}(\mathbb F) = \mathbb F[X]^{<2^n} 
+\end{equation}
+in a way that is particularly efficient for Reed--Solomon encoding. 
+
+% \subsubsection{Liftings.}
+% Given a multilinear $f$ in $k$ variables, and $n>k$, we call
+% \[
+% f^*(X_1,\ldots, X_n) = (1-X_1)\cdot\ldots (1-X_{n-k})\cdot f(X_{n-k+1},\ldots, X_n)
+% \]
+% its \textit{lifting} to $n$ variables. 
+% Lifting will allow to treat a collection of polynomials in a uniform manner, while not paying the cost of duplicated values.
+% In terms of univariate representations,
+% \[
+% u_{f^*}(X) = u_f(X^{2^{n-k}}).
+% \]
+
+\subsubsection{Univariate evaluation}
+Evaluation at a point $z\in\mathbb F$ is a linear functional and can be written as inner product $u_m(z) = \langle f, L_z\rangle_{H_n}$ with  
+\begin{equation}
+\label{e:uni:eval:kernel}
+L_z(X_1, \ldots, X_n) = \prod_{j=1}^n \left(
+ (1 - X_j) + X_j \cdot z^{2^{j-1}}  \right),
+\end{equation}
+and its values over the hypercube are the powers of $z$ in natural order.
+% In terms of codes, $L_z$ expresses point evaluation of the codeword as linear functional on the message.
+
+% This establishes a one-to-one correspondence between multilinear polynomials in $k$ variables, and univariate polynomials from the space 
+% \[
+% \mathscr P_{k} = \mathbb F[X]^{<2^k}.
+% \]
+
+% For example the univariate Lagrangian 
+% \[
+% L_z(X) = \frac{1}{2^n}\cdot \left(1 + \sum_{i=1}^{2^n-1} z^{2^n - i} \cdot X^i\right) 
+% \]
+
+% Interleaved representations are encoded component-wise, i.e. row by row, using a Reed--Solomon code with message length matching the row length. 
+% Concretely, each postfix function $g(X_1, \ldots, X_{n-k}) = f(X_1,\ldots, X_{n-k},\vec y)$, given by its values over the Boolean hypercube $H_{n-k}$, is associated with the univariate polynomial
+% \[
+% \sum_{\vec x\in \{0,1\}^{n-k}} g(\vec x) \cdot X^{\iota(\vec x)} \quad \in \mathbb F[X]^{<2^{n-k}},
+% \]
+% where $\iota(\vec x) = x_1 + 2 x_2 + \ldots + 2^{n-k-1} x_{n-k}$ is the natural index of $\vec x$, and evaluated over a specified domain $D\subset \mathbb F$. 
+% In this way, we obtain postfix many Reed--Solomon codes, viewed as word from the \textit{interleaved code}.
+
+
+
+
+
+
+\subsection{Interleaved representation}
+
+In alignment with the sumcheck protocol, we will often think of a multilinear $f(X_1,\ldots, X_n)$ decomposed into its $k$-prefix functions
+% by postfixes $\vec y\in \{0,1\}^k$,
+\begin{align}
+\label{e:prefix:decomp}
+f(X_1,\ldots,X_n) =  \sum_{i = 0}^{2^{k}-1} eq_{i}(X_{1},\ldots, X_k) \cdot f_i(X_{k+1},\ldots, X_{n}) \cdot 
+\end{align}
+Here we again used the identification  $H_k = [0,2^k)$, by each index $i$ specifying the prefix $(i_{1},\ldots, i_{k})\in H_{k}$ via its bits.
+We call 
+$
+(f_0, \ldots, f_{2^{n-k}-1}) %\in \mathbb F[X_{k+1},\ldots, X_n]^{2^{k}}
+$
+the \textit{interleaved representation} of $f$, with interleaving depth $e = 2^{k}$.
+In terms of their univariate polynomials,
+\begin{align}
+\label{e:FFT:decomp}
+u_f(X) = \sum_{i=0}^{2^k-1}  X^{i} \cdot u_{f_i}(X^{2^k}), 
+\end{align}
+which is the FFT decomposition of $u_f(X)$. 
+
+\begin{rem}%[Postfix decomposition]
+\label{rem:postfix:decomp}
+The current version of ProveKit instead employs a postfix decomposition of multilinear polynomials, which corresponds, in the univariate representation, to partitioning the polynomial into contiguous blocks of monomial powers.
+%$u_f(X) = \sum_{i=0}^{2^{n-k}-1} u_{f_i}(X) \cdot X^{i \cdot 2^{k}}$.
+Since our construction relies very little on properties specific to Reed--Solomon codes, the choice of decomposition is largely a matter of convenience. We adopt a prefix decomposition instead, as it leads to notation that is more consistent with our treatment of liftings.
+\end{rem}
+
+
+
+\subsection{Liftings}
+
+Given a multilinear $f$ in $k$ variables, and $n>k$, we call
+\begin{equation}
+\label{e:lifting:multilinear}
+f^*(X_1,\ldots, X_n) = (1 - X_1)\cdot \ldots \cdot (1 - X_{n-k}) \cdot f(X_{n-k+1},\ldots, X_n)
+\end{equation}
+its \textit{lifting} to $n$ variables. 
+In terms of the values over the hypercube, lifting simply places the original vector (the values over $H_k$) on the prefix cube 
+\[
+\{0^{n-k}\}\times H_{k} \subset H_n,
+\]
+and pads it with zero on the remainder of $H_n$.
+In terms univariate representations, 
+\begin{equation}
+u_{f^*}(X) = u_f(X^{2^{n-k}}).
+\end{equation}
+We use lifting to uniformize our R1CS across the two stages at no additional cost.
+
+
+% \subsection{Sumcheck}
+
+% % In reverse order, since the hypercube is indexed in natural order.
+
+% The multivariate sumcheck protocol \cite{Sumcheck} is an interactive proof for that a multivariate polynomial $G\in \mathbb F[X_1,\ldots, X_n]$ satisfies
+% \[
+% \sum_{\vec x \in H_n} G(\vec x) = s.
+% \]
+% % Typically, the multivariate $G$ is a virtual polynomial in several committed multilinears, and its maximum individual degree $d = \max_i \deg_{X_i}(G)$ is at least $2$.
+% We assume that the reader is familiar with it, and only point out the following:
+% For implementation reasons, we consider the sumcheck protocol in \textit{reverse order}, from the last variable $X_n$ down to the first variable $X_1$.
+% In each step,  $k = n, n-1, \ldots, 1$, the prover provides the refinement polynomials $q_k(X)\in \mathbb F[X]^{\leq d_k}$, where $d_k$ is the individual degree of $G$ in $X_k$, and the verifier chooses to continue on the specialized claim $q_k(\lambda_k)$ at a random  $\lambda_k\sample\mathbb F$. 
+% \[
+% q_k(X) = \sum_{(x_{1},\ldots, x_{k-1}) \in H_{k-1}} G(x_1,\ldots, x_{k-1},X,\lambda_{k+1},\ldots, \lambda_n),
+% \]
+
+
+% Although we shall describe our protocols in a self-contained manner, we quickly sketch the sumcheck protocol, as it is a core ingredient of multilinear proof system.
+
+% Before the first round the prover claims the refinement polynomial 
+% \[
+% q_n(X) = \sum_{(x_2,\ldots, x_{n-1}) \in H_{n-1}} G(x_1,\ldots, x_{n-1}, X),
+% \]
+% which is of degree at most $d$.
+% The verifier checks the sanity condition that $s = q_0(0) + q_0(1)$, chooses a random $\lambda_n$, and it asks the prover to prove the specialized claim
+% \[
+% q_n(\lambda_n) = \sum_{(x_2,\ldots, x_n) \in H_{n-1}} G(x_1,\ldots, x_{n-1}, \lambda_n)
+% \]
+% instead.
+% The protocol continues in the same manner, letting the prover provide refinement polynomials
+% \[
+% q_k(X) = \sum_{(x_{1},\ldots, x_{k-1}) \in H_{k-1}} G(x_1,\ldots, x_{k-1},X,\lambda_{k+1},\ldots, \lambda_n),
+% \]
+% for $i=1,\ldots,n-2$ as response of the received challenges $\lambda_2,\ldots, \lambda_{n-1}$.
+% In the last step the verifier samples $\lambda_{n}\sample F$, which eventually reduces the sumcheck claim to that
+% \[
+% q_{n-1}(\lambda_n) = G(\lambda_1,\ldots, \lambda_n), 
+% \]
+% a evaluation claim for the multivariate polynomial $G$ at the random point $\vec \lambda = (\lambda_1,\ldots, \lambda_n)$, comprised of the random challenges received in the course of the protocol.
+% For a detailed treatment of the sumcheck protocol, and its importance to multivariate proofs in general, we refer to the manuscript \cite{Thaler:book} and the references therein.
+
+
+
+\subsection{Properties of interleaved Reed--Solomon codes}
+
+Are RS codes over an extension field. 
+Same rate, same distance.  
+

@@ -1,0 +1,809 @@
+\section{Adding zero-knowledge}
+\label{s:zk}
+
+
+\subsection{Randomizing $w_M(\vec\alpha)$.}
+\label{s:randomizing:w_M}
+
+Recall that in the end of Phase \ref{i:main:phase:2} of Protocol \ref{prot:main}, the prover reveals the values
+$w_A(\vec\alpha)$, $w_B(\vec\alpha)$, $w_C(\vec\alpha)$, which are subject to 
+\begin{equation}
+\label{e:zerocheck:last:check}
+q_{m}(\alpha_m) = (w_A(\vec\alpha)\cdot w_B(\vec\alpha) - w_C(\vec \alpha))\cdot eq(\vec\alpha,\vec\rho),
+\end{equation}
+where $\alpha\in F^m$ are the random challenges collected over the rounds of the sumcheck.
+In this section we discuss two different strategies to prevent these values from leaking private witness data.
+%Both randomize either $w_1$ or $w_2$ ``on-chip'', by 
+Both extend the witness (either $w_1$ or $w_2$) by random values, and add trivial gates to assure their propagation through the R1CS matrices. 
+
+
+
+\subsubsection{Randomization by extension field elements.}
+
+% This is the canonical solution, where the openings over the extension field $F$ are randomized by random witnesses over $F$. 
+Although we do not use this technique in our current implementation, we keep this section for an optional shift to a the second stage over $F$. 
+%This breaks with our current design decision keeping $w_2$ also over $\mathbb F_q$, so the solution would be only interesting if we decide to revert to $w_2$ over the extension field $F$.   
+In that case, randomizing the openings by additional random witnesses over $F$ is the natural way to go.
+
+First of all, note that it is sufficient to randomize $w_A(\vec\alpha)$ and $w_B(\vec\alpha)$; the value of $w_C(\vec\alpha)$ is then uniquely determined by \eqref{e:zerocheck:last:check}, as long as $eq(\vec\alpha, \vec\rho)\neq 0$. 
+We allocate two private extension field variables $R_A, R_B$ in the second stage R1CS, and set their values to $r_A, r_B \sample F$. 
+Their gates are 
+\[
+R_A \cdot 1 = R_A, \quad 1 \cdot R_B = R_B, 
+%\quad 1 \cdot R_C = R_C,
+\]
+located at arbitrary row indices $\vec x_A, \vec x_B \in H_m$.
+Then 
+\begin{align}
+\label{e:wA:randomized:extfield}
+w_A(\vec Y) &= w_A'(\vec Y)  + r_A \cdot eq(\vec x_A,\vec Y),
+\\
+\label{e:wB:randomized:extfield}
+w_B(\vec Y) &= w_B'(\vec Y) + r_B \cdot eq(\vec x_B, \vec Y) 
+\end{align}
+with $w_A'$, $w_B'$, not depending on the two random witnesses $r_A$, $r_B$.
+ 
+% These two randomnesses are sufficient to hide the other witnesses, for most of the $\vec\alpha\in F^m$.
+% $\vec x_1\in H_m$ corresponds to the row index of the gate $R_1\cdot 1 = R_1$ in $A_2$.
+
+\begin{lem}
+\label{lem:ext:field:randomization}
+For any $\vec\rho\in F^m$.
+Except for a fraction of $\varepsilon \leq \frac{3 m}{|F|}$ points $\vec\alpha\in F^m$, 
+the distribution of $(w_A(\vec\alpha), w_B(\vec\alpha), w_C(\vec\alpha))$ is uniform on the set
+\[
+\left\{
+(v_A, v_B, v_C) \in F^3 
+\::\:
+q_m(\alpha_m) = (v_A\cdot v_B - v_C)\cdot eq(\vec\alpha,\vec\rho)
+\right\}.
+\]
+\end{lem}
+\begin{proof}
+The exceptional set is the union of the roots of the multilinears $eq(\vec x_A, \:.\:)$, $eq(\vec x_B, \:.\:)$  and $eq(\:.\:,\vec\rho)$.
+For all other $\vec\alpha\in F^m$, the vector $(w_A(\vec\alpha), w_B(\vec\alpha))$ is uniformly distributed over $F^2$, since the coefficients of $r_A$ and $r_B$ do not vanish in \eqref{e:wA:randomized:extfield} and \eqref{e:wB:randomized:extfield}, and they uniquely determine $w_C(\vec\alpha)$ via the claim \eqref{e:zerocheck:last:check}.
+$\Box$
+\end{proof}
+
+% We note that this already diverges from the univariate case, where local randomization of the witness propagates to \textit{all} points outside the witness domain. 
+
+The bound in Lemma \ref{lem:ext:field:randomization} is essentially tight, as multivariate Lagrangians have exactly a fraction of $m/|F|$ zeros in $F^m$.
+In other words, local randomization of the witness propagates only to \textit{almost all} points outside the witness domain.\footnotemark
+\footnotetext{%
+This diverges from univariate IOPs, where local randomization propagates to \textit{all} points outside the witness domain. 
+}
+% 
+However, the fraction of exceptional points is of order $1/|F|$, and excluding them does not conflict soundness: 
+Since $\vec x_A$ and $\vec x_B \in H_m$, we simply exclude the set $\{0,1\}$ from the sampling domain of the zerocheck randomnesses $\alpha_1,\ldots,\alpha_m$, which comes with a negligble increase of the round-by-round soundness errors.
+
+For completeness we also cite an extension to multiple evaluation points:
+\begin{lem}
+\label{lem:multipoint:eval}
+Choose $\Omega =\{\vec x_1, \ldots, \vec x_k\}$ a set of $k\geq 1$ distinct points on the Boolean hypercube $H_n$. 
+Then, except with probability of at most $\varepsilon = \frac{k\cdot n}{|F|}$ in $\vec \alpha_1, \ldots, \vec \alpha_k \in F^n$, the multi-point evaluation matrix
+\begin{equation*}
+E_{\vec\alpha_1,\ldots,\vec\alpha_k} =
+\begin{pmatrix}
+eq(\vec x_1,\vec \alpha_1) & eq(\vec x_1, \vec\alpha_2) & \ldots & eq(\vec x_1, \vec\alpha_k)
+\\
+eq(\vec x_2,\vec \alpha_1) & eq(\vec x_2, \vec\alpha_2) & \ldots & eq(\vec x_2, \vec\alpha_k)
+\\
+\vdots & \vdots & &\vdots
+\\
+eq(\vec x_k,\vec \alpha_1) & eq(\vec x_k, \vec\alpha_2) & \ldots & eq(\vec x_k, \vec\alpha_k)
+\end{pmatrix}
+\end{equation*}
+is of full rank.
+\end{lem}
+
+The lemma follows from that the determinant is a non-zero multilinear in the coordinates of $\vec\alpha_1, \ldots, \vec\alpha_k$.
+Since it is not important to us, we leave a detailed proof to the reader.
+% \begin{proof}
+% The determinant of the matrix equals
+% \[
+% \sum_{\sigma\in S_k} eq(\vec x_{\sigma(1)}, \vec\alpha_1) \cdot eq(\vec x_{\sigma(2)}, \vec\alpha_2) \cdot \ldots \cdot eq(\vec x_{\sigma(k)},\vec\alpha_k),
+% \]
+% where $\sigma$ ranges over all permutations of $\{1,2,\ldots, k\}$, and therefore is a multilinear polynomial in the coordinates of $\vec\alpha_1$, \ldots, $\vec\alpha_k$.
+% By Schwartz-Zippel, it can be zero for at most $k\cdot n$ points, unless it is identical zero.
+% To exclude the latter, observe that each product in the determinant can be written as 
+% \[
+% L_{\vec x_{\sigma(1)}, \vec x_{\sigma(2)},\ldots, \vec x_{\sigma(k)}}(\vec \alpha_1,\ldots,\vec\alpha_k),
+% \]
+% the Lagrangian at $(\vec x_{\sigma(1)}, \vec x_{\sigma(2)},\ldots, \vec x_{\sigma(k)})$ in the $k\cdot n$-dimensional hypercube.
+% Since the points $\vec x_1,\ldots, \vec x_k$ are distinct, so are the points in 
+% \[
+% \{(\vec x_{\sigma(1)}, \vec x_{\sigma(2)},\ldots, \vec x_{\sigma(k)}) \::\: \sigma\in S_k \},
+% \]
+% and we conclude from linear independence of Lagrangians that their sum cannot be zero.
+% $\Box$
+% \end{proof}
+
+
+
+
+\subsubsection{Randomization by basefield elements.}
+%In the light of Lemma \ref{lem:multipoint:eval} 
+% As we would like to keep the witness over the basefield $\mathbb F_q$
+
+It is tempting to believe that the univariate strategy from \cite{cryptoeprint:2024/1037}, which randomizes an extension field opening by extension-field-degree many basefield values, carries over to the multilinear world in a straight-forward manner.
+However, the best generic result we found is the following one, which has a way too large bound for the exceptional set.
+
+\begin{lem}
+\label{lem:Lagrange:random:eval}
+Let $F$ be a degree $e$ extension of a prime field $\mathbb F_q$, and $\Omega =\{\vec x_1, \ldots, \vec x_e\}$ a set of $e$ distinct points on the Boolean hypercube $H_m\subset \mathbb F_q^m$. 
+Then, except for a fraction of at most $\varepsilon = \frac{m}{q-1}$ points $\vec \alpha \in F^m$, the elements
+\begin{equation*}
+eq(\vec x_1, \vec \alpha), \ldots, eq(\vec x_e, \vec \alpha) \in F
+%= eq(\vec \rho,\vec x_i)    
+\end{equation*}
+are $\mathbb F_q$-linear independent. 
+\end{lem}
+
+
+The proof of the lemma relies on the well-known Moore determinant as a distinguisher for $\mathbb F_q$-linear independence.
+However, we require the property also over $K$ the field of rational functions in several variables, and hence state it in full generality.
+%on , which is as follows.
+\begin{lem}
+\label{lem:goss}
+Let $K$ be a (possibly infinite) field of characteristic $q<\infty$, and let $f_1,\ldots,f_k\in K$, $k\geq 1$.
+Then $f_1,\ldots, f_k$ are $\mathbb F_q$-linear independent if and only if the determinant of the Moore matrix
+\[
+% \Delta(f_1,\ldots, f_k) = \left|
+M(f_1,\ldots, f_k) =
+\begin{pmatrix}
+f_1 & f_2 & \ldots & f_k
+\\
+f_1^q & f_2^q & \ldots & f_k^q
+\\
+\vdots &\vdots & \ddots & \vdots
+\\
+f_q^{q^{k-1}} & f_2^{q^{k-1}} & \ldots & f_k^{q^{k-1}}
+\end{pmatrix}
+% \right| \neq 0
+\]
+is a non-zero element in $K$. 
+\end{lem}
+
+For a proof of Lemma \ref{lem:goss}, we refer the reader to \cite[Lemma 1.3.3]{Goss96}.
+
+
+\begin{proof}[of Lemma \ref{lem:Lagrange:random:eval}]
+Since the points $\vec x_1,\ldots, \vec x_n$ are distinct, the Lagrangians $eq(\vec x_i,\vec Y)$, $i=1,\ldots,e$, are $\mathbb F_q$-linear independent elements of $K= \mathbb F_p(\vec Y)$, the rational function field in $m$ variables. % the coordinates of $\vec Y$.  
+By Lemma \ref{lem:goss}, their Moore determinant 
+\[
+p(\vec Y) = \det M(eq(\vec x_1, \vec Y),\ldots, eq(\vec x_e, \vec Y))\neq 0,
+\]
+as an element of $K$.
+Moreover, since all matrix entries are polynomials, we conclude that the Moore determinant
+is a non-zero \textit{polynomial}. 
+
+% The degree in the first coordinate $y_1$ is at most $\frac{q^e - 1}{q-1} \approx q^{e-1}$ 
+
+% Then
+% \[
+% \prob{y_1\in F \::\: p(y_1, \:.\:) = 0 } \leq 1/q.
+% \]
+% Taking independence of 
+
+% (All entries of the Moore matrix are polynomials.)
+%
+% Let us determine its total degree. 
+The $(i,j)$-th entry in the Moore matrix is
+% \[
+% L_{x_j}(Y_1,\ldots, Y_n)^{p^{i}} = L_{x_j}(Y_1^{p^i},\ldots, Y_n^{p^i}),
+% \]
+has total degree at most $m\cdot q^{i-1}$, and the total degree the determinant is at most
+\begin{align*}
+m + m q + \ldots + m  q^{e-1} = m \cdot \frac{q^e - 1}{q - 1}.
+\end{align*}
+By Schwartz-Zippel, the fraction of $\vec\alpha\in F^m$ for which the determinant evaluates zero
+is at most
+\[
+\frac{m}{q-1} \cdot \frac{q^e -1}{q^e} < \frac{m}{q-1}.
+\]
+For all other $\vec\alpha$ the determinant is non-zero, and another application of Lemma \ref{lem:goss} yields that $eq(\vec x_1,\vec\alpha),\ldots, eq(\vec x_e, \vec \alpha)$ are $\mathbb F_p$-linear independent elements of $F$.
+$\Box$
+\end{proof}
+
+It is hard to tell whether the Schwartz--Zippel bound in Lemma \ref{lem:Lagrange:random:eval} is tight. 
+A high polynomial degree is not a guarantee for a large set of zeros. 
+% For example, 
+% \[
+% eq(\vec x_i, \vec Y)^{q^{i-1}} = eq(x_{i,1},\ldots, x_{i,m}, Y_1^{q^{i-1}},\ldots, Y_m^{q^{i-1}})
+% \]
+% is of total degree $m\cdot q^{i-1}$. 
+% Its zeros are the roots of $Y_j^{q^{i-1}} - x_{i,j}$, but in $F$ there is only one solution, $Y_j = x_{i,j}$, since is no $q^{i-1}$-th root of unity, except $1$.\footnotemark
+% \footnotetext{%
+% This follows from $(q^{i-1},q^{e} - 1) = 1$. 
+% }
+% Thus the polynomials has the same number of roots as $eq(\vec x_i, \vec Y)$. 
+We tried shortly with GPT-5.6, but did not achieve significant improvements. 
+However, it proposed the following work around, which explicitly uses the multiplicative structure of the Lagrangians. 
+
+\paragraph{Blowing up soundness.}
+Instead of a single set $\Omega$ of size $e$, we choose several sets
+\[
+\Omega_1, \ldots \Omega_s \subset H_m,
+\]
+in a very particular manner, so that their exceptional sets are statistically independent.
+(The latter will be possible because of the tensor structure of the Lagrangians.)
+Each $\Omega_j$ is a set of $e$ points contained in a sub-cube of small dimension 
+\[
+t = \ceil{\log_2 e},
+\]
+with its free part touching the variables $Y_{i_j(1)}, \ldots, Y_{i_j(t)}$ only, meaning that its points do not vary outside these $t$ coordinates.  
+%We call the variables $Y_{i_j(1)}, \ldots, Y_{i_j(s)}$ \textit{free variables}, and the remaining $m-s$ variables the \textit{fixed variables} of $\Omega_j$.
+We further require that the free variables are disjoint between the sets, i.e.
+\[
+\big\{Y_{i_j(1)},\ldots, Y_{i_j(t)} \big\} \cap \big\{Y_{i_{j'}(1)},\ldots, Y_{i_{j'}(t)} \big\} = \varnothing,
+\]
+whenever $j\neq j'$.
+The crux is that for each such set $\Omega_j$, we can drop its fixed variables in the proof of Lemma \ref{lem:Lagrange:random:eval}, as long as their $eq$-terms are not zero, since a common non-zero factor does not change $\mathbb F_q$-linear independence. 
+The exceptional set for $\Omega_j$ is only in the variables $Y_{i_j(1)}, \ldots, Y_{i_j(t)}$, independent of the other variables, and we arrive at the following statement.
+
+\begin{lem}
+\label{lem:zk:basefield:randomization}
+With $\Omega_1,\ldots, \Omega_s \subset H_{m}$ as above.
+Then except for an $\varepsilon$-fraction of points $\vec\alpha\in F^m$, where
+\begin{equation}
+\label{e:basefield:randomization:error}
+\varepsilon < s\cdot \frac{m-t}{|F|} + \left(\frac{t}{q-1}\right)^s,
+\end{equation}
+at least one of the sets $\Omega = \Omega_j$ is such that its values $eq(\vec x, \vec\alpha)$, $\vec x\in \Omega$, are $\mathbb F_q$-linearly independent.
+\end{lem}
+\begin{proof}
+The first term bounds the the probability that $\vec\alpha\in F^m$ hits one of the $m-t$ fixed variables of $\Omega_j$, times $s$ for the union bound over all sets.
+For all other $\vec\alpha$, the exceptional sets in Lemma \ref{lem:Lagrange:random:eval} are statistically independent, and of relative size $t/(q-1)$ each.
+$\Box$
+\end{proof}
+
+% \begin{rem}
+% \label{rem:propagation:constraints}
+In our protocol we will use $s = e$ sets $\Omega_1,\ldots, \Omega_e$, to make the second term in \eqref{e:basefield:randomization:error} of order $O(1/|F|)$. 
+That is,  we require overall $e^2$ random witnesses over $\mathbb F_q$ to randomize $w_A(\alpha)$, and another $e^2$ random witnesses for $w_B(\alpha)$. 
+The exceptional set for which all $e$ Moore determinants vanish, will be filtered out by the prover.
+See the protocol description in Section \ref{s:complete protocol}.
+%They can be placed at arbitrary positions in the witness, yet their constraints (as before of the form $R_j \cdot 1 = R_j$, or $1\cdot R_j = R_j$) have to respect the positioning described above. 
+% \end{rem}
+%The main disadvantage is that we cannot place them at arbitrary positions. 
+
+% d
+
+\subsection{Zero-check masking}
+\label{s:zk:zerocheck}
+
+The zero-check, Phase \ref{i:main:phase:2} in Protocol \ref{prot:main}, is turned into zero-knowledge by using the sumcheck randomization from Libra \cite{cryptoeprint:2019/317}.
+The prover commits to the univariate polynomials 
+\begin{equation}
+\label{e:zk:zerocheck:randomizers}
+h_0\sample F, \quad h_1(X),\ldots, h_m(X)\sample F[X]^{<d},
+\end{equation}
+where $d=3$ is the degree of the sumcheck \eqref{e:R1CS:zerocheck}.
+These polynomials define the sparse mask
+\begin{equation}
+\label{e:zk:zerocheck:sparse:mask}
+h(X_1,\ldots, X_m) = h_0 + X_1\cdot h_1(X_1) + \ldots + X_m\cdot h_n(X_m),
+\end{equation}
+which is overlaid with the hypercube sum \eqref{e:R1CS:zerocheck}. 
+The prover claims the sum $c' = \sum_{\vec x \in H_m} h(\vec x)$, the computation of which is almost for free via the succinct representation
+\begin{align*}
+\frac{1}{2^m}\sum_{\vec x\in H_m} h(\vec x) 
+% = 2^{m} h_0 + 2^{m-1} h_1(1) + 2\cdot \sum_{\vec x\in H_{m-1}} X_2 h_2(x_2) + \ldots + x_m\cdot h_m(x_m) 
+% \\
+%  = 2^{m} h_0 + 2^{m-1} h_1(1) + 2\cdot (2^{m-2} h_2(1) + 2 \cdot \sum_{\vec x H_{m-2}} ...)
+%  \\
+=  h_0 + \frac{1}{2}\left(
+h_1(1) + \ldots + h_m(1)
+\right).
+\end{align*}
+%It receives a random $\alpha\sample F$ from the verifier, and 
+Then both run the sumcheck on the combined claim
+\begin{equation}
+\label{e:zk:zerocheck:combined:claim}
+c_0 = \alpha \cdot c + c' = \sum_{\vec x\in H_n} \alpha\cdot G(\vec x) + h,
+\end{equation}
+where $\alpha\sample F$ is random, and  $c = \sum_{x\in H_n} G(x_1,\ldots, x_n)$ is the target claim. 
+(In our case $G$ is be the multivariate zero-check term, and $c=0$.)
+
+%
+The sparse mask carries sufficient entropy to perfectly hide the witness in the sumcheck polynomials
+\begin{equation*}
+\hat q_k(X) = \sum_{\vec x\in H_{n-k}} \alpha\cdot G(\alpha_1,\ldots, \alpha_{k-1},X,\vec x) +  h(\alpha_1,\ldots, \alpha_{k-1},X,\vec x),
+\end{equation*}
+for $k=1,\ldots,n$, as the following lemma shows.
+
+\begin{lem}
+For any $\alpha\in F $, $(\alpha_1,\ldots, \alpha_n)\in F^n$. 
+The distribution of the sumcheck prover messages $c_0, \hat q_1(X),\ldots, \hat q_n(X)$ is uniform on the set
+\[
+\mathcal R = \left\{
+\begin{matrix}
+c_0\in F, \hat q_1,\ldots,\hat q_n\in F[X]^{\leq d}
+\end{matrix}
+\::\:
+\begin{matrix}
+c_0 = \hat q_1(0) + \hat q_1(1),
+\\
+\hat q_{k}(\alpha_{k}) = \hat q_{k+1}(0) + \hat q_{k+1}(1),
+\\
+k=1,\ldots n-1
+\end{matrix}
+\right\},
+\]
+independent of $G$.
+\end{lem}
+
+For the sake of completeness, we give a proof the lemma.
+\begin{proof}
+Fix $G$, $\alpha\in F$ and $(\alpha_1,\ldots,\alpha_n)\in F^n$, and choose any set $S\subset F$ of $d$ distinct points, containing the element $1$, but not $0$.
+Using the consistency equations it is easily seen that the linear mapping, which sends $(c_0,\hat q_1(X),\ldots, \hat q_n(X))$ to the values   
+\begin{equation}
+\label{e:zk:zerocheck:polys:by:value}
+(\vec v_1,\ldots, \vec v_n) = (\hat q_1|_{S\cup\{0\}},\hat q_1|_S, \ldots, \hat q_n|_S) 
+\end{equation}
+is a bijection between $\mathcal R$ and $F^{dn + 1}$. 
+We leave this to the reader.\footnotemark
+\footnotetext{%
+The values $\vec v_1$ uniquely determine the polynomial $\hat q_1(X)\in F[X]^{\leq d}$ by degree, and with it $c_0 = \hat q_1(0) + \hat q_1 (1)$.
+Likewise, $\hat q_1(\alpha_1)$ together with the values $\vec v_2$ uniquely determine $\hat q_2(X)\in F[X]^{\leq d}$ satisfying $\hat q_1(\alpha_1) = \hat q_2(0) + \hat q_2(1)$, since the letter determines the value of $\hat q_2(X)$ at the additional point $0$.
+And so on.
+}
+To prove the lemma, it suffices to show that the values \eqref{e:zk:zerocheck:polys:by:value} are in one-to-one correspondence with $h_0\in F, h_1,\ldots, h_n\in F[X]^{<d}$.
+But this is evident from the concrete form
+\begin{multline*}
+\hat q_{k}(X) = \sum_{\vec x \in H_{n-k}} \alpha \cdot G(\alpha_1,\ldots, \alpha_{k-1}, X,\vec x) 
+\\
++ 2^{n-k} (h_0 + \alpha_1 h_1(\alpha_1) +\ldots +\alpha_{k-1} h_{k-1}(\alpha_{k-1})+ X h_{k}(X)) 
+\\+ \sum_{\vec x \in H_{n-k}} x_{k+1} h_{k+1}(x_{k+1}) + \ldots + x_n 
+h_n(x_n),
+\end{multline*}
+in which the other $h_0,\ldots, h_{k-1}, h_{k+1},\ldots, h_n$ impact only the constant part of the polynomial.
+(The representation partially collapses in the two edge cases.
+For $k=1$ there are no terms except $h_0$ preceding $X h_1(X)$, and for $k=n$, there are no terms following $X h_n(X)$.)
+$\Box$
+\end{proof}
+
+
+The sumcheck reduces the claim \eqref{e:zk:zerocheck:combined:claim} to that 
+\begin{align*}
+\hat q_m(\alpha_m) = G(\alpha_1,\ldots, \alpha_m) + h_1(\alpha_1) + \ldots + h_m(\alpha_m),
+\end{align*}
+where
+\begin{align*}
+G(\vec\alpha) =  (w_A(\vec\alpha)\cdot w_B(\vec\alpha) - w_C(\vec\alpha))\cdot eq(\vec\alpha,\vec\rho),    
+\end{align*}
+for which the prover sends the values $w_A(\vec\alpha)$, $w_B(\vec\alpha)$, $w_C(\vec\alpha)$. 
+The complementary term 
+\begin{equation}
+\label{e:zk:zerocheck:mask:opening}
+h_1(\alpha_1) + \ldots + h_m(\alpha_m) = \hat q_m(\alpha_m) - G(\vec\alpha)
+\end{equation}
+can be proven in zero-knowledge by a separate protocol.
+
+\begin{rem}
+In our current implementation, we append the $dm+1$ coefficients\footnotemark for $h_0,h_1,\ldots, h_m$ to the first stage witness $\vec w_1$, and use zk-WHIR with the additional constraint
+\begin{equation}
+\hat q_m(\alpha_m) - G(\vec\alpha) = \sum_{\vec x\in H_{m_1}} I_\alpha(\vec x)\cdot  w_1(\vec x),
+\end{equation}
+where $I_\alpha$ is the inner product kernel for $h_1(\alpha_1) + \ldots + h_m(\alpha_m)$.
+This requires the witness to be sufficiently below a power two. 
+See the complete protocol in Section \ref{s:complete protocol}.
+\footnotetext{%
+Alternatively, one may directly use the representation by their values \eqref{e:zk:zerocheck:polys:by:value}.} 
+\end{rem}
+
+Let us quickly sketch the transcript simulator for the zero-check.
+The prover chooses arbitrary random polynomials $w_1(X_1,\ldots, X_{m_1})$  and $w_2(X_1,\ldots, X_{m_2})$, with their image polynomials $w_A, w_B, w_C$ not satisfying the zero-check hypercube sum for random $\vec\rho\sample F$.
+Then it samples $h_0,h_1,\ldots, h_n$ and $\lambda\neq 0$ and computes the hypercube sum
+\begin{equation}
+\label{e:sumcheck:randomized:G}
+c_0 = \sum G + \lambda h.
+\end{equation}
+It then runs the sumcheck protocol on the valid claim \eqref{e:sumcheck:randomized:G}.
+The (wrong) claim $c'$ is chosen adaptively so that $\alpha \cdot 0 + c' = c_0$. 
+For details, see Section \ref{}.
+
+% For on-domain randomization we rely on the following Lemma. 
+% \ulrich{We need an adaption to multivariates of bounded individual degree, if we reveal cross-terms}
+% \begin{lem}
+% Fix any $k$ distinct points $\vec x_1,\ldots, \vec x_k\in H_n$. 
+% Then 
+% \[
+% \Pr_{\vec y_1,\ldots, \vec y_k\sample F^n}\left[
+% \det \begin{pmatrix}
+% eq(\vec y_i,\vec x_j)
+% \end{pmatrix}
+% = 0
+% \right] 
+% \leq \frac{k\cdot n}{|F|}.
+% \]
+% \end{lem}
+% \begin{proof}
+% The determinant is multilinear in the coordinates of $\vec y_1, \ldots, \vec y_k$.
+% $\Box$
+% \end{proof}
+
+
+\subsection{Overlaid masks instead of zk-encoding.}
+\label{s:masked:commitments}
+
+To avoid witness information leakage from commitment openings, we use a slightly different approach than \cite{cryptoeprint:2026/391}.
+Instead of committing to a zero-knowledge encoding of witness,
+we overlay a witness polynomial with a sparse random mask without  degree increase:
+Given witness $p \in \mathscr P_{m}$ and random $\msk\sample F[X]^{< q_i}$, for some small $q_i < 2^m$, we commit to
+\begin{equation}
+\hat p = p + \msk, %\in \mathscr P_m,
+\end{equation}
+which is again from $\mathscr P_m$.
+(This secures the witness for up to $q_i$ openings.)
+Obviously this does not bind the witness, unless we also commit to $\msk$, which is required for ZO0K anyways (see Section \ref{s:zook}).
+
+For practical reasons, we \textit{jointly} commit all\footnotemark masks required by the protocol in one shot.
+\footnotetext{%
+These are the masks for the two witness polynomials $w_1$ and $w_2$, and the further masks $\msk_{1},\ldots, \msk_{r}$, $h_1,\ldots, h_r$ required for ZO0K.
+}%
+We concatenate their coefficient vectors, append $q_{zk}$ additional random coefficients, and encode the resulting vector as a single word from 
+\begin{equation}
+\label{e:C:zk}
+C_{zk} = \RS[F,D_{zk}, d_{zk}].
+\end{equation}
+Here the degree bound $d_{zk}$ is at least $q_{zk}$ larger than the total of all mask lengths, and can be chosen again a power of two, if this helps encoding performance.
+See Section \ref{s:zook} for details.
+(The choice of $q_{zk}$ depends on the number of openings in the final proof of proximity, Protocol \ref{prot:zook:final:opening}.)
+
+The rationale behind masked commitments is the following.
+Adding the small mask $\msk$ in coefficient representation is a local modification of the witness, and the 
+subsequent encoding of $\hat p$ is as costly as that of $p$. 
+In contrast, even a tiny degree increase of the witness polynomial would lead to an $O(m)$ overhead in the encoding step, where $m$ is the degree of $p$.
+
+
+
+
+\subsection{ZO0K}
+\label{s:zook}
+
+
+We describe an adaptation of ZO0K \cite{cryptoeprint:2026/391} to the masked commitments as described in the previous section.
+The changes to the original protocol are minimal, and based on the fact that we can now also view masked polynomials as multilinears in the sumcheck claim.
+See Remark \ref{rem:zook:pi:instead:pi:hat} for a one-to-one variant of \cite{cryptoeprint:2026/391}.
+
+
+% \subsubsection{ZO0K.}
+%ZO0K instead uses throughout sparse masks for randomization, and is therefore particularly prover friendly. 
+The sumcheck rounds are randomized using the sparse Libra mask explained in Section \ref{s:zk:zerocheck}, and information leakage via commitment openings is mitigated through the commitment masks as described above.
+In this multi-polynomial regime, ZO0K considers WHIR as a sumcheck prover, which gradually reduces composite claims of the form 
+\begin{align}
+\label{e:zook:claim}
+c_{i}  &= \left\langle \hat p_{i}, K^{(i)} \right\rangle_{H_{k_{i}}} 
++ \sum_{j=0}^{i} \Gamma_j^{(i)}(\msk_j) + \sum_{j=1}^{i} \Lambda_{j}^{(i)} (h_{j}),
+\end{align}
+involving a costly part, the inner product $\left\langle \hat p_{i}, K^{(i)} \right\rangle$ of a large (masked) witness polynomial $\hat p_i$ with a public kernel $K^{(i)}$, and a cheap part, certain public linear functionals $\Lambda_j^{(i)}$, $\Gamma_j^{(i)}$ on the (small) masks committed by the prover so far:\footnotemark
+\footnotetext{%
+The $\Lambda_j^{(i)}(h_j)$ and $\Gamma_j^{(i)}(\msk_i)$ can be again represented as inner products. 
+However, because of their fundamentally different treatment in the protocol, we write them as linear functionals.
+}
+The sparse sumcheck masks $h_1,\ldots, h_i$ and the witness masks $\msk_0,\ldots,\msk_i$.
+The cheap part is not further reduced by the sumcheck logic; it is treated as constant function 
+% \[
+% \frac{1}{2^{k_i}}\cdot \sum_{j=1}^{i-1} \Lambda_{j}^{(i)} (h_{j}) + \Gamma_j^{(i)}(\msk_j)
+% \]
+on the hypercube $H_{k_i}$, which is passed through the rounds in a weighted form.
+%leading to an simple update law for the linear functionals. 
+The costly part is reduced in the usual sense, by folding. 
+However, not before a fresh sumcheck mask $h_{i+1}$ enters the sum.
+In this manner, the number of masks in the claim \eqref{e:zook:claim} grow from round to round, but the costly part shrinks.
+
+After the final round, the remaining claim, a linear functional in $\hat p_r$, $h_1,\ldots, h_r$, $\msk_0,\ldots, \msk_{r}$, is proven in zero-knowledge by an elementary, non-succinct proof of proximity, Protocol \ref{prot:zook:final:opening} below.
+
+
+
+
+% Recall that WHIR in full generality is a sumcheck prover, and works for arbitrary algebraic expressions $G(f_1,\ldots, f_m)$ in several multilinear polynomials $f_1$, \ldots $f_m$. 
+% Every now and then it accompanies the sumcheck with new proposals for the multilinears in the specialized claim, and the claim of proximity to a sumcheck consistent ensemble of polynomials is reduced to a fresh claim on the new ensemble of smaller codewords.
+% However there is no strict need to provide new proposals for every multilinear in the claim. 
+% If a multilinear is small, e.g. depending only one or two variables or has a succinct representation, then the verifier can compute its specialization on its own, without sacrificing efficiency.
+
+% This is the view point we take on ZO0K:
+% In each round the prover replaces the (one and only) large polynomial in the claim by a smaller one. 
+% On the other hand it adds few more small commitments required for zero-knowledge.
+% The number of committed words grows, but the total size of the multilinears becomes smaller and smaller.
+
+
+% (Here, we again use the same notation for the composed polynomial and its interleaved representation.)
+% This is a linear constraint on the committed codewords $\hat p_0$ and $\hat\msk_0$.
+ %(Their final specialized claim will be proven on their initial unfolded form.)
+% Once the polynomial becomes 
+
+\subsubsection{The required masks.}
+As pointed out in Section \ref{s:masked:commitments}, we assume that the prover has committed beforehand to all the masks, as a single word from $C_\text{zk}$.
+Concretely, each sumcheck mask $h_i$ is committed as coefficient vector 
+\begin{equation}
+\label{e:zook:sumcheck:mask:coeffs}
+h_{i,0}\| h_{i,1} \| \ldots\| h_{i,r_i} \in F^{2 r_i + 1}
+\end{equation}
+from $h_{i,0}\sample F$, and $h_{i,j}\sample F[X]^{<2}$, appended by the coefficients of the commitment masks \begin{align}
+\label{e:zook:commitment:mask:coeffs}
+msk_i \in F^{q_i},  \quad i=0,\ldots,r,
+\end{align}
+from $\msk_i \sample F[X]^{< q_i}$, where $msk_0$ is taken from the subfield $\mathbb F_q$, assuming that the first witness polynomial $p_0$ is over $\mathbb F_q$.
+(In our application, our $p_0$ is the composite witness polynomial, both of which have their own basefield mask, and $msk_0 = msk_{0,1} \| msk_{0,2}$.)
+The number of coefficients is chosen according to how often the commitment of $p_i + \msk_i$ is queried in the course of WHIR:
+\begin{align}
+q_0 &= s_{1}, 
+\\
+q_i &= s_{i+1} + 1 \text{ for } 1\leq i\leq r-1,
+\\\intertext{assuming a single DEEP query in each of the rounds, and}
+q_r &= s_\text{final},
+\end{align}
+the number of queries on $\hat p_r$ in the final opening protocol, Protocol \ref{prot:zook:final:opening}.
+The concatenated coefficient vectors \eqref{e:zook:sumcheck:mask:coeffs} and \eqref{e:zook:commitment:mask:coeffs} are encoded in zero-knowlege manner, by appending to the message another $q_{zk} = s_\text{zk} + 1$ random coefficients
+\begin{equation}
+\label{e:zook:mask:blinder:coeffs}
+msk_{zk} \in F^{q_{zk}},
+\end{equation}
+before the Reed--Solomon encoding. 
+For reasons to be explained later, another $e =[F:\mathbb F_q]$ random elements $r_0\sample \mathbb F_q^e$ are appended to it.
+Overall, $C_{zk}$ encodes the joint mask vector  
+\begin{equation}
+\label{e:all:masks:concatenated}
+\mathsf m = h_1\|\ldots \|h_r \| msk_0\| \ldots \| msk_r\| msk_{zk} \| r_0
+\end{equation}
+parsed as coefficient vector of $F^{m_\text{zk}}$,
+\begin{equation}
+\label{e:Czk:message:length}
+m_\text{zk}= r + k_0 - k_r + q_0  + \ldots + q_r + q_{zk} + e,
+\end{equation}
+as Reed--Solomon codeword over $F$ with evaluation domain $D_{zk}$.
+
+
+\subsubsection{Initialization.}
+The initial claim is on the unmasked polynomial $p_0 = \hat p_0 - \msk_0 \in \mathscr P_{k_1}^{e_1}(\mathbb F_q)$, and of the form
+\[
+c_0 = \langle \hat p_0 - \msk_0, K \rangle_{H_{k_0}},
+\]
+where the inner product kernel $K$ is public.
+This is of the form \eqref{e:zook:claim} with 
+\[
+K^{(0)} = K, \quad \Lambda_0^{(0)}(\msk_0) = \langle K, \msk_0\rangle_{H_{k_0}}.
+\]
+The latter can be easily computed as a linear functional on the coefficient vector $msk_0\in\mathbb F_q^{q_0}$:
+The multilinear representation of $\msk_0\in F[X]^{< q_0}$ is non-zero only on the first $q_0$ points of the hypercube and thus
+\[
+\langle K, \msk_0\rangle_{H_{k_0}} = \sum_{j=0}^{q_0-1} K(j)\cdot msk_{0,j},
+\]
+in the index notation of the hypercube. 
+
+\subsubsection{Modifications of a WHIR round.}
+
+Let us describe the changes of round $i$ in Protocol \ref{prot:WHIR}, $i=1,\ldots, r$.
+At the beginning of the round, the prover has already committed to 
+$\hat p_{i-1}$, $\msk_0,\ldots, \msk_{i-1}$, $h_1,\ldots h_{i-1}$, satisfying the linear constraint
+\begin{align}
+\label{e:zook:prev:claim}
+c_{i-1}  &= \left\langle \hat p_{i-1}, K^{(i-1)} \right\rangle_{H_{k_{i-1}}} 
+ + \sum_{j=0}^{i-1} \Gamma_j^{(i-1)}(\msk_j)
++ \sum_{j=1}^{i-1} \Lambda_{j}^{(i-1)} (h_{j})
+% + \sum_{j=1}^{i-1} \sum_{k=0}^{r_j} \Lambda_{i,j}^{(i-1)} (h_{j,k})
+%     + \sum_{j=1}^{i-1} \Gamma_i^{(i-1)}(\msk_j)
+\end{align}
+We think of the claim as $c_{i-1} = \sum_{\vec x\in H_{k_{i-1}}} G_{i-1}(\vec x)$ for the quadratic expression
+\begin{align*}
+G_{i-1}(\vec x) = \hat p_{i-1}(\vec x) \cdot K^{(i-1)}(\vec x) - 2^{-k_{i-1}}\cdot B_{i-1},
+\end{align*}
+where $B_{i-1}$ is the sum of the mask functionals in \eqref{e:zook:prev:claim}.
+
+
+\paragraph{Step 1: Masking phase.}
+Identical to the sumcheck randomization in Section \ref{s:zk:zerocheck}.
+The prover takes the masks $h_{i,0}\in F$, $h_{i,1},\ldots,h_{i,r_i} \in F[X]^{<2}$ it committed before running the protocol. 
+They define the sumcheck mask
+% \ulrich{mayb /}
+\begin{equation}
+\label{e:zook:sumcheck:mask}
+h_i(X_1,\ldots, X_{r_i}) = h_{i,0} + X_1 \cdot h_{i,1}(X_1) + \ldots + X_{r_i} \cdot h_{i,r_{i}}(X_{r_i}),
+\end{equation}
+in as many variables as the sumcheck phase of the WHIR round consumes, $r_i = k_i - k_{i-1}$.
+% in the next $r_i$ variables $X_1,\ldots, X_{r_i}$ processed by the sumcheck.
+It claims 
+\[
+d_i = \sum_{\vec x\in H_{k_{i-1}}} h_i(x_1,\ldots, x_r).
+\]
+The verifier sends a random $\lambda_i\sample F$, which reduces  \eqref{e:zook:prev:claim} to the combined claim
+\begin{align}
+\label{e:zook:combined:sumcheck:claim}
+\lambda_i\cdot c_{i-1} + d_i = \sum_{\vec x\in H_{k_{i-1}}} 
+\left(\lambda_i \cdot G_{i-1}(\vec x) + h_i(x_1,\ldots, x_{r_i})
+\right).
+\end{align}
+
+\paragraph{Step 2: Sumcheck phase.}
+Both prover and verifier proceed with the $r_i$ sumcheck rounds on the combined claim \eqref{e:zook:claim:combined}.
+In the course of it, the prover provides the quadratic refinement polynomials
+$
+\hat q_{i,1}(X), \ldots, \hat q_{i,r_i}(X), 
+$ 
+the verifier has sent $\vec\beta_i = (\beta_{i,1},\ldots, \beta_{i,r_i})$.
+After the last sumcheck round, the claim \eqref{e:zook:combined:sumcheck:claim} is reduced to 
+\begin{multline*}
+\hat q_{i,r_i}(\beta_{i,r_i}) 
+= \sum_{\vec x'\in H_{k_i}} \left(
+\lambda_ i \cdot G_{i-1}(
+\vec\beta_i,\vec x') + h_i(\vec\beta_{i})
+\right)
+\\
+= \lambda_i\cdot \left\langle \hat p_{i-1}(\vec \beta_i, \:.\:), K^{(i-1)}(\vec\beta_i,\:.\:)\right\rangle_{H_{k_i}} + 2^{k_i - k_{i-1}}\cdot \lambda_i\cdot B_i + 2^{k_i}\cdot h_i(\vec\beta_i)
+\end{multline*}
+which linear in $\hat p_{i-1}(\vec\beta_{i},\:.\:)$ and the masks, now including $h_i$.
+
+\paragraph{Step 3: Commit.}
+The prover takes $\msk_{i}\in F[X]^{<q_i}$, and commits to %the masked polynomial
+\[
+\hat p_i = \hat p_{i-1}(\vec\beta_{i},\:.\:) + \msk_i(\:.\:)
+\]
+as a word from $\mathscr P_{k_{i}}^{e_i}$.
+This masked commitment is required also in the last round $i=r$. 
+% (For an alternative variant see Remark  \ref{rem:zook:pi:instead:pi:hat}.)
+The new ensemble of polynomials, $\hat p_i, \msk_i$, and $\msk_0,\ldots, \msk_{i-1}$, $h_1,\ldots, h_i$, is subject to the linear constraint
+\begin{multline}
+\label{e:zook:specialized:claim}
+\hat q_{i,r_i}(\beta_{i,r_i}) = 
+\left\langle \hat p_i - \msk_i,  \lambda_i\cdot K^{(i-1)}(\vec\beta_i, \:.\:) \right\rangle_{H_{k_i}} 
+\\
++ 2^{-r_i} \cdot \lambda_i \cdot B_{i-1} + 2^{k_i}\cdot h_i(\vec\beta_i),
+\end{multline}
+which are of the form \eqref{e:zook:claim}.
+%except that $\msk_{i-1}$ does not appear in it.
+
+\paragraph{Step 4: Query phase.}
+In the query phase, the verifier asks the masked polynomial $\hat p_i$ for the value at the out-of-domain sample $x_{i,0}\sample F$ and uses the values of the previous $\hat p_{i-1}$ to constrain $\hat p_i - \msk_i$ at the points $x_{i,1},\ldots, x_{i,s_i}\sample D_i$.
+In terms of the new ensemble, these claims are the linear constraints 
+\begin{align}
+\label{e:zook:out:domain:constraint}
+\sum_{\vec x' \in H_{k_i}} \hat p_i(\vec x') \cdot L_{x_{i,0}}(\vec x') &= v_0,
+\\
+\label{e:zook:in:domain:constraint}
+\sum_{\vec x'\in H_{k_i}} \left(\hat p_i(\vec x') - \msk_{i}(\vec x')\right)\cdot L_{x_{i,k}}(\vec x') &= v_{k},
+\end{align}
+for $k= 1,\ldots, s_i$, where $L_{x_{i_k}}$ are the univariate Lagrangians of degree $2^{k_{i-1}}$. 
+These constraints are again of the form \eqref{e:zook:claim}.
+%now with $\msk_{i-1}$ mentioned the first time. 
+
+
+% The proximate $\hat p_1$ the multilin rep of which is
+% \begin{align*}
+% \langle \hat p_1,
+% K_{0\lambda_1,\ldots, \lambda_{k}}
+% \rangle_{H_{n-k}}
+% & = q_k(\lambda_k) - \gamma\cdot h(\lambda_1,\ldots,\lambda_{k}) 
+% \\
+% & \quad\quad + 
+% \langle \msk_1 - \msk_{0,\lambda_1,\ldots,\lambda_k},
+% K_{0\lambda_1,\ldots, \lambda_{k}}\rangle_{H_{n-k}}
+% \\
+% \langle \hat p_1,  L_{Q_i}\rangle_{H_{n-k}} &= v_{Q_0}
+% \\
+% \langle \hat p_1, L_{Q_i}\rangle_{H_{n-k}} &= (\fold_{\lambda_1,\ldots, \lambda_k} \hat f_0) (Q_i).
+% \end{align*}
+
+
+
+
+\paragraph{Step 4: Aggregation of claims.}
+
+The verifier samples a random $\gamma_i\sample F$ for combining the above claims \eqref{e:zook:specialized:claim}, \eqref{e:zook:out:domain:constraint} and \eqref{e:zook:in:domain:constraint} on the new ensemble into a single claim of the form \eqref{e:zook:claim}, with the following linear functionals:
+\begin{align}
+\label{e:zook:update:K}
+K^{(i)} &=  \lambda_i\cdot K^{(i-1)}(\vec\beta_i,\:.\:) + \sum_{k=0}^{s_i} \gamma_i^{k+1} \cdot L_{x_{i,k}}(\:.\:),
+\\\label{e:zook:update:Gamma}
+\Gamma_{j}^{(i)}  &=  2^{r_i}\cdot\lambda_i\cdot \Lambda_j^{(i-1)}, \quad j=1,\ldots,i-1,
+\\\label{e:zook:new:Gamma}
+% \Gamma_i^{(i)} &= -\Big\langle \:.\:, \lambda_i\cdot K^{(i-1)}(\vec\beta_i,\:.\:) + \sum_{k=1}^{s_i} \gamma_i^{k+1}\cdot L_{x_{i,k}}(\:.\:) \Big\rangle_{H_{k_i}}   
+\Gamma_i^{(i)} &= - \langle \:.\:, K^{(i)} - \gamma_i\cdot L_{x_{i,0}} \rangle_{H_{k_i}}
+\\\label{e:zook:update:Lambda}
+\Lambda_{j}^{(i)}  
+&=  2^{r_i}\cdot\lambda_i\cdot \Lambda_j^{(i-1)}, \quad j=1,\ldots, i-1,
+\\\label{e:zook:new:Lambda}
+\Lambda_i^{(i)}(h_i) & = 2^{-k_i}\cdot h_i(\vec \beta_i).
+\end{align}
+As before, the inner product \eqref{e:zook:new:Gamma} on $\msk_i$ and the evaluation \eqref{e:zook:new:Lambda} on $h_i$ are inexpensive to compute.
+
+
+\begin{rem}
+\label{rem:zook:pi:instead:pi:hat}
+In closer alignment with \cite{cryptoeprint:2026/391}, one may  think of the claims \eqref{e:zook:claim} in terms of the unmasked polynomial $p_i = \hat p_i - \msk_i$, rather than of the masked one, i.e.
+\begin{align*}
+% \label{e:zook:claim:paper}
+c_{i}  &= \left\langle p_{i}, K^{(i)} \right\rangle_{H_{k_{i}}} 
++ \sum_{j=0}^{i} \Gamma_j^{(i)}(\msk_j) + \sum_{j=1}^{i} \Lambda_{j}^{(i)} (h_{j}).
+\end{align*}
+In Step 3, the prover commits to $\hat p_i = p_{i-1}(\vec\beta_i,\:.\:) + \msk_i(\:.\:)$ instead of $\hat p_i = \hat p_{i-1}(\vec\beta_i,\:.\:) + \msk_i(\:.\:)$, and the consistency relation for the $s_i$ in-domain queries would then be 
+\begin{align*}
+\sum_{\vec x'\in H_{k_i}} \left(\hat p_i(\vec x') - \msk_{i}(\vec x') + \msk_{i-1}(\vec\beta_i, \:.\:) \right)\cdot L_{x_{i,j}}(\vec x') &= v_{j}, 
+\end{align*}
+instead of \eqref{e:zook:in:domain:constraint}, leading to a different update rule of $\Gamma_{i-1}^{(i)}$.
+\end{rem}
+
+
+
+\subsubsection{The final opening protocol.}
+
+The claim after round $r$ is of the form
+\begin{equation}
+\label{e:zook:claim:r}
+c_r  = \langle \hat p_r, K^{(r)} \rangle_{H_{k_r}} 
++ \sum_{j=0}^r  \Gamma_j^{(r)}(\msk_j) + \sum_{j=1}^r \Lambda_j^{(r)}(h_j),
+\end{equation}
+involving the final $\hat p_r$, and the joint overall mask $\mathsf m$ from \eqref{e:all:masks:concatenated}, comprised of the oracle masks $\msk_0,\ldots,\msk_r$, and the sumcheck blinders $h_1,\ldots, h_r$.
+% with $K = K^{(r)}$, $\Lambda_i = \Lambda_i^{(r)}$ and $\Gamma_i = \Gamma_i^{(r)}$.
+The claim is linear in its components, and proven via an independent proof of proximity of the committed words from $F^{D_r}$ and $F^{D_\text{zk}}$ to polynomials $\hat p_r(X)\in \mathscr P_{k_r}^{e_r}$ and $\mathsf m(X) \in F[X]^{<m_\text{zk}}$, respectively, satisfying the joint claim \eqref{e:zook:claim:r}.
+Such a proof probes the committed words independently, and the soundness errors are blown up by the combinatorial product
+\[
+\ell(\theta_r) \cdot \ell(\theta_\text{zk})
+\]
+of the list sizes determined by the number of samples from $D_r$ and $D_\text{zk}$, respectively.
+
+For improving soundness, we once again apply the DEEP principle as in WHIR, and additionally constrain the prover to a single proximate mask by asking for the value 
+$
+v =\mathsf m(z)
+$
+at a random out-of-domain point 
+\begin{equation}
+z\sample F
+\end{equation} at commit time of $\mathsf m$. 
+(See the full protocol description in Section \ref{s:complete:protocol}.)
+We further reuse the same challenge $z$ for proving invariance of the component $msk_0$ under the Frobenius automorphism $\phi$ of $F/\mathbb F_q$. 
+This is required for showing the unmasked proximate of $w$ being basefield-valued, see the discussion in Section \ref{s:zk:soundness} below.\footnotemark
+\footnotetext{%
+There are alternative options to achieve the same goal.
+For example, by committing the $\mathbb F_q$-polynomial $\hat\msk_0$ separately. 
+}
+The prover provides the value of 
+\begin{align}
+\hat\msk_0(X) = \msk_0(X) + X^{|\msk_0|}\cdot r_0(X)
+\end{align}
+at $z$, that is the linear functional
+\begin{align}
+\label{e:zook:final:opening:V:z}
+v' = V_z(\mathsf m) &=  \hat\msk_0(z).
+\end{align}
+Here, $r_0\sample\mathbb F_q^e$ is the component of the overall mask \eqref{e:all:masks:concatenated} devoted for securing $\msk_0$.
+If $\phi(v') = V_{\phi(z)}(\mathsf m)$, then with high probability $\hat \msk_0(X) = \phi(\hat\msk_0)(X)$, proving that $msk_0$ (and $r_0$) is over the basefield $\mathbb F_q$.
+
+\begin{protocol}[Final opening]
+\label{prot:zook:final:opening}
+The prover commits to full entropy masks $H \sample \mathscr P_r$ and $M\sample F^{m_{zk}}$, as words from $C_r$ and $C_{zk}$, respectively.
+It parses $M$ as $H_1\|\ldots\|H_r\|$ $M_0 \| \ldots\|M_r\|M_{zk}\|R_0$ according to \eqref{e:all:masks:concatenated}, and claims
+\begin{align}
+\label{e:zook:claim:H}
+d  &= \langle  H, K^{(r)} \rangle_{H_{k_r}}
++ \sum_{j=0}^r \Gamma_j^{(r)}(M_j) + \sum_{j=1}^r \Lambda_j^{(r)}(H_j),
+\end{align}
+and
+\begin{align}
+v_{M} = M(z), 
+\quad
+v_{M}' = V_{z}(M), 
+\quad
+v_M'' = V_{\phi(z)}(M),
+\end{align}
+where $V_z$ is as in \eqref{e:zook:final:opening:V:z}.
+The verifier replies with $\lambda\sample F$.
+The prover reveals the combined messages $H' = \lambda\cdot \hat p_r + H$, $M' = \lambda\cdot \mathsf m + M$, the latter parsed as $H_1'\|\ldots\|H_r'\|M_0'\|\ldots\|M_r'\|$ $M_{zk}'\|R_0'$.
+
+The verifier queries the commitments of $\hat p_r$ and $\mathsf m$ independently at random points $x_{1}, \ldots x_{s}\sample D_r$ and $y_1,\ldots, y_{s_\text{zk}}\sample D_{zk}$, respectively, and checks collinearity of the revealed values with those of the encodings of $H'$ and $M'$. 
+%the linear combination.
+If the collinearity checks hold, and if 
+\begin{align}
+\label{e:zook:claim:combined}
+\lambda \cdot c_r + d  &= \langle  H', K \rangle_{H_{k_r}}
++ \sum_{j=0}^r \Gamma_j(M_j') + \sum_{j=1}^r \Lambda_j(H_j'),
+\end{align}
+as well as
+\begin{align}
+\lambda \cdot v + v_M &=  M'(z),
+\\
+\lambda\cdot v'  + v_M' = V_z(M'),
+&\quad \lambda\cdot \phi(v') + v_M'' = V_{\phi(z)}(M'),
+\end{align}
+then the verifier accepts.
+\end{protocol}
