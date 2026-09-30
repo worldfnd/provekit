@@ -14,7 +14,8 @@ use {
     crate::{
         field::{Base, Ext, FieldHash, ProofField},
         utils::{next_power_of_two, serde_hex},
-        HashConfig, PublicInputs, R1CS,
+        HashConfig, JointOpeningBackend, JointOpeningLayout, PublicInputs, WitnessOpeningMode,
+        R1CS,
     },
     serde::{Deserialize, Serialize},
     whir::{
@@ -159,6 +160,9 @@ pub struct WhirR1CSScheme<P: ProofField> {
     pub has_public_inputs: bool,
     /// Base-field witness commitment, via zook.
     pub whir_witness:      ZookConfig<P::Embedding>,
+    /// Opening protocol for two-stage witnesses. Single-stage witnesses use the
+    /// existing opening.
+    pub witness_opening:   WitnessOpeningMode,
     /// Separate ext-field commitment to the Spartan blinding polynomial `g`;
     /// masking the ext-valued sumcheck rounds needs ext randomness, so `g`
     /// cannot ride on the base witness commitment.
@@ -197,6 +201,33 @@ impl<P: ProofField> WhirR1CSScheme<P> {
 }
 
 impl<P: FieldHash> WhirR1CSScheme<P> {
+    /// Select the opening protocol before constructing a transcript or
+    /// committing witnesses.
+    #[must_use]
+    pub fn with_witness_opening(mut self, mode: WitnessOpeningMode) -> Self {
+        self.witness_opening = mode;
+        self
+    }
+
+    /// Validate the joint backend before starting a two-stage proof or
+    /// verification.
+    ///
+    /// The source configuration retains the original block size.
+    pub fn validate_joint_backend<B: JointOpeningBackend<P>>(
+        &self,
+        backend: &B,
+    ) -> anyhow::Result<()> {
+        if self.witness_opening == WitnessOpeningMode::Joint && self.num_challenges > 0 {
+            let block_size = 1usize
+                .checked_shl(u32::try_from(self.m)?)
+                .ok_or_else(|| anyhow::anyhow!("Invalid witness block dimension"))?;
+            let layout = JointOpeningLayout::new(block_size)?;
+            layout.validate_source_config(&self.whir_witness)?;
+            backend.validate(&self.whir_witness, layout)?;
+        }
+        Ok(())
+    }
+
     /// Build a scheme for a concrete R1CS instance, recording its hash so the
     /// transcript can later be bound to this instance (in
     /// [`Self::create_domain_separator`]).
@@ -265,6 +296,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
                 hash_config.engine_id(),
                 witness_mode,
             )?,
+            witness_opening: WitnessOpeningMode::default(),
             whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             w1_size,
             num_challenges,
