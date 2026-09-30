@@ -6,6 +6,7 @@ pub use file::binary_format;
 pub mod field;
 pub mod hash_config;
 mod interner;
+pub mod joint_claims;
 pub mod joint_covector;
 mod logging;
 pub mod prefix_covector;
