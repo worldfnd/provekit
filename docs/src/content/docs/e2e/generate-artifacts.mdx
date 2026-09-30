@@ -72,7 +72,7 @@ Decode public inputs as part of integration testing:
 
 ```sh
 cargo run --release --bin provekit-cli -- show-inputs --hex \
-  ./artifacts/basic.pkp \
+  ./artifacts/basic.pkv \
   ./artifacts/proof.np
 ```
 
@@ -84,7 +84,7 @@ After the proof verifies, export inputs for the Go/gnark recursive verifier:
 
 ```sh
 cargo run --release --bin provekit-cli -- generate-gnark-inputs \
-  ./artifacts/basic.pkv \
+  ./artifacts/basic.pkp \
   ./artifacts/proof.np \
   --params ./artifacts/params_for_recursive_verifier \
   --r1cs ./artifacts/r1cs.json
