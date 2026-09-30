@@ -6,6 +6,9 @@ pub use file::binary_format;
 pub mod field;
 pub mod hash_config;
 mod interner;
+pub mod joint_claims;
+pub mod joint_covector;
+pub mod joint_opening;
 mod logging;
 pub mod prefix_covector;
 pub mod public_inputs;
@@ -24,6 +27,10 @@ pub use {
     compress::CompressedR1CS,
     field::{Base, Ext, FieldHash, ProofField},
     hash_config::{HashConfig, POSEIDON2, SKYSCRAPER},
+    joint_covector::JointLinearForm,
+    joint_opening::{
+        JointOpeningBackend, JointOpeningLayout, UnavailableJointOpening, WitnessOpeningMode,
+    },
     logging::log_commit_input,
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
     public_inputs::{PublicInputs, PublicInputsHash},
