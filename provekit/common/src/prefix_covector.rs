@@ -1,6 +1,7 @@
 use {
     crate::FieldElement,
     ark_std::{One, Zero},
+    rayon::prelude::*,
     whir::algebra::{dot, linear_form::LinearForm, multilinear_extend},
 };
 
@@ -76,11 +77,18 @@ impl LinearForm<FieldElement> for PrefixCovector {
     }
 
     fn accumulate(&self, accumulator: &mut [FieldElement], scalar: FieldElement) {
-        for (acc, val) in accumulator[..self.vector.len()]
-            .iter_mut()
-            .zip(&self.vector)
-        {
-            *acc += scalar * *val;
+        let accumulator = &mut accumulator[..self.vector.len()];
+        if self.vector.len() > whir::utils::workload_size::<FieldElement>() {
+            accumulator
+                .par_iter_mut()
+                .zip(self.vector.par_iter())
+                .for_each(|(acc, val)| {
+                    *acc += scalar * *val;
+                });
+        } else {
+            for (acc, val) in accumulator.iter_mut().zip(&self.vector) {
+                *acc += scalar * *val;
+            }
         }
     }
 }

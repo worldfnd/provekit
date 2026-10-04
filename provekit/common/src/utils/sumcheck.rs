@@ -208,9 +208,9 @@ pub fn transpose_r1cs_matrices(r1cs: &R1CS) -> (SparseMatrix, SparseMatrix, Spar
 /// external row.
 #[instrument(skip_all)]
 pub fn multiply_transposed_by_eq_alpha(
-    at: &SparseMatrix,
-    bt: &SparseMatrix,
-    ct: &SparseMatrix,
+    at: SparseMatrix,
+    bt: SparseMatrix,
+    ct: SparseMatrix,
     alpha: &[FieldElement],
     r1cs: &R1CS,
 ) -> [Vec<FieldElement>; 3] {
@@ -237,8 +237,8 @@ pub fn multiply_transposed_by_eq_alpha(
 #[instrument(skip_all)]
 pub fn calculate_external_row_of_r1cs_matrices(
     alpha: &[FieldElement],
-    r1cs: &R1CS,
+    r1cs: R1CS,
 ) -> [Vec<FieldElement>; 3] {
-    let (at, bt, ct) = transpose_r1cs_matrices(r1cs);
-    multiply_transposed_by_eq_alpha(&at, &bt, &ct, alpha, r1cs)
+    let (at, bt, ct) = transpose_r1cs_matrices(&r1cs);
+    multiply_transposed_by_eq_alpha(at, bt, ct, alpha, &r1cs)
 }
