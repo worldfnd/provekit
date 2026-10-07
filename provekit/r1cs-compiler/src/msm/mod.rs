@@ -8,6 +8,7 @@ mod sanitize;
 mod scalar_relation;
 
 pub use provekit_backend_bn254::witness::{Limbs, MAX_LIMBS};
+pub(crate) use scalar_relation::constrain_scalar_below_order;
 use {
     crate::{constraint_helpers::constrain_boolean, noir_to_r1cs::NoirToR1CSCompiler},
     ark_ff::{AdditiveGroup, Field, PrimeField},

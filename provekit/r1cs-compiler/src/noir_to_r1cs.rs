@@ -1,10 +1,17 @@
 use {
     crate::{
         binops::add_combined_binop_constraints,
-        constraint_helpers::{compute_boolean_or, constrain_boolean, constrain_to_constant},
+        constraint_helpers::{
+            add_constant_witness, compute_boolean_or, constrain_boolean, constrain_to_constant,
+        },
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
-        msm::{add_msm_with_curve, multi_limb_arith::compute_is_zero, MsmLimbedOutputs},
+        msm::{
+            add_msm_with_curve, constrain_scalar_below_order,
+            curve::{Curve, Grumpkin},
+            multi_limb_arith::compute_is_zero,
+            MsmLimbedOutputs,
+        },
         poseidon2::add_poseidon2_permutation,
         range_check::add_range_checks,
         sha256_compression::add_sha256_compression,
@@ -336,6 +343,57 @@ impl NoirToR1CSCompiler {
         let x_is_zero = compute_is_zero(self, x);
         let y_is_zero = compute_is_zero(self, y);
         self.add_product(x_is_zero, y_is_zero)
+    }
+
+    /// Constrain the MSM scalar `lo + 2^128 * hi` to be a canonical Grumpkin
+    /// scalar whenever the opcode is active. `predicate` is `None` when the
+    /// opcode is unconditionally active.
+    fn constrain_msm_scalar_below_order(
+        &mut self,
+        lo: ConstantOrR1CSWitness,
+        hi: ConstantOrR1CSWitness,
+        predicate: Option<usize>,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    ) -> Result<()> {
+        if let (ConstantOrR1CSWitness::Constant(lo), ConstantOrR1CSWitness::Constant(hi)) = (lo, hi)
+        {
+            let (lo, hi) = (lo.into_bigint().0, hi.into_bigint().0);
+            let scalar = [lo[0], lo[1], hi[0], hi[1]];
+            let canonical = lo[2..] == [0, 0]
+                && hi[2..] == [0, 0]
+                && scalar
+                    .iter()
+                    .rev()
+                    .lt(Grumpkin.curve_order_n().iter().rev());
+            if canonical {
+                return Ok(());
+            }
+            ensure!(
+                predicate.is_some(),
+                "MSM scalar constant is not a canonical Grumpkin scalar"
+            );
+        }
+        let lo = self.gate_by_predicate(lo, predicate);
+        let hi = self.gate_by_predicate(hi, predicate);
+        constrain_scalar_below_order(self, range_checks, lo, hi, &Grumpkin);
+        Ok(())
+    }
+
+    /// The witness `value * predicate`, or `value` itself when there is no
+    /// predicate.
+    fn gate_by_predicate(
+        &mut self,
+        value: ConstantOrR1CSWitness,
+        predicate: Option<usize>,
+    ) -> usize {
+        match (value, predicate) {
+            (ConstantOrR1CSWitness::Witness(w), None) => w,
+            (ConstantOrR1CSWitness::Witness(w), Some(p)) => self.add_product(w, p),
+            (ConstantOrR1CSWitness::Constant(c), None) => add_constant_witness(self, c),
+            (ConstantOrR1CSWitness::Constant(c), Some(p)) => {
+                self.add_sum(vec![SumTerm(Some(c), p)])
+            }
+        }
     }
 
     /// Add an ACIR assert zero constraint.
@@ -792,6 +850,20 @@ impl NoirToR1CSCompiler {
                                 }
                             }
                         }
+                        // ACVM rejects an active MSM whose scalars are not canonical Grumpkin
+                        // scalars, and its range optimizer drops RANGE opcodes on that basis.
+                        let active = match predicate {
+                            ConstantOrR1CSWitness::Constant(_) => None,
+                            ConstantOrR1CSWitness::Witness(predicate_wit) => Some(predicate_wit),
+                        };
+                        for scalar in scalar_wits.chunks_exact(2) {
+                            self.constrain_msm_scalar_below_order(
+                                scalar[0],
+                                scalar[1],
+                                active,
+                                &mut range_checks,
+                            )?;
+                        }
                         let out_inf = self.add_witness_point_at_infinity_flag(out_x, out_y);
                         msm_ops.push((point_wits, scalar_wits, (out_x, out_y, out_inf)));
                     }
@@ -930,9 +1002,12 @@ impl NoirToR1CSCompiler {
 mod tests {
     use {
         super::*,
-        acir::circuit::{
-            opcodes::{BlackBoxFuncCall, FunctionInput},
-            PublicInputs as AcirPublicInputs,
+        acir::{
+            circuit::{
+                opcodes::{BlackBoxFuncCall, FunctionInput},
+                PublicInputs as AcirPublicInputs,
+            },
+            AcirField,
         },
         provekit_backend_bn254::witness::WitnessBuilder,
         std::collections::{BTreeSet, HashSet},
@@ -1012,5 +1087,101 @@ mod tests {
         assert!(err
             .to_string()
             .contains("SHA256 hash constant exceeds 32 bits"));
+    }
+
+    /// Solves `circuit` from the given ACIR witness values, bypassing ACVM, and
+    /// reports whether the resulting witness satisfies every R1CS constraint.
+    fn r1cs_accepts(circuit: &Circuit<NoirElement>, acir_values: &[(u32, NoirElement)]) -> bool {
+        use {
+            acir::native_types::WitnessMap,
+            provekit_backend_bn254::{
+                solve_witness_vec, witness::LayerScheduler, TranscriptSponge,
+            },
+            whir::transcript::{codecs::Empty, DomainSeparator, ProverState},
+        };
+
+        let (r1cs, _, builders) = noir_to_r1cs(circuit).expect("circuit should compile");
+        let acir_map = WitnessMap::from(
+            acir_values
+                .iter()
+                .map(|&(w, v)| (NoirWitness(w), v))
+                .collect::<BTreeMap<_, _>>(),
+        );
+        let mut witness = vec![None; r1cs.num_witnesses()];
+        let ds = DomainSeparator::protocol(&()).instance(&Empty);
+        let mut transcript = ProverState::new(&ds, TranscriptSponge::default());
+        let layers = LayerScheduler::new(&builders).build_layers();
+        if solve_witness_vec(&mut witness, layers, &acir_map, &mut transcript).is_err() {
+            return false;
+        }
+        let Some(witness) = witness.into_iter().collect::<Option<Vec<_>>>() else {
+            return false;
+        };
+        let (a, b, c) = (
+            r1cs.a() * &witness[..],
+            r1cs.b() * &witness[..],
+            r1cs.c() * &witness[..],
+        );
+        a.iter().zip(&b).zip(&c).all(|((a, b), c)| *a * *b == *c)
+    }
+
+    /// `scalar_lo + 2^128 * scalar_hi` times the Grumpkin generator, claimed to
+    /// equal `3 * G`.
+    fn msm_times_generator_is_3g(
+        scalar_lo: &str,
+        scalar_hi: &str,
+    ) -> (Circuit<NoirElement>, Vec<(u32, NoirElement)>) {
+        let dec = |s: &str| NoirElement::try_from_str(s).expect("decimal field element");
+        let hex = |s: &str| NoirElement::from_hex(s).expect("hex field element");
+        let circuit = Circuit {
+            opcodes: vec![Opcode::BlackBoxFuncCall(BlackBoxFuncCall::MultiScalarMul {
+                points:    vec![
+                    FunctionInput::Constant(NoirElement::one()),
+                    FunctionInput::Constant(dec(
+                        "17631683881184975370165255887551781615748388533673675138860",
+                    )),
+                ],
+                scalars:   vec![
+                    FunctionInput::Witness(NoirWitness(1)),
+                    FunctionInput::Witness(NoirWitness(2)),
+                ],
+                predicate: FunctionInput::Constant(NoirElement::one()),
+                outputs:   (NoirWitness(3), NoirWitness(4)),
+            })],
+            private_parameters: BTreeSet::from([NoirWitness(1), NoirWitness(2)]),
+            ..Default::default()
+        };
+        let values = vec![
+            (1, hex(scalar_lo)),
+            (2, hex(scalar_hi)),
+            (
+                3,
+                dec(
+                    "18660890509582237958343981571981920822503400000196279471655180441138020044621",
+                ),
+            ),
+            (
+                4,
+                dec("8902249110305491597038405103722863701255802573786510474664632793109847672620"),
+            ),
+        ];
+        (circuit, values)
+    }
+
+    #[test]
+    fn msm_accepts_canonical_scalar() {
+        let (circuit, values) = msm_times_generator_is_3g("0x3", "0x0");
+        assert!(r1cs_accepts(&circuit, &values));
+    }
+
+    /// Regression: ACVM rejects an MSM scalar at or above the Grumpkin order
+    /// `n`, so the R1CS must too. `n + 3` reaches the same point as `3`.
+    #[test]
+    fn msm_rejects_scalar_at_or_above_grumpkin_order() {
+        let (circuit, values) = msm_times_generator_is_3g(
+            "0x97816a916871ca8d3c208c16d87cfd4a",
+            "0x30644e72e131a029b85045b68181585d",
+        );
+        assert!(!r1cs_accepts(&circuit, &values));
     }
 }
