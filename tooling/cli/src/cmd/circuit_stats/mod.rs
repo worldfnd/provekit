@@ -96,7 +96,8 @@ fn analyze_circuit(program: Program<FieldElement>, path: &Path) -> Result<()> {
     let acir_public_inputs_indices_set: HashSet<u32> =
         circuit.public_inputs().indices().iter().cloned().collect();
 
-    display::print_r1cs_breakdown(&stats, &circuit, &r1cs, &breakdown);
+    let num_acir_witnesses = witness_map.iter().flatten().count();
+    display::print_r1cs_breakdown(&stats, num_acir_witnesses, &r1cs, &breakdown);
 
     // Run Gaussian elimination optimization and display results
     let mut optimized_r1cs = r1cs.clone();

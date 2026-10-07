@@ -5,7 +5,7 @@ use {
     mavros_artifacts::R1CS as MavrosR1CS,
     nargo::{
         insert_all_files_for_workspace_into_file_manager,
-        ops::{check_program, collect_errors, compile_program, optimize_program, report_errors},
+        ops::{check_program, collect_errors, compile_program, report_errors},
         parse_all,
     },
     nargo_toml::{find_root, get_package_manifest, resolve_workspace_from_toml, PackageSelection},
@@ -195,7 +195,6 @@ impl Args {
                     &options,
                     None,
                 )?;
-                let program = optimize_program(program);
                 check_program(&program)?;
                 let artifact = program.into();
                 save_program_to_file(&artifact, &package.name, &target_dir)
