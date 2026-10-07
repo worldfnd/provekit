@@ -13,7 +13,7 @@
 #   LOG_DIR                  Directory for per-test logs and summary
 #   MAX_TESTS                Cap the number of tests (0 = unlimited)
 #   TEST_FILTER              Regex filter on test name
-#   REQUIRED_NARGO_VERSION   Nargo version string to require (default 1.0.0-beta.19)
+#   REQUIRED_NARGO_VERSION   Nargo version string to require (default 1.0.0-beta.26)
 #   ENABLE_ENUMS_FALLBACK    Retry compile with -Zenums on 'enums' feature error (0/1, default 1)
 
 set -euo pipefail
@@ -37,7 +37,7 @@ fi
 
 PROVEKIT_BIN="${PROVEKIT_BIN:-${REPO_ROOT}/target/release/provekit-cli}"
 MAX_TESTS="${MAX_TESTS:-0}"
-REQUIRED_NARGO_VERSION="${REQUIRED_NARGO_VERSION:-1.0.0-beta.19}"
+REQUIRED_NARGO_VERSION="${REQUIRED_NARGO_VERSION:-1.0.0-beta.26}"
 ENABLE_ENUMS_FALLBACK="${ENABLE_ENUMS_FALLBACK:-1}"
 TEST_FILTER="${TEST_FILTER:-}"
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -86,7 +86,7 @@ fi
 
 if ! command -v nargo >/dev/null 2>&1; then
   echo "nargo is required but was not found in PATH."
-  echo "Install with noirup and set version: noirup --version v1.0.0-beta.19"
+  echo "Install with noirup and set version: noirup --version v1.0.0-beta.26"
   exit 1
 fi
 
