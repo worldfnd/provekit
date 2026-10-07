@@ -54,7 +54,7 @@ pub fn ordered_params_from_btreemap(
 
 fn ordered_param(abi_type: &AbiType, value: &InputValue) -> Result<InputValueOrdered> {
     match (value, abi_type) {
-        (InputValue::Field(elem), _) => Ok(InputValueOrdered::Field(elem.into_repr())),
+        (InputValue::Field(elem), _) => Ok(InputValueOrdered::Field(super::noir_to_native(*elem))),
 
         (InputValue::Vec(vec_elements), AbiType::Array { typ, .. }) => {
             let items = vec_elements
