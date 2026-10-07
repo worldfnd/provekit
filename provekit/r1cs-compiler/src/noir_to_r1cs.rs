@@ -4,7 +4,7 @@ use {
         constraint_helpers::{compute_boolean_or, constrain_boolean, constrain_to_constant},
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
-        msm::{add_msm_with_curve, MsmLimbedOutputs},
+        msm::{add_msm_with_curve, multi_limb_arith::compute_is_zero, MsmLimbedOutputs},
         poseidon2::add_poseidon2_permutation,
         range_check::add_range_checks,
         sha256_compression::add_sha256_compression,
@@ -300,6 +300,42 @@ impl NoirToR1CSCompiler {
                 sum,
             )]);
         sum
+    }
+
+    /// Flag whether the curve point `(x, y)` is the point at infinity, which
+    /// ACIR encodes as `(0, 0)`.
+    fn add_point_at_infinity_flag(
+        &mut self,
+        x: ConstantOrR1CSWitness,
+        y: ConstantOrR1CSWitness,
+    ) -> ConstantOrR1CSWitness {
+        match (x, y) {
+            (ConstantOrR1CSWitness::Constant(x), ConstantOrR1CSWitness::Constant(y)) => {
+                ConstantOrR1CSWitness::Constant(if x.is_zero() && y.is_zero() {
+                    FieldElement::one()
+                } else {
+                    FieldElement::zero()
+                })
+            }
+            (ConstantOrR1CSWitness::Constant(c), ConstantOrR1CSWitness::Witness(w))
+            | (ConstantOrR1CSWitness::Witness(w), ConstantOrR1CSWitness::Constant(c)) => {
+                if c.is_zero() {
+                    ConstantOrR1CSWitness::Witness(compute_is_zero(self, w))
+                } else {
+                    ConstantOrR1CSWitness::Constant(FieldElement::zero())
+                }
+            }
+            (ConstantOrR1CSWitness::Witness(x), ConstantOrR1CSWitness::Witness(y)) => {
+                ConstantOrR1CSWitness::Witness(self.add_witness_point_at_infinity_flag(x, y))
+            }
+        }
+    }
+
+    /// Flag whether the witness point `(x, y)` is the point at infinity.
+    fn add_witness_point_at_infinity_flag(&mut self, x: usize, y: usize) -> usize {
+        let x_is_zero = compute_is_zero(self, x);
+        let y_is_zero = compute_is_zero(self, y);
+        self.add_product(x_is_zero, y_is_zero)
     }
 
     /// Add an ACIR assert zero constraint.
@@ -647,20 +683,25 @@ impl NoirToR1CSCompiler {
                         predicate,
                         outputs,
                     } => {
-                        let mut point_wits: Vec<ConstantOrR1CSWitness> = points
-                            .iter()
-                            .map(|inp| self.fetch_constant_or_r1cs_witness(*inp))
-                            .collect();
+                        ensure!(
+                            points.len() % 2 == 0,
+                            "MSM points must be encoded as [x, y] pairs, got {} elements",
+                            points.len()
+                        );
+                        // ACIR encodes the point at infinity as (0, 0); the MSM pipeline takes
+                        // [x, y, is_infinite] triples.
+                        let mut point_wits: Vec<ConstantOrR1CSWitness> =
+                            Vec::with_capacity(points.len() / 2 * 3);
+                        for point in points.chunks_exact(2) {
+                            let x = self.fetch_constant_or_r1cs_witness(point[0]);
+                            let y = self.fetch_constant_or_r1cs_witness(point[1]);
+                            let is_infinite = self.add_point_at_infinity_flag(x, y);
+                            point_wits.extend([x, y, is_infinite]);
+                        }
                         let scalar_wits: Vec<ConstantOrR1CSWitness> = scalars
                             .iter()
                             .map(|inp| self.fetch_constant_or_r1cs_witness(*inp))
                             .collect();
-                        ensure!(
-                            point_wits.len() % 3 == 0,
-                            "MSM points must be encoded as [x, y, is_infinite] triples, got {} \
-                             elements",
-                            point_wits.len()
-                        );
                         // ## Conditional MSM: predicate field handling
                         //
                         // Noir's `flatten_cfg` pass lowers `if cond { multi_scalar_mul(...) }`
@@ -669,22 +710,22 @@ impl NoirToR1CSCompiler {
                         // of all enclosing branch conditions: `predicate = c1 * c2 * ...`.
                         //
                         // ACVM semantics: when predicate=0, the opcode must output the Grumpkin
-                        // identity point (0, 0, is_infinite=1) regardless of the point/scalar
-                        // inputs. When predicate=1 the MSM runs normally.
+                        // identity point (0, 0) regardless of the point/scalar inputs. When
+                        // predicate=1 the MSM runs normally.
                         //
                         // ### Case 1: constant predicate=0 (statically dead branch)
                         //
                         // The output is fully determined at compile time as the Grumpkin identity
-                        // `(0, 0, 1)`, so the MSM pipeline is skipped entirely.
+                        // `(0, 0)`, so the MSM pipeline is skipped entirely.
                         // `constrain_to_constant` pins each output witness
-                        // to its identity value — 3 constraints total.
+                        // to its identity value — 2 constraints total.
                         //
                         // ### Case 2: witness predicate (runtime conditional)
                         //
                         // We hook into the existing `all_skipped` short-circuit already present
                         // in the MSM pipeline (msm/pipeline.rs). That mechanism tracks whether
                         // every input point has `is_skip = is_infinite OR scalar_is_zero`. When
-                        // `all_skipped=1` the pipeline constrains the output to (0, 0, 1) and
+                        // `all_skipped=1` the pipeline constrains the output to (0, 0) and
                         // the EC addition chain still produces a valid (trivial) witness.
                         //
                         // To activate it we rewrite each point's `is_infinite` flag before
@@ -706,17 +747,15 @@ impl NoirToR1CSCompiler {
                         // has no such mechanism. This is an inherent cost of R1CS for runtime
                         // conditional operations.
                         let predicate = self.fetch_constant_or_r1cs_witness(*predicate);
-                        let (out_x, out_y, out_inf) = (
+                        let (out_x, out_y) = (
                             self.fetch_r1cs_witness_index(outputs.0),
                             self.fetch_r1cs_witness_index(outputs.1),
-                            self.fetch_r1cs_witness_index(outputs.2),
                         );
                         match predicate {
                             ConstantOrR1CSWitness::Constant(c) => {
                                 if c.is_zero() {
                                     constrain_to_constant(self, out_x, FieldElement::zero());
                                     constrain_to_constant(self, out_y, FieldElement::zero());
-                                    constrain_to_constant(self, out_inf, FieldElement::one());
                                     continue;
                                 } else if !c.is_one() {
                                     bail!("MSM predicate constant must be 0 or 1, got {c:?}");
@@ -753,6 +792,7 @@ impl NoirToR1CSCompiler {
                                 }
                             }
                         }
+                        let out_inf = self.add_witness_point_at_infinity_flag(out_x, out_y);
                         msm_ops.push((point_wits, scalar_wits, (out_x, out_y, out_inf)));
                     }
                     _ => {
