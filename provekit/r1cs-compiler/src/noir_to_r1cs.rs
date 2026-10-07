@@ -12,7 +12,9 @@ use {
     },
     acir::{
         circuit::{
-            opcodes::{BlackBoxFuncCall, BlockType, FunctionInput as ConstantOrACIRWitness},
+            opcodes::{
+                BlackBoxFuncCall, BlockType, FunctionInput as ConstantOrACIRWitness, MemOpKind,
+            },
             Circuit, Opcode,
         },
         native_types::{Expression, Witness as NoirWitness},
@@ -497,7 +499,7 @@ impl NoirToR1CSCompiler {
                     if *block_type != BlockType::Memory {
                         panic!("MemoryInit block type must be Memory")
                     }
-                    let block_id = block_id.0 as usize;
+                    let block_id = block_id.as_u32() as usize;
                     assert!(
                         !memory_blocks.contains_key(&block_id),
                         "Memory block {} already initialized",
@@ -514,7 +516,7 @@ impl NoirToR1CSCompiler {
                 }
                 Opcode::MemoryOp { block_id, op } => {
                     // Note: predicate field was removed from MemoryOp in ACIR beta.19.
-                    let block_id = block_id.0 as usize;
+                    let block_id = block_id.as_u32() as usize;
                     assert!(
                         memory_blocks.contains_key(&block_id),
                         "Memory block {} not initialized before read",
@@ -522,36 +524,28 @@ impl NoirToR1CSCompiler {
                     );
                     let block = memory_blocks.get_mut(&block_id).unwrap();
 
-                    // `op.index` is _always_ just a single ACIR witness, not a more complicated
-                    // expression, and not a constant. See [here](https://discord.com/channels/1113924620781883405/1356865341065531446)
                     // Static reads are hard-wired into the circuit, or instead rendered as a
                     // dummy dynamic read by introducing a new witness constrained to have the value
                     // of the static address.
-                    let addr = op.index.to_witness().map_or_else(
-                        || {
-                            unimplemented!(
-                                "MemoryOp index must be a single witness, not a more general \
-                                 Expression"
-                            )
-                        },
-                        |acir_witness| self.fetch_r1cs_witness_index(acir_witness),
-                    );
-                    let op = if op.operation.is_zero() {
-                        // Create a new (as yet unconstrained) witness `result_of_read` for the
-                        // result of the read; it will be constrained by later memory block
-                        // processing.
-                        // "In read operations, [op.value] corresponds to the witness index at which
-                        // the value from memory will be written." (from the Noir codebase)
-                        // At R1CS solving time, only need to map over the value of the
-                        // corresponding ACIR witness, whose value is already determined by the ACIR
-                        // solver.
-                        let result_of_read =
-                            self.fetch_r1cs_witness_index(op.value.to_witness().unwrap());
-                        MemoryOperation::Load(addr, result_of_read)
-                    } else {
-                        let new_value =
-                            self.fetch_r1cs_witness_index(op.value.to_witness().unwrap());
-                        MemoryOperation::Store(addr, new_value)
+                    let addr = self.fetch_r1cs_witness_index(op.index);
+                    let op = match op.operation {
+                        MemOpKind::Read => {
+                            // Create a new (as yet unconstrained) witness `result_of_read` for the
+                            // result of the read; it will be constrained by later memory block
+                            // processing.
+                            // "In read operations, [op.value] corresponds to the witness index at
+                            // which the value from memory will be written." (from the Noir
+                            // codebase)
+                            // At R1CS solving time, only need to map over the value of the
+                            // corresponding ACIR witness, whose value is already determined by the
+                            // ACIR solver.
+                            let result_of_read = self.fetch_r1cs_witness_index(op.value);
+                            MemoryOperation::Load(addr, result_of_read)
+                        }
+                        MemOpKind::Write => {
+                            let new_value = self.fetch_r1cs_witness_index(op.value);
+                            MemoryOperation::Store(addr, new_value)
+                        }
                     };
                     block.operations.push(op);
                 }
@@ -930,9 +924,8 @@ mod tests {
 
     #[test]
     fn malformed_and_constant_is_rejected_with_operand_context() {
-        let oversized = NoirElement::from_repr(FieldElement::from(1u64 << 40));
+        let oversized = NoirElement::from(1u128 << 40);
         let circuit: Circuit<NoirElement> = Circuit {
-            current_witness_index: 3,
             opcodes: vec![Opcode::BlackBoxFuncCall(BlackBoxFuncCall::AND {
                 lhs:      FunctionInput::Witness(NoirWitness(1)),
                 rhs:      FunctionInput::Constant(oversized),
@@ -951,7 +944,7 @@ mod tests {
 
     #[test]
     fn malformed_sha256_hash_constant_is_rejected() {
-        let oversized = NoirElement::from_repr(FieldElement::from(1u64 << 40));
+        let oversized = NoirElement::from(1u128 << 40);
         let inputs = Box::new(std::array::from_fn(|i| {
             FunctionInput::Witness(NoirWitness((i as u32) + 1))
         }));
@@ -964,7 +957,6 @@ mod tests {
         }));
         let outputs = Box::new(std::array::from_fn(|i| NoirWitness((i as u32) + 25)));
         let circuit: Circuit<NoirElement> = Circuit {
-            current_witness_index: 32,
             opcodes: vec![Opcode::BlackBoxFuncCall(
                 BlackBoxFuncCall::Sha256Compression {
                     inputs,
