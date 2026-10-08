@@ -49,13 +49,8 @@ pub(super) fn verify_scalar_relation<C: Curve>(
     neg2_witness: usize,
     curve: &C,
 ) {
-    let order_bits = curve.curve_order_bits() as usize;
-    let limb_bits =
-        cost_model::scalar_relation_limb_bits(FieldElement::MODULUS_BIT_SIZE, order_bits);
-    let num_limbs = (order_bits + limb_bits as usize - 1) / limb_bits as usize;
+    let (num_limbs, limb_bits, params) = scalar_modulus_params(curve);
     let half_bits = curve.glv_half_bits() as usize;
-
-    let params = ModulusParams::for_curve_order(num_limbs, limb_bits, curve);
     let mut ops = MultiLimbOps::<MultiLimbField>::new(compiler, range_checks, &params);
 
     let s_limbs = decompose_scalar_from_halves(&mut ops, s_lo, s_hi, num_limbs, limb_bits);
@@ -97,15 +92,21 @@ pub(crate) fn constrain_scalar_below_order<C: Curve>(
     s_hi: usize,
     curve: &C,
 ) {
+    let (num_limbs, limb_bits, params) = scalar_modulus_params(curve);
+    let mut ops = MultiLimbOps::<MultiLimbField>::new(compiler, range_checks, &params);
+    let s_limbs = decompose_scalar_from_halves(&mut ops, s_lo, s_hi, num_limbs, limb_bits);
+    less_than_p_check_multi(ops.compiler, ops.range_checks, s_limbs, &params);
+}
+
+/// Limb count, limb width and modulus parameters for arithmetic modulo the
+/// order of `curve`.
+fn scalar_modulus_params<C: Curve>(curve: &C) -> (usize, u32, ModulusParams) {
     let order_bits = curve.curve_order_bits() as usize;
     let limb_bits =
         cost_model::scalar_relation_limb_bits(FieldElement::MODULUS_BIT_SIZE, order_bits);
     let num_limbs = order_bits.div_ceil(limb_bits as usize);
-
     let params = ModulusParams::for_curve_order(num_limbs, limb_bits, curve);
-    let mut ops = MultiLimbOps::<MultiLimbField>::new(compiler, range_checks, &params);
-    let s_limbs = decompose_scalar_from_halves(&mut ops, s_lo, s_hi, num_limbs, limb_bits);
-    less_than_p_check_multi(ops.compiler, ops.range_checks, s_limbs, &params);
+    (num_limbs, limb_bits, params)
 }
 
 /// Decompose a 256-bit scalar from two 128-bit halves into `num_limbs` limbs.
