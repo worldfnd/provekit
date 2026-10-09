@@ -203,3 +203,35 @@ pub(crate) fn decompose_signed_bits(
 
     (bits, skew)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constant_inputs_are_constrained() {
+        for value in [
+            FieldElement::ZERO,
+            FieldElement::ONE,
+            FieldElement::from(2u64),
+            -FieldElement::ONE,
+        ] {
+            let mut compiler = NoirToR1CSCompiler::new();
+            let index = resolve_input(&mut compiler, &ConstantOrR1CSWitness::Constant(value));
+            for (candidate, expected) in [(value, true), (value + FieldElement::ONE, false)] {
+                let mut witness = vec![FieldElement::ONE; compiler.num_witnesses()];
+                witness[index] = candidate;
+                let (a, b, c) = (
+                    compiler.r1cs.a() * &witness[..],
+                    compiler.r1cs.b() * &witness[..],
+                    compiler.r1cs.c() * &witness[..],
+                );
+                let satisfied = a.iter().zip(&b).zip(&c).all(|((a, b), c)| *a * *b == *c);
+                assert_eq!(
+                    satisfied, expected,
+                    "value: {value}, candidate: {candidate}"
+                );
+            }
+        }
+    }
+}
