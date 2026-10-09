@@ -15,10 +15,10 @@
   },
   "dependencies": {
     "@atheonxyz/verity": "0.3.2-beta",
-    "@noir-lang/acvm_js": "1.0.0-beta.19",
-    "@noir-lang/noir_js": "1.0.0-beta.19",
-    "@noir-lang/noirc_abi": "1.0.0-beta.19",
-    "@noir-lang/types": "1.0.0-beta.19",
+    "@noir-lang/acvm_js": "1.0.0-beta.26",
+    "@noir-lang/noir_js": "1.0.0-beta.26",
+    "@noir-lang/noirc_abi": "1.0.0-beta.26",
+    "@noir-lang/types": "1.0.0-beta.26",
     "pako": "^2.1.0"
   },
   "devDependencies": {

@@ -14,7 +14,7 @@
 #   TEST_FILTER      Regex on circuit name
 #   MAX_TESTS        Cap on circuits (0 = unlimited)
 #   REQUIRED_NARGO_VERSION
-#                   Nargo version string to require (default: 1.0.0-beta.20)
+#                   Nargo version string to require (default: 1.0.0-beta.26)
 #
 # Output: BENCH_DIR/results.csv with one row per circuit:
 #   circuit,num_constraints,num_witnesses,prover_time_ms,prover_peak_rss_kb,
@@ -33,7 +33,7 @@ BENCH_DIR="${BENCH_DIR:-${REPO_ROOT}/csp-bench-logs}"
 BENCH_RUNS="${BENCH_RUNS:-3}"
 TEST_FILTER="${TEST_FILTER:-}"
 MAX_TESTS="${MAX_TESTS:-0}"
-REQUIRED_NARGO_VERSION="${REQUIRED_NARGO_VERSION:-1.0.0-beta.20}"
+REQUIRED_NARGO_VERSION="${REQUIRED_NARGO_VERSION:-1.0.0-beta.26}"
 
 if [[ "${BENCH_DIR}" != /* ]]; then
   BENCH_DIR="${REPO_ROOT}/${BENCH_DIR}"

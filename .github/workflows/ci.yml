@@ -31,7 +31,7 @@ jobs:
       - name: Setup Noir
         uses: noir-lang/noirup@v0.1.2
         with:
-          toolchain: v1.0.0-beta.19
+          toolchain: v1.0.0-beta.26
       - name: Generate mobile benchmark Noir artifacts
         env:
           MOBENCH_CI_PREPARE: "1"

@@ -103,11 +103,7 @@ impl NoirCompiler {
         );
 
         let main = &program.bytecode.functions[0];
-        info!(
-            "ACIR: {} witnesses, {} opcodes.",
-            main.current_witness_index,
-            main.opcodes.len()
-        );
+        info!("ACIR: {} opcodes.", main.opcodes.len());
 
         let (mut r1cs, mut witness_map, mut witness_builders) = noir_to_r1cs(main)?;
         info!(

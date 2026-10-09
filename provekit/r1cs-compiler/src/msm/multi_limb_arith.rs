@@ -5,7 +5,7 @@
 
 use {
     super::{ceil_log2, multi_limb_ops::ModulusParams, Limbs},
-    crate::noir_to_r1cs::NoirToR1CSCompiler,
+    crate::{constraint_helpers::constrain_boolean, noir_to_r1cs::NoirToR1CSCompiler},
     ark_ff::{AdditiveGroup, Field, PrimeField},
     provekit_backend_bn254::{
         witness::{SumTerm, WitnessBuilder},
@@ -369,6 +369,12 @@ pub fn less_than_p_check_multi(
         // Range check r[i] and d[i]
         range_checks.entry(params.limb_bits).or_default().push(r[i]);
         range_checks.entry(params.limb_bits).or_default().push(d_i);
+
+        // A borrow outside {0, 1} lets the chain wrap modulo the native field
+        // and accept r >= p. The final borrow is pinned to 1 below.
+        if i + 1 < n {
+            constrain_boolean(compiler, borrow);
+        }
 
         borrow_prev = Some(borrow);
     }

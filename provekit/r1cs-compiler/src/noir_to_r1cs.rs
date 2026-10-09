@@ -1,10 +1,17 @@
 use {
     crate::{
         binops::add_combined_binop_constraints,
-        constraint_helpers::{compute_boolean_or, constrain_boolean, constrain_to_constant},
+        constraint_helpers::{
+            add_constant_witness, compute_boolean_or, constrain_boolean, constrain_to_constant,
+        },
         digits::{add_digital_decomposition, DigitalDecompositionWitnessesBuilder},
         memory::{add_ram_checking, add_rom_checking, MemoryBlock, MemoryOperation},
-        msm::{add_msm_with_curve, MsmLimbedOutputs},
+        msm::{
+            add_msm_with_curve, constrain_scalar_below_order,
+            curve::{Curve, Grumpkin},
+            multi_limb_arith::compute_is_zero,
+            MsmLimbedOutputs,
+        },
         poseidon2::add_poseidon2_permutation,
         range_check::add_range_checks,
         sha256_compression::add_sha256_compression,
@@ -12,7 +19,9 @@ use {
     },
     acir::{
         circuit::{
-            opcodes::{BlackBoxFuncCall, BlockType, FunctionInput as ConstantOrACIRWitness},
+            opcodes::{
+                BlackBoxFuncCall, BlockType, FunctionInput as ConstantOrACIRWitness, MemOpKind,
+            },
             Circuit, Opcode,
         },
         native_types::{Expression, Witness as NoirWitness},
@@ -300,6 +309,93 @@ impl NoirToR1CSCompiler {
         sum
     }
 
+    /// Flag whether the curve point `(x, y)` is the point at infinity, which
+    /// ACIR encodes as `(0, 0)`.
+    fn add_point_at_infinity_flag(
+        &mut self,
+        x: ConstantOrR1CSWitness,
+        y: ConstantOrR1CSWitness,
+    ) -> ConstantOrR1CSWitness {
+        match (x, y) {
+            (ConstantOrR1CSWitness::Constant(x), ConstantOrR1CSWitness::Constant(y)) => {
+                ConstantOrR1CSWitness::Constant(if x.is_zero() && y.is_zero() {
+                    FieldElement::one()
+                } else {
+                    FieldElement::zero()
+                })
+            }
+            (ConstantOrR1CSWitness::Constant(c), ConstantOrR1CSWitness::Witness(w))
+            | (ConstantOrR1CSWitness::Witness(w), ConstantOrR1CSWitness::Constant(c)) => {
+                if c.is_zero() {
+                    ConstantOrR1CSWitness::Witness(compute_is_zero(self, w))
+                } else {
+                    ConstantOrR1CSWitness::Constant(FieldElement::zero())
+                }
+            }
+            (ConstantOrR1CSWitness::Witness(x), ConstantOrR1CSWitness::Witness(y)) => {
+                ConstantOrR1CSWitness::Witness(self.add_witness_point_at_infinity_flag(x, y))
+            }
+        }
+    }
+
+    /// Flag whether the witness point `(x, y)` is the point at infinity.
+    fn add_witness_point_at_infinity_flag(&mut self, x: usize, y: usize) -> usize {
+        let x_is_zero = compute_is_zero(self, x);
+        let y_is_zero = compute_is_zero(self, y);
+        self.add_product(x_is_zero, y_is_zero)
+    }
+
+    /// Constrain the MSM scalar `lo + 2^128 * hi` to be a canonical Grumpkin
+    /// scalar whenever the opcode is active. `predicate` is `None` when the
+    /// opcode is unconditionally active.
+    fn constrain_msm_scalar_below_order(
+        &mut self,
+        lo: ConstantOrR1CSWitness,
+        hi: ConstantOrR1CSWitness,
+        predicate: Option<usize>,
+        range_checks: &mut BTreeMap<u32, Vec<usize>>,
+    ) -> Result<()> {
+        if let (ConstantOrR1CSWitness::Constant(lo), ConstantOrR1CSWitness::Constant(hi)) = (lo, hi)
+        {
+            let (lo, hi) = (lo.into_bigint().0, hi.into_bigint().0);
+            let scalar = [lo[0], lo[1], hi[0], hi[1]];
+            let canonical = lo[2..] == [0, 0]
+                && hi[2..] == [0, 0]
+                && scalar
+                    .iter()
+                    .rev()
+                    .lt(Grumpkin.curve_order_n().iter().rev());
+            if canonical {
+                return Ok(());
+            }
+            ensure!(
+                predicate.is_some(),
+                "MSM scalar constant is not a canonical Grumpkin scalar"
+            );
+        }
+        let lo = self.gate_by_predicate(lo, predicate);
+        let hi = self.gate_by_predicate(hi, predicate);
+        constrain_scalar_below_order(self, range_checks, lo, hi, &Grumpkin);
+        Ok(())
+    }
+
+    /// The witness `value * predicate`, or `value` itself when there is no
+    /// predicate.
+    fn gate_by_predicate(
+        &mut self,
+        value: ConstantOrR1CSWitness,
+        predicate: Option<usize>,
+    ) -> usize {
+        match (value, predicate) {
+            (ConstantOrR1CSWitness::Witness(w), None) => w,
+            (ConstantOrR1CSWitness::Witness(w), Some(p)) => self.add_product(w, p),
+            (ConstantOrR1CSWitness::Constant(c), None) => add_constant_witness(self, c),
+            (ConstantOrR1CSWitness::Constant(c), Some(p)) => {
+                self.add_sum(vec![SumTerm(Some(c), p)])
+            }
+        }
+    }
+
     /// Add an ACIR assert zero constraint.
     pub fn add_acir_assert_zero(&mut self, expr: &Expression<NoirElement>) {
         // Create individual constraints for all the multiplication terms and collect
@@ -497,7 +593,7 @@ impl NoirToR1CSCompiler {
                     if *block_type != BlockType::Memory {
                         panic!("MemoryInit block type must be Memory")
                     }
-                    let block_id = block_id.0 as usize;
+                    let block_id = block_id.as_u32() as usize;
                     assert!(
                         !memory_blocks.contains_key(&block_id),
                         "Memory block {} already initialized",
@@ -514,7 +610,7 @@ impl NoirToR1CSCompiler {
                 }
                 Opcode::MemoryOp { block_id, op } => {
                     // Note: predicate field was removed from MemoryOp in ACIR beta.19.
-                    let block_id = block_id.0 as usize;
+                    let block_id = block_id.as_u32() as usize;
                     assert!(
                         memory_blocks.contains_key(&block_id),
                         "Memory block {} not initialized before read",
@@ -522,21 +618,8 @@ impl NoirToR1CSCompiler {
                     );
                     let block = memory_blocks.get_mut(&block_id).unwrap();
 
-                    // `op.index` is _always_ just a single ACIR witness, not a more complicated
-                    // expression, and not a constant. See [here](https://discord.com/channels/1113924620781883405/1356865341065531446)
-                    // Static reads are hard-wired into the circuit, or instead rendered as a
-                    // dummy dynamic read by introducing a new witness constrained to have the value
-                    // of the static address.
-                    let addr = op.index.to_witness().map_or_else(
-                        || {
-                            unimplemented!(
-                                "MemoryOp index must be a single witness, not a more general \
-                                 Expression"
-                            )
-                        },
-                        |acir_witness| self.fetch_r1cs_witness_index(acir_witness),
-                    );
-                    let op = if op.operation.is_zero() {
+                    let addr = self.fetch_r1cs_witness_index(op.index);
+                    let op = if op.operation == MemOpKind::Read {
                         // Create a new (as yet unconstrained) witness `result_of_read` for the
                         // result of the read; it will be constrained by later memory block
                         // processing.
@@ -545,12 +628,10 @@ impl NoirToR1CSCompiler {
                         // At R1CS solving time, only need to map over the value of the
                         // corresponding ACIR witness, whose value is already determined by the ACIR
                         // solver.
-                        let result_of_read =
-                            self.fetch_r1cs_witness_index(op.value.to_witness().unwrap());
+                        let result_of_read = self.fetch_r1cs_witness_index(op.value);
                         MemoryOperation::Load(addr, result_of_read)
                     } else {
-                        let new_value =
-                            self.fetch_r1cs_witness_index(op.value.to_witness().unwrap());
+                        let new_value = self.fetch_r1cs_witness_index(op.value);
                         MemoryOperation::Store(addr, new_value)
                     };
                     block.operations.push(op);
@@ -653,20 +734,27 @@ impl NoirToR1CSCompiler {
                         predicate,
                         outputs,
                     } => {
-                        let mut point_wits: Vec<ConstantOrR1CSWitness> = points
-                            .iter()
-                            .map(|inp| self.fetch_constant_or_r1cs_witness(*inp))
-                            .collect();
+                        ensure!(
+                            points.len() % 2 == 0 && scalars.len() == points.len(),
+                            "MSM takes [x, y] points with one (lo, hi) scalar each, got {} point \
+                             and {} scalar elements",
+                            points.len(),
+                            scalars.len()
+                        );
+                        // ACIR encodes the point at infinity as (0, 0); the MSM pipeline takes
+                        // [x, y, is_infinite] triples.
+                        let mut point_wits: Vec<ConstantOrR1CSWitness> =
+                            Vec::with_capacity(points.len() / 2 * 3);
+                        for point in points.chunks_exact(2) {
+                            let x = self.fetch_constant_or_r1cs_witness(point[0]);
+                            let y = self.fetch_constant_or_r1cs_witness(point[1]);
+                            let is_infinite = self.add_point_at_infinity_flag(x, y);
+                            point_wits.extend([x, y, is_infinite]);
+                        }
                         let scalar_wits: Vec<ConstantOrR1CSWitness> = scalars
                             .iter()
                             .map(|inp| self.fetch_constant_or_r1cs_witness(*inp))
                             .collect();
-                        ensure!(
-                            point_wits.len() % 3 == 0,
-                            "MSM points must be encoded as [x, y, is_infinite] triples, got {} \
-                             elements",
-                            point_wits.len()
-                        );
                         // ## Conditional MSM: predicate field handling
                         //
                         // Noir's `flatten_cfg` pass lowers `if cond { multi_scalar_mul(...) }`
@@ -675,22 +763,22 @@ impl NoirToR1CSCompiler {
                         // of all enclosing branch conditions: `predicate = c1 * c2 * ...`.
                         //
                         // ACVM semantics: when predicate=0, the opcode must output the Grumpkin
-                        // identity point (0, 0, is_infinite=1) regardless of the point/scalar
-                        // inputs. When predicate=1 the MSM runs normally.
+                        // identity point (0, 0) regardless of the point/scalar inputs. When
+                        // predicate=1 the MSM runs normally.
                         //
                         // ### Case 1: constant predicate=0 (statically dead branch)
                         //
                         // The output is fully determined at compile time as the Grumpkin identity
-                        // `(0, 0, 1)`, so the MSM pipeline is skipped entirely.
+                        // `(0, 0)`, so the MSM pipeline is skipped entirely.
                         // `constrain_to_constant` pins each output witness
-                        // to its identity value — 3 constraints total.
+                        // to its identity value — 2 constraints total.
                         //
                         // ### Case 2: witness predicate (runtime conditional)
                         //
                         // We hook into the existing `all_skipped` short-circuit already present
                         // in the MSM pipeline (msm/pipeline.rs). That mechanism tracks whether
                         // every input point has `is_skip = is_infinite OR scalar_is_zero`. When
-                        // `all_skipped=1` the pipeline constrains the output to (0, 0, 1) and
+                        // `all_skipped=1` the pipeline constrains the output to (0, 0) and
                         // the EC addition chain still produces a valid (trivial) witness.
                         //
                         // To activate it we rewrite each point's `is_infinite` flag before
@@ -712,17 +800,15 @@ impl NoirToR1CSCompiler {
                         // has no such mechanism. This is an inherent cost of R1CS for runtime
                         // conditional operations.
                         let predicate = self.fetch_constant_or_r1cs_witness(*predicate);
-                        let (out_x, out_y, out_inf) = (
+                        let (out_x, out_y) = (
                             self.fetch_r1cs_witness_index(outputs.0),
                             self.fetch_r1cs_witness_index(outputs.1),
-                            self.fetch_r1cs_witness_index(outputs.2),
                         );
                         match predicate {
                             ConstantOrR1CSWitness::Constant(c) => {
                                 if c.is_zero() {
                                     constrain_to_constant(self, out_x, FieldElement::zero());
                                     constrain_to_constant(self, out_y, FieldElement::zero());
-                                    constrain_to_constant(self, out_inf, FieldElement::one());
                                     continue;
                                 } else if !c.is_one() {
                                     bail!("MSM predicate constant must be 0 or 1, got {c:?}");
@@ -736,17 +822,11 @@ impl NoirToR1CSCompiler {
                                 ]);
                                 for i in (2..point_wits.len()).step_by(3) {
                                     point_wits[i] = match point_wits[i] {
-                                        ConstantOrR1CSWitness::Constant(c) if c.is_one() => {
-                                            ConstantOrR1CSWitness::Constant(FieldElement::one())
-                                        }
                                         ConstantOrR1CSWitness::Constant(c) if c.is_zero() => {
                                             ConstantOrR1CSWitness::Witness(not_predicate)
                                         }
-                                        ConstantOrR1CSWitness::Constant(c) => {
-                                            bail!(
-                                                "MSM is_infinite input must be boolean (0 or 1), \
-                                                 got {c:?}"
-                                            );
+                                        ConstantOrR1CSWitness::Constant(_) => {
+                                            ConstantOrR1CSWitness::Constant(FieldElement::one())
                                         }
                                         ConstantOrR1CSWitness::Witness(inf_wit) => {
                                             ConstantOrR1CSWitness::Witness(compute_boolean_or(
@@ -759,6 +839,21 @@ impl NoirToR1CSCompiler {
                                 }
                             }
                         }
+                        // ACVM rejects an active MSM whose scalars are not canonical Grumpkin
+                        // scalars, and its range optimizer drops RANGE opcodes on that basis.
+                        let active = match predicate {
+                            ConstantOrR1CSWitness::Constant(_) => None,
+                            ConstantOrR1CSWitness::Witness(predicate_wit) => Some(predicate_wit),
+                        };
+                        for scalar in scalar_wits.chunks_exact(2) {
+                            self.constrain_msm_scalar_below_order(
+                                scalar[0],
+                                scalar[1],
+                                active,
+                                &mut range_checks,
+                            )?;
+                        }
+                        let out_inf = self.add_witness_point_at_infinity_flag(out_x, out_y);
                         msm_ops.push((point_wits, scalar_wits, (out_x, out_y, out_inf)));
                     }
                     _ => {
@@ -896,12 +991,16 @@ impl NoirToR1CSCompiler {
 mod tests {
     use {
         super::*,
-        acir::circuit::{
-            opcodes::{BlackBoxFuncCall, FunctionInput},
-            PublicInputs as AcirPublicInputs,
+        acir::{
+            circuit::{
+                opcodes::{BlackBoxFuncCall, FunctionInput},
+                PublicInputs as AcirPublicInputs,
+            },
+            AcirField,
         },
         provekit_backend_bn254::witness::WitnessBuilder,
         std::collections::{BTreeSet, HashSet},
+        test_case::test_case,
     };
 
     /// Regression: public inputs absent from all opcodes must still get
@@ -930,9 +1029,8 @@ mod tests {
 
     #[test]
     fn malformed_and_constant_is_rejected_with_operand_context() {
-        let oversized = NoirElement::from_repr(FieldElement::from(1u64 << 40));
+        let oversized = NoirElement::from(1u128 << 40);
         let circuit: Circuit<NoirElement> = Circuit {
-            current_witness_index: 3,
             opcodes: vec![Opcode::BlackBoxFuncCall(BlackBoxFuncCall::AND {
                 lhs:      FunctionInput::Witness(NoirWitness(1)),
                 rhs:      FunctionInput::Constant(oversized),
@@ -951,7 +1049,7 @@ mod tests {
 
     #[test]
     fn malformed_sha256_hash_constant_is_rejected() {
-        let oversized = NoirElement::from_repr(FieldElement::from(1u64 << 40));
+        let oversized = NoirElement::from(1u128 << 40);
         let inputs = Box::new(std::array::from_fn(|i| {
             FunctionInput::Witness(NoirWitness((i as u32) + 1))
         }));
@@ -964,7 +1062,6 @@ mod tests {
         }));
         let outputs = Box::new(std::array::from_fn(|i| NoirWitness((i as u32) + 25)));
         let circuit: Circuit<NoirElement> = Circuit {
-            current_witness_index: 32,
             opcodes: vec![Opcode::BlackBoxFuncCall(
                 BlackBoxFuncCall::Sha256Compression {
                     inputs,
@@ -980,5 +1077,103 @@ mod tests {
         assert!(err
             .to_string()
             .contains("SHA256 hash constant exceeds 32 bits"));
+    }
+
+    /// Solves `circuit` from the given ACIR witness values, bypassing ACVM, and
+    /// reports whether the resulting witness satisfies every R1CS constraint.
+    fn r1cs_accepts(circuit: &Circuit<NoirElement>, acir_values: &[(u32, NoirElement)]) -> bool {
+        use {
+            acir::native_types::WitnessMap,
+            provekit_backend_bn254::{
+                solve_witness_vec, witness::LayerScheduler, TranscriptSponge,
+            },
+            whir::transcript::{codecs::Empty, DomainSeparator, ProverState},
+        };
+
+        let (r1cs, _, builders) = noir_to_r1cs(circuit).expect("circuit should compile");
+        let acir_map = WitnessMap::from(
+            acir_values
+                .iter()
+                .map(|&(w, v)| (NoirWitness(w), v))
+                .collect::<BTreeMap<_, _>>(),
+        );
+        let mut witness = vec![None; r1cs.num_witnesses()];
+        let ds = DomainSeparator::protocol(&()).instance(&Empty);
+        let mut transcript = ProverState::new(&ds, TranscriptSponge::default());
+        let layers = LayerScheduler::new(&builders).build_layers();
+        solve_witness_vec(&mut witness, layers, &acir_map, &mut transcript)
+            .expect("witness should solve");
+        let witness: Vec<FieldElement> = witness
+            .into_iter()
+            .map(|w| w.expect("every witness is solved"))
+            .collect();
+        let (a, b, c) = (
+            r1cs.a() * &witness[..],
+            r1cs.b() * &witness[..],
+            r1cs.c() * &witness[..],
+        );
+        a.iter().zip(&b).zip(&c).all(|((a, b), c)| *a * *b == *c)
+    }
+
+    const THREE: (&str, &str) = ("0x3", "0x0");
+    /// `n + 3` for the Grumpkin order `n`; it reaches the same point as `3`.
+    const ORDER_PLUS_THREE: (&str, &str) = (
+        "0x97816a916871ca8d3c208c16d87cfd4a",
+        "0x30644e72e131a029b85045b68181585d",
+    );
+    const THREE_G: (&str, &str) = (
+        "18660890509582237958343981571981920822503400000196279471655180441138020044621",
+        "8902249110305491597038405103722863701255802573786510474664632793109847672620",
+    );
+    const IDENTITY: (&str, &str) = ("0", "0");
+
+    /// Regression: ACVM rejects an active MSM whose scalar is at or above the
+    /// Grumpkin order, so the R1CS must too; an inactive MSM ignores its
+    /// scalars. `predicate` is `None` for a constant-one predicate, else the
+    /// value of a witness predicate.
+    #[test_case(THREE, None, THREE_G, true; "canonical scalar")]
+    #[test_case(ORDER_PLUS_THREE, None, THREE_G, false; "scalar above order")]
+    #[test_case(ORDER_PLUS_THREE, Some(true), THREE_G, false; "active witness predicate")]
+    #[test_case(ORDER_PLUS_THREE, Some(false), IDENTITY, true; "inactive witness predicate")]
+    fn msm_scalar_must_be_canonical_when_active(
+        scalar: (&str, &str),
+        predicate: Option<bool>,
+        output: (&str, &str),
+        accepted: bool,
+    ) {
+        let dec = |s: &str| NoirElement::try_from_str(s).expect("decimal field element");
+        let hex = |s: &str| NoirElement::from_hex(s).expect("hex field element");
+        let mut values = vec![
+            (1, hex(scalar.0)),
+            (2, hex(scalar.1)),
+            (3, dec(output.0)),
+            (4, dec(output.1)),
+        ];
+        let predicate = match predicate {
+            None => FunctionInput::Constant(NoirElement::one()),
+            Some(active) => {
+                values.push((5, NoirElement::from(u128::from(active))));
+                FunctionInput::Witness(NoirWitness(5))
+            }
+        };
+        let circuit = Circuit {
+            opcodes: vec![Opcode::BlackBoxFuncCall(BlackBoxFuncCall::MultiScalarMul {
+                points: vec![
+                    FunctionInput::Constant(NoirElement::one()),
+                    FunctionInput::Constant(dec(
+                        "17631683881184975370165255887551781615748388533673675138860",
+                    )),
+                ],
+                scalars: vec![
+                    FunctionInput::Witness(NoirWitness(1)),
+                    FunctionInput::Witness(NoirWitness(2)),
+                ],
+                predicate,
+                outputs: (NoirWitness(3), NoirWitness(4)),
+            })],
+            private_parameters: BTreeSet::from_iter((1..=5).map(NoirWitness)),
+            ..Default::default()
+        };
+        assert_eq!(r1cs_accepts(&circuit, &values), accepted);
     }
 }
