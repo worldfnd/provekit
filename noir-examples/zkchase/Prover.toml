@@ -1,4 +1,5 @@
 move = "2"
+return = "0x2ba95aacaa524685e3ac73d735d889091bb557fff7d0ba6e35c1e81306687c89"
 prev_pos = "0x705"
 prev_pos_hash = "0x1ff93a22ebf9b6c02df123d028598a51a2f3ce93c675b5d4a8d7ae4de5953a18"
 salt = "2134924215"
