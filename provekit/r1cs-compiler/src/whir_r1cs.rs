@@ -1,191 +1,54 @@
 use {
-    mavros_artifacts::R1CS as MavrosR1CS,
-    provekit_backend_bn254::Bn254Field,
-    provekit_common::{HashConfig, WhirR1CSScheme, WitnessCommitmentMode},
+    provekit_backend_bn254::{Bn254Field, FieldElement},
+    provekit_backend_goldilocks::GoldilocksField,
+    provekit_common::{
+        FieldHash, HashConfig, WhirR1CSScheme, WitnessCommitmentMode, MIN_WHIR_NUM_VARIABLES, R1CS,
+    },
 };
 
-/// bn254-only scheme construction from a Mavros R1CS instance.
-///
-/// Mavros artifacts are bn254-specific, so this constructor lives here rather
-/// than on the field-generic [`WhirR1CSScheme`]; it forwards the instance's
-/// dimensions to [`WhirR1CSScheme::new_from_dimensions`].
-pub trait MavrosSchemeBuilder {
-    /// Build a scheme from a Mavros R1CS instance's dimensions.
-    ///
-    /// Like [`WhirR1CSScheme::new_from_dimensions`], this leaves `r1cs_hash`
-    /// UNSET: the caller must populate it (from the converted provekit R1CS)
-    /// before creating a domain separator.
-    fn new_from_mavros_r1cs(
-        r1cs: &MavrosR1CS,
-        w1_size: usize,
-        num_challenges: usize,
-        challenge_offsets: Vec<usize>,
-        has_public_inputs: bool,
-        hash_config: HashConfig,
-        witness_mode: WitnessCommitmentMode,
-    ) -> anyhow::Result<Self>
-    where
-        Self: Sized;
-}
-
-impl MavrosSchemeBuilder for WhirR1CSScheme<Bn254Field> {
-    fn new_from_mavros_r1cs(
-        r1cs: &MavrosR1CS,
-        w1_size: usize,
-        num_challenges: usize,
-        challenge_offsets: Vec<usize>,
-        has_public_inputs: bool,
-        hash_config: HashConfig,
-        witness_mode: WitnessCommitmentMode,
-    ) -> anyhow::Result<Self> {
-        provekit_backend_bn254::register();
-
-        let num_witnesses = r1cs.witness_layout.size();
-        let num_constraints = r1cs.constraints.len();
-        let a_num_entries: usize = r1cs.constraints.iter().map(|c| c.a.len()).sum();
-
-        Self::new_from_dimensions(
-            num_witnesses,
-            num_constraints,
-            a_num_entries,
-            w1_size,
-            num_challenges,
-            challenge_offsets,
-            has_public_inputs,
-            hash_config,
-            witness_mode,
-        )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use {
-        super::*,
-        provekit_backend_bn254::FieldElement,
-        provekit_backend_goldilocks::GoldilocksField,
-        provekit_common::{FieldHash, MIN_WHIR_NUM_VARIABLES, R1CS},
-    };
-
-    fn r1cs_with_dimensions(num_witnesses: usize, num_constraints: usize) -> R1CS<FieldElement> {
-        let mut r1cs = R1CS::new();
-        r1cs.grow_matrices(num_constraints, num_witnesses);
-        r1cs
-    }
-
-    fn assert_dimension_builders(
-        num_witnesses: usize,
-        num_constraints: usize,
-        w1_size: usize,
-        expected_m: usize,
-        expected_m_0: usize,
-    ) {
-        let from_dimensions = WhirR1CSScheme::<Bn254Field>::new_from_dimensions(
-            num_witnesses,
-            num_constraints,
-            0,
-            w1_size,
-            0,
-            vec![],
-            false,
-            HashConfig::Sha256,
-            WitnessCommitmentMode::default(),
-        )
-        .expect("scheme from dimensions");
-        assert_eq!(from_dimensions.m, expected_m);
-        assert_eq!(from_dimensions.m_0, expected_m_0);
-        assert_eq!(from_dimensions.w1_size, w1_size);
-
-        let r1cs = r1cs_with_dimensions(num_witnesses, num_constraints);
-        let from_r1cs = WhirR1CSScheme::<Bn254Field>::new_for_r1cs(
+#[test]
+fn commitment_dimensions_follow_witness_layers() {
+    for (witnesses, constraints, w1_size, challenges, m, m_0) in [
+        (64, 8, 64, 0, MIN_WHIR_NUM_VARIABLES, 3),
+        (64, 8, 0, 0, MIN_WHIR_NUM_VARIABLES, 3),
+        (12_288, 2_048, 8_192, 0, 13, 11),
+        (600_000, 8, 300_000, 2, 19, 3),
+    ] {
+        let mut r1cs = R1CS::<FieldElement>::new();
+        r1cs.grow_matrices(constraints, witnesses);
+        let scheme = WhirR1CSScheme::<Bn254Field>::new_for_r1cs(
             &r1cs,
             w1_size,
-            0,
-            vec![],
+            challenges,
+            (0..challenges).collect(),
             false,
             HashConfig::Sha256,
             WitnessCommitmentMode::default(),
         )
-        .expect("scheme from r1cs");
-        assert_eq!(from_r1cs.m, expected_m);
-        assert_eq!(from_r1cs.m_0, expected_m_0);
-        assert_eq!(from_r1cs.w1_size, w1_size);
-        // Both construction paths agree on every transcript-bound scheme field.
-        assert_eq!(from_r1cs.a_num_terms, from_dimensions.a_num_terms);
-        assert_eq!(from_r1cs.num_challenges, from_dimensions.num_challenges);
+        .unwrap();
+        assert_eq!((scheme.m, scheme.m_0, scheme.w1_size), (m, m_0, w1_size));
     }
+}
 
-    /// Assert both WHIR commitments reach 128-bit security for field `P`.
-    fn assert_configs_secure<P: FieldHash>(size: usize) {
-        let field = std::any::type_name::<P>();
-        let witness = WhirR1CSScheme::<P>::new_witness_config_for_size(
-            size,
-            whir::hash::SHA2,
-            WitnessCommitmentMode::default(),
-        )
-        .expect("witness config derivation");
-        let blinding = WhirR1CSScheme::<P>::new_blinding_config_for_size(size, whir::hash::SHA2);
+fn assert_configs_secure<P: FieldHash>(size: usize) {
+    let witness = WhirR1CSScheme::<P>::new_witness_config_for_size(
+        size,
+        whir::hash::SHA2,
+        WitnessCommitmentMode::default(),
+    )
+    .unwrap();
+    let blinding = WhirR1CSScheme::<P>::new_blinding_config_for_size(size, whir::hash::SHA2);
+    witness
+        .validate()
+        .expect("valid witness security parameters");
+    assert_eq!(witness.security().target_security_bits, 128);
+    assert!(blinding.security_level(blinding.initial_committer.num_vectors(), 1) >= 128.0);
+}
 
-        // zook's `validate` checks the plan against its own `SecuritySpec`.
-        witness.validate().unwrap_or_else(|e| {
-            panic!("Witness commitment fails zook validation at size {size} for {field}: {e:?}")
-        });
-        assert_eq!(
-            witness.security().target_security_bits,
-            128,
-            "Witness commitment target must stay at 128 bits at size {size} for {field}"
-        );
-
-        // The blinding commitment is still a plain WHIR config.
-        let sec_blinding = blinding.security_level(blinding.initial_committer.num_vectors(), 1);
-        assert!(
-            sec_blinding >= 128.0,
-            "Blinding commitment security {sec_blinding:.2} < 128 bits at size {size} for {field}"
-        );
-    }
-
-    #[test]
-    fn verify_security_level() {
-        assert_configs_secure::<Bn254Field>(20);
-        assert_configs_secure::<GoldilocksField>(20);
-    }
-
-    #[test]
-    fn verify_security_level_min_variables() {
-        assert_configs_secure::<Bn254Field>(MIN_WHIR_NUM_VARIABLES);
-        assert_configs_secure::<GoldilocksField>(MIN_WHIR_NUM_VARIABLES);
-    }
-
-    #[test]
-    fn mavros_dimensions_use_largest_commitment_not_total_witnesses() {
-        let scheme = WhirR1CSScheme::<Bn254Field>::new_from_dimensions(
-            600_000,
-            8,
-            8,
-            300_000,
-            2,
-            vec![0, 1],
-            false,
-            HashConfig::Sha256,
-            WitnessCommitmentMode::default(),
-        )
-        .expect("mavros-sized scheme");
-
-        assert_eq!(scheme.m, 19);
-    }
-
-    #[test]
-    fn dimension_builders_handle_empty_w2() {
-        assert_dimension_builders(64, 8, 64, MIN_WHIR_NUM_VARIABLES, 3);
-    }
-
-    #[test]
-    fn dimension_builders_handle_empty_w1() {
-        assert_dimension_builders(64, 8, 0, MIN_WHIR_NUM_VARIABLES, 3);
-    }
-
-    #[test]
-    fn dimension_builders_exact_power_of_two_w1() {
-        assert_dimension_builders(12_288, 2_048, 8_192, 13, 11);
+#[test]
+fn commitment_configs_meet_security_target() {
+    for size in [MIN_WHIR_NUM_VARIABLES, 20] {
+        assert_configs_secure::<Bn254Field>(size);
+        assert_configs_secure::<GoldilocksField>(size);
     }
 }

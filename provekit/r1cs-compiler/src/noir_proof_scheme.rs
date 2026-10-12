@@ -1,15 +1,11 @@
 use {
-    crate::{
-        noir_to_r1cs, whir_r1cs::MavrosSchemeBuilder,
-        witness_generator::NoirWitnessGeneratorBuilder,
-    },
+    crate::{noir_to_r1cs, witness_generator::NoirWitnessGeneratorBuilder},
     anyhow::{ensure, Context as _, Result},
-    mavros_artifacts::R1CS as MavrosR1CS,
-    noirc_abi::AbiVisibility,
+    mavros_artifacts::{ArtifactError, FieldId as MavrosFieldId, R1CSArtifact, R1CS as MavrosR1CS},
     noirc_artifacts::program::ProgramArtifact,
     provekit_backend_bn254::{
-        witness::WitnessBuilder, Bn254Field, MavrosSchemeData, NoirProofScheme, NoirSchemeData,
-        NoirWitnessGenerator, PrintAbi,
+        witness::WitnessBuilder, Bn254Field, MavrosColumnMap, MavrosSchemeData, NoirProofScheme,
+        NoirSchemeData, NoirWitnessGenerator, PrintAbi,
     },
     provekit_common::WhirR1CSScheme,
     serde::Deserialize,
@@ -17,8 +13,10 @@ use {
     tracing::{info, instrument},
 };
 
+/// Remap Mavros constraints into ProveKit's sparse R1CS.
 fn convert_mavros_r1cs_to_provekit(
     mavros_r1cs: &MavrosR1CS,
+    column_map: &MavrosColumnMap,
 ) -> provekit_common::R1CS<provekit_backend_bn254::FieldElement> {
     let num_witnesses = mavros_r1cs.witness_layout.size();
     let num_constraints = mavros_r1cs.constraints.len();
@@ -33,34 +31,30 @@ fn convert_mavros_r1cs_to_provekit(
     r1cs.add_witnesses(num_witnesses);
     r1cs.reserve_constraints(num_constraints, total_entries);
 
+    let mut terms: Vec<(usize, provekit_backend_bn254::FieldElement)> = Vec::with_capacity(64);
     let mut a_buf: Vec<(u32, provekit_common::InternedFieldElement)> = Vec::with_capacity(64);
     let mut b_buf: Vec<(u32, provekit_common::InternedFieldElement)> = Vec::with_capacity(64);
     let mut c_buf: Vec<(u32, provekit_common::InternedFieldElement)> = Vec::with_capacity(64);
 
     for constraint in &mavros_r1cs.constraints {
-        a_buf.clear();
-        a_buf.extend(
-            constraint
-                .a
-                .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
-        );
-
-        b_buf.clear();
-        b_buf.extend(
-            constraint
-                .b
-                .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
-        );
-
-        c_buf.clear();
-        c_buf.extend(
-            constraint
-                .c
-                .iter()
-                .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
-        );
+        for (src, dst) in [
+            (&constraint.a, &mut a_buf),
+            (&constraint.b, &mut b_buf),
+            (&constraint.c, &mut c_buf),
+        ] {
+            terms.clear();
+            terms.extend(
+                src.iter()
+                    .map(|(idx, coeff)| (column_map.constraint_column(*idx), *coeff)),
+            );
+            canonicalize_row(&mut terms);
+            dst.clear();
+            dst.extend(
+                terms
+                    .iter()
+                    .map(|(idx, coeff)| (*idx as u32, r1cs.intern(*coeff))),
+            );
+        }
 
         r1cs.push_constraint(
             a_buf.iter().copied(),
@@ -70,6 +64,25 @@ fn convert_mavros_r1cs_to_provekit(
     }
 
     r1cs
+}
+
+/// Sparse rows need sorted, unique columns; folding the guard can create
+/// duplicates.
+fn canonicalize_row(terms: &mut Vec<(usize, provekit_backend_bn254::FieldElement)>) {
+    use ark_ff::Zero as _;
+    terms.sort_by_key(|&(idx, _)| idx);
+    let mut write = 0;
+    for read in 0..terms.len() {
+        if write > 0 && terms[write - 1].0 == terms[read].0 {
+            let coeff = terms[read].1;
+            terms[write - 1].1 += coeff;
+        } else {
+            terms[write] = terms[read];
+            write += 1;
+        }
+    }
+    terms.truncate(write);
+    terms.retain(|(_, coeff)| !coeff.is_zero());
 }
 
 pub struct NoirCompiler;
@@ -193,6 +206,7 @@ impl MavrosCompiler {
         hash_config: provekit_common::HashConfig,
         witness_mode: provekit_common::WitnessCommitmentMode,
     ) -> Result<NoirProofScheme> {
+        provekit_backend_bn254::register();
         info!("Reading basic artifacts from {:?}", basic_path);
         let basic_file = File::open(&basic_path).context("while opening basic artifacts")?;
         let basic: BasicArtifacts =
@@ -201,8 +215,21 @@ impl MavrosCompiler {
 
         info!("Reading R1CS from {:?}", r1cs_path);
         let r1cs_bytes = std::fs::read(r1cs_path.as_ref()).context("while reading R1CS file")?;
-        let mavros_r1cs: MavrosR1CS =
-            bincode::deserialize(&r1cs_bytes).context("while deserializing R1CS from bincode")?;
+        let artifact = R1CSArtifact::from_bytes(&r1cs_bytes)
+            .map_err(|err| match err {
+                ArtifactError::MissingHeader => anyhow::anyhow!(
+                    "{err}; a legacy bincode `r1cs.bin` is not supported, recompile the circuit \
+                     with the Mavros revision pinned in the workspace `Cargo.toml`"
+                ),
+                other => anyhow::Error::new(other),
+            })
+            .with_context(|| format!("while reading the Mavros R1CS artifact {r1cs_path:?}"))?;
+        ensure!(
+            artifact.field() == MavrosFieldId::Bn254,
+            "Mavros artifact is over field {:?} but this backend proves over bn254",
+            artifact.field()
+        );
+        let (_, manifest, mavros_r1cs) = artifact.into_parts();
 
         info!(
             "R1CS: {} constraints, witness layout: algebraic={}, challenges={}",
@@ -211,27 +238,18 @@ impl MavrosCompiler {
             mavros_r1cs.witness_layout.challenges_size,
         );
 
-        let mut num_public_inputs: usize = abi
-            .parameters
-            .iter()
-            .filter(|p| p.is_public())
-            .map(|p| p.typ.field_count() as usize)
-            .sum();
-
-        if let Some(ret) = &abi.return_type {
-            if matches!(ret.visibility, AbiVisibility::Public) {
-                num_public_inputs += ret.abi_type.field_count() as usize;
-            }
-        }
+        let column_map = MavrosColumnMap::from_manifest(&manifest, &abi)
+            .context("while mapping Mavros columns onto ProveKit public inputs")?;
+        let num_public_inputs = column_map.num_public_inputs();
 
         let challenges_size = mavros_r1cs.witness_layout.challenges_size;
-        // In Mavros, challenges occupy the first `challenges_size` positions of
-        // w2 (immediately after the pre-commitment boundary).
-        let challenge_offsets: Vec<usize> = (0..challenges_size).collect();
-        let r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs);
+        let challenge_offsets: Vec<usize> =
+            manifest.challenges.iter().map(|c| c.w2_offset).collect();
+        let mut r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs, &column_map);
+        r1cs.num_public_inputs = num_public_inputs;
 
-        let mut whir_for_witness = WhirR1CSScheme::<Bn254Field>::new_from_mavros_r1cs(
-            &mavros_r1cs,
+        let whir_for_witness = WhirR1CSScheme::<Bn254Field>::new_for_r1cs(
+            &r1cs,
             mavros_r1cs.witness_layout.pre_commitment_size(),
             challenges_size,
             challenge_offsets,
@@ -239,7 +257,6 @@ impl MavrosCompiler {
             hash_config,
             witness_mode,
         )?;
-        whir_for_witness.r1cs_hash = r1cs.hash();
 
         Ok(NoirProofScheme::Mavros(MavrosSchemeData {
             abi,
@@ -250,6 +267,7 @@ impl MavrosCompiler {
             constraints_layout: mavros_r1cs.constraints_layout,
             witness_layout: mavros_r1cs.witness_layout,
             hash_config,
+            column_map,
         }))
     }
 }
