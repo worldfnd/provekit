@@ -2,7 +2,6 @@ use {
     super::{util::resolve_key_path, Command},
     anyhow::{anyhow, bail, Context as _, Result},
     argh::FromArgs,
-    mavros_artifacts::R1CS as MavrosR1CS,
     nargo::{
         insert_all_files_for_workspace_into_file_manager,
         ops::{check_program, collect_errors, compile_program, report_errors},
@@ -268,7 +267,7 @@ impl Args {
             return Ok(None);
         }
         provekit_backend_bn254::register();
-        let matrix = build_spark_matrix_for_scheme(scheme, self.r1cs_path.as_deref())?;
+        let matrix = build_spark_matrix_for_scheme(scheme);
         let (setup, witnesses) = provekit_spark::preprocess_spark(&matrix, hash_config);
         let context = provekit_spark::SparkProverContext {
             matrix,
@@ -325,43 +324,22 @@ impl Args {
     }
 }
 
-pub fn build_spark_matrix_for_scheme(
-    scheme: &NoirProofScheme,
-    r1cs_path: Option<&Path>,
-) -> Result<SparkMatrix> {
-    let whir = match scheme {
-        NoirProofScheme::Noir(s) => s.whir_for_witness.clone(),
-        NoirProofScheme::Mavros(s) => s.whir_for_witness.clone(),
+fn build_spark_matrix_for_scheme(scheme: &NoirProofScheme) -> SparkMatrix {
+    let (r1cs, whir) = match scheme {
+        NoirProofScheme::Noir(s) => (&s.r1cs, &s.whir_for_witness),
+        NoirProofScheme::Mavros(s) => (&s.r1cs, &s.whir_for_witness),
     };
-    match scheme {
-        NoirProofScheme::Noir(noir) => build_spark_r1cs_noir(
-            &noir.r1cs,
-            whir.m_0,
-            whir.m,
-            whir.w1_size,
-            whir.num_challenges,
-        ),
-        NoirProofScheme::Mavros(_) => {
-            let r1cs_path =
-                r1cs_path.context("--r1cs is required for SPARK with the mavros compiler")?;
-            build_spark_r1cs_mavros(
-                r1cs_path,
-                whir.m_0,
-                whir.m,
-                whir.w1_size,
-                whir.num_challenges,
-            )
-        }
-    }
+    build_spark_r1cs(r1cs, whir.m_0, whir.m, whir.w1_size, whir.num_challenges)
 }
 
-pub fn build_spark_r1cs_noir(
+/// Build SPARK's `[A B; 0 C]` matrix, splitting witness columns at `w1_size`.
+fn build_spark_r1cs(
     r1cs: &R1CS<FieldElement>,
     log_row: usize,
     log_col: usize,
     w1_size: usize,
     num_challenges: usize,
-) -> Result<SparkMatrix> {
+) -> SparkMatrix {
     let is_single_commitment = num_challenges == 0;
 
     let original_num_entries =
@@ -408,75 +386,5 @@ pub fn build_spark_r1cs_noir(
         val.push(FieldElement::from(0u64));
     }
 
-    Ok(SparkMatrix::new(row, col, val, 2 * row_cnt, 2 * col_cnt))
-}
-
-pub fn build_spark_r1cs_mavros(
-    r1cs_path: &Path,
-    log_row: usize,
-    log_col: usize,
-    w1_size: usize,
-    num_challenges: usize,
-) -> Result<SparkMatrix> {
-    let is_single_commitment = num_challenges == 0;
-
-    let r1cs_bytes = std::fs::read(r1cs_path).context("while reading R1CS file")?;
-    let r1cs: MavrosR1CS =
-        bincode::deserialize(&r1cs_bytes).context("while deserializing R1CS from bincode")?;
-
-    let row_cnt = 1 << log_row;
-    let col_cnt = if is_single_commitment {
-        1 << log_col
-    } else {
-        1 << (1 + log_col)
-    };
-
-    let col_witness_split_offset = |c: usize| -> usize {
-        if !is_single_commitment && (c >= w1_size) {
-            (1 << log_col) - w1_size
-        } else {
-            0
-        }
-    };
-
-    let original_num_entries: usize = r1cs
-        .constraints
-        .iter()
-        .map(|r1c| r1c.a.len() + r1c.b.len() + r1c.c.len())
-        .sum();
-
-    let padded_num_entries = 1 << next_power_of_two(original_num_entries);
-    let to_fill = padded_num_entries - original_num_entries;
-
-    let (mut row, mut col, mut val) = (
-        Vec::with_capacity(padded_num_entries),
-        Vec::with_capacity(padded_num_entries),
-        Vec::with_capacity(padded_num_entries),
-    );
-
-    for (i, r1c) in r1cs.constraints.iter().enumerate() {
-        for &(c, v) in &r1c.a {
-            row.push(i);
-            col.push(c + col_witness_split_offset(c));
-            val.push(v);
-        }
-        for &(c, v) in &r1c.b {
-            row.push(i);
-            col.push(c + col_cnt + col_witness_split_offset(c));
-            val.push(v);
-        }
-        for &(c, v) in &r1c.c {
-            row.push(i + row_cnt);
-            col.push(c + col_cnt + col_witness_split_offset(c));
-            val.push(v);
-        }
-    }
-
-    for _ in 0..to_fill {
-        row.push(0);
-        col.push(0);
-        val.push(FieldElement::from(0u64));
-    }
-
-    Ok(SparkMatrix::new(row, col, val, 2 * row_cnt, 2 * col_cnt))
+    SparkMatrix::new(row, col, val, 2 * row_cnt, 2 * col_cnt)
 }
