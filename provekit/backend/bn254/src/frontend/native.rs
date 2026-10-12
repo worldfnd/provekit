@@ -1,6 +1,7 @@
 use {
-    crate::FieldElement, acir::FieldElement as NoirElement, ark_ff::BigInt,
-    ark_ff_v06::PrimeField as _,
+    crate::FieldElement,
+    acir::FieldElement as NoirElement,
+    ark_ff::{BigInt, PrimeField as _},
 };
 
 /// Convert a Noir field element to a native `FieldElement`.
