@@ -3,3 +3,8 @@ scalar1_lo = "1"
 scalar1_hi = "0"
 scalar2_lo = "2"
 scalar2_hi = "0"
+return = [
+    "0x2941b0928df1b9480273773b36397da3e495430a2a7a3857661bc7a446c94f4d",
+    "0x13ae7e938c892308bef0f45ee7386daa2d3b447349a7d0a11b5aa4cfbe69072c",
+    false,
+]
