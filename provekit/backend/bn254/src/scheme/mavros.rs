@@ -4,9 +4,17 @@ pub use self::wasm_stubs::{ConstraintsLayout, WitnessLayout};
 pub use mavros_vm::{ConstraintsLayout, WitnessLayout};
 use {
     crate::{Bn254Field, FieldElement},
+    anyhow::{ensure, Result},
+    ark_ff::Zero as _,
     noirc_abi::Abi,
     provekit_common::{HashConfig, WhirR1CSScheme, R1CS},
     serde::{Deserialize, Serialize},
+};
+#[cfg(not(target_arch = "wasm32"))]
+use {
+    anyhow::Context as _,
+    mavros_artifacts::{ParamVisibility, WitnessManifest},
+    noirc_abi::AbiVisibility,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +27,8 @@ pub struct MavrosProver {
     pub constraints_layout: ConstraintsLayout,
     pub witness_layout:     WitnessLayout,
     pub hash_config:        HashConfig,
+    /// Maps Mavros witness and derivative columns to ProveKit columns.
+    pub column_map:         MavrosColumnMap,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,17 +42,209 @@ pub struct MavrosSchemeData {
     pub constraints_layout: ConstraintsLayout,
     pub witness_layout:     WitnessLayout,
     pub hash_config:        HashConfig,
+    /// The R1CS already uses these ProveKit column assignments.
+    pub column_map:         MavrosColumnMap,
 }
 
-// Wire-compatible stubs for WASM targets where mavros_vm (C bindings) is
-// unavailable. Field names, types, and ordering MUST match the real mavros_vm
-// types exactly.
+/// Moves public parameters, then the public return, to columns `1..=n`.
+/// Other columns retain their relative order, preserving witness layers.
+/// Constraint terms on the return guard use column 0 (constant 1), so a
+/// prover cannot disable the return check.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "CompactColumnMap", into = "CompactColumnMap")]
+pub struct MavrosColumnMap {
+    /// `map[j]` is the ProveKit column of Mavros column `j`; a bijection.
+    map:            Vec<u32>,
+    /// Mavros public columns: parameters, then the return.
+    public_columns: Vec<usize>,
+    /// Mavros column of the return guard, when the ABI declares a return.
+    guard:          Option<usize>,
+}
+
+/// Store public columns and the guard; rebuild the full permutation on load.
+#[derive(Serialize, Deserialize)]
+struct CompactColumnMap {
+    len:            usize,
+    public_columns: Vec<usize>,
+    guard:          Option<usize>,
+}
+
+impl TryFrom<CompactColumnMap> for MavrosColumnMap {
+    type Error = anyhow::Error;
+
+    fn try_from(compact: CompactColumnMap) -> Result<Self> {
+        Self::build(compact.len, compact.public_columns, compact.guard)
+    }
+}
+
+impl From<MavrosColumnMap> for CompactColumnMap {
+    fn from(map: MavrosColumnMap) -> Self {
+        Self {
+            len:            map.map.len(),
+            public_columns: map.public_columns,
+            guard:          map.guard,
+        }
+    }
+}
+
+impl MavrosColumnMap {
+    /// Fix column 0, place public columns next, then append the remaining
+    /// columns in order.
+    fn build(len: usize, public_columns: Vec<usize>, guard: Option<usize>) -> Result<Self> {
+        ensure!(len > 0, "a Mavros witness has at least the constant column");
+        let mut map = vec![u32::MAX; len];
+        map[0] = 0;
+        for (new, &old) in public_columns.iter().enumerate() {
+            ensure!(
+                old > 0 && old < len,
+                "public column {old} lies outside the {len} witness columns"
+            );
+            ensure!(
+                map[old] == u32::MAX,
+                "public column {old} is listed more than once"
+            );
+            map[old] = (new + 1) as u32;
+        }
+        if let Some(guard) = guard {
+            ensure!(
+                guard > 0 && guard < len && map[guard] == u32::MAX,
+                "guard column {guard} is not a private witness column"
+            );
+        }
+        let mut next = public_columns.len() + 1;
+        for slot in map.iter_mut().skip(1) {
+            if *slot == u32::MAX {
+                *slot = next as u32;
+                next += 1;
+            }
+        }
+        Ok(Self {
+            map,
+            public_columns,
+            guard,
+        })
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl MavrosColumnMap {
+    /// Build the map from an artifact manifest (already validated against its
+    /// R1CS by `R1CSArtifact::from_bytes`), rejecting disagreements with the
+    /// ABI.
+    pub fn from_manifest(manifest: &WitnessManifest, abi: &Abi) -> Result<Self> {
+        ensure!(
+            manifest.parameters.len() == abi.parameters.len(),
+            "Mavros manifest lists {} parameters but the ABI declares {}",
+            manifest.parameters.len(),
+            abi.parameters.len()
+        );
+        ensure!(
+            abi.return_type.is_some() == manifest.returns.is_some(),
+            "Mavros manifest and the ABI disagree on whether `main` returns a value"
+        );
+
+        let mut public_columns = Vec::new();
+        for (param, entry) in abi.parameters.iter().zip(&manifest.parameters) {
+            ensure!(
+                param.name == entry.name,
+                "Mavros manifest parameter `{}` does not match ABI parameter `{}`",
+                entry.name,
+                param.name
+            );
+            ensure!(
+                param.typ.field_count() as usize == entry.width,
+                "Mavros manifest gives parameter `{}` {} columns but the ABI flattens it to {}",
+                entry.name,
+                entry.width,
+                param.typ.field_count()
+            );
+            ensure!(
+                visibility_of(param.visibility) == entry.visibility,
+                "Mavros manifest and the ABI disagree on the visibility of `{}`",
+                entry.name
+            );
+            if entry.visibility == ParamVisibility::Public && entry.width > 0 {
+                let start = entry.column_start.with_context(|| {
+                    format!("public parameter `{}` has no witness columns", entry.name)
+                })?;
+                public_columns.extend(start..start + entry.width);
+            }
+        }
+        if let (Some(ret), Some(abi_return)) = (manifest.returns, abi.return_type.as_ref()) {
+            ensure!(
+                abi_return.abi_type.field_count() as usize == ret.len,
+                "Mavros manifest gives the return {} columns but the ABI flattens it to {}",
+                ret.len,
+                abi_return.abi_type.field_count()
+            );
+            ensure!(
+                visibility_of(abi_return.visibility) == ret.visibility,
+                "Mavros manifest and the ABI disagree on the visibility of the return"
+            );
+            if ret.visibility == ParamVisibility::Public {
+                public_columns.extend(ret.column_start..ret.column_start + ret.len);
+            }
+        }
+        Self::build(
+            manifest.witness_count,
+            public_columns,
+            manifest.guard_column,
+        )
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn visibility_of(visibility: AbiVisibility) -> ParamVisibility {
+    match visibility {
+        AbiVisibility::Public => ParamVisibility::Public,
+        AbiVisibility::Private => ParamVisibility::Private,
+        AbiVisibility::DataBus => ParamVisibility::DataBus,
+    }
+}
+
+impl MavrosColumnMap {
+    /// Number of public parameter and return fields.
+    pub fn num_public_inputs(&self) -> usize {
+        self.public_columns.len()
+    }
+
+    /// Remap a constraint column, replacing the return guard with constant 1.
+    pub fn constraint_column(&self, column: usize) -> usize {
+        if self.guard == Some(column) {
+            0
+        } else {
+            self.map[column] as usize
+        }
+    }
+
+    /// Reorder a witness prefix; it must cover the algebraic section.
+    pub fn permute_witness(&self, witness: &[FieldElement]) -> Vec<FieldElement> {
+        let mut out = vec![FieldElement::zero(); witness.len()];
+        for (old, value) in witness.iter().enumerate() {
+            out[self.map[old] as usize] = *value;
+        }
+        out
+    }
+
+    /// Remap derivatives, adding the guard's contribution to column 0.
+    pub fn permute_derivatives(&self, derivatives: &[FieldElement]) -> Vec<FieldElement> {
+        let mut out = vec![FieldElement::zero(); derivatives.len()];
+        for (old, value) in derivatives.iter().enumerate() {
+            out[self.constraint_column(old)] += value;
+        }
+        out
+    }
+}
+
+// WASM layout stubs must match mavros_artifacts field types and order.
 #[cfg(target_arch = "wasm32")]
 mod wasm_stubs {
     use serde::{Deserialize, Serialize};
 
     #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
     pub struct WitnessLayout {
+        pub guard_index:         Option<usize>,
+        pub return_len:          usize,
         pub algebraic_size:      usize,
         pub multiplicities_size: usize,
         pub challenges_size:     usize,
@@ -83,5 +285,135 @@ mod wasm_stubs {
         pub const fn size(&self) -> usize {
             self.algebraic_size + self.tables_data_size + self.lookups_data_size
         }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use {
+        super::*,
+        mavros_artifacts::{ManifestParam, ReturnSlot},
+        noirc_abi::{AbiParameter, AbiReturnType, AbiType},
+    };
+
+    fn field_param(name: &str, visibility: AbiVisibility) -> AbiParameter {
+        AbiParameter {
+            name: name.to_string(),
+            typ: AbiType::Field,
+            visibility,
+        }
+    }
+
+    fn param(name: &str, visibility: ParamVisibility, blob_offset: usize) -> ManifestParam {
+        ManifestParam {
+            name: name.to_string(),
+            visibility,
+            blob_offset,
+            width: 1,
+            column_start: Some(1 + blob_offset),
+        }
+    }
+
+    /// `fn main(x: Field, y: pub Field) -> pub Field` with Mavros columns
+    /// `[1, x, y, guard, ret, t5, t6 | m7, m8 | c9, d10, l11]`.
+    fn abi_with_return() -> Abi {
+        Abi {
+            parameters:  vec![
+                field_param("x", AbiVisibility::Private),
+                field_param("y", AbiVisibility::Public),
+            ],
+            return_type: Some(AbiReturnType {
+                abi_type:   AbiType::Field,
+                visibility: AbiVisibility::Public,
+            }),
+            error_types: Default::default(),
+        }
+    }
+
+    fn manifest_with_return() -> WitnessManifest {
+        WitnessManifest {
+            entry_blob_field_count: 4,
+            parameters:             vec![
+                param("x", ParamVisibility::Private, 0),
+                param("y", ParamVisibility::Public, 1),
+            ],
+            guard_column:           Some(3),
+            returns:                Some(ReturnSlot {
+                column_start: 4,
+                len:          1,
+                visibility:   ParamVisibility::Public,
+            }),
+            challenges:             vec![],
+            pre_commitment_size:    9,
+            witness_count:          12,
+            constraint_count:       0,
+        }
+    }
+
+    #[test]
+    fn column_remap_preserves_witness_layers() {
+        let map =
+            MavrosColumnMap::from_manifest(&manifest_with_return(), &abi_with_return()).unwrap();
+        assert_eq!(map.num_public_inputs(), 2);
+        // y → 1, ret → 2, then x, guard, t5, t6 keep their relative order.
+        let expected: Vec<u32> = vec![0, 3, 1, 4, 2, 5, 6, 7, 8, 9, 10, 11];
+        assert_eq!(map.map, expected);
+        assert_eq!(map.constraint_column(3), 0);
+        assert_eq!(map.constraint_column(2), 1);
+        assert_eq!(map.constraint_column(7), 7);
+
+        let w1: Vec<FieldElement> = (0..9).map(|i| FieldElement::from(100 + i as u64)).collect();
+        let permuted = map.permute_witness(&w1);
+        assert_eq!(permuted[1], w1[2]);
+        assert_eq!(permuted[2], w1[4]);
+        assert_eq!(permuted[3], w1[1]);
+        assert_eq!(permuted[4], w1[3]);
+        assert_eq!(&permuted[7..], &w1[7..]);
+
+        let derivatives: Vec<FieldElement> =
+            (0..12).map(|i| FieldElement::from(1u64 << i)).collect();
+        let folded = map.permute_derivatives(&derivatives);
+        assert_eq!(folded[0], derivatives[0] + derivatives[3]);
+        assert_eq!(folded[4], FieldElement::zero());
+        assert_eq!(folded[1], derivatives[2]);
+    }
+
+    #[test]
+    fn manifest_matches_abi() {
+        let abi = abi_with_return();
+        let manifest = manifest_with_return();
+        let fails = |manifest: &WitnessManifest, abi: &Abi| {
+            MavrosColumnMap::from_manifest(manifest, abi).is_err()
+        };
+
+        let mut renamed = manifest.clone();
+        renamed.parameters[1].name = "z".into();
+        assert!(fails(&renamed, &abi));
+
+        let mut hidden = manifest.clone();
+        hidden.parameters[1].visibility = ParamVisibility::Private;
+        assert!(fails(&hidden, &abi));
+
+        let mut elided = manifest.clone();
+        elided.parameters[1].column_start = None;
+        assert!(fails(&elided, &abi));
+
+        let mut duplicated = manifest.clone();
+        duplicated.returns.as_mut().unwrap().column_start = 2;
+        assert!(fails(&duplicated, &abi));
+
+        let mut wide_return = abi.clone();
+        wide_return.return_type.as_mut().unwrap().abi_type = AbiType::Tuple {
+            fields: vec![AbiType::Field, AbiType::Field],
+        };
+        assert!(fails(&manifest, &wide_return));
+
+        let mut private_return = abi.clone();
+        private_return.return_type.as_mut().unwrap().visibility = AbiVisibility::Private;
+        assert!(fails(&manifest, &private_return));
+        let mut private_manifest = manifest.clone();
+        private_manifest.returns.as_mut().unwrap().visibility = ParamVisibility::Private;
+        let map = MavrosColumnMap::from_manifest(&private_manifest, &private_return).unwrap();
+        assert_eq!(map.num_public_inputs(), 1);
     }
 }
