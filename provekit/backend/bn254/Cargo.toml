@@ -57,6 +57,7 @@ mavros-vm.workspace = true
 mavros-artifacts.workspace = true
 
 [dev-dependencies]
+ciborium.workspace = true
 divan.workspace = true
 proptest.workspace = true
 

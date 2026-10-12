@@ -11,7 +11,7 @@ use {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MavrosProver {
-    #[serde(with = "provekit_common::utils::serde_jsonify")]
+    #[serde(with = "provekit_common::utils::serde_cborify")]
     pub abi:                Abi,
     pub num_public_inputs:  usize,
     pub whir_for_witness:   WhirR1CSScheme<Bn254Field>,
@@ -23,7 +23,7 @@ pub struct MavrosProver {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MavrosSchemeData {
-    #[serde(with = "provekit_common::utils::serde_jsonify")]
+    #[serde(with = "provekit_common::utils::serde_cborify")]
     pub abi:                Abi,
     pub num_public_inputs:  usize,
     pub r1cs:               R1CS<FieldElement>,
