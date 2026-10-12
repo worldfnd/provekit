@@ -1,0 +1,5 @@
+# Mavros artifacts committed for the public-input binding tests
+# (tooling/cli/tests/mavros_public_inputs.rs); the root .gitignore drops
+# *.json and *.bin. Regenerate with the Mavros revision pinned in Cargo.toml.
+!basic.json
+!r1cs.bin

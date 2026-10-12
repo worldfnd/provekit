@@ -10,7 +10,6 @@ repository.workspace = true
 
 [dependencies]
 # Workspace crates
-mavros-artifacts.workspace = true
 provekit-common.workspace = true
 provekit-backend-bn254 = { workspace = true, features = ["witness-generation", "parallel"] }
 provekit-r1cs-compiler.workspace = true
@@ -29,7 +28,6 @@ ark-ff.workspace = true
 
 # 3rd party
 anyhow.workspace = true
-bincode.workspace = true
 argh.workspace = true
 base64.workspace = true
 hex.workspace = true
@@ -53,3 +51,7 @@ default = ["profiling-allocator"]
 profiling-allocator = []
 jemalloc = ["profiling-allocator", "dep:tikv-jemallocator"]
 tracy = ["profiling-allocator", "dep:tracing-tracy"]
+
+[dev-dependencies]
+mavros-artifacts.workspace = true
+mavros-vm.workspace = true
