@@ -8,7 +8,7 @@ mod compress;
 mod field;
 mod field_hash;
 mod frontend;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
 mod mavros_prove;
 mod ntt;
 mod poseidon2;
@@ -31,8 +31,8 @@ pub use {
     prove::Prove,
     provekit_common::{ec_arith::ec_scalar_mul, ProvekitProof},
     scheme::{
-        MavrosProver, MavrosSchemeData, NoirProofScheme, NoirProver, NoirSchemeData, Prover,
-        Verifier,
+        MavrosColumnMap, MavrosProver, MavrosSchemeData, NoirProofScheme, NoirProver,
+        NoirSchemeData, Prover, Verifier,
     },
     skyscraper::SkyscraperPoW,
     solver::solve_witness_vec,
