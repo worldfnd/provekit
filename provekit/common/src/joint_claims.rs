@@ -5,10 +5,10 @@
 
 use {
     crate::{
-        JointLinearForm,
         prefix_covector::{build_prefix_covectors, make_challenge_weight, make_public_weight},
+        JointLinearForm,
     },
-    anyhow::{Result, ensure},
+    anyhow::{ensure, Result},
     ark_ff::Field,
     whir::{
         algebra::{embedding::Embedding, mixed_dot},
@@ -214,20 +214,16 @@ mod tests {
         let values =
             compute_joint_matrix_evals(&Identity::new(), &alphas, 3, [&left, &right]).unwrap();
         assert_eq!(values, [F::from(166), F::from(9), F::from(8)]);
-        assert!(
-            compute_joint_matrix_evals(&Identity::new(), &alphas, 3, [
-                &Buffer::from(fields(&[1, 2])),
-                &right,
-            ])
-            .is_err()
-        );
-        assert!(
-            compute_joint_matrix_evals(&Identity::new(), &alphas, 3, [
-                &left,
-                &Buffer::from(fields(&[5])),
-            ])
-            .is_err()
-        );
+        assert!(compute_joint_matrix_evals(&Identity::new(), &alphas, 3, [
+            &Buffer::from(fields(&[1, 2])),
+            &right,
+        ])
+        .is_err());
+        assert!(compute_joint_matrix_evals(&Identity::new(), &alphas, 3, [
+            &left,
+            &Buffer::from(fields(&[5])),
+        ])
+        .is_err());
     }
 
     #[test]
@@ -316,16 +312,14 @@ mod tests {
         assert!(build_joint_forms(2, 0, alphas(), F::from(2), 0, &[]).is_err());
         assert!(build_joint_forms(2, 3, alphas(), F::from(2), 3, &[]).is_err());
         assert!(build_joint_forms(2, 3, alphas(), F::from(2), 0, &[2]).is_err());
-        assert!(
-            build_joint_forms(
-                2,
-                3,
-                [fields(&[1; 5]), fields(&[1; 4]), fields(&[1; 5])],
-                F::from(2),
-                0,
-                &[]
-            )
-            .is_err()
-        );
+        assert!(build_joint_forms(
+            2,
+            3,
+            [fields(&[1; 5]), fields(&[1; 4]), fields(&[1; 5])],
+            F::from(2),
+            0,
+            &[]
+        )
+        .is_err());
     }
 }

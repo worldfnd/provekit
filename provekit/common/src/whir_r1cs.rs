@@ -14,7 +14,8 @@ use {
     crate::{
         field::{Base, Ext, FieldHash, ProofField},
         utils::{next_power_of_two, serde_hex},
-        HashConfig, PublicInputs, R1CS,
+        HashConfig, JointOpeningBackend, JointOpeningLayout, PublicInputs, WitnessOpeningMode,
+        R1CS,
     },
     serde::{Deserialize, Serialize},
     whir::{
@@ -159,6 +160,9 @@ pub struct WhirR1CSScheme<P: ProofField> {
     pub has_public_inputs: bool,
     /// Base-field witness commitment, via zook.
     pub whir_witness:      ZookConfig<P::Embedding>,
+    /// Opening protocol for two-stage witnesses. Joint ZeroKnowledge mode is
+    /// unavailable. Standard single-stage witnesses use the existing opening.
+    pub witness_opening:   WitnessOpeningMode,
     /// Separate ext-field commitment to the Spartan blinding polynomial `g`;
     /// masking the ext-valued sumcheck rounds needs ext randomness, so `g`
     /// cannot ride on the base witness commitment.
@@ -181,6 +185,25 @@ impl<P: ProofField> WhirR1CSScheme<P> {
         1usize << self.whir_blinding.initial_num_variables()
     }
 
+    /// Reject a missing or extra witness commitment before indexing
+    /// commitments.
+    pub fn validate_witness_commitment_count(&self, count: usize) -> anyhow::Result<()> {
+        let expected = if self.num_challenges > 0 { 2 } else { 1 };
+        anyhow::ensure!(
+            count == expected,
+            "Expected {expected} witness commitments, received {count}"
+        );
+        Ok(())
+    }
+
+    /// Reject unsupported joint ZK before committing a witness.
+    pub fn validate_witness_opening_mode(&self) -> anyhow::Result<()> {
+        if self.witness_opening == WitnessOpeningMode::Joint {
+            crate::joint_opening::ensure_joint_standard(&self.whir_witness)?;
+        }
+        Ok(())
+    }
+
     /// Create a domain separator for the provekit outer protocol.
     ///
     /// The domain separator serializes the entire scheme (including
@@ -197,6 +220,48 @@ impl<P: ProofField> WhirR1CSScheme<P> {
 }
 
 impl<P: FieldHash> WhirR1CSScheme<P> {
+    /// Select the opening protocol before constructing a transcript or
+    /// committing witnesses.
+    #[must_use]
+    pub fn with_witness_opening(mut self, mode: WitnessOpeningMode) -> Self {
+        self.witness_opening = mode;
+        self
+    }
+
+    /// Validate the joint backend before starting a two-stage proof or
+    /// verification.
+    ///
+    /// The source configuration retains the original block size.
+    pub fn validate_joint_backend<B: JointOpeningBackend<P>>(
+        &self,
+        backend: &B,
+    ) -> anyhow::Result<()> {
+        self.validate_witness_opening_mode()?;
+        if self.witness_opening == WitnessOpeningMode::Joint && self.num_challenges > 0 {
+            anyhow::ensure!(
+                self.num_challenges == self.challenge_offsets.len(),
+                "Challenge count does not match challenge offsets"
+            );
+            let block_size = 1usize
+                .checked_shl(u32::try_from(self.m)?)
+                .ok_or_else(|| anyhow::anyhow!("Invalid witness block dimension"))?;
+            anyhow::ensure!(
+                self.w1_size <= block_size,
+                "First witness size exceeds its commitment block"
+            );
+            anyhow::ensure!(
+                self.challenge_offsets
+                    .iter()
+                    .all(|offset| *offset < block_size),
+                "Challenge offset exceeds the second commitment block"
+            );
+            let layout = JointOpeningLayout::new(block_size)?;
+            layout.validate_source_config(&self.whir_witness)?;
+            backend.validate(&self.whir_witness, layout)?;
+        }
+        Ok(())
+    }
+
     /// Build a scheme for a concrete R1CS instance, recording its hash so the
     /// transcript can later be bound to this instance (in
     /// [`Self::create_domain_separator`]).
@@ -265,6 +330,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
                 hash_config.engine_id(),
                 witness_mode,
             )?,
+            witness_opening: WitnessOpeningMode::default(),
             whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             w1_size,
             num_challenges,
