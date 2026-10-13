@@ -7,6 +7,7 @@ use {
         Zero,
     },
     provekit_common::{
+        joint_claims::{build_joint_forms, compute_joint_matrix_evals},
         prefix_covector::{
             build_prefix_covectors, compute_alpha_evals, compute_challenge_eval,
             compute_public_eval, expand_powers, linear_form_refs, make_challenge_weight,
@@ -20,8 +21,9 @@ use {
                 multiply_transposed_by_eq_alpha, sumcheck_fold_map_reduce, transpose_r1cs_matrices,
             },
         },
-        Base, Ext, FieldHash, PrefixCovector, ProofField, PublicInputs, WhirR1CSProof,
-        WhirR1CSScheme, R1CS,
+        Base, Ext, FieldHash, JointOpeningBackend, JointOpeningLayout, PrefixCovector, ProofField,
+        PublicInputs, UnavailableJointOpening, WhirR1CSProof, WhirR1CSScheme, WitnessOpeningMode,
+        R1CS,
     },
     whir::{
         algebra::{
@@ -64,9 +66,9 @@ pub struct SparkColQueryData<P: ProofField> {
 }
 
 /// SPARK query material produced as a side output of proving: the Spartan
-/// sumcheck point (shared row axis) plus one column query per witness
-/// commitment. The concrete backend converts this into its serialized SPARK
-/// query batch type.
+/// sumcheck point (shared row axis) plus the final matrix queries.
+/// Joint openings produce one query over the combined column domain. The
+/// concrete backend converts this into its serialized SPARK query batch type.
 pub struct SparkQueryData<P: ProofField> {
     pub row:     Vec<Ext<P>>,
     pub queries: Vec<SparkColQueryData<P>>,
@@ -116,6 +118,7 @@ where
         witness: Vec<Base<P>>,
         is_w1: bool,
     ) -> Result<WhirR1CSCommitment<P>> {
+        self.validate_witness_opening_mode()?;
         let witness_size = if is_w1 {
             self.w1_size
         } else {
@@ -187,7 +190,7 @@ where
         full_witness: Vec<Base<P>>,
         public_inputs: &PublicInputs<Base<P>>,
     ) -> Result<WhirR1CSProof> {
-        let (proof, _) = prove_noir_inner(
+        let (proof, _) = prove_noir_with_joint_backend(
             self,
             merlin,
             r1cs,
@@ -195,6 +198,7 @@ where
             full_witness,
             public_inputs,
             false,
+            &UnavailableJointOpening,
         )?;
         Ok(proof)
     }
@@ -208,7 +212,7 @@ where
         full_witness: Vec<Base<P>>,
         public_inputs: &PublicInputs<Base<P>>,
     ) -> Result<(WhirR1CSProof, SparkQueryData<P>)> {
-        let (proof, queries) = prove_noir_inner(
+        let (proof, queries) = prove_noir_with_joint_backend(
             self,
             merlin,
             r1cs,
@@ -216,6 +220,7 @@ where
             full_witness,
             public_inputs,
             true,
+            &UnavailableJointOpening,
         )?;
         let queries = queries
             .ok_or_else(|| anyhow::anyhow!("SPARK query data must be produced when requested"))?;
@@ -223,8 +228,12 @@ where
     }
 }
 
+/// Prove R1CS satisfaction with an external backend for joint witness openings.
+///
+/// Separate and single-stage openings use the existing ZO0K implementation.
 #[instrument(skip_all)]
-fn prove_noir_inner<P: FieldHash>(
+#[allow(clippy::too_many_arguments)]
+pub fn prove_noir_with_joint_backend<P: FieldHash, B: JointOpeningBackend<P>>(
     scheme: &WhirR1CSScheme<P>,
     mut merlin: ProverState<P::Sponge>,
     r1cs: R1CS<Base<P>>,
@@ -232,11 +241,13 @@ fn prove_noir_inner<P: FieldHash>(
     full_witness: Vec<Base<P>>,
     public_inputs: &PublicInputs<Base<P>>,
     produce_spark_query: bool,
+    backend: &B,
 ) -> Result<(WhirR1CSProof, Option<SparkQueryData<P>>)>
 where
     Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
-    ensure!(!commitments.is_empty(), "Need at least one commitment");
+    scheme.validate_witness_commitment_count(commitments.len())?;
+    scheme.validate_joint_backend(backend)?;
 
     let (a, b, c) = calculate_witness_bounds(&r1cs, &full_witness);
     drop(full_witness);
@@ -266,7 +277,7 @@ where
     let alphas = multiply_transposed_by_eq_alpha(&embedding, &at, &bt, &ct, &alpha, &r1cs);
 
     let blinding_weights = expand_powers::<4, _>(&alpha);
-    prove_from_alphas_ctx(
+    prove_from_alphas_ctx_with_joint_backend(
         scheme,
         merlin,
         ProveFromAlphasCtx {
@@ -277,6 +288,7 @@ where
             spark_row: produce_spark_query.then_some(alpha),
         },
         public_inputs,
+        backend,
     )
 }
 
@@ -322,13 +334,39 @@ where
 #[instrument(skip_all)]
 pub fn prove_from_alphas_ctx<P: FieldHash>(
     scheme: &WhirR1CSScheme<P>,
-    mut merlin: ProverState<P::Sponge>,
+    merlin: ProverState<P::Sponge>,
     ctx: ProveFromAlphasCtx<P>,
     public_inputs: &PublicInputs<Base<P>>,
 ) -> Result<(WhirR1CSProof, Option<SparkQueryData<P>>)>
 where
     Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
 {
+    prove_from_alphas_ctx_with_joint_backend(
+        scheme,
+        merlin,
+        ctx,
+        public_inputs,
+        &UnavailableJointOpening,
+    )
+}
+
+/// Open post-sumcheck claims with an external joint backend.
+///
+/// Noir and Mavros share this boundary. The scheme selects the opening
+/// protocol.
+#[instrument(skip_all)]
+pub fn prove_from_alphas_ctx_with_joint_backend<P: FieldHash, B: JointOpeningBackend<P>>(
+    scheme: &WhirR1CSScheme<P>,
+    mut merlin: ProverState<P::Sponge>,
+    ctx: ProveFromAlphasCtx<P>,
+    public_inputs: &PublicInputs<Base<P>>,
+    backend: &B,
+) -> Result<(WhirR1CSProof, Option<SparkQueryData<P>>)>
+where
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
+{
+    scheme.validate_witness_commitment_count(ctx.commitments.len())?;
+    scheme.validate_joint_backend(backend)?;
     let ProveFromAlphasCtx {
         alphas,
         blinding_eval,
@@ -413,6 +451,66 @@ where
                     claimed_a,
                     claimed_b,
                     claimed_c,
+                }],
+            }
+        })
+    } else if scheme.witness_opening == WitnessOpeningMode::Joint {
+        let layout = JointOpeningLayout::new(scheme.domain_size())?;
+        let [c1, c2]: [WhirR1CSCommitment<P>; 2] = commitments
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("Joint opening requires two commitments"))?;
+        let matrix_evals = compute_joint_matrix_evals(&embedding, &alphas, scheme.w1_size, [
+            &c1.polynomial,
+            &c2.polynomial,
+        ])?;
+        let forms = build_joint_forms(
+            scheme.m,
+            scheme.w1_size,
+            alphas,
+            x,
+            public_inputs_len,
+            &scheme.challenge_offsets,
+        )?;
+        let mut evaluations = matrix_evals.to_vec();
+        if public_inputs_len > 0 {
+            evaluations.push(compute_public_eval(
+                &embedding,
+                x,
+                public_inputs_len,
+                &c1.polynomial,
+            ));
+        }
+        if !scheme.challenge_offsets.is_empty() {
+            evaluations.push(compute_challenge_eval(
+                &embedding,
+                x,
+                &scheme.challenge_offsets,
+                &c2.polynomial,
+            ));
+        }
+        let form_refs = linear_form_refs(&forms);
+        layout.validate_claims(&form_refs, &evaluations)?;
+        for evaluation in &evaluations {
+            merlin.prover_message(evaluation);
+        }
+        let final_claim = backend.prove(
+            &mut merlin,
+            &scheme.whir_witness,
+            layout,
+            [c1.witness, c2.witness],
+            &form_refs,
+            &evaluations,
+        )?;
+        layout.validate_prover_claim(&final_claim, forms.len())?;
+        spark_row.map(|row| {
+            let col = final_claim.evaluation_point;
+            SparkQueryData {
+                row,
+                queries: vec![SparkColQueryData {
+                    claimed_a: forms[0].mle_evaluate(&col),
+                    claimed_b: forms[1].mle_evaluate(&col),
+                    claimed_c: forms[2].mle_evaluate(&col),
+                    col,
                 }],
             }
         })
