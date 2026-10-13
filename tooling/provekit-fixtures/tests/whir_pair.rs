@@ -28,10 +28,7 @@ use {
         },
         buffer::Buffer,
         protocols::{
-            params::{
-                joint::JointConfig, FoldingFactor, PowBudget, RateSchedule, SecuritySpec,
-                TuningSpec,
-            },
+            params::{FoldingFactor, PowBudget, RateSchedule, SecuritySpec, TuningSpec},
             zook::{Commitment, CommittedWitness, FinalClaim, ProtocolConfig, ProverClaim},
         },
         transcript::{
@@ -54,7 +51,9 @@ where
         layout: JointOpeningLayout,
     ) -> Result<()> {
         layout.validate_source_config(source)?;
-        JointConfig::derive(source)?.validate()?;
+        source
+            .validate_pair()
+            .map_err(|_| anyhow::anyhow!("Invalid pair parameters"))?;
         Ok(())
     }
 
@@ -69,7 +68,9 @@ where
     ) -> Result<ProverClaim<Ext<P>>> {
         layout.validate_source_config(source)?;
         layout.validate_claims(forms, values)?;
-        Ok(JointConfig::derive(source)?.prove_pair(transcript, witnesses, forms, values)?)
+        source
+            .prove_pair(transcript, witnesses, forms, values)
+            .map_err(|_| anyhow::anyhow!("Pair opening failed"))
     }
 
     fn verify(
@@ -83,7 +84,9 @@ where
     ) -> Result<FinalClaim<Ext<P>>> {
         layout.validate_source_config(source)?;
         layout.validate_claims(forms, values)?;
-        Ok(JointConfig::derive(source)?.verify_pair(transcript, commitments, forms, values)?)
+        source
+            .verify_pair(transcript, commitments, forms, values)
+            .map_err(|_| anyhow::anyhow!("Invalid pair opening"))
     }
 }
 
