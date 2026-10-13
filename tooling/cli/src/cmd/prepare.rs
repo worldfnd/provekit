@@ -13,7 +13,8 @@ use {
     noirc_driver::{CompilationResult, CompileOptions, CrateName, NOIR_ARTIFACT_VERSION_STRING},
     provekit_backend_bn254::{FieldElement, NoirProofScheme, Prover, SparkSetup, Verifier},
     provekit_common::{
-        file::write, utils::next_power_of_two, HashConfig, WitnessCommitmentMode, R1CS,
+        file::write, utils::next_power_of_two, HashConfig, WitnessCommitmentMode,
+        WitnessOpeningMode, R1CS,
     },
     provekit_r1cs_compiler::{MavrosCompiler, NoirCompiler},
     provekit_spark::SparkMatrix,
@@ -116,6 +117,10 @@ pub struct Args {
     #[argh(option, long = "witness-mode", default = "String::from(\"zk\")")]
     witness_mode: String,
 
+    /// use one joint opening for two-stage witnesses
+    #[argh(switch, long = "joint-opening")]
+    joint_opening: bool,
+
     /// also run SPARK preprocessing; the setup is folded into the PKV and the
     /// prover context is written to `--spctx`
     #[argh(switch, long = "spark")]
@@ -212,8 +217,9 @@ impl Args {
         )?;
 
         for (package, artifact) in binary_packages.iter().zip(artifacts) {
-            let scheme = NoirCompiler::from_program(artifact, hash_config, witness_mode)
+            let mut scheme = NoirCompiler::from_program(artifact, hash_config, witness_mode)
                 .context("while building Noir proof scheme")?;
+            self.set_witness_opening(&mut scheme)?;
             let spark_setup = self.maybe_build_spark(&scheme, hash_config)?;
             let pkp_path = self
                 .pkp_path
@@ -241,9 +247,10 @@ impl Args {
             .r1cs_path
             .as_ref()
             .context("--r1cs is required when using the mavros compiler")?;
-        let scheme =
+        let mut scheme =
             MavrosCompiler::compile(&self.program_path, r1cs_path, hash_config, witness_mode)
                 .context("while compiling with Mavros")?;
+        self.set_witness_opening(&mut scheme)?;
         let spark_setup = self.maybe_build_spark(&scheme, hash_config)?;
         let pkp_path = resolve_key_path(self.pkp_path.as_deref(), "pkp")?;
         let pkv_path = resolve_key_path(self.pkv_path.as_deref(), "pkv")?;
@@ -253,6 +260,17 @@ impl Args {
         verifier.spark_setup = spark_setup;
         write(&verifier, &pkv_path).context("while writing verifier key")?;
         Ok(())
+    }
+
+    fn set_witness_opening(&self, scheme: &mut NoirProofScheme) -> Result<()> {
+        let whir = match scheme {
+            NoirProofScheme::Noir(s) => &mut s.whir_for_witness,
+            NoirProofScheme::Mavros(s) => &mut s.whir_for_witness,
+        };
+        if self.joint_opening {
+            whir.witness_opening = WitnessOpeningMode::Joint;
+        }
+        whir.validate_joint_opening()
     }
 
     /// Run SPARK preprocessing if `--spark` is set: write the prover context

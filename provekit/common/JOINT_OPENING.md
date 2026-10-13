@@ -1,6 +1,6 @@
 # Joint witness opening
 
-Set `WitnessOpeningMode::Joint` before creating the transcript.
+Select `prepare --joint-opening`, or set `WitnessOpeningMode::Joint` before creating the transcript.
 Separate opening remains the default. Single-stage witnesses use their existing opening path.
 
 The normal prover and verifier call WHIR `prove_pair` and `verify_pair` directly.
