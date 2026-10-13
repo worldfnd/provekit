@@ -9,8 +9,7 @@ use {
     provekit_common::{
         joint_claims::{build_joint_forms, compute_joint_matrix_evals},
         prefix_covector::{
-            build_prefix_covectors, compute_alpha_evals, compute_challenge_eval,
-            compute_public_eval, expand_powers, linear_form_refs, make_challenge_weight,
+            compute_challenge_eval, compute_public_eval, expand_powers, linear_form_refs,
             make_public_weight, OffsetCovector,
         },
         utils::{
@@ -22,7 +21,7 @@ use {
             },
         },
         Base, Ext, FieldHash, PrefixCovector, ProofField, PublicInputs, WhirR1CSProof,
-        WhirR1CSScheme, WitnessOpeningMode, R1CS,
+        WhirR1CSScheme, R1CS,
     },
     whir::{
         algebra::{
@@ -420,7 +419,7 @@ where
                 }],
             }
         })
-    } else if scheme.witness_opening == WitnessOpeningMode::Joint {
+    } else {
         let [c1, c2]: [WhirR1CSCommitment<P>; 2] = commitments
             .try_into()
             .map_err(|_| anyhow::anyhow!("Joint opening requires two commitments"))?;
@@ -478,154 +477,6 @@ where
                 }],
             }
         })
-    } else {
-        // Dual commitment path
-        let mut commitments = commitments.into_iter();
-        let c1 = commitments
-            .next()
-            .expect("dual-commitment path requires first commitment");
-        let c2 = commitments
-            .next()
-            .expect("dual-commitment path requires second commitment");
-
-        let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
-            .into_iter()
-            .map(|mut v| {
-                let v2 = v.split_off(scheme.w1_size);
-                (v, v2)
-            })
-            .unzip();
-
-        let alphas_1: [Vec<Ext<P>>; 3] = alphas_1
-            .try_into()
-            .expect("alphas_1 must have exactly 3 elements");
-        let alphas_2: [Vec<Ext<P>>; 3] = alphas_2
-            .try_into()
-            .expect("alphas_2 must have exactly 3 elements");
-
-        let evals_1 = compute_alpha_evals(&embedding, &c1.polynomial, &alphas_1);
-        let evals_2 = compute_alpha_evals(&embedding, &c2.polynomial, &alphas_2);
-        for eval in &evals_1 {
-            merlin.prover_message(eval);
-        }
-        for eval in &evals_2 {
-            merlin.prover_message(eval);
-        }
-
-        let public_1 = if public_inputs_len > 0 {
-            let p1 = compute_public_eval(&embedding, x, public_inputs_len, &c1.polynomial);
-            merlin.prover_message(&p1);
-            Some(p1)
-        } else {
-            None
-        };
-
-        // Challenge binding: prove that w2 contains the correct Fiat-Shamir
-        // challenge values at the expected positions.
-        let challenge_eval = if !scheme.challenge_offsets.is_empty() {
-            let ce =
-                compute_challenge_eval(&embedding, x, &scheme.challenge_offsets, &c2.polynomial);
-            merlin.prover_message(&ce);
-            Some(ce)
-        } else {
-            None
-        };
-
-        let WhirR1CSCommitment { witness: w1, .. } = c1;
-        let WhirR1CSCommitment { witness: w2, .. } = c2;
-
-        let (final_claim_1, claimed_1) = {
-            let mut weights = build_prefix_covectors(scheme.m, alphas_1);
-
-            // Snapshot the three alpha covectors (A, B, C) before the public
-            // weight is inserted; they are re-evaluated at the final WHIR
-            // point to form the SPARK query.
-            let spark_weights: Option<Vec<(Vec<Ext<P>>, usize)>> = spark_row.as_ref().map(|_| {
-                weights
-                    .iter()
-                    .map(|w| (w.vector().to_vec(), w.size()))
-                    .collect()
-            });
-
-            let mut evaluations: Vec<Ext<P>> = Vec::new();
-            if let Some(pe) = public_1 {
-                weights.insert(0, make_public_weight(x, public_inputs_len, scheme.m));
-                evaluations.push(pe);
-            }
-            evaluations.extend_from_slice(&evals_1);
-
-            let form_refs = linear_form_refs(&weights);
-
-            let final_claim = scheme
-                .whir_witness
-                .prove(&mut merlin, w1, &form_refs, &evaluations);
-
-            let claimed =
-                spark_weights.map(|sw| evaluate_spark_weights(sw, &final_claim.evaluation_point));
-            (final_claim, claimed)
-        };
-
-        let (final_claim_2, claimed_2) = {
-            let weights = build_prefix_covectors(scheme.m, alphas_2);
-
-            // The first three weights are the alpha covectors (A, B, C); the
-            // challenge weight, if any, is appended after them.
-            let spark_weights: Option<Vec<(Vec<Ext<P>>, usize)>> = spark_row.as_ref().map(|_| {
-                weights
-                    .iter()
-                    .map(|w| (w.vector().to_vec(), w.size()))
-                    .collect()
-            });
-
-            let mut evaluations: Vec<Ext<P>> = evals_2;
-
-            let challenge_covector = challenge_eval.map(|ce| {
-                evaluations.push(ce);
-                make_challenge_weight(x, &scheme.challenge_offsets, scheme.m)
-            });
-
-            let mut form_refs = linear_form_refs(&weights);
-            if let Some(ref cw) = challenge_covector {
-                form_refs.push(cw as &dyn LinearForm<Ext<P>>);
-            }
-
-            let final_claim = scheme
-                .whir_witness
-                .prove(&mut merlin, w2, &form_refs, &evaluations);
-
-            let claimed =
-                spark_weights.map(|sw| evaluate_spark_weights(sw, &final_claim.evaluation_point));
-            (final_claim, claimed)
-        };
-
-        // The SPARK column axis spans w1 | w2: prefix the per-commitment WHIR
-        // points with a selector coordinate (0 selects w1, 1 selects w2).
-        spark_row
-            .zip(claimed_1.zip(claimed_2))
-            .map(|(row, ([a1, b1, c1], [a2, b2, c2]))| {
-                let mut col_1 = final_claim_1.evaluation_point;
-                col_1.insert(0, <Ext<P>>::zero());
-                let query_1 = SparkColQueryData {
-                    col:       col_1,
-                    claimed_a: a1,
-                    claimed_b: b1,
-                    claimed_c: c1,
-                };
-
-                let mut col_2 = final_claim_2.evaluation_point;
-                col_2.insert(0, <Ext<P>>::one());
-                let query_2 = SparkColQueryData {
-                    col:       col_2,
-                    claimed_a: a2,
-                    claimed_b: b2,
-                    claimed_c: c2,
-                };
-
-                SparkQueryData {
-                    row,
-                    queries: vec![query_1, query_2],
-                }
-            })
     };
 
     // Open the ext blinding commitment: prove `blinding_eval` is the evaluation

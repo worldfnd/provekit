@@ -1,7 +1,7 @@
 use {
     ark_ff::{Field, One, Zero},
     whir::{
-        algebra::{embedding::Embedding, linear_form::LinearForm, mixed_dot, multilinear_extend},
+        algebra::{embedding::Embedding, linear_form::LinearForm, multilinear_extend},
         buffer::{Buffer, BufferOps},
     },
 };
@@ -209,22 +209,6 @@ pub fn build_prefix_covectors<const N: usize, F: Field>(
             w.resize(base_len, F::zero());
             PrefixCovector::new(w, domain_size)
         })
-        .collect()
-}
-
-/// Compute dot products of alpha vectors against a polynomial without
-/// allocating [`PrefixCovector`] weights. Used to write transcript hints
-/// before deferring weight construction (saves memory in dual-commit).
-#[must_use]
-pub fn compute_alpha_evals<const N: usize, M: Embedding>(
-    embedding: &M,
-    polynomial: &Buffer<M::Source>,
-    alphas: &[Vec<M::Target>; N],
-) -> Vec<M::Target> {
-    let polynomial = polynomial.to_slice();
-    alphas
-        .iter()
-        .map(|w| mixed_dot(embedding, w, &polynomial[..w.len()]))
         .collect()
 }
 

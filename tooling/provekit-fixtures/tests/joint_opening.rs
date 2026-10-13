@@ -7,7 +7,7 @@ use {
     provekit_backend_goldilocks::{GoldilocksEfField, GoldilocksField},
     provekit_common::{
         Base, Ext, FieldHash, HashConfig, JointLinearForm, PrefixCovector, PublicInputs,
-        PublicInputsHash, WhirR1CSScheme, WitnessCommitmentMode, WitnessOpeningMode,
+        PublicInputsHash, WhirR1CSScheme, WitnessCommitmentMode,
     },
     provekit_fixtures::builders::{
         challenge_with_public_input, multi_challenge_inverses_w2, two_public_inputs,
@@ -63,9 +63,8 @@ where
         left[1] += Base::<P>::ONE;
     }
     let public = PublicInputs::from_vec(vec![Base::<P>::from(3)]);
-    let scheme = WhirR1CSScheme::<P>::new_for_r1cs(&r1cs, left.len(), 1, offsets, true, HASH, mode)
-        .unwrap()
-        .with_witness_opening(WitnessOpeningMode::Joint);
+    let scheme =
+        WhirR1CSScheme::<P>::new_for_r1cs(&r1cs, left.len(), 1, offsets, true, HASH, mode).unwrap();
     scheme.validate_joint_opening().unwrap();
     assert_eq!(scheme.whir_witness.security().target_security_bits, 128);
     let instance = public.hash_bytes::<P>(HASH);
@@ -117,10 +116,6 @@ where
 
     let wrong_public = PublicInputs::from_vec(vec![Base::<P>::from(4)]);
     assert!(scheme.verify(&proof, &wrong_public, &r1cs).is_err());
-    let separate = scheme
-        .clone()
-        .with_witness_opening(WitnessOpeningMode::Separate);
-    assert!(separate.verify(&proof, &public, &r1cs).is_err());
     let mut truncated = proof;
     truncated.narg_string.pop();
     assert!(scheme.verify(&truncated, &public, &r1cs).is_err());
@@ -295,43 +290,8 @@ fn bn254_scheme() -> WhirR1CSScheme<Bn254Field> {
 }
 
 #[test]
-fn opening_mode_is_serialized_and_bound_to_the_transcript() {
-    type P = Bn254Field;
-    type Scheme = WhirR1CSScheme<P>;
-    let separate = bn254_scheme();
-    assert_eq!(separate.witness_opening, WitnessOpeningMode::Separate);
-    let joint = separate
-        .clone()
-        .with_witness_opening(WitnessOpeningMode::Joint);
-    for original in [&separate, &joint] {
-        let json = serde_json::to_string(original).unwrap();
-        assert_eq!(serde_json::from_str::<Scheme>(&json).unwrap(), *original);
-        let postcard = postcard::to_allocvec(original).unwrap();
-        assert_eq!(
-            postcard::from_bytes::<Scheme>(&postcard).unwrap(),
-            *original
-        );
-    }
-    let mut old_json = serde_json::to_value(&separate).unwrap();
-    old_json.as_object_mut().unwrap().remove("witness_opening");
-    assert!(serde_json::from_value::<Scheme>(old_json)
-        .unwrap_err()
-        .to_string()
-        .contains("witness_opening"));
-
-    let public = PublicInputs::from_vec(vec![Base::<P>::from(3)]);
-    let instance = public.hash_bytes::<P>(HASH);
-    let challenge = |scheme: &Scheme| -> Ext<P> {
-        let ds = scheme.create_domain_separator().instance(&instance);
-        ProverState::new(&ds, P::transcript_sponge(HASH)).verifier_message()
-    };
-    assert_eq!(challenge(&separate), challenge(&separate));
-    assert_ne!(challenge(&separate), challenge(&joint));
-}
-
-#[test]
 fn joint_preflight_checks_source_size_and_challenge_and_commitment_counts() {
-    let scheme = bn254_scheme().with_witness_opening(WitnessOpeningMode::Joint);
+    let scheme = bn254_scheme();
     scheme.validate_joint_opening().unwrap();
     scheme.validate_witness_commitment_count(2).unwrap();
     for count in [0, 1, 3] {
@@ -354,7 +314,7 @@ fn joint_preflight_checks_source_size_and_challenge_and_commitment_counts() {
 }
 
 #[test]
-fn joint_mode_keeps_single_stage_proofs_available() {
+fn single_stage_proofs_open_one_witness() {
     type P = Bn254Field;
     P::register();
     let (r1cs, witness) = two_public_inputs::<Base<P>>(6, 7);
@@ -365,8 +325,7 @@ fn joint_mode_keeps_single_stage_proofs_available() {
     ] {
         let scheme =
             WhirR1CSScheme::<P>::new_for_r1cs(&r1cs, witness.len(), 0, vec![], true, HASH, mode)
-                .unwrap()
-                .with_witness_opening(WitnessOpeningMode::Joint);
+                .unwrap();
         scheme.validate_joint_opening().unwrap();
         let instance = public.hash_bytes::<P>(HASH);
         let ds = scheme.create_domain_separator().instance(&instance);

@@ -43,14 +43,6 @@ pub enum WitnessCommitmentMode {
     ZeroKnowledge,
 }
 
-/// Select separate openings or one joint opening for a two-stage witness.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum WitnessOpeningMode {
-    #[default]
-    Separate,
-    Joint,
-}
-
 impl From<WitnessCommitmentMode> for Mode {
     fn from(mode: WitnessCommitmentMode) -> Self {
         match mode {
@@ -165,11 +157,9 @@ pub struct WhirR1CSScheme<P: ProofField> {
     pub num_challenges:    usize,
     pub challenge_offsets: Vec<usize>,
     pub has_public_inputs: bool,
-    /// Base-field witness commitment, via zook.
+    /// Base-field witness commitment, via zook. Two-stage witnesses open
+    /// jointly.
     pub whir_witness:      ZookConfig<P::Embedding>,
-    /// Opening protocol for two-stage witnesses.
-    /// Single-stage witnesses use the existing opening.
-    pub witness_opening:   WitnessOpeningMode,
     /// Separate ext-field commitment to the Spartan blinding polynomial `g`;
     /// masking the ext-valued sumcheck rounds needs ext randomness, so `g`
     /// cannot ride on the base witness commitment.
@@ -219,17 +209,9 @@ impl<P: ProofField> WhirR1CSScheme<P> {
 }
 
 impl<P: FieldHash> WhirR1CSScheme<P> {
-    /// Select the opening protocol before constructing a transcript or
-    /// committing witnesses.
-    #[must_use]
-    pub fn with_witness_opening(mut self, mode: WitnessOpeningMode) -> Self {
-        self.witness_opening = mode;
-        self
-    }
-
     /// Validate joint opening parameters before proving or verifying.
     pub fn validate_joint_opening(&self) -> anyhow::Result<()> {
-        if self.witness_opening == WitnessOpeningMode::Joint && self.num_challenges > 0 {
+        if self.num_challenges > 0 {
             anyhow::ensure!(
                 self.num_challenges == self.challenge_offsets.len(),
                 "Challenge count does not match challenge offsets"
@@ -317,7 +299,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         let m = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
-        Ok(Self {
+        let scheme = Self {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
@@ -326,7 +308,6 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
                 hash_config.engine_id(),
                 witness_mode,
             )?,
-            witness_opening: WitnessOpeningMode::default(),
             whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             w1_size,
             num_challenges,
@@ -334,7 +315,9 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             has_public_inputs,
             r1cs_hash: R1csHash::UNSET,
             hash_config,
-        })
+        };
+        scheme.validate_joint_opening()?;
+        Ok(scheme)
     }
 
     /// Build the zook witness config: commits in `P`'s base field, opens at
