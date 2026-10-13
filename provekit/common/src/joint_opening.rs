@@ -30,29 +30,13 @@ pub enum WitnessOpeningMode {
     Joint,
 }
 
-impl std::str::FromStr for WitnessOpeningMode {
-    type Err = String;
-
-    fn from_str(value: &str) -> std::result::Result<Self, Self::Err> {
-        match value.to_ascii_lowercase().as_str() {
-            "separate" => Ok(Self::Separate),
-            "joint" => Ok(Self::Joint),
-            _ => Err(format!(
-                "Invalid witness opening mode: '{value}'. Valid options: separate, joint"
-            )),
-        }
-    }
-}
-
 /// Dimensions of the virtual witness `[w1 | w2]`.
 ///
 /// Each source commitment has `block_size` entries.
 /// The first evaluation coordinate selects a block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct JointOpeningLayout {
-    block_size:    usize,
-    size:          usize,
-    num_variables: usize,
+    block_size: usize,
 }
 
 impl JointOpeningLayout {
@@ -62,14 +46,10 @@ impl JointOpeningLayout {
             block_size.is_power_of_two(),
             "Joint opening block size must be a nonzero power of two"
         );
-        let size = block_size
+        block_size
             .checked_mul(2)
             .ok_or_else(|| anyhow::anyhow!("Joint opening domain size exceeds usize"))?;
-        Ok(Self {
-            block_size,
-            size,
-            num_variables: size.trailing_zeros() as usize,
-        })
+        Ok(Self { block_size })
     }
 
     /// Return the size of each source commitment.
@@ -79,12 +59,12 @@ impl JointOpeningLayout {
 
     /// Return the combined form size.
     pub const fn size(self) -> usize {
-        self.size
+        self.block_size * 2
     }
 
     /// Return the evaluation point length, including the selector.
     pub const fn num_variables(self) -> usize {
-        self.num_variables
+        self.block_size.trailing_zeros() as usize + 1
     }
 
     /// Check source dimensions and the existing source configuration
@@ -130,10 +110,10 @@ impl JointOpeningLayout {
         );
         for (index, form) in forms.iter().enumerate() {
             ensure!(
-                form.size() == self.size,
+                form.size() == self.size(),
                 "Joint opening form {index} has size {}, expected {}",
                 form.size(),
-                self.size
+                self.size()
             );
         }
         Ok(())
@@ -142,10 +122,10 @@ impl JointOpeningLayout {
     /// Check the complete evaluation point before evaluating combined forms.
     pub fn validate_point<F>(self, point: &[F]) -> Result<()> {
         ensure!(
-            point.len() == self.num_variables,
+            point.len() == self.num_variables(),
             "Joint opening point has {} coordinates, expected {}",
             point.len(),
-            self.num_variables
+            self.num_variables()
         );
         Ok(())
     }
@@ -183,8 +163,7 @@ impl JointOpeningLayout {
 pub(crate) fn ensure_joint_standard<M: Embedding>(source: &ZookConfig<M>) -> Result<()> {
     ensure!(
         source.security().mode == Mode::Standard,
-        "Joint zero-knowledge opening is unavailable: WHIR must fix the code-switch privacy leak \
-         before joint ZK proofs are supported"
+        "Joint zero-knowledge opening is unavailable"
     );
     Ok(())
 }
@@ -195,8 +174,7 @@ pub(crate) fn ensure_joint_standard<M: Embedding>(source: &ZookConfig<M>) -> Res
 /// `w2`. The backend must bind both commitments and all supplied form values.
 /// It must sample shared claim coefficients after binding every claim value.
 /// Public data or prior transcript messages must fix the forms before sampling.
-/// ZeroKnowledge mode remains unavailable until WHIR fixes code-switch privacy.
-/// A future ZeroKnowledge backend must preserve both source commitment masks.
+/// Only Standard mode is supported.
 /// It must return the complete point, with the selector coordinate first.
 /// It must bind any derived joint configuration into the transcript.
 /// Source configuration security alone does not establish joint protocol
@@ -279,10 +257,7 @@ impl<P: FieldHash> JointOpeningBackend<P> for UnavailableJointOpening {
 }
 
 fn joint_opening_unavailable() -> anyhow::Error {
-    anyhow::anyhow!(
-        "Joint witness opening is unavailable: WHIR must supply the joint opening backend; use \
-         separate witness openings"
-    )
+    anyhow::anyhow!("Joint witness opening is unavailable in the pinned WHIR dependency")
 }
 
 #[cfg(test)]
@@ -381,7 +356,9 @@ mod tests {
             .unwrap()
             .validate_source_config(&source)
             .unwrap_err();
-        assert!(error.to_string().contains("code-switch privacy leak"));
+        assert!(error
+            .to_string()
+            .contains("Joint zero-knowledge opening is unavailable"));
     }
 
     #[test]
@@ -449,27 +426,7 @@ mod tests {
     }
 
     #[test]
-    fn separate_is_the_default_and_joint_requires_an_explicit_choice() {
+    fn separate_is_the_default() {
         assert_eq!(WitnessOpeningMode::default(), WitnessOpeningMode::Separate);
-        assert_eq!("separate".parse(), Ok(WitnessOpeningMode::Separate));
-        assert_eq!("joint".parse(), Ok(WitnessOpeningMode::Joint));
-        assert_eq!("JOINT".parse(), Ok(WitnessOpeningMode::Joint));
-        assert!("jointly".parse::<WitnessOpeningMode>().is_err());
-    }
-
-    #[test]
-    fn both_opening_modes_round_trip_through_json_and_postcard() {
-        for mode in [WitnessOpeningMode::Separate, WitnessOpeningMode::Joint] {
-            let json = serde_json::to_string(&mode).unwrap();
-            assert_eq!(
-                serde_json::from_str::<WitnessOpeningMode>(&json).unwrap(),
-                mode
-            );
-            let postcard = postcard::to_allocvec(&mode).unwrap();
-            assert_eq!(
-                postcard::from_bytes::<WitnessOpeningMode>(&postcard).unwrap(),
-                mode
-            );
-        }
     }
 }
