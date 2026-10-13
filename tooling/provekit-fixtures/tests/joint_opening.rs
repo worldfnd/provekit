@@ -18,10 +18,7 @@ use {
         ProveFromAlphasCtx, WhirR1CSCommitment, WhirR1CSProver,
     },
     provekit_verifier::verify_with_joint_backend,
-    std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        Mutex,
-    },
+    std::cell::{Cell, RefCell},
     whir::{
         algebra::{embedding::Identity, linear_form::LinearForm},
         protocols::zook::{
@@ -145,10 +142,10 @@ struct RecordedOpening {
 /// This backend returns test data, not a cryptographic opening.
 #[derive(Default)]
 struct RecordingBackend {
-    calls:                 AtomicUsize,
-    verifier_calls:        AtomicUsize,
-    recorded:              Mutex<Option<RecordedOpening>>,
-    recorded_verification: Mutex<Option<RecordedOpening>>,
+    calls:                 Cell<usize>,
+    verifier_calls:        Cell<usize>,
+    recorded:              RefCell<Option<RecordedOpening>>,
+    recorded_verification: RefCell<Option<RecordedOpening>>,
     result:                RecordingResult,
     verifier_result:       VerifierResult,
 }
@@ -167,7 +164,7 @@ impl JointOpeningBackend<Bn254Field> for RecordingBackend {
         forms: &[&dyn LinearForm<FieldElement>],
         values: &[FieldElement],
     ) -> Result<ProverClaim<FieldElement>> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
+        self.calls.set(self.calls.get() + 1);
         layout.validate_claims(forms, values)?;
         if matches!(self.result, RecordingResult::Error) {
             bail!("Recording backend opening error");
@@ -186,7 +183,7 @@ impl JointOpeningBackend<Bn254Field> for RecordingBackend {
         if matches!(self.result, RecordingResult::MissingSelector) {
             point.remove(0);
         }
-        *self.recorded.lock().unwrap() = Some(RecordedOpening {
+        *self.recorded.borrow_mut() = Some(RecordedOpening {
             source_size: source.tuning().vector_size,
             layout,
             forms: coefficients,
@@ -213,7 +210,7 @@ impl JointOpeningBackend<Bn254Field> for RecordingBackend {
         forms: &[&dyn LinearForm<FieldElement>],
         values: &[FieldElement],
     ) -> Result<FinalClaim<FieldElement>> {
-        self.verifier_calls.fetch_add(1, Ordering::SeqCst);
+        self.verifier_calls.set(self.verifier_calls.get() + 1);
         layout.validate_claims(forms, values)?;
         let coefficients = forms
             .iter()
@@ -225,7 +222,7 @@ impl JointOpeningBackend<Bn254Field> for RecordingBackend {
             .collect();
         let mut point = vec![field(0); layout.num_variables()];
         point[0] = field(2);
-        *self.recorded_verification.lock().unwrap() = Some(RecordedOpening {
+        *self.recorded_verification.borrow_mut() = Some(RecordedOpening {
             source_size: source.tuning().vector_size,
             layout,
             forms: coefficients,
@@ -338,7 +335,7 @@ fn an_empty_commitment_list_returns_an_error_before_indexing() {
         );
         assert!(result.is_err());
     }
-    assert_eq!(backend.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(backend.calls.get(), 0);
 }
 
 #[test]
@@ -368,18 +365,12 @@ fn a_two_stage_scheme_rejects_one_or_three_commitments() {
                 .expect("A two-stage scheme requires two commitments");
         assert!(format!("{error:#}").contains("commitment"), "{error:#}");
     }
-    assert_eq!(backend.calls.load(Ordering::SeqCst), 0);
+    assert_eq!(backend.calls.get(), 0);
 }
 
 #[test]
 fn joint_pipeline_calls_one_backend_with_three_matrix_and_two_binding_claims() {
-    for witness_mode in [WitnessCommitmentMode::Standard] {
-        assert_joint_pipeline_claims(witness_mode);
-    }
-}
-
-fn assert_joint_pipeline_claims(witness_mode: WitnessCommitmentMode) {
-    let scheme = scheme_with_commitment_mode(WitnessOpeningMode::Joint, witness_mode);
+    let scheme = scheme(WitnessOpeningMode::Joint);
     let public = PublicInputs::from_vec(vec![field(3)]);
     let backend = RecordingBackend::default();
     let mut merlin = transcript(&scheme, &public);
@@ -388,8 +379,8 @@ fn assert_joint_pipeline_claims(witness_mode: WitnessCommitmentMode) {
         prove_from_alphas_ctx_with_joint_backend(&scheme, merlin, ctx, &public, &backend)
             .expect("The recording backend checks routing only");
 
-    assert_eq!(backend.calls.load(Ordering::SeqCst), 1);
-    let recorded = backend.recorded.lock().unwrap().as_ref().unwrap().clone();
+    assert_eq!(backend.calls.get(), 1);
+    let recorded = backend.recorded.borrow().as_ref().unwrap().clone();
     let block_size = scheme.domain_size();
     assert_eq!(recorded.source_size, block_size);
     assert_eq!(recorded.layout.size(), 2 * block_size);
@@ -468,7 +459,7 @@ fn assert_bad_backend_result(result: RecordingResult, expected_error: &str) {
         .err()
         .expect("A malformed backend result must fail");
     assert!(format!("{error:#}").contains(expected_error), "{error:#}");
-    assert_eq!(backend.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(backend.calls.get(), 1);
 }
 
 #[test]
@@ -503,25 +494,6 @@ fn full_outer_routing_fixture(
     PublicInputs<FieldElement>,
     R1CS<FieldElement>,
 ) {
-    full_outer_routing_fixture_with_mode(
-        backend,
-        public_witness,
-        change_challenge,
-        WitnessCommitmentMode::Standard,
-    )
-}
-
-fn full_outer_routing_fixture_with_mode(
-    backend: &RecordingBackend,
-    public_witness: u64,
-    change_challenge: bool,
-    witness_mode: WitnessCommitmentMode,
-) -> (
-    Scheme,
-    WhirR1CSProof,
-    PublicInputs<FieldElement>,
-    R1CS<FieldElement>,
-) {
     let (r1cs, mut w1, offsets) = challenge_with_public_input::<FieldElement>(3);
     w1[1] = field(public_witness);
     let public = PublicInputs::from_vec(vec![field(3)]);
@@ -532,7 +504,7 @@ fn full_outer_routing_fixture_with_mode(
         offsets,
         true,
         HashConfig::Sha256,
-        witness_mode,
+        WitnessCommitmentMode::Standard,
     )
     .unwrap()
     .with_witness_opening(WitnessOpeningMode::Joint);
@@ -579,26 +551,18 @@ fn full_outer_routing_fixture_with_mode(
 
 #[test]
 fn the_outer_transcript_reaches_one_verifier_call_with_the_same_forms_and_values() {
-    for witness_mode in [WitnessCommitmentMode::Standard] {
-        assert_full_outer_transcript_agreement(witness_mode);
-    }
-}
-
-fn assert_full_outer_transcript_agreement(witness_mode: WitnessCommitmentMode) {
     let backend = RecordingBackend::default();
-    let (scheme, routing_payload, public, r1cs) =
-        full_outer_routing_fixture_with_mode(&backend, 3, false, witness_mode);
+    let (scheme, routing_payload, public, r1cs) = full_outer_routing_fixture(&backend, 3, false);
     let error = verify_with_joint_backend(&scheme, &routing_payload, &public, &r1cs, &backend)
         .expect_err("The recording backend never verifies a proof");
     assert!(format!("{error:#}").contains("The recording backend never verifies a proof"));
-    assert_eq!(backend.calls.load(Ordering::SeqCst), 1);
-    assert_eq!(backend.verifier_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(backend.calls.get(), 1);
+    assert_eq!(backend.verifier_calls.get(), 1);
 
-    let prover = backend.recorded.lock().unwrap().as_ref().unwrap().clone();
+    let prover = backend.recorded.borrow().as_ref().unwrap().clone();
     let verifier = backend
         .recorded_verification
-        .lock()
-        .unwrap()
+        .borrow()
         .as_ref()
         .unwrap()
         .clone();
@@ -636,7 +600,7 @@ fn assert_bad_verifier_result(verifier_result: VerifierResult, expected_error: &
     let error = verify_with_joint_backend(&scheme, &routing_payload, &public, &r1cs, &backend)
         .expect_err("Every test final claim fails a ProveKit check");
     assert!(format!("{error:#}").contains(expected_error), "{error:#}");
-    assert_eq!(backend.verifier_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(backend.verifier_calls.get(), 1);
 }
 
 #[test]
@@ -649,7 +613,7 @@ fn verifier_rejects_a_wrong_public_witness_before_the_joint_backend() {
         format!("{error:#}").to_lowercase().contains("public"),
         "{error:#}"
     );
-    assert_eq!(backend.verifier_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(backend.verifier_calls.get(), 0);
 }
 
 #[test]
@@ -662,7 +626,7 @@ fn verifier_rejects_a_changed_challenge_before_the_joint_backend() {
         format!("{error:#}").to_lowercase().contains("challenge"),
         "{error:#}"
     );
-    assert_eq!(backend.verifier_calls.load(Ordering::SeqCst), 0);
+    assert_eq!(backend.verifier_calls.get(), 0);
 }
 
 #[test]
@@ -684,7 +648,9 @@ fn joint_zero_knowledge_rejects_before_commitment_changes_the_transcript() {
         )
         .err()
         .expect("Joint ZK requires a privacy repair");
-    assert!(error.to_string().contains("privacy leak"));
+    assert!(error
+        .to_string()
+        .contains("Joint zero-knowledge opening is unavailable"));
     let after: FieldElement = attempted.verifier_message();
     let untouched: FieldElement = control.verifier_message();
     assert_eq!(after, untouched);
