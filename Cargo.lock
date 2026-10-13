@@ -4657,6 +4657,7 @@ dependencies = [
  "provekit-backend-goldilocks",
  "provekit-common",
  "provekit-prover",
+ "provekit-spark",
  "provekit-verifier",
  "serde_json",
  "tracing",

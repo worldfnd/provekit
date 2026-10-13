@@ -8,7 +8,6 @@ pub mod hash_config;
 mod interner;
 pub mod joint_claims;
 pub mod joint_covector;
-pub mod joint_opening;
 mod logging;
 pub mod prefix_covector;
 pub mod public_inputs;
@@ -28,9 +27,6 @@ pub use {
     field::{Base, Ext, FieldHash, ProofField},
     hash_config::{HashConfig, POSEIDON2, SKYSCRAPER},
     joint_covector::JointLinearForm,
-    joint_opening::{
-        JointOpeningBackend, JointOpeningLayout, UnavailableJointOpening, WitnessOpeningMode,
-    },
     logging::log_commit_input,
     prefix_covector::{OffsetCovector, PrefixCovector, SparseCovector},
     public_inputs::{PublicInputs, PublicInputsHash},
@@ -38,6 +34,6 @@ pub use {
     sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
     whir_r1cs::{
         whir_protocol_params, ProvekitProof, R1csHash, WhirR1CSProof, WhirR1CSScheme,
-        WitnessCommitmentMode, MIN_WHIR_NUM_VARIABLES,
+        WitnessCommitmentMode, WitnessOpeningMode, MIN_WHIR_NUM_VARIABLES,
     },
 };
