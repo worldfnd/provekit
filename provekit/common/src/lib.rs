@@ -34,6 +34,6 @@ pub use {
     sparse_matrix::{HydratedSparseMatrix, SparseMatrix},
     whir_r1cs::{
         whir_protocol_params, ProvekitProof, R1csHash, WhirR1CSProof, WhirR1CSScheme,
-        WitnessCommitmentMode, WitnessOpeningMode, MIN_WHIR_NUM_VARIABLES,
+        WitnessCommitmentMode, MIN_WHIR_NUM_VARIABLES,
     },
 };
