@@ -4781,6 +4781,7 @@ dependencies = [
  "provekit-backend-goldilocks",
  "provekit-common",
  "provekit-prover",
+ "provekit-spark",
  "provekit-verifier",
  "tracing",
  "tracing-flame",
@@ -7261,7 +7262,7 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
-source = "git+https://github.com/worldfnd/whir.git?rev=78e9460420da0954768feb1e52f581a0529c2124#78e9460420da0954768feb1e52f581a0529c2124"
+source = "git+https://github.com/worldfnd/whir.git?rev=6a952c53852c536cbfb0bebac0749c2773f9ac06#6a952c53852c536cbfb0bebac0749c2773f9ac06"
 dependencies = [
  "ark-ff 0.5.0",
  "ark-serialize 0.5.0",

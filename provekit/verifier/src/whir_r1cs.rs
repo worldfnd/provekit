@@ -6,9 +6,10 @@ use {
         One,
     },
     provekit_common::{
+        joint_claims::build_joint_forms,
         prefix_covector::{
-            build_prefix_covectors, expand_powers, linear_form_refs, make_challenge_weight,
-            make_public_weight, OffsetCovector,
+            build_prefix_covectors, expand_powers, linear_form_refs, make_public_weight,
+            OffsetCovector,
         },
         utils::sumcheck::{
             calculate_eq, eval_cubic_poly, multiply_transposed_by_eq_alpha, transpose_r1cs_matrices,
@@ -50,6 +51,7 @@ where
         public_inputs: &PublicInputs<Base<P>>,
         r1cs: &R1CS<Base<P>>,
     ) -> Result<()> {
+        self.validate_joint_opening()?;
         let actual_r1cs_hash = r1cs.hash();
         anyhow::ensure!(
             self.r1cs_hash == actual_r1cs_hash,
@@ -124,97 +126,54 @@ where
         let blinding_weights = expand_powers::<4, _>(&data_from_sumcheck_verifier.alpha);
 
         let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if let Some(commitment_2) = commitment_2 {
-            let (alphas_1, alphas_2): (Vec<_>, Vec<_>) = alphas
-                .into_iter()
-                .map(|mut v| {
-                    let v2 = v.split_off(self.w1_size);
-                    (v, v2)
-                })
-                .unzip();
-            let alphas_1: [Vec<Ext<P>>; 3] = alphas_1
-                .try_into()
-                .map_err(|_| anyhow::anyhow!("Expected 3 alpha vectors for commitment 1"))?;
-            let alphas_2: [Vec<Ext<P>>; 3] = alphas_2
-                .try_into()
-                .map_err(|_| anyhow::anyhow!("Expected 3 alpha vectors for commitment 2"))?;
-
-            let evals_1: [Ext<P>; 3] = [
+            let forms = build_joint_forms(
+                self.m,
+                self.w1_size,
+                alphas,
+                x,
+                public_inputs.len(),
+                &self.challenge_offsets,
+            )?;
+            let matrix_evals: [Ext<P>; 3] = [
                 arthur
                     .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read evals_1[0]"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read joint A evaluation"))?,
                 arthur
                     .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read evals_1[1]"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read joint B evaluation"))?,
                 arthur
                     .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read evals_1[2]"))?,
+                    .map_err(|_| anyhow::anyhow!("Failed to read joint C evaluation"))?,
             ];
-            let evals_2: [Ext<P>; 3] = [
-                arthur
+            let mut evaluations = matrix_evals.to_vec();
+            if !public_inputs.is_empty() {
+                let public_eval = arthur
                     .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read evals_2[0]"))?,
-                arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read evals_2[1]"))?,
-                arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read evals_2[2]"))?,
-            ];
-
-            let mut weights_1 = build_prefix_covectors(self.m, alphas_1);
-            let weights_2 = build_prefix_covectors(self.m, alphas_2);
-
-            let evaluations_1 = if !public_inputs.is_empty() {
-                let public_1: Ext<P> = arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read public_1"))?;
-                verify_public_input_binding(&embedding, public_1, x, public_inputs)?;
-                weights_1.insert(0, make_public_weight(x, public_inputs.len(), self.m));
-                vec![public_1, evals_1[0], evals_1[1], evals_1[2]]
-            } else {
-                evals_1.to_vec()
-            };
-            let mut evaluations_2 = evals_2.to_vec();
-
-            // Challenge binding: verify that w2 contains the correct
-            // Fiat-Shamir challenge values at the expected positions.
-            let challenge_covector = if let Some(ref challenges) = logup_challenges {
-                let challenge_eval: Ext<P> = arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read challenge_eval"))?;
-                verify_challenge_binding(challenge_eval, x, challenges)?;
-                let cw = make_challenge_weight(x, &self.challenge_offsets, self.m);
-                evaluations_2.push(challenge_eval);
-                Some(cw)
-            } else {
-                None
-            };
-
-            let weight_refs_1 = linear_form_refs(&weights_1);
-
-            let fc_1 = self
-                .whir_witness
-                .verify(&mut arthur, commitment_1, &weight_refs_1, &evaluations_1)
-                .map_err(|_| anyhow::anyhow!("WHIR verification failed for c1"))?;
-            fc_1.verify(&weight_refs_1)
-                .map_err(|_| anyhow::anyhow!("WHIR final-claim check failed for c1"))?;
-
-            let mut weight_refs_2 = linear_form_refs(&weights_2);
-            if let Some(ref cw) = challenge_covector {
-                weight_refs_2.push(cw as &dyn LinearForm<Ext<P>>);
+                    .map_err(|_| anyhow::anyhow!("Failed to read joint public evaluation"))?;
+                verify_public_input_binding(&embedding, public_eval, x, public_inputs)?;
+                evaluations.push(public_eval);
             }
-            let fc_2 = self
+            if let Some(ref challenges) = logup_challenges {
+                let challenge_eval = arthur
+                    .prover_message()
+                    .map_err(|_| anyhow::anyhow!("Failed to read joint challenge evaluation"))?;
+                verify_challenge_binding(challenge_eval, x, challenges)?;
+                evaluations.push(challenge_eval);
+            }
+            let form_refs = linear_form_refs(&forms);
+            let final_claim = self
                 .whir_witness
-                .verify(&mut arthur, commitment_2, &weight_refs_2, &evaluations_2)
-                .map_err(|_| anyhow::anyhow!("WHIR verification failed for c2"))?;
-            fc_2.verify(&weight_refs_2)
-                .map_err(|_| anyhow::anyhow!("WHIR final-claim check failed for c2"))?;
-
-            (
-                evals_1[0] + evals_2[0],
-                evals_1[1] + evals_2[1],
-                evals_1[2] + evals_2[2],
-            )
+                .verify_pair(
+                    &mut arthur,
+                    [commitment_1, commitment_2],
+                    &form_refs,
+                    &evaluations,
+                )
+                .map_err(|_| anyhow::anyhow!("Joint WHIR verification failed"))?;
+            final_claim
+                .verify(&form_refs)
+                .map_err(|_| anyhow::anyhow!("Joint WHIR final-claim check failed"))?;
+            (matrix_evals[0], matrix_evals[1], matrix_evals[2])
         } else {
             let evals: [Ext<P>; 3] = [
                 arthur
