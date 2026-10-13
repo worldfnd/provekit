@@ -118,7 +118,6 @@ where
         witness: Vec<Base<P>>,
         is_w1: bool,
     ) -> Result<WhirR1CSCommitment<P>> {
-        self.validate_witness_opening_mode()?;
         let witness_size = if is_w1 {
             self.w1_size
         } else {
@@ -230,7 +229,7 @@ where
 
 /// Prove R1CS satisfaction with an external backend for joint witness openings.
 ///
-/// Separate and single-stage openings use the existing ZO0K implementation.
+/// Separate and single-stage openings use the existing zook implementation.
 #[instrument(skip_all)]
 #[allow(clippy::too_many_arguments)]
 pub fn prove_noir_with_joint_backend<P: FieldHash, B: JointOpeningBackend<P>>(

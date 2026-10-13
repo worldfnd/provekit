@@ -10,11 +10,8 @@ use {
     serde::{Deserialize, Serialize},
     whir::{
         algebra::{embedding::Embedding, linear_form::LinearForm},
-        protocols::{
-            params::Mode,
-            zook::{
-                Commitment, CommittedWitness, FinalClaim, ProtocolConfig as ZookConfig, ProverClaim,
-            },
+        protocols::zook::{
+            Commitment, CommittedWitness, FinalClaim, ProtocolConfig as ZookConfig, ProverClaim,
         },
         transcript::{ProverState, VerifierState},
     },
@@ -73,7 +70,6 @@ impl JointOpeningLayout {
     /// This check does not establish security for the joint protocol.
     /// The backend must also validate its joint configuration.
     pub fn validate_source_config<M: Embedding>(self, source: &ZookConfig<M>) -> Result<()> {
-        ensure_joint_standard(source)?;
         ensure!(
             source.tuning().vector_size == self.block_size,
             "Joint opening source size {} does not match block size {}",
@@ -159,22 +155,13 @@ impl JointOpeningLayout {
     }
 }
 
-/// Reject joint ZK before any backend call or transcript interaction.
-pub(crate) fn ensure_joint_standard<M: Embedding>(source: &ZookConfig<M>) -> Result<()> {
-    ensure!(
-        source.security().mode == Mode::Standard,
-        "Joint zero-knowledge opening is unavailable"
-    );
-    Ok(())
-}
-
 /// Backend contract for one proof over two existing commitments.
 ///
 /// Array order fixes the selector: index 0 selects `w1`, and index 1 selects
 /// `w2`. The backend must bind both commitments and all supplied form values.
 /// It must sample shared claim coefficients after binding every claim value.
 /// Public data or prior transcript messages must fix the forms before sampling.
-/// Only Standard mode is supported.
+/// It must preserve the source configuration's commitment mode.
 /// It must return the complete point, with the selector coordinate first.
 /// It must bind any derived joint configuration into the transcript.
 /// Source configuration security alone does not establish joint protocol
@@ -349,25 +336,15 @@ mod tests {
     }
 
     #[test]
-    fn joint_zero_knowledge_fails_preflight_even_with_valid_source_parameters() {
-        let source = extension_source(Mode::ZeroKnowledge, 32);
-        source.validate().unwrap();
-        let error = JointOpeningLayout::new(32)
-            .unwrap()
-            .validate_source_config(&source)
-            .unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("Joint zero-knowledge opening is unavailable"));
-    }
-
-    #[test]
-    fn joint_standard_accepts_extension_fields_at_128_bits() {
-        let source = extension_source(Mode::Standard, 32);
-        JointOpeningLayout::new(32)
-            .unwrap()
-            .validate_source_config(&source)
-            .unwrap();
+    fn both_modes_accept_extension_fields_at_128_bits() {
+        for mode in [Mode::Standard, Mode::ZeroKnowledge] {
+            let source = extension_source(mode, 32);
+            JointOpeningLayout::new(32)
+                .unwrap()
+                .validate_source_config(&source)
+                .unwrap();
+            assert_eq!(source.security().mode, mode);
+        }
     }
 
     #[test]
