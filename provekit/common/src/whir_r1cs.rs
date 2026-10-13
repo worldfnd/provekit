@@ -14,8 +14,7 @@ use {
     crate::{
         field::{Base, Ext, FieldHash, ProofField},
         utils::{next_power_of_two, serde_hex},
-        HashConfig, JointOpeningBackend, JointOpeningLayout, PublicInputs, WitnessOpeningMode,
-        R1CS,
+        HashConfig, PublicInputs, R1CS,
     },
     serde::{Deserialize, Serialize},
     whir::{
@@ -42,6 +41,14 @@ pub enum WitnessCommitmentMode {
     Standard,
     #[default]
     ZeroKnowledge,
+}
+
+/// Select separate openings or one joint opening for a two-stage witness.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum WitnessOpeningMode {
+    #[default]
+    Separate,
+    Joint,
 }
 
 impl From<WitnessCommitmentMode> for Mode {
@@ -220,14 +227,8 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         self
     }
 
-    /// Validate the joint backend before starting a two-stage proof or
-    /// verification.
-    ///
-    /// The source configuration retains the original block size.
-    pub fn validate_joint_backend<B: JointOpeningBackend<P>>(
-        &self,
-        backend: &B,
-    ) -> anyhow::Result<()> {
+    /// Validate joint opening parameters before proving or verifying.
+    pub fn validate_joint_opening(&self) -> anyhow::Result<()> {
         if self.witness_opening == WitnessOpeningMode::Joint && self.num_challenges > 0 {
             anyhow::ensure!(
                 self.num_challenges == self.challenge_offsets.len(),
@@ -246,9 +247,13 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
                     .all(|offset| *offset < block_size),
                 "Challenge offset exceeds the second commitment block"
             );
-            let layout = JointOpeningLayout::new(block_size)?;
-            layout.validate_source_config(&self.whir_witness)?;
-            backend.validate(&self.whir_witness, layout)?;
+            anyhow::ensure!(
+                self.whir_witness.tuning().vector_size == block_size,
+                "Joint opening source size does not match the witness block"
+            );
+            self.whir_witness
+                .validate_pair()
+                .map_err(|_| anyhow::anyhow!("Invalid joint opening parameters"))?;
         }
         Ok(())
     }

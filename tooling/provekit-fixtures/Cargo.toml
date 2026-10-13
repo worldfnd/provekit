@@ -26,6 +26,7 @@ postcard.workspace = true
 # Concrete proof fields to instantiate the generic harness.
 provekit-backend-bn254.workspace = true
 provekit-backend-goldilocks.workspace = true
+provekit-spark.workspace = true
 inferno.workspace = true
 tracing.workspace = true
 tracing-flame.workspace = true
