@@ -21,7 +21,7 @@ The separate Spartan blinding opening follows the witness opening.
 
 The serialized scheme binds the selected opening mode.
 Affected binary formats use major version `3`.
-Joint ZeroKnowledge is disabled pending a separate inherited privacy repair.
+Joint opening preserves the source commitment mode, including ZeroKnowledge.
 
 The current WHIR pin lacks the pair API, so default entry points reject Joint mode.
 The real adapter lives in `tooling/provekit-fixtures/tests/whir_pair.rs` until the dependency update.
@@ -35,7 +35,7 @@ cargo test --locked -p provekit-fixtures --test joint_opening
 ```
 
 The tests cover readable arithmetic, ordered claims, public-input binding, and backend failures.
-The real-backend fixture also covers BN254, extension-field R1CS, and base-to-extension openings.
+The real-backend fixture covers BN254, extension-field R1CS, and base-to-extension openings in both commitment modes.
 Run it with a local compatibility checkout:
 
 ```sh

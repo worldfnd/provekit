@@ -21,8 +21,11 @@ use {
     std::cell::{Cell, RefCell},
     whir::{
         algebra::{embedding::Identity, linear_form::LinearForm},
-        protocols::zook::{
-            Commitment, CommittedWitness, FinalClaim, ProtocolConfig as ZookConfig, ProverClaim,
+        protocols::{
+            params::Mode,
+            zook::{
+                Commitment, CommittedWitness, FinalClaim, ProtocolConfig as ZookConfig, ProverClaim,
+            },
         },
         transcript::{ProverState, VerifierMessage, VerifierState},
     },
@@ -45,13 +48,6 @@ fn multiplication_r1cs() -> R1CS<FieldElement> {
 }
 
 fn scheme(opening_mode: WitnessOpeningMode) -> Scheme {
-    scheme_with_commitment_mode(opening_mode, WitnessCommitmentMode::Standard)
-}
-
-fn scheme_with_commitment_mode(
-    opening_mode: WitnessOpeningMode,
-    witness_mode: WitnessCommitmentMode,
-) -> Scheme {
     Scheme::new_for_r1cs(
         &multiplication_r1cs(),
         3,
@@ -59,7 +55,7 @@ fn scheme_with_commitment_mode(
         vec![0],
         true,
         HashConfig::Sha256,
-        witness_mode,
+        WitnessCommitmentMode::Standard,
     )
     .unwrap()
     .with_witness_opening(opening_mode)
@@ -132,6 +128,7 @@ enum VerifierResult {
 
 #[derive(Clone)]
 struct RecordedOpening {
+    source_mode: Mode,
     source_size: usize,
     layout:      JointOpeningLayout,
     forms:       Vec<Vec<FieldElement>>,
@@ -184,6 +181,7 @@ impl JointOpeningBackend<Bn254Field> for RecordingBackend {
             point.remove(0);
         }
         *self.recorded.borrow_mut() = Some(RecordedOpening {
+            source_mode: source.security().mode,
             source_size: source.tuning().vector_size,
             layout,
             forms: coefficients,
@@ -223,6 +221,7 @@ impl JointOpeningBackend<Bn254Field> for RecordingBackend {
         let mut point = vec![field(0); layout.num_variables()];
         point[0] = field(2);
         *self.recorded_verification.borrow_mut() = Some(RecordedOpening {
+            source_mode: source.security().mode,
             source_size: source.tuning().vector_size,
             layout,
             forms: coefficients,
@@ -488,6 +487,7 @@ fn full_outer_routing_fixture(
     backend: &RecordingBackend,
     public_witness: u64,
     change_challenge: bool,
+    witness_mode: WitnessCommitmentMode,
 ) -> (
     Scheme,
     WhirR1CSProof,
@@ -504,7 +504,7 @@ fn full_outer_routing_fixture(
         offsets,
         true,
         HashConfig::Sha256,
-        WitnessCommitmentMode::Standard,
+        witness_mode,
     )
     .unwrap()
     .with_witness_opening(WitnessOpeningMode::Joint);
@@ -550,27 +550,35 @@ fn full_outer_routing_fixture(
 }
 
 #[test]
-fn the_outer_transcript_reaches_one_verifier_call_with_the_same_forms_and_values() {
-    let backend = RecordingBackend::default();
-    let (scheme, routing_payload, public, r1cs) = full_outer_routing_fixture(&backend, 3, false);
-    let error = verify_with_joint_backend(&scheme, &routing_payload, &public, &r1cs, &backend)
-        .expect_err("The recording backend never verifies a proof");
-    assert!(format!("{error:#}").contains("The recording backend never verifies a proof"));
-    assert_eq!(backend.calls.get(), 1);
-    assert_eq!(backend.verifier_calls.get(), 1);
+fn both_modes_reach_one_verifier_call_with_the_same_forms_and_values() {
+    for witness_mode in [
+        WitnessCommitmentMode::Standard,
+        WitnessCommitmentMode::ZeroKnowledge,
+    ] {
+        let backend = RecordingBackend::default();
+        let (scheme, routing_payload, public, r1cs) =
+            full_outer_routing_fixture(&backend, 3, false, witness_mode);
+        let error = verify_with_joint_backend(&scheme, &routing_payload, &public, &r1cs, &backend)
+            .expect_err("The recording backend never verifies a proof");
+        assert!(format!("{error:#}").contains("The recording backend never verifies a proof"));
+        assert_eq!(backend.calls.get(), 1);
+        assert_eq!(backend.verifier_calls.get(), 1);
 
-    let prover = backend.recorded.borrow().as_ref().unwrap().clone();
-    let verifier = backend
-        .recorded_verification
-        .borrow()
-        .as_ref()
-        .unwrap()
-        .clone();
-    assert_eq!(prover.layout, verifier.layout);
-    assert_eq!(prover.source_size, verifier.source_size);
-    assert_eq!(prover.forms, verifier.forms);
-    assert_eq!(prover.values, verifier.values);
-    assert_eq!(verifier.values.len(), 5);
+        let prover = backend.recorded.borrow().as_ref().unwrap().clone();
+        let verifier = backend
+            .recorded_verification
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .clone();
+        assert_eq!(prover.source_mode, Mode::from(witness_mode));
+        assert_eq!(prover.source_mode, verifier.source_mode);
+        assert_eq!(prover.layout, verifier.layout);
+        assert_eq!(prover.source_size, verifier.source_size);
+        assert_eq!(prover.forms, verifier.forms);
+        assert_eq!(prover.values, verifier.values);
+        assert_eq!(verifier.values.len(), 5);
+    }
 }
 
 #[test]
@@ -596,7 +604,8 @@ fn assert_bad_verifier_result(verifier_result: VerifierResult, expected_error: &
         verifier_result,
         ..RecordingBackend::default()
     };
-    let (scheme, routing_payload, public, r1cs) = full_outer_routing_fixture(&backend, 3, false);
+    let (scheme, routing_payload, public, r1cs) =
+        full_outer_routing_fixture(&backend, 3, false, WitnessCommitmentMode::Standard);
     let error = verify_with_joint_backend(&scheme, &routing_payload, &public, &r1cs, &backend)
         .expect_err("Every test final claim fails a ProveKit check");
     assert!(format!("{error:#}").contains(expected_error), "{error:#}");
@@ -606,7 +615,8 @@ fn assert_bad_verifier_result(verifier_result: VerifierResult, expected_error: &
 #[test]
 fn verifier_rejects_a_wrong_public_witness_before_the_joint_backend() {
     let backend = RecordingBackend::default();
-    let (scheme, routing_payload, public, r1cs) = full_outer_routing_fixture(&backend, 4, false);
+    let (scheme, routing_payload, public, r1cs) =
+        full_outer_routing_fixture(&backend, 4, false, WitnessCommitmentMode::Standard);
     let error = verify_with_joint_backend(&scheme, &routing_payload, &public, &r1cs, &backend)
         .expect_err("The witness contains 4, but the public input is 3");
     assert!(
@@ -619,7 +629,8 @@ fn verifier_rejects_a_wrong_public_witness_before_the_joint_backend() {
 #[test]
 fn verifier_rejects_a_changed_challenge_before_the_joint_backend() {
     let backend = RecordingBackend::default();
-    let (scheme, routing_payload, public, r1cs) = full_outer_routing_fixture(&backend, 3, true);
+    let (scheme, routing_payload, public, r1cs) =
+        full_outer_routing_fixture(&backend, 3, true, WitnessCommitmentMode::Standard);
     let error = verify_with_joint_backend(&scheme, &routing_payload, &public, &r1cs, &backend)
         .expect_err("The witness challenge differs from the transcript challenge");
     assert!(
@@ -627,31 +638,4 @@ fn verifier_rejects_a_changed_challenge_before_the_joint_backend() {
         "{error:#}"
     );
     assert_eq!(backend.verifier_calls.get(), 0);
-}
-
-#[test]
-fn joint_zero_knowledge_rejects_before_commitment_changes_the_transcript() {
-    let scheme = scheme_with_commitment_mode(
-        WitnessOpeningMode::Joint,
-        WitnessCommitmentMode::ZeroKnowledge,
-    );
-    let public = PublicInputs::from_vec(vec![field(3)]);
-    let mut attempted = transcript(&scheme, &public);
-    let mut control = transcript(&scheme, &public);
-    let error = scheme
-        .commit(
-            &mut attempted,
-            5,
-            1,
-            vec![field(1), field(3), field(12)],
-            true,
-        )
-        .err()
-        .expect("Joint ZK requires a privacy repair");
-    assert!(error
-        .to_string()
-        .contains("Joint zero-knowledge opening is unavailable"));
-    let after: FieldElement = attempted.verifier_message();
-    let untouched: FieldElement = control.verifier_message();
-    assert_eq!(after, untouched);
 }

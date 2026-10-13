@@ -160,8 +160,8 @@ pub struct WhirR1CSScheme<P: ProofField> {
     pub has_public_inputs: bool,
     /// Base-field witness commitment, via zook.
     pub whir_witness:      ZookConfig<P::Embedding>,
-    /// Opening protocol for two-stage witnesses. Joint ZeroKnowledge mode is
-    /// unavailable. Standard single-stage witnesses use the existing opening.
+    /// Opening protocol for two-stage witnesses.
+    /// Single-stage witnesses use the existing opening.
     pub witness_opening:   WitnessOpeningMode,
     /// Separate ext-field commitment to the Spartan blinding polynomial `g`;
     /// masking the ext-valued sumcheck rounds needs ext randomness, so `g`
@@ -193,14 +193,6 @@ impl<P: ProofField> WhirR1CSScheme<P> {
             count == expected,
             "Expected {expected} witness commitments, received {count}"
         );
-        Ok(())
-    }
-
-    /// Reject unsupported joint ZK before committing a witness.
-    pub fn validate_witness_opening_mode(&self) -> anyhow::Result<()> {
-        if self.witness_opening == WitnessOpeningMode::Joint {
-            crate::joint_opening::ensure_joint_standard(&self.whir_witness)?;
-        }
         Ok(())
     }
 
@@ -236,7 +228,6 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         &self,
         backend: &B,
     ) -> anyhow::Result<()> {
-        self.validate_witness_opening_mode()?;
         if self.witness_opening == WitnessOpeningMode::Joint && self.num_challenges > 0 {
             anyhow::ensure!(
                 self.num_challenges == self.challenge_offsets.len(),

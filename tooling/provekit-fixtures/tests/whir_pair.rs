@@ -28,7 +28,7 @@ use {
         },
         buffer::Buffer,
         protocols::{
-            params::{FoldingFactor, PowBudget, RateSchedule, SecuritySpec, TuningSpec},
+            params::{FoldingFactor, Mode, PowBudget, RateSchedule, SecuritySpec, TuningSpec},
             zook::{Commitment, CommittedWitness, FinalClaim, ProtocolConfig, ProverClaim},
         },
         transcript::{
@@ -90,7 +90,7 @@ where
     }
 }
 
-fn check_full_r1cs<P>()
+fn check_full_r1cs<P>(mode: WitnessCommitmentMode)
 where
     P: FieldHash,
     P::Embedding: Embedding<Target = Base<P>>,
@@ -100,17 +100,9 @@ where
     // The witness is [1, 3 | c, 1/c]. The constraints are 3*1=3 and c*(1/c)=1.
     let (r1cs, left, offsets) = challenge_with_public_input::<Base<P>>(3);
     let public = PublicInputs::from_vec(vec![Base::<P>::from(3)]);
-    let scheme = WhirR1CSScheme::<P>::new_for_r1cs(
-        &r1cs,
-        left.len(),
-        1,
-        offsets,
-        true,
-        HASH,
-        WitnessCommitmentMode::Standard,
-    )
-    .unwrap()
-    .with_witness_opening(WitnessOpeningMode::Joint);
+    let scheme = WhirR1CSScheme::<P>::new_for_r1cs(&r1cs, left.len(), 1, offsets, true, HASH, mode)
+        .unwrap()
+        .with_witness_opening(WitnessOpeningMode::Joint);
     scheme.validate_joint_backend(&WhirPairBackend).unwrap();
     assert_eq!(scheme.whir_witness.security().target_security_bits, 128);
     let instance = public.hash_bytes::<P>(HASH);
@@ -159,24 +151,41 @@ where
 
 #[test]
 fn bn254_joint_r1cs_proof_binds_public_inputs_and_stage_challenges() {
-    check_full_r1cs::<Bn254Field>();
+    for mode in [
+        WitnessCommitmentMode::Standard,
+        WitnessCommitmentMode::ZeroKnowledge,
+    ] {
+        check_full_r1cs::<Bn254Field>(mode);
+    }
 }
 
 #[test]
 fn extension_leaf_joint_r1cs_proof_binds_public_inputs_and_stage_challenges() {
     // Existing R1CS challenge slots store one field element, so this path uses
     // Identity<Field64_3>. The next test exercises Basefield<Field64_3> directly.
-    check_full_r1cs::<GoldilocksEfField>();
+    for mode in [
+        WitnessCommitmentMode::Standard,
+        WitnessCommitmentMode::ZeroKnowledge,
+    ] {
+        check_full_r1cs::<GoldilocksEfField>(mode);
+    }
 }
 
 #[test]
 fn base_field_witnesses_open_genuine_extension_claims_through_the_adapter() {
+    for mode in [Mode::Standard, Mode::ZeroKnowledge] {
+        check_base_field_pair(mode);
+    }
+}
+
+fn check_base_field_pair(mode: Mode) {
     type P = GoldilocksField;
     type F = Field64_3;
     P::register();
     let n = 256;
     let source = ProtocolConfig::<<P as provekit_common::ProofField>::Embedding>::derive(
         SecuritySpec::new(128)
+            .with_mode(mode)
             .with_pow_budget(PowBudget::per_slot(10))
             .with_hash(HASH.engine_id()),
         TuningSpec {
