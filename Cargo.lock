@@ -28,8 +28,8 @@ name = "acir_field"
 version = "1.0.0-beta.26"
 source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.26#40d6574f851d926f93e0c3a271bac3e6e82ac905"
 dependencies = [
- "ark-bn254 0.6.0",
- "ark-ff 0.6.0",
+ "ark-bn254",
+ "ark-ff",
  "cfg-if",
  "hex",
  "msgpack_tagged",
@@ -230,45 +230,13 @@ dependencies = [
 
 [[package]]
 name = "ark-bn254"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d69eab57e8d2663efa5c63135b2af4f396d66424f88954c21104125ab6b3e6bc"
-dependencies = [
- "ark-ec 0.5.0",
- "ark-ff 0.5.0",
- "ark-std 0.5.0",
-]
-
-[[package]]
-name = "ark-bn254"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bc66f96ebe2a17a499475b4f94791d379817592ef494171586967ffdc6f95db"
 dependencies = [
- "ark-ec 0.6.0",
- "ark-ff 0.6.0",
- "ark-std 0.6.0",
-]
-
-[[package]]
-name = "ark-ec"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43d68f2d516162846c1238e755a7c4d131b892b70cc70c471a8e3ca3ed818fce"
-dependencies = [
- "ahash",
- "ark-ff 0.5.0",
- "ark-poly 0.5.0",
- "ark-serialize 0.5.0",
- "ark-std 0.5.0",
- "educe",
- "fnv",
- "hashbrown 0.15.5",
- "itertools 0.13.0",
- "num-bigint 0.4.6",
- "num-integer",
- "num-traits",
- "zeroize",
+ "ark-ec",
+ "ark-ff",
+ "ark-std",
 ]
 
 [[package]]
@@ -278,10 +246,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8352a2b2aedf6ba2cc38f7520fc51191d518dde96175c729af19f2d059f191c4"
 dependencies = [
  "ahash",
- "ark-ff 0.6.0",
- "ark-poly 0.6.0",
- "ark-serialize 0.6.0",
- "ark-std 0.6.0",
+ "ark-ff",
+ "ark-poly",
+ "ark-serialize",
+ "ark-std",
  "educe",
  "fnv",
  "hashbrown 0.17.1",
@@ -294,49 +262,19 @@ dependencies = [
 
 [[package]]
 name = "ark-ff"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a177aba0ed1e0fbb62aa9f6d0502e9b46dad8c2eab04c14258a1212d2557ea70"
-dependencies = [
- "ark-ff-asm 0.5.0",
- "ark-ff-macros 0.5.0",
- "ark-serialize 0.5.0",
- "ark-std 0.5.0",
- "arrayvec",
- "digest 0.10.7",
- "educe",
- "itertools 0.13.0",
- "num-bigint 0.4.6",
- "num-traits",
- "paste",
- "zeroize",
-]
-
-[[package]]
-name = "ark-ff"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7a806ac6c8307b929df4645776290a50ee2aac754ad09d8bdf73391309e43af"
 dependencies = [
- "ark-ff-asm 0.6.0",
- "ark-ff-macros 0.6.0",
- "ark-serialize 0.6.0",
- "ark-std 0.6.0",
+ "ark-ff-asm",
+ "ark-ff-macros",
+ "ark-serialize",
+ "ark-std",
  "digest 0.10.7",
  "educe",
  "num-bigint 0.4.6",
  "num-traits",
  "zeroize",
-]
-
-[[package]]
-name = "ark-ff-asm"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62945a2f7e6de02a31fe400aa489f0e0f5b2502e69f95f853adb82a96c7a6b60"
-dependencies = [
- "quote",
- "syn 2.0.118",
 ]
 
 [[package]]
@@ -345,19 +283,6 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1479009684adc073dff49a1025d3a7065b317a9ead25aaaca38cdc70058ba8a2"
 dependencies = [
- "quote",
- "syn 2.0.118",
-]
-
-[[package]]
-name = "ark-ff-macros"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09be120733ee33f7693ceaa202ca41accd5653b779563608f1234f78ae07c4b3"
-dependencies = [
- "num-bigint 0.4.6",
- "num-traits",
- "proc-macro2",
  "quote",
  "syn 2.0.118",
 ]
@@ -381,25 +306,10 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2c969a12ceed8881e5c66277dabd3e7a5aa2c72c9370f3f42eca3f2dd33a21a"
 dependencies = [
- "ark-bn254 0.6.0",
- "ark-ec 0.6.0",
- "ark-ff 0.6.0",
- "ark-std 0.6.0",
-]
-
-[[package]]
-name = "ark-poly"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "579305839da207f02b89cd1679e50e67b4331e2f9294a57693e5051b7703fe27"
-dependencies = [
- "ahash",
- "ark-ff 0.5.0",
- "ark-serialize 0.5.0",
- "ark-std 0.5.0",
- "educe",
- "fnv",
- "hashbrown 0.15.5",
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff",
+ "ark-std",
 ]
 
 [[package]]
@@ -409,25 +319,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75f55af10b672002b8d953e230282c51206842e20e5791a94432219b4201de5c"
 dependencies = [
  "ahash",
- "ark-ff 0.6.0",
- "ark-serialize 0.6.0",
- "ark-std 0.6.0",
+ "ark-ff",
+ "ark-serialize",
+ "ark-std",
  "educe",
  "fnv",
  "hashbrown 0.17.1",
-]
-
-[[package]]
-name = "ark-serialize"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f4d068aaf107ebcd7dfb52bc748f8030e0fc930ac8e360146ca54c1203088f7"
-dependencies = [
- "ark-serialize-derive 0.5.0",
- "ark-std 0.5.0",
- "arrayvec",
- "digest 0.10.7",
- "num-bigint 0.4.6",
 ]
 
 [[package]]
@@ -436,21 +333,11 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a74dd304fd536fb95d0a328e72be759209cc496a9da094c5bc56e5fea4f9e86b"
 dependencies = [
- "ark-serialize-derive 0.6.0",
- "ark-std 0.6.0",
+ "ark-serialize-derive",
+ "ark-std",
  "digest 0.10.7",
  "num-bigint 0.4.6",
-]
-
-[[package]]
-name = "ark-serialize-derive"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "213888f660fddcca0d257e88e54ac05bca01885f258ccdf695bafd77031bb69d"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.118",
+ "serde_with",
 ]
 
 [[package]]
@@ -462,16 +349,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.118",
-]
-
-[[package]]
-name = "ark-std"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "246a225cc6131e9ee4f24619af0f19d67761fff15d7ccc22e42b80846e69449a"
-dependencies = [
- "num-traits",
- "rand 0.8.6",
 ]
 
 [[package]]
@@ -832,8 +709,8 @@ dependencies = [
 name = "bn254-multiplier"
 version = "0.1.0"
 dependencies = [
- "ark-bn254 0.5.0",
- "ark-ff 0.5.0",
+ "ark-bn254",
+ "ark-ff",
  "bn254-multiplier-codegen",
  "divan",
  "fp-rounding",
@@ -858,9 +735,9 @@ source = "git+https://github.com/noir-lang/noir?rev=v1.0.0-beta.26#40d6574f851d9
 dependencies = [
  "acir",
  "acvm_blackbox_solver",
- "ark-bn254 0.6.0",
- "ark-ec 0.6.0",
- "ark-ff 0.6.0",
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff",
  "ark-grumpkin",
  "hex",
  "itertools 0.15.0",
@@ -2761,15 +2638,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
@@ -3211,18 +3079,26 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 [[package]]
 name = "mavros-artifacts"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=e6a48ea5bff8b4c1b8b78beb765dbe96176f51d6#e6a48ea5bff8b4c1b8b78beb765dbe96176f51d6"
+source = "git+https://github.com/reilabs/mavros?rev=13936c11d83bd6b3655ffc7f40cac2498211c96b#13936c11d83bd6b3655ffc7f40cac2498211c96b"
 dependencies = [
- "ark-bn254 0.5.0",
- "ark-ff 0.5.0",
+ "ark-bn254",
+ "ark-ff",
+ "bincode",
+ "num-traits",
  "serde",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
 [[package]]
+name = "mavros-limb-arith"
+version = "0.1.0"
+source = "git+https://github.com/reilabs/mavros?rev=13936c11d83bd6b3655ffc7f40cac2498211c96b#13936c11d83bd6b3655ffc7f40cac2498211c96b"
+
+[[package]]
 name = "mavros-opcode-gen"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=e6a48ea5bff8b4c1b8b78beb765dbe96176f51d6#e6a48ea5bff8b4c1b8b78beb765dbe96176f51d6"
+source = "git+https://github.com/reilabs/mavros?rev=13936c11d83bd6b3655ffc7f40cac2498211c96b#13936c11d83bd6b3655ffc7f40cac2498211c96b"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3233,11 +3109,13 @@ dependencies = [
 [[package]]
 name = "mavros-vm"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=e6a48ea5bff8b4c1b8b78beb765dbe96176f51d6#e6a48ea5bff8b4c1b8b78beb765dbe96176f51d6"
+source = "git+https://github.com/reilabs/mavros?rev=13936c11d83bd6b3655ffc7f40cac2498211c96b#13936c11d83bd6b3655ffc7f40cac2498211c96b"
 dependencies = [
- "ark-ff 0.5.0",
+ "ark-ff",
  "mavros-artifacts",
+ "mavros-limb-arith",
  "mavros-opcode-gen",
+ "serde",
  "tracing",
 ]
 
@@ -3888,9 +3766,9 @@ dependencies = [
 name = "ntt"
 version = "0.1.0"
 dependencies = [
- "ark-bn254 0.5.0",
- "ark-ff 0.5.0",
- "ark-std 0.5.0",
+ "ark-bn254",
+ "ark-ff",
+ "ark-std",
  "bn254-multiplier",
  "divan",
  "proptest",
@@ -4360,8 +4238,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "argh",
- "ark-bn254 0.5.0",
- "ark-ff 0.5.0",
+ "ark-bn254",
+ "ark-ff",
  "base64 0.22.1",
  "chrono",
  "hex",
@@ -4494,9 +4372,9 @@ checksum = "19f132c84eca552bf34cab8ec81f1c1dcc229b811638f9d283dceabe58c5569e"
 name = "poseidon2"
 version = "0.1.0"
 dependencies = [
- "ark-bn254 0.5.0",
- "ark-ff 0.5.0",
- "ark-std 0.5.0",
+ "ark-bn254",
+ "ark-ff",
+ "ark-std",
 ]
 
 [[package]]
@@ -4630,10 +4508,9 @@ version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
- "ark-bn254 0.5.0",
- "ark-ff 0.5.0",
- "ark-ff 0.6.0",
- "ark-std 0.5.0",
+ "ark-bn254",
+ "ark-ff",
+ "ark-std",
  "blake3",
  "bn254_blackbox_solver",
  "divan",
@@ -4649,14 +4526,14 @@ dependencies = [
  "proptest",
  "provekit-common",
  "provekit-prover",
+ "provekit-spongefish",
+ "provekit-spongefish-pow",
  "provekit-verifier",
  "rayon",
  "serde",
  "sha2 0.10.9",
  "sha3",
  "skyscraper",
- "spongefish",
- "spongefish-pow",
  "tracing",
  "whir",
  "zerocopy",
@@ -4666,13 +4543,13 @@ dependencies = [
 name = "provekit-backend-goldilocks"
 version = "1.0.0"
 dependencies = [
- "ark-ff 0.5.0",
- "ark-serialize 0.5.0",
+ "ark-ff",
+ "ark-serialize",
  "blake3",
  "provekit-common",
+ "provekit-spongefish",
  "sha2 0.10.9",
  "sha3",
- "spongefish",
  "whir",
 ]
 
@@ -4682,7 +4559,7 @@ version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
- "ark-ff 0.5.0",
+ "ark-ff",
  "divan",
  "nargo",
  "nargo_cli",
@@ -4704,11 +4581,11 @@ dependencies = [
  "acir",
  "anyhow",
  "argh",
- "ark-ff 0.5.0",
+ "ark-ff",
  "base64 0.22.1",
- "bincode",
  "hex",
  "mavros-artifacts",
+ "mavros-vm",
  "nargo",
  "nargo_toml",
  "noir_artifact_cli",
@@ -4732,20 +4609,20 @@ name = "provekit-common"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "ark-ff 0.5.0",
- "ark-serialize 0.5.0",
- "ark-std 0.5.0",
+ "ark-ff",
+ "ark-serialize",
+ "ark-std",
  "base64 0.22.1",
  "bytes",
  "hex",
  "keccak 0.2.0",
  "num-bigint 0.4.6",
  "postcard",
+ "provekit-spongefish",
  "rayon",
  "serde",
  "serde_json",
  "sha3",
- "spongefish",
  "tracing",
  "whir",
  "xz2",
@@ -4774,8 +4651,8 @@ name = "provekit-fixtures"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "ark-ff 0.5.0",
- "ark-std 0.5.0",
+ "ark-ff",
+ "ark-std",
  "inferno",
  "provekit-backend-bn254",
  "provekit-backend-goldilocks",
@@ -4792,7 +4669,7 @@ dependencies = [
 name = "provekit-gnark"
 version = "0.1.0"
 dependencies = [
- "ark-poly 0.5.0",
+ "ark-poly",
  "provekit-backend-bn254",
  "provekit-common",
  "serde",
@@ -4806,8 +4683,8 @@ name = "provekit-prover"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "ark-ff 0.5.0",
- "ark-std 0.5.0",
+ "ark-ff",
+ "ark-std",
  "provekit-common",
  "tracing",
  "whir",
@@ -4819,9 +4696,8 @@ version = "1.0.0"
 dependencies = [
  "acir",
  "anyhow",
- "ark-ff 0.5.0",
- "ark-std 0.5.0",
- "bincode",
+ "ark-ff",
+ "ark-std",
  "mavros-artifacts",
  "noirc_abi",
  "noirc_artifacts",
@@ -4843,9 +4719,9 @@ name = "provekit-spark"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ark-ff 0.5.0",
- "ark-serialize 0.5.0",
- "ark-std 0.5.0",
+ "ark-ff",
+ "ark-serialize",
+ "ark-std",
  "provekit-backend-bn254",
  "provekit-common",
  "rayon",
@@ -4855,12 +4731,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "provekit-spongefish"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36fae7879976a7da05091f70da9652465b0dbba51adb8ae8e71731b1d47d047d"
+dependencies = [
+ "ark-ff",
+ "ark-serialize",
+ "blake3",
+ "digest 0.10.7",
+ "keccak 0.1.6",
+ "p3-koala-bear",
+ "rand 0.8.6",
+ "sha2 0.10.9",
+ "sha3",
+ "zeroize",
+]
+
+[[package]]
+name = "provekit-spongefish-pow"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2482a98b65f7545992cc59f92d0e439c9ec0fcbc53e262c3be81d57bf9b33c0"
+dependencies = [
+ "blake3",
+ "bytemuck",
+ "keccak 0.1.6",
+ "provekit-spongefish",
+ "rand 0.8.6",
+ "rayon",
+]
+
+[[package]]
 name = "provekit-verifier"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "ark-ff 0.5.0",
- "ark-std 0.5.0",
+ "ark-ff",
+ "ark-std",
  "provekit-common",
  "rayon",
  "tracing",
@@ -6056,8 +5964,8 @@ dependencies = [
 name = "skyscraper"
 version = "0.1.0"
 dependencies = [
- "ark-bn254 0.5.0",
- "ark-ff 0.5.0",
+ "ark-bn254",
+ "ark-ff",
  "bn254-multiplier",
  "divan",
  "fp-rounding",
@@ -6177,36 +6085,6 @@ checksum = "1d9efca8738c78ee9484207732f728b1ef517bbb1833d6fc0879ca898a522f6f"
 dependencies = [
  "base64ct",
  "der 0.8.0",
-]
-
-[[package]]
-name = "spongefish"
-version = "1.0.0-rc1"
-source = "git+https://github.com/arkworks-rs/spongefish?rev=fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1#fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1"
-dependencies = [
- "ark-ff 0.5.0",
- "ark-serialize 0.5.0",
- "blake3",
- "digest 0.10.7",
- "keccak 0.1.6",
- "p3-koala-bear",
- "rand 0.8.6",
- "sha2 0.10.9",
- "sha3",
- "zeroize",
-]
-
-[[package]]
-name = "spongefish-pow"
-version = "1.0.0-rc1"
-source = "git+https://github.com/arkworks-rs/spongefish?rev=fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1#fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1"
-dependencies = [
- "blake3",
- "bytemuck",
- "keccak 0.1.6",
- "rand 0.8.6",
- "rayon",
- "spongefish",
 ]
 
 [[package]]
@@ -6368,7 +6246,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.4",
  "windows-sys 0.61.2",
@@ -7261,11 +7139,11 @@ dependencies = [
 [[package]]
 name = "whir"
 version = "0.1.0"
-source = "git+https://github.com/worldfnd/whir.git?rev=78e9460420da0954768feb1e52f581a0529c2124#78e9460420da0954768feb1e52f581a0529c2124"
+source = "git+https://github.com/worldfnd/whir.git?rev=afec1fac27c1c8cc7331aa5668bc9800f104d92c#afec1fac27c1c8cc7331aa5668bc9800f104d92c"
 dependencies = [
- "ark-ff 0.5.0",
- "ark-serialize 0.5.0",
- "ark-std 0.5.0",
+ "ark-ff",
+ "ark-serialize",
+ "ark-std",
  "arrayvec",
  "blake3",
  "ciborium",
@@ -7276,12 +7154,12 @@ dependencies = [
  "hex",
  "hex-literal",
  "ordered-float",
+ "provekit-spongefish",
  "rayon",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "sha3",
- "spongefish",
  "static_assertions",
  "thiserror 2.0.18",
  "tracing",

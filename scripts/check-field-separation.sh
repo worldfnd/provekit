@@ -12,7 +12,7 @@ ALLOWED_LOCAL='provekit-backend-goldilocks provekit-common provekit-prover prove
 
 # External bn254/256-bit families the allowlist can't see (crates.io / git deps):
 # curve stacks and the Noir/Mavros frontend. Defense-in-depth; extend as needed.
-FORBIDDEN_EXTERNAL='^(ark-bn254|ark-ec|ark-poly|ark-grumpkin|grumpkin|k256|p256|ecdsa|elliptic-curve|crypto-bigint|primefield|primeorder|sec1|rfc6979|acir|acir_field|acvm|acvm_blackbox_solver|brillig|brillig_vm|nargo|noirc_abi|noirc_printable_type|noirc_span|mavros-vm|mavros-artifacts|mavros-opcode-gen) '
+FORBIDDEN_EXTERNAL='^(ark-bn254|ark-ec|ark-poly|ark-grumpkin|grumpkin|k256|p256|ecdsa|elliptic-curve|crypto-bigint|primefield|primeorder|sec1|rfc6979|acir|acir_field|acvm|acvm_blackbox_solver|brillig|brillig_vm|nargo|noirc_abi|noirc_printable_type|noirc_span|mavros-vm|mavros-artifacts|mavros-opcode-gen|mavros-limb-arith|mavros-int-semantics) '
 
 backend_tree() {
   # Fail closed: a cargo-tree error or empty graph means we never inspected it.
