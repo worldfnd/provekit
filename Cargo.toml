@@ -199,20 +199,19 @@ noirc_artifacts = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-bet
 noirc_driver = { git = "https://github.com/noir-lang/noir", rev = "v1.0.0-beta.26" }
 
 # Cryptography and proof systems
-ark-bn254 = { version = "0.5.0", default-features = false, features = [
+ark-bn254 = { version = "0.6.0", default-features = false, features = [
   "scalar_field",
 ] }
 
-ark-ff = { version = "0.5", features = ["asm", "std"] }
-ark-ff-v06 = { package = "ark-ff", version = "0.6" }
-ark-poly = "0.5"
-ark-serialize = "0.5"
-ark-std = { version = "0.5", features = ["std"] }
-mavros-vm = { git = "https://github.com/reilabs/mavros", rev = "e6a48ea5bff8b4c1b8b78beb765dbe96176f51d6" }
-mavros-artifacts = { git = "https://github.com/reilabs/mavros", rev = "e6a48ea5bff8b4c1b8b78beb765dbe96176f51d6" }
-spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
+ark-ff = { version = "0.6", features = ["asm", "std"] }
+ark-poly = "0.6"
+ark-serialize = "0.6"
+ark-std = { version = "0.6", features = ["std"] }
+mavros-vm = { git = "https://github.com/reilabs/mavros", rev = "92ead6f2a919bbcc33ed07aa1bfa82062cfc652e" }
+mavros-artifacts = { git = "https://github.com/reilabs/mavros", rev = "92ead6f2a919bbcc33ed07aa1bfa82062cfc652e" }
+spongefish = { package = "provekit-spongefish", version = "=0.2.0", features = [
   "ark-ff",
   "sha2",
-], rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish", rev = "fcc277f8a857fdeeadd7cca92ab08de63b1ff1a1" }
-whir = { git = "https://github.com/worldfnd/whir.git", rev = "78e9460420da0954768feb1e52f581a0529c2124", features = ["tracing", "rs_in_order"] }
+] }
+spongefish-pow = { package = "provekit-spongefish-pow", version = "=0.2.0" }
+whir = { git = "https://github.com/worldfnd/whir.git", rev = "afec1fac27c1c8cc7331aa5668bc9800f104d92c", features = ["tracing", "rs_in_order"] }
