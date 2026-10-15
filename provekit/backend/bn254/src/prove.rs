@@ -323,6 +323,7 @@ fn prove_mavros_inner(
         prover.witness_layout,
         prover.constraints_layout,
         &params,
+        None,
     )
     .context("While running Mavros witness phase 1")?;
 

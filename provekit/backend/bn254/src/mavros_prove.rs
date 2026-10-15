@@ -143,6 +143,7 @@ fn prove_mavros_inner(
         &eq_alpha[..constraints_layout.size()],
         witness_layout,
         constraints_layout,
+        None,
     )?;
     let alphas = [ad_a, ad_b, ad_c];
 
