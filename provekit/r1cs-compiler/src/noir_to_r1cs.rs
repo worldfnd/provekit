@@ -1079,6 +1079,44 @@ mod tests {
             .contains("SHA256 hash constant exceeds 32 bits"));
     }
 
+    /// Regression: lowering the same circuit twice must give a byte-identical
+    /// R1CS. `R1CS::hash()` is bound into the WHIR domain separator, so any
+    /// dependence on `HashMap` iteration order (std `RandomState` is seeded
+    /// per map instance) makes prepared keys non-reproducible across builds.
+    /// The SHA-256 compression lowering goes through `spread_decompose`.
+    #[test]
+    fn sha256_compression_lowering_is_deterministic() {
+        let circuit: Circuit<NoirElement> = Circuit {
+            opcodes: vec![Opcode::BlackBoxFuncCall(
+                BlackBoxFuncCall::Sha256Compression {
+                    inputs:      Box::new(std::array::from_fn(|i| {
+                        FunctionInput::Witness(NoirWitness((i as u32) + 1))
+                    })),
+                    hash_values: Box::new(std::array::from_fn(|i| {
+                        FunctionInput::Witness(NoirWitness((i as u32) + 17))
+                    })),
+                    outputs:     Box::new(std::array::from_fn(|i| NoirWitness((i as u32) + 25))),
+                },
+            )],
+            private_parameters: BTreeSet::from_iter((1..=24).map(NoirWitness)),
+            ..Default::default()
+        };
+
+        let compile = || {
+            let (mut r1cs, mut witness_map, mut builders) =
+                noir_to_r1cs(&circuit).expect("noir_to_r1cs should succeed");
+            let lowered = r1cs.hash();
+            crate::optimize_r1cs(&mut r1cs, &mut builders, &mut witness_map, &HashSet::new())
+                .expect("optimize_r1cs should succeed");
+            (lowered, r1cs.hash())
+        };
+
+        let first = compile();
+        for _ in 0..3 {
+            assert_eq!(compile(), first, "R1CS hash differs between compilations");
+        }
+    }
+
     /// Solves `circuit` from the given ACIR witness values, bypassing ACVM, and
     /// reports whether the resulting witness satisfies every R1CS constraint.
     fn r1cs_accepts(circuit: &Circuit<NoirElement>, acir_values: &[(u32, NoirElement)]) -> bool {
