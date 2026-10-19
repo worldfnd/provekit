@@ -207,8 +207,8 @@ ark-ff = { version = "0.6", features = ["asm", "std"] }
 ark-poly = "0.6"
 ark-serialize = "0.6"
 ark-std = { version = "0.6", features = ["std"] }
-mavros-vm = { git = "https://github.com/reilabs/mavros", rev = "92ead6f2a919bbcc33ed07aa1bfa82062cfc652e" }
-mavros-artifacts = { git = "https://github.com/reilabs/mavros", rev = "92ead6f2a919bbcc33ed07aa1bfa82062cfc652e" }
+mavros-vm = { git = "https://github.com/reilabs/mavros", rev = "d85787d172e7ef1a1ba0a3ec9f85361f659d4ccc" }
+mavros-artifacts = { git = "https://github.com/reilabs/mavros", rev = "d85787d172e7ef1a1ba0a3ec9f85361f659d4ccc" }
 spongefish = { package = "provekit-spongefish", version = "=0.2.0", features = [
   "ark-ff",
   "sha2",
