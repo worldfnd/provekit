@@ -51,7 +51,3 @@ default = ["profiling-allocator"]
 profiling-allocator = []
 jemalloc = ["profiling-allocator", "dep:tikv-jemallocator"]
 tracy = ["profiling-allocator", "dep:tracing-tracy"]
-
-[dev-dependencies]
-mavros-artifacts.workspace = true
-mavros-vm.workspace = true
