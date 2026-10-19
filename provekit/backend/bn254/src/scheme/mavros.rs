@@ -227,7 +227,9 @@ impl MavrosColumnMap {
     }
 }
 
-// WASM layout stubs must match mavros_artifacts field types and order.
+// Wire-compatible stubs for WASM targets where mavros_vm (C bindings) is
+// unavailable. Field names, types, and ordering MUST match the real mavros_vm
+// types exactly.
 #[cfg(target_arch = "wasm32")]
 mod wasm_stubs {
     use serde::{Deserialize, Serialize};

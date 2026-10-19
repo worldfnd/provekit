@@ -1,4 +1,10 @@
-//! BN254 proving with Mavros derivatives and the generic WHIR prover.
+//! Mavros WHIR proving for bn254. The Mavros VM's automatic-differentiation
+//! pass returns `ark_bn254::Fr`, so this proving path is bn254-specific; it
+//! composes the generic proving primitives from `provekit-prover`
+//! (`run_zk_sumcheck_prover`, `prove_from_alphas`).
+//!
+//! TODO: make field-generic and fold into `WhirR1CSProver<P>` when the Mavros
+//! VM is field-agnostic.
 
 use {
     crate::{Bn254Field, FieldElement, MavrosColumnMap, TranscriptSponge},
