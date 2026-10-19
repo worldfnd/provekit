@@ -66,8 +66,8 @@ fn convert_mavros_r1cs_to_provekit(
     r1cs
 }
 
-/// Sparse rows need sorted, unique columns; folding the guard can create
-/// duplicates.
+/// Sparse rows need sorted, unique columns; Mavros rows are not guaranteed
+/// either, so canonicalize them after remapping.
 fn canonicalize_row(terms: &mut Vec<(usize, provekit_backend_bn254::FieldElement)>) {
     use ark_ff::Zero as _;
     terms.sort_by_key(|&(idx, _)| idx);
@@ -217,10 +217,12 @@ impl MavrosCompiler {
         let r1cs_bytes = std::fs::read(r1cs_path.as_ref()).context("while reading R1CS file")?;
         let artifact = R1CSArtifact::from_bytes(&r1cs_bytes)
             .map_err(|err| match err {
-                ArtifactError::MissingHeader => anyhow::anyhow!(
-                    "{err}; a legacy bincode `r1cs.bin` is not supported, recompile the circuit \
-                     with the Mavros revision pinned in the workspace `Cargo.toml`"
-                ),
+                ArtifactError::MissingHeader | ArtifactError::UnsupportedVersion(_) => {
+                    anyhow::anyhow!(
+                        "{err}; recompile the circuit with the Mavros revision pinned in the \
+                         workspace `Cargo.toml`"
+                    )
+                }
                 other => anyhow::Error::new(other),
             })
             .with_context(|| format!("while reading the Mavros R1CS artifact {r1cs_path:?}"))?;
