@@ -48,8 +48,8 @@ pub struct MavrosSchemeData {
 
 /// Moves public parameters, then the public return, to columns `1..=n`.
 /// Other columns retain their relative order, preserving witness layers.
-/// Constraint terms on the return guard use column 0 (constant 1), so a
-/// prover cannot disable the return check.
+/// Mavros already writes the public parameters first; the computed return
+/// sits at the tail of its algebraic section, so this brings it forward.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "CompactColumnMap", into = "CompactColumnMap")]
 pub struct MavrosColumnMap {
@@ -57,23 +57,20 @@ pub struct MavrosColumnMap {
     map:            Vec<u32>,
     /// Mavros public columns: parameters, then the return.
     public_columns: Vec<usize>,
-    /// Mavros column of the return guard, when the ABI declares a return.
-    guard:          Option<usize>,
 }
 
-/// Store public columns and the guard; rebuild the full permutation on load.
+/// Store the public columns; rebuild the full permutation on load.
 #[derive(Serialize, Deserialize)]
 struct CompactColumnMap {
     len:            usize,
     public_columns: Vec<usize>,
-    guard:          Option<usize>,
 }
 
 impl TryFrom<CompactColumnMap> for MavrosColumnMap {
     type Error = anyhow::Error;
 
     fn try_from(compact: CompactColumnMap) -> Result<Self> {
-        Self::build(compact.len, compact.public_columns, compact.guard)
+        Self::build(compact.len, compact.public_columns)
     }
 }
 
@@ -82,7 +79,6 @@ impl From<MavrosColumnMap> for CompactColumnMap {
         Self {
             len:            map.map.len(),
             public_columns: map.public_columns,
-            guard:          map.guard,
         }
     }
 }
@@ -90,7 +86,7 @@ impl From<MavrosColumnMap> for CompactColumnMap {
 impl MavrosColumnMap {
     /// Fix column 0, place public columns next, then append the remaining
     /// columns in order.
-    fn build(len: usize, public_columns: Vec<usize>, guard: Option<usize>) -> Result<Self> {
+    fn build(len: usize, public_columns: Vec<usize>) -> Result<Self> {
         ensure!(len > 0, "a Mavros witness has at least the constant column");
         let mut map = vec![u32::MAX; len];
         map[0] = 0;
@@ -105,12 +101,6 @@ impl MavrosColumnMap {
             );
             map[old] = (new + 1) as u32;
         }
-        if let Some(guard) = guard {
-            ensure!(
-                guard > 0 && guard < len && map[guard] == u32::MAX,
-                "guard column {guard} is not a private witness column"
-            );
-        }
         let mut next = public_columns.len() + 1;
         for slot in map.iter_mut().skip(1) {
             if *slot == u32::MAX {
@@ -121,7 +111,6 @@ impl MavrosColumnMap {
         Ok(Self {
             map,
             public_columns,
-            guard,
         })
     }
 }
@@ -163,6 +152,7 @@ impl MavrosColumnMap {
                 "Mavros manifest and the ABI disagree on the visibility of `{}`",
                 entry.name
             );
+            // A private parameter may have no columns: Mavros elides an unused one.
             if entry.visibility == ParamVisibility::Public && entry.width > 0 {
                 let start = entry.column_start.with_context(|| {
                     format!("public parameter `{}` has no witness columns", entry.name)
@@ -181,15 +171,14 @@ impl MavrosColumnMap {
                 visibility_of(abi_return.visibility) == ret.visibility,
                 "Mavros manifest and the ABI disagree on the visibility of the return"
             );
-            if ret.visibility == ParamVisibility::Public {
-                public_columns.extend(ret.column_start..ret.column_start + ret.len);
+            if ret.visibility == ParamVisibility::Public && ret.len > 0 {
+                let start = ret
+                    .column_start
+                    .context("the public return has no witness columns")?;
+                public_columns.extend(start..start + ret.len);
             }
         }
-        Self::build(
-            manifest.witness_count,
-            public_columns,
-            manifest.guard_column,
-        )
+        Self::build(manifest.witness_count, public_columns)
     }
 }
 
@@ -208,13 +197,9 @@ impl MavrosColumnMap {
         self.public_columns.len()
     }
 
-    /// Remap a constraint column, replacing the return guard with constant 1.
+    /// Remap a constraint column.
     pub fn constraint_column(&self, column: usize) -> usize {
-        if self.guard == Some(column) {
-            0
-        } else {
-            self.map[column] as usize
-        }
+        self.map[column] as usize
     }
 
     /// Reorder a witness prefix; it must cover the algebraic section.
@@ -226,11 +211,11 @@ impl MavrosColumnMap {
         out
     }
 
-    /// Remap derivatives, adding the guard's contribution to column 0.
+    /// Remap derivatives onto ProveKit columns.
     pub fn permute_derivatives(&self, derivatives: &[FieldElement]) -> Vec<FieldElement> {
         let mut out = vec![FieldElement::zero(); derivatives.len()];
         for (old, value) in derivatives.iter().enumerate() {
-            out[self.constraint_column(old)] += value;
+            out[self.constraint_column(old)] = *value;
         }
         out
     }
@@ -243,8 +228,6 @@ mod wasm_stubs {
 
     #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
     pub struct WitnessLayout {
-        pub guard_index:         Option<usize>,
-        pub return_len:          usize,
         pub algebraic_size:      usize,
         pub multiplicities_size: usize,
         pub challenges_size:     usize,
@@ -304,18 +287,24 @@ mod tests {
         }
     }
 
-    fn param(name: &str, visibility: ParamVisibility, blob_offset: usize) -> ManifestParam {
+    fn param(
+        name: &str,
+        visibility: ParamVisibility,
+        blob_offset: usize,
+        column_start: Option<usize>,
+    ) -> ManifestParam {
         ManifestParam {
             name: name.to_string(),
             visibility,
             blob_offset,
             width: 1,
-            column_start: Some(1 + blob_offset),
+            column_start,
         }
     }
 
     /// `fn main(x: Field, y: pub Field) -> pub Field` with Mavros columns
-    /// `[1, x, y, guard, ret, t5, t6 | m7, m8 | c9, d10, l11]`.
+    /// `[1, y, x, t3, t4, ret, t6 | m7, m8 | c9, d10, l11]`: the public `y`
+    /// first, the private `x` next, the computed return after main's work.
     fn abi_with_return() -> Abi {
         Abi {
             parameters:  vec![
@@ -332,14 +321,13 @@ mod tests {
 
     fn manifest_with_return() -> WitnessManifest {
         WitnessManifest {
-            entry_blob_field_count: 4,
+            entry_blob_field_count: 2,
             parameters:             vec![
-                param("x", ParamVisibility::Private, 0),
-                param("y", ParamVisibility::Public, 1),
+                param("x", ParamVisibility::Private, 0, Some(2)),
+                param("y", ParamVisibility::Public, 1, Some(1)),
             ],
-            guard_column:           Some(3),
             returns:                Some(ReturnSlot {
-                column_start: 4,
+                column_start: Some(5),
                 len:          1,
                 visibility:   ParamVisibility::Public,
             }),
@@ -351,31 +339,31 @@ mod tests {
     }
 
     #[test]
-    fn column_remap_preserves_witness_layers() {
+    fn column_remap_brings_the_return_forward() {
         let map =
             MavrosColumnMap::from_manifest(&manifest_with_return(), &abi_with_return()).unwrap();
         assert_eq!(map.num_public_inputs(), 2);
-        // y → 1, ret → 2, then x, guard, t5, t6 keep their relative order.
-        let expected: Vec<u32> = vec![0, 3, 1, 4, 2, 5, 6, 7, 8, 9, 10, 11];
+        // y stays at 1, ret → 2, then x, t3, t4, t6 keep their relative order.
+        let expected: Vec<u32> = vec![0, 1, 3, 4, 5, 2, 6, 7, 8, 9, 10, 11];
         assert_eq!(map.map, expected);
-        assert_eq!(map.constraint_column(3), 0);
-        assert_eq!(map.constraint_column(2), 1);
+        assert_eq!(map.constraint_column(5), 2);
+        assert_eq!(map.constraint_column(2), 3);
         assert_eq!(map.constraint_column(7), 7);
 
         let w1: Vec<FieldElement> = (0..9).map(|i| FieldElement::from(100 + i as u64)).collect();
         let permuted = map.permute_witness(&w1);
-        assert_eq!(permuted[1], w1[2]);
-        assert_eq!(permuted[2], w1[4]);
-        assert_eq!(permuted[3], w1[1]);
-        assert_eq!(permuted[4], w1[3]);
+        assert_eq!(permuted[1], w1[1]);
+        assert_eq!(permuted[2], w1[5]);
+        assert_eq!(permuted[3], w1[2]);
+        assert_eq!(permuted[5], w1[4]);
         assert_eq!(&permuted[7..], &w1[7..]);
 
         let derivatives: Vec<FieldElement> =
             (0..12).map(|i| FieldElement::from(1u64 << i)).collect();
-        let folded = map.permute_derivatives(&derivatives);
-        assert_eq!(folded[0], derivatives[0] + derivatives[3]);
-        assert_eq!(folded[4], FieldElement::zero());
-        assert_eq!(folded[1], derivatives[2]);
+        let remapped = map.permute_derivatives(&derivatives);
+        assert_eq!(remapped[0], derivatives[0]);
+        assert_eq!(remapped[2], derivatives[5]);
+        assert_eq!(remapped[3], derivatives[2]);
     }
 
     #[test]
@@ -394,12 +382,18 @@ mod tests {
         hidden.parameters[1].visibility = ParamVisibility::Private;
         assert!(fails(&hidden, &abi));
 
-        let mut elided = manifest.clone();
-        elided.parameters[1].column_start = None;
-        assert!(fails(&elided, &abi));
+        let mut elided_public = manifest.clone();
+        elided_public.parameters[1].column_start = None;
+        assert!(fails(&elided_public, &abi));
+
+        // An unused private parameter has no columns and changes nothing.
+        let mut elided_private = manifest.clone();
+        elided_private.parameters[0].column_start = None;
+        let map = MavrosColumnMap::from_manifest(&elided_private, &abi).unwrap();
+        assert_eq!(map.num_public_inputs(), 2);
 
         let mut duplicated = manifest.clone();
-        duplicated.returns.as_mut().unwrap().column_start = 2;
+        duplicated.returns.as_mut().unwrap().column_start = Some(1);
         assert!(fails(&duplicated, &abi));
 
         let mut wide_return = abi.clone();
