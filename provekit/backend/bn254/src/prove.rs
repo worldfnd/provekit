@@ -338,7 +338,6 @@ fn prove_mavros_inner(
     )
     .context("While running Mavros witness phase 1")?;
 
-    // Bind public inputs to the same columns as the remapped R1CS.
     let column_map = &prover.column_map;
     let num_public_inputs = prover.num_public_inputs;
     let w1 = column_map.permute_witness(&phase1.out_wit_pre_comm);
@@ -348,8 +347,6 @@ fn prove_mavros_inner(
         PublicInputs::from_vec(w1[1..=num_public_inputs].to_vec())
     };
 
-    // The circuit computes its return; a declared one must agree with it, as
-    // `nargo` checks.
     if let (Some(declared), Some(ret)) = (&declared_return, &prover.abi.return_type) {
         let len = ret.abi_type.field_count() as usize;
         ensure!(
@@ -364,9 +361,7 @@ fn prove_mavros_inner(
         );
     }
 
-    // Set up transcript with public inputs bound to the instance; the Mavros R1CS
-    // digest is the session id, so a proof is bound to the exact compiler
-    // output the keys came from.
+    // Set up transcript with public inputs bound to the instance.
     let instance = public_inputs.hash_bytes::<Bn254Field>(prover.hash_config);
     let mut ds = prover.whir_for_witness.create_domain_separator();
     ds.session_id = prover.mavros_digest;
