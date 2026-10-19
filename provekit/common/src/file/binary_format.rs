@@ -16,9 +16,7 @@ pub const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
 // Major must match exactly on read (an incompatible layout is rejected); a
 // reader accepts any file whose minor is >= its own.
 //
-// 2.1: the Mavros key layout; the Mavros prover, scheme and verifier records
-// carry the Mavros artifact digest (`mavros_digest`, covering the R1CS and its
-// witness manifest), bound into the transcript as its session id.
+// 2.1: the Mavros prover, scheme and verifier records carry `mavros_digest`.
 // ---------------------------------------------------------------------------
 
 pub const PROVER_FORMAT: [u8; 8] = *b"PrvKitPr";

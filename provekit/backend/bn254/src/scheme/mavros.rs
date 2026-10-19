@@ -27,11 +27,7 @@ pub struct MavrosProver {
     pub constraints_layout: ConstraintsLayout,
     pub witness_layout:     WitnessLayout,
     pub hash_config:        HashConfig,
-    /// Maps Mavros witness and derivative columns to ProveKit columns.
     pub column_map:         MavrosColumnMap,
-    /// Digest of the Mavros `r1cs.bin` these keys were prepared from, bound
-    /// into the transcript as its session id. Kept last: postcard is
-    /// positional and readers accept newer minors.
     pub mavros_digest:      [u8; 32],
 }
 
@@ -46,26 +42,19 @@ pub struct MavrosSchemeData {
     pub constraints_layout: ConstraintsLayout,
     pub witness_layout:     WitnessLayout,
     pub hash_config:        HashConfig,
-    /// The R1CS already uses these ProveKit column assignments.
     pub column_map:         MavrosColumnMap,
-    /// Digest of the Mavros `r1cs.bin` the scheme was compiled from.
     pub mavros_digest:      [u8; 32],
 }
 
-/// Moves public parameters, then the public return, to columns `1..=n`.
-/// Other columns retain their relative order, preserving witness layers.
-/// Mavros already writes the public parameters first; the computed return
-/// sits at the tail of its algebraic section, so this brings it forward.
+/// Permutes Mavros witness columns so the public parameters, then the public
+/// return, occupy columns `1..=n`; other columns keep their relative order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "CompactColumnMap", into = "CompactColumnMap")]
 pub struct MavrosColumnMap {
-    /// `map[j]` is the ProveKit column of Mavros column `j`; a bijection.
     map:            Vec<u32>,
-    /// Mavros public columns: parameters, then the return.
     public_columns: Vec<usize>,
 }
 
-/// Store the public columns; rebuild the full permutation on load.
 #[derive(Serialize, Deserialize)]
 struct CompactColumnMap {
     len:            usize,
@@ -90,8 +79,6 @@ impl From<MavrosColumnMap> for CompactColumnMap {
 }
 
 impl MavrosColumnMap {
-    /// Fix column 0, place public columns next, then append the remaining
-    /// columns in order.
     fn build(len: usize, public_columns: Vec<usize>) -> Result<Self> {
         ensure!(len > 0, "a Mavros witness has at least the constant column");
         let mut map = vec![u32::MAX; len];
@@ -123,9 +110,6 @@ impl MavrosColumnMap {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl MavrosColumnMap {
-    /// Build the map from an artifact manifest (already validated against its
-    /// R1CS by `R1CSArtifact::from_bytes`), rejecting disagreements with the
-    /// ABI.
     pub fn from_manifest(manifest: &WitnessManifest, abi: &Abi) -> Result<Self> {
         ensure!(
             manifest.parameters.len() == abi.parameters.len(),
@@ -198,17 +182,14 @@ fn visibility_of(visibility: AbiVisibility) -> ParamVisibility {
 }
 
 impl MavrosColumnMap {
-    /// Number of public parameter and return fields.
     pub fn num_public_inputs(&self) -> usize {
         self.public_columns.len()
     }
 
-    /// Remap a constraint column.
     pub fn constraint_column(&self, column: usize) -> usize {
         self.map[column] as usize
     }
 
-    /// Reorder a witness prefix; it must cover the algebraic section.
     pub fn permute_witness(&self, witness: &[FieldElement]) -> Vec<FieldElement> {
         let mut out = vec![FieldElement::zero(); witness.len()];
         for (old, value) in witness.iter().enumerate() {
@@ -217,7 +198,6 @@ impl MavrosColumnMap {
         out
     }
 
-    /// Remap derivatives onto ProveKit columns.
     pub fn permute_derivatives(&self, derivatives: &[FieldElement]) -> Vec<FieldElement> {
         let mut out = vec![FieldElement::zero(); derivatives.len()];
         for (old, value) in derivatives.iter().enumerate() {

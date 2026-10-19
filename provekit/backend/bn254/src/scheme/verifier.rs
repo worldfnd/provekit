@@ -20,9 +20,6 @@ pub struct Verifier {
     pub spark_setup:      Option<SparkSetup>,
     #[serde(with = "serde_jsonify")]
     pub abi:              Abi,
-    /// Digest of the Mavros `r1cs.bin` the keys were prepared from, bound into
-    /// the transcript as its session id; `None` for the Noir frontend. Kept
-    /// last: postcard is positional and readers accept newer minors.
     pub mavros_digest:    Option<[u8; 32]>,
 }
 
