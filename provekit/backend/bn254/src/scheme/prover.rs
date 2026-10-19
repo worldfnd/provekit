@@ -55,6 +55,7 @@ impl Prover {
                 witness_layout:     d.witness_layout,
                 hash_config:        d.hash_config,
                 column_map:         d.column_map,
+                mavros_digest:      d.mavros_digest,
             }),
         }
     }
