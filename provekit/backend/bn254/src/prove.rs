@@ -320,8 +320,8 @@ fn prove_mavros_inner(
 ) -> Result<(ProvekitProof<Bn254Field>, Option<SparkQueryBatch>)> {
     crate::register();
 
-    let params = crate::frontend::input::ordered_mavros_inputs(&prover.abi, &input_map)?;
-    let declared_return = crate::frontend::input::declared_mavros_return(&prover.abi, &input_map)?;
+    let (params, declared_return) =
+        crate::frontend::input::ordered_mavros_inputs(&prover.abi, &input_map)?;
     let supplied = mavros_interpreter::flattened_param_count(&params);
     let expected = mavros_vm::bytecode::parse_program_header(&prover.binary).entry_blob_field_count;
     ensure!(
@@ -340,7 +340,7 @@ fn prove_mavros_inner(
 
     let column_map = &prover.column_map;
     let num_public_inputs = prover.num_public_inputs;
-    let w1 = column_map.permute_witness(&phase1.out_wit_pre_comm);
+    let w1 = column_map.permute(&phase1.out_wit_pre_comm);
     let public_inputs = if num_public_inputs == 0 {
         PublicInputs::new()
     } else {
