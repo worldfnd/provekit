@@ -321,6 +321,7 @@ fn prove_mavros_inner(
     crate::register();
 
     let params = crate::frontend::input::ordered_mavros_inputs(&prover.abi, &input_map)?;
+    let declared_return = crate::frontend::input::declared_mavros_return(&prover.abi, &input_map)?;
     let supplied = mavros_interpreter::flattened_param_count(&params);
     let expected = mavros_vm::bytecode::parse_program_header(&prover.binary).entry_blob_field_count;
     ensure!(
@@ -346,6 +347,22 @@ fn prove_mavros_inner(
     } else {
         PublicInputs::from_vec(w1[1..=num_public_inputs].to_vec())
     };
+
+    // The circuit computes its return; a declared one must agree with it, as
+    // `nargo` checks.
+    if let (Some(declared), Some(ret)) = (&declared_return, &prover.abi.return_type) {
+        let len = ret.abi_type.field_count() as usize;
+        ensure!(
+            ret.visibility == noirc_abi::AbiVisibility::Public,
+            "a declared `return` can only be checked against a public return"
+        );
+        let computed = &w1[1 + num_public_inputs - len..=num_public_inputs];
+        ensure!(
+            computed == declared.as_slice(),
+            "the declared `return` {declared:?} does not match the value the circuit computed \
+             {computed:?}"
+        );
+    }
 
     // Set up transcript with public inputs bound to the instance.
     let instance = public_inputs.hash_bytes::<Bn254Field>(prover.hash_config);

@@ -1,7 +1,6 @@
 use {
     anyhow::{bail, ensure, Context, Result},
     mavros_artifacts::InputValueOrdered,
-    mavros_vm::interpreter::flattened_param_count,
     noirc_abi::{
         input_parser::{Format, InputValue},
         Abi, AbiType, InputMap, MAIN_RETURN_NAME,
@@ -27,10 +26,10 @@ pub fn read_prover_inputs(file_path: &Path, abi: &Abi) -> Result<InputMap> {
         .with_context(|| format!("while parsing inputs from {}", file_path.display()))
 }
 
-/// Order parameters by ABI declaration, then append guard = 1 and the required
-/// return.
+/// Order parameters by ABI declaration: the Mavros entry blob. The return is
+/// computed by the circuit, not supplied; see [`declared_mavros_return`].
 pub fn ordered_mavros_inputs(abi: &Abi, input_map: &InputMap) -> Result<Vec<InputValueOrdered>> {
-    let mut ordered_params = Vec::with_capacity(abi.parameters.len() + 2);
+    let mut ordered_params = Vec::with_capacity(abi.parameters.len());
     for param in &abi.parameters {
         let param_value = input_map
             .get(&param.name)
@@ -40,31 +39,23 @@ pub fn ordered_mavros_inputs(abi: &Abi, input_map: &InputMap) -> Result<Vec<Inpu
                 .with_context(|| format!("while ordering parameter `{}`", param.name))?,
         );
     }
-
-    if let Some(return_type) = &abi.return_type {
-        let return_value = input_map.get(MAIN_RETURN_NAME).ok_or_else(|| {
-            anyhow::anyhow!(
-                "the ABI declares a return value but the inputs do not supply `{MAIN_RETURN_NAME}`"
-            )
-        })?;
-        ordered_params.push(InputValueOrdered::Field(1u64.into()));
-        ordered_params.push(
-            ordered_value(&return_type.abi_type, return_value)
-                .with_context(|| format!("while ordering `{MAIN_RETURN_NAME}`"))?,
-        );
-    }
-
-    let flattened = flattened_param_count(&ordered_params);
-    let expected = abi.field_count() as usize
-        + abi
-            .return_type
-            .as_ref()
-            .map_or(0, |ret| 1 + ret.abi_type.field_count() as usize);
-    ensure!(
-        flattened == expected,
-        "ordered inputs flatten to {flattened} field elements but the ABI declares {expected}"
-    );
     Ok(ordered_params)
+}
+
+/// The `return` the inputs declare, flattened, when the ABI has a return and
+/// the inputs name one. It is compared with the computed return after witness
+/// generation, as `nargo` does; it is never a circuit input.
+pub fn declared_mavros_return(
+    abi: &Abi,
+    input_map: &InputMap,
+) -> Result<Option<Vec<crate::FieldElement>>> {
+    let (Some(return_type), Some(value)) = (&abi.return_type, input_map.get(MAIN_RETURN_NAME))
+    else {
+        return Ok(None);
+    };
+    let ordered = ordered_value(&return_type.abi_type, value)
+        .with_context(|| format!("while ordering `{MAIN_RETURN_NAME}`"))?;
+    Ok(Some(mavros_vm::interpreter::flatten_param_vec(&[ordered])))
 }
 
 fn ordered_value(abi_type: &AbiType, value: &InputValue) -> Result<InputValueOrdered> {

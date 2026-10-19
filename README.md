@@ -114,7 +114,7 @@ Swift, Kotlin, troubleshooting, and deployment checklists, see
 
 ## Advanced Usage
 
-- **Direct R1CS frontend:** after generating Mavros artifacts, call `provekit-cli prepare --compiler mavros <artifacts.json> --r1cs <r1cs.bin>`. Circuits with a return require a `return` entry in `Prover.toml`. Use `scripts/mavros_parity.sh` to compare both frontends.
+- **Direct R1CS frontend:** after generating Mavros artifacts, call `provekit-cli prepare --compiler mavros <artifacts.json> --r1cs <r1cs.bin>`. The circuit computes its return; a `return` entry in `Prover.toml` is optional and, when present, checked against it. Use `scripts/mavros_parity.sh` to compare both frontends.
 - **Recursive verifier inputs:** `provekit-cli generate-gnark-inputs <verifier.pkv> <proof.np>` writes `params_for_recursive_verifier` and `r1cs.json` by default; use `--params` and `--r1cs` to override those paths.
 - **Inspection commands:** use `circuit-stats` for Noir ACIR/R1CS structure, `analyze-pkp` for Noir prover-key size breakdowns, and `show-inputs` for public inputs.
 - **FFI integration:** start in [`tooling/provekit-ffi/`](tooling/provekit-ffi/) for C ABI headers, mobile build targets, and host-language examples.

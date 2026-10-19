@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Compare proofs, public inputs, prove time and proof size across Noir and Mavros.
 # Usage: scripts/mavros_parity.sh [--cli PATH] [--mavros PATH] [--out DIR] CIRCUIT_DIR...
-# Each binary package needs Prover.toml, including a declared return when present.
+# Each binary package needs Prover.toml; a declared return is optional and checked when present.
 # Exit non-zero on frontend failure or differing public inputs.
 set -euo pipefail
 
