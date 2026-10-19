@@ -36,6 +36,18 @@ pub trait WhirR1CSVerifier<P: ProofField> {
         proof: &WhirR1CSProof,
         public_inputs: &PublicInputs<Base<P>>,
         r1cs: &R1CS<Base<P>>,
+    ) -> Result<()> {
+        self.verify_with_session(proof, public_inputs, r1cs, None)
+    }
+
+    /// Verify with `session` as the transcript's session id, mirroring a
+    /// prover that bound one (the Mavros frontend binds its R1CS digest).
+    fn verify_with_session(
+        &self,
+        proof: &WhirR1CSProof,
+        public_inputs: &PublicInputs<Base<P>>,
+        r1cs: &R1CS<Base<P>>,
+        session: Option<&[u8; 32]>,
     ) -> Result<()>;
 }
 
@@ -44,11 +56,12 @@ where
     Standard: Distribution<Ext<P>>,
 {
     #[instrument(skip_all)]
-    fn verify(
+    fn verify_with_session(
         &self,
         proof: &WhirR1CSProof,
         public_inputs: &PublicInputs<Base<P>>,
         r1cs: &R1CS<Base<P>>,
+        session: Option<&[u8; 32]>,
     ) -> Result<()> {
         let actual_r1cs_hash = r1cs.hash();
         anyhow::ensure!(
@@ -60,7 +73,11 @@ where
 
         let public_inputs_hash = P::hash_public_inputs(self.hash_config, &public_inputs.0);
         let instance = P::ext_to_bytes_le(&public_inputs_hash);
-        let ds = self.create_domain_separator().instance(&instance);
+        let mut ds = self.create_domain_separator();
+        if let Some(session) = session {
+            ds.session_id = *session;
+        }
+        let ds = ds.instance(&instance);
         let whir_proof = Proof {
             narg_string: proof.narg_string.clone(),
             hints: proof.hints.clone(),
