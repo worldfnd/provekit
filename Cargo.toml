@@ -214,4 +214,4 @@ spongefish = { package = "provekit-spongefish", version = "=0.2.0", features = [
   "sha2",
 ] }
 spongefish-pow = { package = "provekit-spongefish-pow", version = "=0.2.0" }
-whir = { git = "https://github.com/worldfnd/whir.git", rev = "afec1fac27c1c8cc7331aa5668bc9800f104d92c", features = ["tracing", "rs_in_order"] }
+whir = { git = "https://github.com/worldfnd/whir.git", rev = "d2b16529d0a4fad4f53d088281e9062898d35f5b", features = ["tracing", "rs_in_order"] }
