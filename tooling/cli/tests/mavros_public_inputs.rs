@@ -74,3 +74,17 @@ fn declared_return_is_optional_and_checked() {
     let err = prove(&scheme, Some(1025)).expect_err("a wrong declared return is rejected");
     assert!(format!("{err:#}").contains("return"), "{err:#}");
 }
+
+/// The transcript session id is the Mavros digest, so a verifier holding
+/// another digest, or none, rejects an honest proof.
+#[test]
+fn verifier_is_bound_to_the_mavros_digest() {
+    let scheme = fixture_scheme();
+    let proof = prove(&scheme, None).unwrap();
+    verify(&scheme, &proof).unwrap();
+    for digest in [None, Some([7u8; 32])] {
+        let mut verifier = Verifier::from_noir_proof_scheme(scheme.clone());
+        verifier.mavros_digest = digest;
+        assert!(verifier.verify(&proof).is_err(), "{digest:?}");
+    }
+}

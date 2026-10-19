@@ -231,13 +231,18 @@ impl MavrosCompiler {
             "Mavros artifact is over field {:?} but this backend proves over bn254",
             artifact.field()
         );
+        let mavros_digest = artifact.digest();
         let (_, manifest, mavros_r1cs) = artifact.into_parts();
 
         info!(
-            "R1CS: {} constraints, witness layout: algebraic={}, challenges={}",
+            "R1CS: {} constraints, witness layout: algebraic={}, challenges={}, digest={}",
             mavros_r1cs.constraints.len(),
             mavros_r1cs.witness_layout.algebraic_size,
             mavros_r1cs.witness_layout.challenges_size,
+            mavros_digest
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>(),
         );
 
         let column_map = MavrosColumnMap::from_manifest(&manifest, &abi)
@@ -270,6 +275,7 @@ impl MavrosCompiler {
             witness_layout: mavros_r1cs.witness_layout,
             hash_config,
             column_map,
+            mavros_digest,
         }))
     }
 }

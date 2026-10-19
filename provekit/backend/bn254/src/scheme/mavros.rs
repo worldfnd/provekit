@@ -29,6 +29,10 @@ pub struct MavrosProver {
     pub hash_config:        HashConfig,
     /// Maps Mavros witness and derivative columns to ProveKit columns.
     pub column_map:         MavrosColumnMap,
+    /// Digest of the Mavros `r1cs.bin` these keys were prepared from, bound
+    /// into the transcript as its session id. Kept last: postcard is
+    /// positional and readers accept newer minors.
+    pub mavros_digest:      [u8; 32],
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +48,8 @@ pub struct MavrosSchemeData {
     pub hash_config:        HashConfig,
     /// The R1CS already uses these ProveKit column assignments.
     pub column_map:         MavrosColumnMap,
+    /// Digest of the Mavros `r1cs.bin` the scheme was compiled from.
+    pub mavros_digest:      [u8; 32],
 }
 
 /// Moves public parameters, then the public return, to columns `1..=n`.

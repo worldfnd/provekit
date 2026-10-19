@@ -364,12 +364,13 @@ fn prove_mavros_inner(
         );
     }
 
-    // Set up transcript with public inputs bound to the instance.
+    // Set up transcript with public inputs bound to the instance; the Mavros R1CS
+    // digest is the session id, so a proof is bound to the exact compiler
+    // output the keys came from.
     let instance = public_inputs.hash_bytes::<Bn254Field>(prover.hash_config);
-    let ds = prover
-        .whir_for_witness
-        .create_domain_separator()
-        .instance(&instance);
+    let mut ds = prover.whir_for_witness.create_domain_separator();
+    ds.session_id = prover.mavros_digest;
+    let ds = ds.instance(&instance);
     let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(prover.hash_config));
 
     info!(
