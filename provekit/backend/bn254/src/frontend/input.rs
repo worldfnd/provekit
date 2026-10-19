@@ -85,37 +85,9 @@ fn ordered_value(abi_type: &AbiType, value: &InputValue) -> Result<InputValueOrd
                 })
                 .collect::<Result<Vec<_>>>()?,
         ),
-        (InputValue::String(string), AbiType::String { length }) => {
-            let bytes = string.as_bytes();
-            ensure!(
-                bytes.len() == *length as usize,
-                "string value has {} bytes but the ABI declares {length}",
-                bytes.len()
-            );
-            InputValueOrdered::Vec(
-                bytes
-                    .iter()
-                    .map(|byte| InputValueOrdered::Field(u64::from(*byte).into()))
-                    .collect(),
-            )
-        }
-        (InputValue::Vec(vec_elements), AbiType::Tuple { fields }) => {
-            ensure!(
-                vec_elements.len() == fields.len(),
-                "tuple value has {} elements but the ABI declares {}",
-                vec_elements.len(),
-                fields.len()
-            );
-            InputValueOrdered::Struct(
-                fields
-                    .iter()
-                    .zip(vec_elements)
-                    .enumerate()
-                    .map(|(idx, (field_type, field_value))| {
-                        Ok((idx.to_string(), ordered_value(field_type, field_value)?))
-                    })
-                    .collect::<Result<Vec<_>>>()?,
-            )
+        (InputValue::String(_), _) => bail!("string inputs are not supported for ordered params"),
+        (InputValue::Vec(_), AbiType::Tuple { .. }) => {
+            bail!("tuple inputs are not supported for ordered params")
         }
         _ => bail!("input value does not match ABI type: {value:?} vs {abi_type:?}"),
     })
