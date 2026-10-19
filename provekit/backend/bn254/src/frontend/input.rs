@@ -8,7 +8,6 @@ use {
     std::{fs, path::Path},
 };
 
-/// Parse a Noir prover input file (`Prover.toml` or `.json`) against `abi`.
 pub fn read_prover_inputs(file_path: &Path, abi: &Abi) -> Result<InputMap> {
     let ext = file_path
         .extension()
@@ -26,8 +25,6 @@ pub fn read_prover_inputs(file_path: &Path, abi: &Abi) -> Result<InputMap> {
         .with_context(|| format!("while parsing inputs from {}", file_path.display()))
 }
 
-/// Order parameters by ABI declaration: the Mavros entry blob. The return is
-/// computed by the circuit, not supplied; see [`declared_mavros_return`].
 pub fn ordered_mavros_inputs(abi: &Abi, input_map: &InputMap) -> Result<Vec<InputValueOrdered>> {
     let mut ordered_params = Vec::with_capacity(abi.parameters.len());
     for param in &abi.parameters {
@@ -42,9 +39,6 @@ pub fn ordered_mavros_inputs(abi: &Abi, input_map: &InputMap) -> Result<Vec<Inpu
     Ok(ordered_params)
 }
 
-/// The `return` the inputs declare, flattened, when the ABI has a return and
-/// the inputs name one. It is compared with the computed return after witness
-/// generation, as `nargo` does; it is never a circuit input.
 pub fn declared_mavros_return(
     abi: &Abi,
     input_map: &InputMap,

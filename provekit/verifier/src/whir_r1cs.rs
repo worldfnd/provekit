@@ -41,8 +41,6 @@ pub trait WhirR1CSVerifier<P: ProofField> {
         self.verify_with_session(proof, public_inputs, r1cs, None)
     }
 
-    /// Verify with `session` as the transcript's session id, mirroring a
-    /// prover that bound one (the Mavros frontend binds its R1CS digest).
     fn verify_with_session(
         &self,
         proof: &WhirR1CSProof,

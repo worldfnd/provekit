@@ -13,7 +13,6 @@ use {
     tracing::{info, instrument},
 };
 
-/// Remap Mavros constraints into ProveKit's sparse R1CS.
 fn convert_mavros_r1cs_to_provekit(
     mavros_r1cs: &MavrosR1CS,
     column_map: &MavrosColumnMap,
@@ -66,8 +65,7 @@ fn convert_mavros_r1cs_to_provekit(
     r1cs
 }
 
-/// Sparse rows need sorted, unique columns; Mavros rows are not guaranteed
-/// either, so canonicalize them after remapping.
+/// Sparse rows need sorted, unique columns.
 fn canonicalize_row(terms: &mut Vec<(usize, provekit_backend_bn254::FieldElement)>) {
     use ark_ff::Zero as _;
     terms.sort_by_key(|&(idx, _)| idx);

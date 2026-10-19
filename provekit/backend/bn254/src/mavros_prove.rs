@@ -152,7 +152,6 @@ fn prove_mavros_inner(
         constraints_layout,
         None,
     )?;
-    // Match the verifier's remapped R1CS, including the folded return guard.
     let alphas = [ad_a, ad_b, ad_c].map(|d| column_map.permute_derivatives(&d));
 
     let blinding_weights = expand_powers::<4, _>(&alpha);

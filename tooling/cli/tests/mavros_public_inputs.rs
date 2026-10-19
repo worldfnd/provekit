@@ -75,8 +75,6 @@ fn declared_return_is_optional_and_checked() {
     assert!(format!("{err:#}").contains("return"), "{err:#}");
 }
 
-/// The transcript session id is the Mavros digest, so a verifier holding
-/// another digest, or none, rejects an honest proof.
 #[test]
 fn verifier_is_bound_to_the_mavros_digest() {
     let scheme = fixture_scheme();
