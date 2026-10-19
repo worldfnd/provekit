@@ -3079,24 +3079,27 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 [[package]]
 name = "mavros-artifacts"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=92ead6f2a919bbcc33ed07aa1bfa82062cfc652e#92ead6f2a919bbcc33ed07aa1bfa82062cfc652e"
+source = "git+https://github.com/reilabs/mavros?rev=d85787d172e7ef1a1ba0a3ec9f85361f659d4ccc#d85787d172e7ef1a1ba0a3ec9f85361f659d4ccc"
 dependencies = [
  "ark-bn254",
  "ark-ff",
+ "bincode",
  "num-traits",
  "serde",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
 [[package]]
 name = "mavros-limb-arith"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=92ead6f2a919bbcc33ed07aa1bfa82062cfc652e#92ead6f2a919bbcc33ed07aa1bfa82062cfc652e"
+source = "git+https://github.com/reilabs/mavros?rev=d85787d172e7ef1a1ba0a3ec9f85361f659d4ccc#d85787d172e7ef1a1ba0a3ec9f85361f659d4ccc"
 
 [[package]]
 name = "mavros-opcode-gen"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=92ead6f2a919bbcc33ed07aa1bfa82062cfc652e#92ead6f2a919bbcc33ed07aa1bfa82062cfc652e"
+source = "git+https://github.com/reilabs/mavros?rev=d85787d172e7ef1a1ba0a3ec9f85361f659d4ccc#d85787d172e7ef1a1ba0a3ec9f85361f659d4ccc"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3107,7 +3110,7 @@ dependencies = [
 [[package]]
 name = "mavros-vm"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=92ead6f2a919bbcc33ed07aa1bfa82062cfc652e#92ead6f2a919bbcc33ed07aa1bfa82062cfc652e"
+source = "git+https://github.com/reilabs/mavros?rev=d85787d172e7ef1a1ba0a3ec9f85361f659d4ccc#d85787d172e7ef1a1ba0a3ec9f85361f659d4ccc"
 dependencies = [
  "ark-ff",
  "mavros-artifacts",
@@ -4581,9 +4584,7 @@ dependencies = [
  "argh",
  "ark-ff",
  "base64 0.22.1",
- "bincode",
  "hex",
- "mavros-artifacts",
  "nargo",
  "nargo_toml",
  "noir_artifact_cli",
@@ -4697,7 +4698,6 @@ dependencies = [
  "anyhow",
  "ark-ff",
  "ark-std",
- "bincode",
  "mavros-artifacts",
  "noirc_abi",
  "noirc_artifacts",
