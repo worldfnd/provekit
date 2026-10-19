@@ -13,25 +13,18 @@ use {
     },
     provekit_common::{HashConfig, WitnessCommitmentMode},
     provekit_r1cs_compiler::MavrosCompiler,
-    std::path::{Path, PathBuf},
+    std::path::PathBuf,
 };
 
-fn fixture_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../noir-examples/power")
-}
-
-fn compile(basic: &Path, r1cs: &Path) -> Result<NoirProofScheme> {
+fn fixture_scheme() -> NoirProofScheme {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../noir-examples/power");
     MavrosCompiler::compile(
-        basic,
-        r1cs,
+        dir.join("basic.json"),
+        dir.join("r1cs.bin"),
         HashConfig::Sha256,
         WitnessCommitmentMode::default(),
     )
-}
-
-fn fixture_scheme() -> NoirProofScheme {
-    let dir = fixture_dir();
-    compile(&dir.join("basic.json"), &dir.join("r1cs.bin")).unwrap()
+    .unwrap()
 }
 
 fn prove(
