@@ -25,31 +25,29 @@ pub fn read_prover_inputs(file_path: &Path, abi: &Abi) -> Result<InputMap> {
         .with_context(|| format!("while parsing inputs from {}", file_path.display()))
 }
 
-pub fn ordered_mavros_inputs(abi: &Abi, input_map: &InputMap) -> Result<Vec<InputValueOrdered>> {
-    let mut ordered_params = Vec::with_capacity(abi.parameters.len());
+pub fn ordered_mavros_inputs(
+    abi: &Abi,
+    input_map: &InputMap,
+) -> Result<(Vec<InputValueOrdered>, Option<Vec<crate::FieldElement>>)> {
+    let mut params = Vec::with_capacity(abi.parameters.len());
     for param in &abi.parameters {
-        let param_value = input_map
+        let value = input_map
             .get(&param.name)
             .ok_or_else(|| anyhow::anyhow!("inputs do not supply parameter `{}`", param.name))?;
-        ordered_params.push(
-            ordered_value(&param.typ, param_value)
+        params.push(
+            ordered_value(&param.typ, value)
                 .with_context(|| format!("while ordering parameter `{}`", param.name))?,
         );
     }
-    Ok(ordered_params)
-}
-
-pub fn declared_mavros_return(
-    abi: &Abi,
-    input_map: &InputMap,
-) -> Result<Option<Vec<crate::FieldElement>>> {
-    let (Some(return_type), Some(value)) = (&abi.return_type, input_map.get(MAIN_RETURN_NAME))
-    else {
-        return Ok(None);
+    let declared_return = match (&abi.return_type, input_map.get(MAIN_RETURN_NAME)) {
+        (Some(return_type), Some(value)) => {
+            let ordered = ordered_value(&return_type.abi_type, value)
+                .with_context(|| format!("while ordering `{MAIN_RETURN_NAME}`"))?;
+            Some(mavros_vm::interpreter::flatten_param_vec(&[ordered]))
+        }
+        _ => None,
     };
-    let ordered = ordered_value(&return_type.abi_type, value)
-        .with_context(|| format!("while ordering `{MAIN_RETURN_NAME}`"))?;
-    Ok(Some(mavros_vm::interpreter::flatten_param_vec(&[ordered])))
+    Ok((params, declared_return))
 }
 
 fn ordered_value(abi_type: &AbiType, value: &InputValue) -> Result<InputValueOrdered> {

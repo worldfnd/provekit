@@ -190,17 +190,9 @@ impl MavrosColumnMap {
         self.map[column] as usize
     }
 
-    pub fn permute_witness(&self, witness: &[FieldElement]) -> Vec<FieldElement> {
-        let mut out = vec![FieldElement::zero(); witness.len()];
-        for (old, value) in witness.iter().enumerate() {
-            out[self.map[old] as usize] = *value;
-        }
-        out
-    }
-
-    pub fn permute_derivatives(&self, derivatives: &[FieldElement]) -> Vec<FieldElement> {
-        let mut out = vec![FieldElement::zero(); derivatives.len()];
-        for (old, value) in derivatives.iter().enumerate() {
+    pub fn permute(&self, values: &[FieldElement]) -> Vec<FieldElement> {
+        let mut out = vec![FieldElement::zero(); values.len()];
+        for (old, value) in values.iter().enumerate() {
             out[self.constraint_column(old)] = *value;
         }
         out
@@ -339,7 +331,7 @@ mod tests {
         assert_eq!(map.constraint_column(7), 7);
 
         let w1: Vec<FieldElement> = (0..9).map(|i| FieldElement::from(100 + i as u64)).collect();
-        let permuted = map.permute_witness(&w1);
+        let permuted = map.permute(&w1);
         assert_eq!(permuted[1], w1[1]);
         assert_eq!(permuted[2], w1[5]);
         assert_eq!(permuted[3], w1[2]);
@@ -348,7 +340,7 @@ mod tests {
 
         let derivatives: Vec<FieldElement> =
             (0..12).map(|i| FieldElement::from(1u64 << i)).collect();
-        let remapped = map.permute_derivatives(&derivatives);
+        let remapped = map.permute(&derivatives);
         assert_eq!(remapped[0], derivatives[0]);
         assert_eq!(remapped[2], derivatives[5]);
         assert_eq!(remapped[3], derivatives[2]);
