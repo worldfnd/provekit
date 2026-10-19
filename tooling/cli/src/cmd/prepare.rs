@@ -267,7 +267,11 @@ impl Args {
             return Ok(None);
         }
         provekit_backend_bn254::register();
-        let matrix = build_spark_matrix_for_scheme(scheme);
+        let (r1cs, whir) = match scheme {
+            NoirProofScheme::Noir(s) => (&s.r1cs, &s.whir_for_witness),
+            NoirProofScheme::Mavros(s) => (&s.r1cs, &s.whir_for_witness),
+        };
+        let matrix = build_spark_matrix(r1cs, whir);
         let (setup, witnesses) = provekit_spark::preprocess_spark(&matrix, hash_config);
         let context = provekit_spark::SparkProverContext {
             matrix,
@@ -324,23 +328,13 @@ impl Args {
     }
 }
 
-fn build_spark_matrix_for_scheme(scheme: &NoirProofScheme) -> SparkMatrix {
-    let (r1cs, whir) = match scheme {
-        NoirProofScheme::Noir(s) => (&s.r1cs, &s.whir_for_witness),
-        NoirProofScheme::Mavros(s) => (&s.r1cs, &s.whir_for_witness),
-    };
-    build_spark_r1cs(r1cs, whir.m_0, whir.m, whir.w1_size, whir.num_challenges)
-}
-
 /// Build SPARK's `[A B; 0 C]` matrix, splitting witness columns at `w1_size`.
-fn build_spark_r1cs(
+fn build_spark_matrix(
     r1cs: &R1CS<FieldElement>,
-    log_row: usize,
-    log_col: usize,
-    w1_size: usize,
-    num_challenges: usize,
+    whir: &provekit_common::WhirR1CSScheme<provekit_backend_bn254::Bn254Field>,
 ) -> SparkMatrix {
-    let is_single_commitment = num_challenges == 0;
+    let (log_row, log_col, w1_size) = (whir.m_0, whir.m, whir.w1_size);
+    let is_single_commitment = whir.num_challenges == 0;
 
     let original_num_entries =
         r1cs.a().iter().count() + r1cs.b().iter().count() + r1cs.c().iter().count();
