@@ -57,6 +57,39 @@ where
     )
 }
 
+fn benchmark_field<P>(field: &str, log_size: u32)
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
+{
+    P::register();
+    run_one::<P>(log_size); // Warmup; every proof is verified.
+    let mut prove = Duration::ZERO;
+    for _ in 0..3 {
+        prove += run_one::<P>(log_size).0;
+    }
+    println!(
+        "field_bench,{field} squaring chain 2^{log_size},{:.3}",
+        prove.as_secs_f64() * 1000.0 / 3.0,
+    );
+}
+
+#[test]
+#[ignore = "CI benchmark; run --release -- --ignored --nocapture"]
+fn ci_field_benchmarks() {
+    assert_eq!(
+        provekit_common::WitnessCommitmentMode::default(),
+        provekit_common::WitnessCommitmentMode::ZeroKnowledge,
+    );
+    println!("\nfield_bench,circuit,prover_time_ms");
+    for size in [18, 20] {
+        benchmark_field::<provekit_backend_goldilocks::GoldilocksField>("Goldilocks", size);
+    }
+    for size in [18, 20] {
+        benchmark_field::<provekit_backend_bn254::Bn254Field>("BN254", size);
+    }
+}
+
 /// Run one (field, size) cell and print its row immediately (so partial results
 /// survive a later OOM). Wrapped in `catch_unwind` so a panic in one cell does
 /// not abort the rest of the sweep.
