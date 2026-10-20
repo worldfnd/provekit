@@ -214,6 +214,9 @@ impl Args {
         for (package, artifact) in binary_packages.iter().zip(artifacts) {
             let scheme = NoirCompiler::from_program(artifact, hash_config, witness_mode)
                 .context("while building Noir proof scheme")?;
+
+            super::extract::extract(scheme.r1cs());
+
             let spark_setup = self.maybe_build_spark(&scheme, hash_config)?;
             let pkp_path = self
                 .pkp_path
