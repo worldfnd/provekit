@@ -100,7 +100,7 @@ fn log_density(level: usize, before: [(usize, f64); 2], after: [(usize, f64); 2]
 mod tests {
     use {
         super::{
-            super::{extract, extract_cqbdd, matrix::DenseMatrix, Core},
+            super::{extract, extract_cqbdd, matrix::DenseMatrix, Core, MinimizeStrategy},
             *,
         },
         provekit_backend_bn254::FieldElement as F,
@@ -427,7 +427,7 @@ mod tests {
         }
         let mut program = extract_cqbdd(&r1cs).to_mbp();
         assert_minimal_and_equivalent(&mut program);
-        let extracted = extract(&r1cs);
+        let extracted = extract(&r1cs, MinimizeStrategy::Rank);
         for assignment in 0..64 {
             let mut row = 0;
             let mut column = 0;

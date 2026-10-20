@@ -8,8 +8,28 @@ use {
 mod matrix;
 mod minimize;
 mod rank;
+mod rescale;
+mod ternary;
 
 pub(super) use matrix::Core;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum MinimizeStrategy {
+    Rank,
+    Ternary,
+}
+
+impl argh::FromArgValue for MinimizeStrategy {
+    fn from_arg_value(value: &str) -> Result<Self, String> {
+        match value {
+            "rank" => Ok(Self::Rank),
+            "ternary" => Ok(Self::Ternary),
+            other => Err(format!(
+                "Unknown MBP strategy: {other}. Use \"rank\" or \"ternary\"."
+            )),
+        }
+    }
+}
 
 /// Two matrices per variable in r_0, c_0, r_1, c_1, ... order.
 ///
@@ -32,7 +52,10 @@ pub(super) struct MbpLayer<F: Field> {
     pub(super) matrices: [Core<F>; 2],
 }
 
-pub(super) fn extract<F: Field>(r1cs: &R1CS<F>) -> MatrixBranchingProgram<F> {
+pub(super) fn extract<F: Field>(
+    r1cs: &R1CS<F>,
+    strategy: MinimizeStrategy,
+) -> MatrixBranchingProgram<F> {
     let mut program = extract_cqbdd(r1cs).to_mbp();
     info!(
         "Extracted an MBP for {} index bits with {} layers (constant: {}).",
@@ -40,33 +63,20 @@ pub(super) fn extract<F: Field>(r1cs: &R1CS<F>) -> MatrixBranchingProgram<F> {
         program.layers.len(),
         program.constant.is_some()
     );
-    let dimensions = if program.constant.is_some() {
-        vec![3, 1]
-    } else {
-        std::iter::once(3)
-            .chain(
-                program
-                    .layers
-                    .iter()
-                    .map(|layer| layer.matrices[0].num_cols()),
-            )
-            .collect::<Vec<_>>()
-    };
-    info!("MBP dimensions: {:?}", dimensions);
-    program.minimize();
-    let dimensions = if program.constant.is_some() {
-        vec![3, 1]
-    } else {
-        std::iter::once(3)
-            .chain(
-                program
-                    .layers
-                    .iter()
-                    .map(|layer| layer.matrices[0].num_cols()),
-            )
-            .collect::<Vec<_>>()
-    };
-    info!("Minimized MBP dimensions: {:?}", dimensions);
+    program.log_stats("MBP");
+    match strategy {
+        MinimizeStrategy::Rank => {
+            program.minimize();
+            program.log_stats("Minimized MBP");
+            program.rescale();
+            program.log_stats("Rescaled MBP");
+        }
+        MinimizeStrategy::Ternary => {
+            program.minimize_ternary();
+            program.log_stats("Ternary MBP");
+            // Diagonal rescaling can introduce nonternary internal entries.
+        }
+    }
     let dense_cores = program
         .layers
         .iter()
@@ -74,11 +84,49 @@ pub(super) fn extract<F: Field>(r1cs: &R1CS<F>) -> MatrixBranchingProgram<F> {
         .filter(|core| matches!(core, Core::Dense(_)))
         .count();
     info!(
-        "Minimized MBP storage: {} sparse, {} dense cores.",
+        "Optimized MBP ({strategy:?}) storage: {} sparse, {} dense cores.",
         2 * program.layers.len() - dense_cores,
         dense_cores
     );
     program
+}
+
+impl<F: Field> MatrixBranchingProgram<F> {
+    fn log_stats(&self, label: &str) {
+        if !tracing::enabled!(tracing::Level::INFO) {
+            return;
+        }
+        let dimensions = if self.constant.is_some() {
+            vec![3, 1]
+        } else {
+            std::iter::once(3)
+                .chain(self.layers.iter().map(|layer| layer.matrices[0].num_cols()))
+                .collect::<Vec<_>>()
+        };
+        info!("{} dimensions: {:?}", label, dimensions);
+        let mut total = [0; 3];
+        for (level, layer) in self.layers.iter().enumerate() {
+            let counts = layer.matrices.each_ref().map(Core::value_counts);
+            for branch in counts {
+                for (total, count) in total.iter_mut().zip(branch) {
+                    *total += count;
+                }
+            }
+            info!(
+                "{} level {} ({} × {}) nonzero values [1, -1, other]: branch 0 {:?}, branch 1 {:?}",
+                label,
+                level,
+                layer.matrices[0].num_rows(),
+                layer.matrices[0].num_cols(),
+                counts[0],
+                counts[1]
+            );
+        }
+        if let Some(constant) = &self.constant {
+            total = matrix::value_counts(constant.iter().copied());
+        }
+        info!("{} total nonzero values [1, -1, other]: {:?}", label, total);
+    }
 }
 
 /// A shared, fully layered BDD in interleaved LSB order.
@@ -617,13 +665,13 @@ mod tests {
         let one = FieldElement::from(1u64);
         let two = FieldElement::from(2u64);
         let mut r1cs = R1CS::new();
-        let program = extract(&r1cs);
+        let program = extract(&r1cs, MinimizeStrategy::Rank);
         assert_eq!(program.constant, Some([zero; 3]));
         assert_eq!(evaluate_mbp(&program, 0, 0), [zero; 3]);
 
         r1cs.add_witnesses(1);
         r1cs.add_constraint(&[(one, 0)], &[(two, 0)], &[(-one, 0)]);
-        let program = extract(&r1cs);
+        let program = extract(&r1cs, MinimizeStrategy::Rank);
         assert_eq!(program.index_bits, 0);
         assert_eq!(program.constant, Some([one, two, -one]));
         assert_eq!(evaluate_mbp(&program, 0, 0), [one, two, -one]);

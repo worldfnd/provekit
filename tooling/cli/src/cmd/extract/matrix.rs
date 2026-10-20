@@ -157,8 +157,95 @@ impl<F: Field> Core<F> {
         }
     }
 
+    /// Counts nonzero entries in the order [one, minus one, other].
+    pub(super) fn value_counts(&self) -> [usize; 3] {
+        match self {
+            Self::Sparse { matrix, interner } => value_counts(
+                matrix
+                    .iter()
+                    .map(|(_, value)| interner.get(value).expect("invalid core coefficient")),
+            ),
+            Self::Direct(matrix) => value_counts(matrix.values.iter().copied()),
+            Self::Dense(matrix) => value_counts(matrix.values.iter().copied()),
+        }
+    }
+
     pub(super) fn is_sparse(&self) -> bool {
         matches!(self, Self::Sparse { .. } | Self::Direct(_))
+    }
+
+    /// Multiply columns (or rows) by nonzero diagonal factors, preserving
+    /// support.
+    pub(super) fn scale_axis(&mut self, factors: &[F], columns: bool) {
+        assert_eq!(
+            factors.len(),
+            if columns {
+                self.num_cols()
+            } else {
+                self.num_rows()
+            }
+        );
+        assert!(factors.iter().all(|factor| !factor.is_zero()));
+        if factors.iter().all(|factor| *factor == F::ONE) {
+            return;
+        }
+        match self {
+            Self::Sparse { matrix, interner } => {
+                let mut direct = DirectSparseMatrix::new(matrix.num_cols);
+                direct.columns.reserve(matrix.num_entries());
+                direct.values.reserve(matrix.num_entries());
+                direct.offsets.reserve(matrix.num_rows);
+                for row in 0..matrix.num_rows {
+                    direct.push_row(matrix.iter_row(row).map(|(column, value)| {
+                        let value = interner.get(value).expect("invalid core coefficient");
+                        let factor = factors[if columns { column } else { row }];
+                        (
+                            column,
+                            if factor == F::ONE {
+                                value
+                            } else {
+                                value * factor
+                            },
+                        )
+                    }));
+                }
+                *self = Self::from_direct(direct);
+            }
+            Self::Direct(matrix) => {
+                if columns {
+                    for (&column, value) in matrix.columns.iter().zip(&mut matrix.values) {
+                        let factor = factors[column as usize];
+                        if factor != F::ONE {
+                            *value *= factor;
+                        }
+                    }
+                } else {
+                    for (row, &factor) in factors.iter().enumerate() {
+                        if factor != F::ONE {
+                            for value in
+                                &mut matrix.values[matrix.offsets[row]..matrix.offsets[row + 1]]
+                            {
+                                *value *= factor;
+                            }
+                        }
+                    }
+                }
+            }
+            Self::Dense(matrix) => {
+                for row in 0..matrix.num_rows {
+                    for (column, value) in matrix.values
+                        [row * matrix.num_cols..(row + 1) * matrix.num_cols]
+                        .iter_mut()
+                        .enumerate()
+                    {
+                        let factor = factors[if columns { column } else { row }];
+                        if factor != F::ONE && !value.is_zero() {
+                            *value *= factor;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub(super) fn iter_row(&self, row: usize) -> impl Iterator<Item = (usize, F)> + '_ {
@@ -460,6 +547,25 @@ impl<F: Field> Core<F> {
         }
         Self::Direct(direct)
     }
+}
+
+/// Counts nonzero entries in the order [one, minus one, other].
+pub(super) fn value_counts<F: Field>(values: impl Iterator<Item = F>) -> [usize; 3] {
+    let mut counts = [0; 3];
+    let minus_one = -F::ONE;
+    for value in values {
+        if !value.is_zero() {
+            let bucket = if value == F::ONE {
+                0
+            } else if value == minus_one {
+                1
+            } else {
+                2
+            };
+            counts[bucket] += 1;
+        }
+    }
+    counts
 }
 
 impl<F: Field> MbpLayer<F> {
