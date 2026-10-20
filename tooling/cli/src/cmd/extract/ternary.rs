@@ -8,6 +8,7 @@ use {
 };
 
 mod patterns;
+mod shears;
 
 type SparseVector<F> = Vec<(usize, F)>;
 
@@ -33,8 +34,9 @@ impl<F: Field> MatrixBranchingProgram<F> {
     /// nnz. This is a local heuristic, not a minimum-rank or minimum-nnz
     /// guarantee.
     ///
-    /// Each direction scans every cut once. Pair trials use sparse vectors;
-    /// a dense worst-case scan takes O(k W^3) field operations. Further sweeps
+    /// Each direction scans every cut once. Sparse indexes prune impossible
+    /// pairs while preserving the all-pairs trial order and accepted moves.
+    /// A dense worst-case scan takes O(k W^3) field operations. Further sweeps
     /// are needed until the strictly decreasing integer cost stabilizes.
     /// Rank proposals retain the existing rank factorizer's workspace costs.
     #[instrument(skip_all)]
@@ -47,14 +49,32 @@ impl<F: Field> MatrixBranchingProgram<F> {
         if cuts == 0 {
             return;
         }
+        let mut versions = vec![0usize; self.layers.len()];
+        // A failed pass remains a fixed point until either adjacent core
+        // changes. Rank proposals depend on direction, so cache separately.
+        let mut clean = vec![[None; 2]; cuts];
         for sweep in 1usize.. {
             let mut changed = false;
             for forward in [true, false] {
+                let direction_index = usize::from(!forward);
+                let mut skipped = 0;
                 for index in 0..cuts {
                     let cut = if forward { index } else { cuts - 1 - index };
+                    let version = (versions[cut], versions[cut + 1]);
+                    if clean[cut][direction_index] == Some(version) {
+                        skipped += 1;
+                        continue;
+                    }
                     let before = self.ternary_cut_cost(cut);
-                    changed |= self.try_ternary_rank(cut, forward);
-                    changed |= self.sparsify_ternary_cut(cut);
+                    let mut cut_changed = self.try_ternary_rank(cut, forward);
+                    cut_changed |= self.sparsify_ternary_cut(cut);
+                    changed |= cut_changed;
+                    if cut_changed {
+                        versions[cut] += 1;
+                        versions[cut + 1] += 1;
+                    } else {
+                        clean[cut][direction_index] = Some(version);
+                    }
                     let after = self.ternary_cut_cost(cut);
                     info!(
                         "Ternary sweep {sweep}, cut {cut}, forward={forward}: nnz {} -> {}, width \
@@ -63,6 +83,7 @@ impl<F: Field> MatrixBranchingProgram<F> {
                     );
                 }
                 let direction = if forward { "forward" } else { "backward" };
+                info!("Ternary sweep {sweep} {direction}: skipped {skipped} unchanged cuts.");
                 self.log_stats(&format!("Ternary sweep {sweep} {direction}"));
             }
             if !changed {
@@ -133,19 +154,9 @@ impl<F: Field> MatrixBranchingProgram<F> {
     fn sparsify_ternary_cut(&mut self, cut: usize) -> bool {
         let mut pair = Cut::new(&self.layers[cut], &self.layers[cut + 1]);
         let mut changed = pair.remove_dead();
-        let width = pair.incoming.len();
         // Keep deleted slots empty during the scan, so indices remain stable.
         // A later sweep revisits moves exposed after their position was passed.
-        for p in 0..width {
-            for q in 0..width {
-                if p == q {
-                    continue;
-                }
-                for subtract in [false, true] {
-                    changed |= pair.try_shear(p, q, subtract, cut != 0);
-                }
-            }
-        }
+        changed |= pair.shear_sweep(cut != 0);
         // New shared states are eligible for shears on the next sweep.
         changed |= pair.extract_shared_patterns(cut != 0) != 0;
         if changed {
@@ -210,6 +221,19 @@ impl<F: Field> Cut<F> {
     /// The two cross terms cancel, so every two-bit core product is unchanged.
     /// Score without allocating; only materialize the two sums on acceptance.
     fn try_shear(&mut self, p: usize, q: usize, subtract: bool, ternary_left: bool) -> bool {
+        self.try_shear_with(p, q, subtract, ternary_left, |_, _| {})
+    }
+
+    /// Notify the candidate index of the old/new outgoing support only after
+    /// acceptance. Rejected trials do not allocate or update index state.
+    fn try_shear_with(
+        &mut self,
+        p: usize,
+        q: usize,
+        subtract: bool,
+        ternary_left: bool,
+        on_accept: impl FnOnce(&[(usize, F)], &[(usize, F)]),
+    ) -> bool {
         if self.incoming[p].is_empty() || self.incoming[q].is_empty() {
             return false;
         }
@@ -266,6 +290,7 @@ impl<F: Field> Cut<F> {
             combine(&self.outgoing[p], &self.outgoing[q], !subtract, true)
                 .expect("scored outgoing sum")
         };
+        on_accept(&self.outgoing[p], &outgoing);
         self.incoming[q] = incoming;
         self.outgoing[p] = outgoing;
         if self.outgoing[p].is_empty() {
@@ -335,6 +360,24 @@ fn combined_nnz<F: Field>(
     require_ternary: bool,
     limit: usize,
 ) -> Option<usize> {
+    if lhs.len() / 8 > rhs.len() {
+        return sparse_update_nnz(lhs, rhs, subtract, require_ternary, limit);
+    }
+    if rhs.len() / 8 > lhs.len() {
+        // Swapping operands of a difference negates the result, preserving
+        // both support size and membership in {0, +/-1}.
+        return sparse_update_nnz(rhs, lhs, subtract, require_ternary, limit);
+    }
+    combined_nnz_linear(lhs, rhs, subtract, require_ternary, limit)
+}
+
+fn combined_nnz_linear<F: Field>(
+    lhs: &[(usize, F)],
+    rhs: &[(usize, F)],
+    subtract: bool,
+    require_ternary: bool,
+    limit: usize,
+) -> Option<usize> {
     let (mut i, mut j, mut nnz) = (0, 0, 0);
     while i < lhs.len() && j < rhs.len() {
         match lhs[i].0.cmp(&rhs[j].0) {
@@ -368,8 +411,86 @@ fn combined_nnz<F: Field>(
     (nnz <= limit).then_some(nnz)
 }
 
-/// Merge two sorted sparse vectors, rejecting forbidden emitted coefficients.
+/// Score a short update by jumping over untouched ranges of the longer vector.
+fn sparse_update_nnz<F: Field>(
+    lhs: &[(usize, F)],
+    rhs: &[(usize, F)],
+    subtract: bool,
+    require_ternary: bool,
+    limit: usize,
+) -> Option<usize> {
+    let (mut i, mut nnz) = (0, 0);
+    for &(column, value) in rhs {
+        let untouched = lhs[i..].partition_point(|&(index, _)| index < column);
+        i += untouched;
+        nnz += untouched;
+        if nnz > limit {
+            return None;
+        }
+        if i < lhs.len() && lhs[i].0 == column {
+            let value = if subtract {
+                lhs[i].1 - value
+            } else {
+                lhs[i].1 + value
+            };
+            if require_ternary && !ternary(value) {
+                return None;
+            }
+            nnz += usize::from(!value.is_zero());
+            i += 1;
+        } else {
+            nnz += 1;
+        }
+        if nnz > limit {
+            return None;
+        }
+    }
+    nnz += lhs.len() - i;
+    (nnz <= limit).then_some(nnz)
+}
+
+/// Merge sorted sparse vectors. As with combined_nnz, inputs must already be
+/// ternary if require_ternary is set; only overlaps can violate the alphabet.
 fn combine<F: Field>(
+    lhs: &[(usize, F)],
+    rhs: &[(usize, F)],
+    subtract: bool,
+    require_ternary: bool,
+) -> Option<SparseVector<F>> {
+    if lhs.len() / 8 > rhs.len() {
+        let mut result = Vec::with_capacity(lhs.len() + rhs.len());
+        let mut i = 0;
+        for &(column, value) in rhs {
+            let end = i + lhs[i..].partition_point(|&(index, _)| index < column);
+            result.extend_from_slice(&lhs[i..end]);
+            i = end;
+            let value = if i < lhs.len() && lhs[i].0 == column {
+                let value = if subtract {
+                    lhs[i].1 - value
+                } else {
+                    lhs[i].1 + value
+                };
+                if require_ternary && !ternary(value) {
+                    return None;
+                }
+                i += 1;
+                value
+            } else if subtract {
+                -value
+            } else {
+                value
+            };
+            if !value.is_zero() {
+                result.push((column, value));
+            }
+        }
+        result.extend_from_slice(&lhs[i..]);
+        return Some(result);
+    }
+    combine_linear(lhs, rhs, subtract, require_ternary)
+}
+
+fn combine_linear<F: Field>(
     lhs: &[(usize, F)],
     rhs: &[(usize, F)],
     subtract: bool,
@@ -579,6 +700,76 @@ mod tests {
     }
 
     #[test]
+    fn cached_sweeps_match_uncached_minimization() {
+        for seed in 0..24u64 {
+            let build = || {
+                let mut random = seed + 1;
+                let widths = [3, 40, 35, 8, 3, 1];
+                let layers = widths
+                    .windows(2)
+                    .enumerate()
+                    .map(|(level, dims)| MbpLayer {
+                        matrices: std::array::from_fn(|bit| {
+                            let mut dense = DenseMatrix::zeros(dims[0], dims[1]);
+                            for value in &mut dense.values {
+                                random = random
+                                    .wrapping_mul(6364136223846793005)
+                                    .wrapping_add(1442695040888963407);
+                                let code = (random >> 32) % 10;
+                                *value = if level == 0 {
+                                    F::from(code as i64 - 5)
+                                } else {
+                                    match code {
+                                        0 => F::ONE,
+                                        1 => -F::ONE,
+                                        _ => F::ZERO,
+                                    }
+                                };
+                            }
+                            match (seed as usize + level + bit) % 3 {
+                                0 => Core::Dense(dense),
+                                1 => Core::force_sparse(dense),
+                                _ => Core::force_direct(dense),
+                            }
+                        }),
+                    })
+                    .collect();
+                MatrixBranchingProgram {
+                    index_bits: 3,
+                    layers,
+                    constant: None,
+                }
+            };
+            let mut cached = build();
+            let mut reference = build();
+            cached.minimize_ternary();
+            loop {
+                let mut changed = false;
+                let cuts = reference.layers.len() - 1;
+                for forward in [true, false] {
+                    for index in 0..cuts {
+                        let cut = if forward { index } else { cuts - 1 - index };
+                        changed |= reference.try_ternary_rank(cut, forward);
+                        changed |= reference.sparsify_ternary_cut(cut);
+                    }
+                }
+                if !changed {
+                    break;
+                }
+            }
+            assert_eq!(cost(&cached), cost(&reference));
+            for (actual, expected) in cached.layers.iter().zip(&reference.layers) {
+                for bit in 0..2 {
+                    let a = &actual.matrices[bit];
+                    let b = &expected.matrices[bit];
+                    assert_eq!((a.num_rows(), a.num_cols()), (b.num_rows(), b.num_cols()));
+                    assert_eq!(a.iter().collect::<Vec<_>>(), b.iter().collect::<Vec<_>>());
+                }
+            }
+        }
+    }
+
+    #[test]
     fn rejects_rank_proposal_when_absorbed_transfer_is_not_ternary() {
         let mut program = MatrixBranchingProgram {
             index_bits: 1,
@@ -685,6 +876,100 @@ mod tests {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    fn unbalanced_sparse_updates_match_linear_merges() {
+        for require_ternary in [false, true] {
+            for length in [0, 1, 8, 9, 32, 129, 1024] {
+                for seed in 0..20u64 {
+                    let mut random = seed;
+                    let mut coefficient = || {
+                        random = random
+                            .wrapping_mul(6364136223846793005)
+                            .wrapping_add(1442695040888963407);
+                        let magnitude = if require_ternary {
+                            1
+                        } else {
+                            1 + (random >> 32) % 4
+                        };
+                        F::from(if random & 1 == 0 {
+                            magnitude as i64
+                        } else {
+                            -(magnitude as i64)
+                        })
+                    };
+                    let long: Vec<_> = (0..length).map(|i| (2 * i, coefficient())).collect();
+                    // Empty updates, early/middle/late intersections, new
+                    // coordinates, and insertion beyond the longer support.
+                    let short: Vec<_> = [0, 1, length, 2 * length, 2 * length + 1]
+                        .into_iter()
+                        .take((seed % 6) as usize)
+                        .collect::<std::collections::BTreeSet<_>>()
+                        .into_iter()
+                        .map(|i| (i, coefficient()))
+                        .collect();
+                    for (lhs, rhs) in [(&long, &short), (&short, &long)] {
+                        for subtract in [false, true] {
+                            let expected = combine_linear(lhs, rhs, subtract, require_ternary);
+                            assert_eq!(combine(lhs, rhs, subtract, require_ternary), expected);
+                            for limit in
+                                [0, length / 2, length.saturating_sub(1), length, length + 5]
+                            {
+                                assert_eq!(
+                                    combined_nnz(lhs, rhs, subtract, require_ternary, limit),
+                                    expected.as_ref().map(Vec::len).filter(|&nnz| nnz <= limit)
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore = "manual unbalanced-update benchmark; run with --test-threads=1 --nocapture"]
+    fn benchmark_unbalanced_sparse_updates() {
+        use std::{hint::black_box, time::Instant};
+
+        let long: Vec<_> = (0..65_536).map(|i| (i, F::ONE)).collect();
+        let short = [(0, F::ONE), (32_768, F::ONE), (65_535, F::ONE)];
+        assert_eq!(
+            combine(&long, &short, true, true),
+            combine_linear(&long, &short, true, true)
+        );
+        for (name, score) in [
+            (
+                "linear",
+                combined_nnz_linear::<F>
+                    as fn(&[(usize, F)], &[(usize, F)], bool, bool, usize) -> Option<usize>,
+            ),
+            ("sparse", combined_nnz::<F>),
+        ] {
+            let start = Instant::now();
+            for _ in 0..200 {
+                assert_eq!(
+                    score(black_box(&long), black_box(&short), true, true, long.len()),
+                    Some(long.len() - short.len())
+                );
+            }
+            eprintln!("{name} scoring: {:?} per 200 updates", start.elapsed());
+        }
+        for (name, merge) in [
+            (
+                "linear",
+                combine_linear::<F>
+                    as fn(&[(usize, F)], &[(usize, F)], bool, bool) -> Option<SparseVector<F>>,
+            ),
+            ("sparse", combine::<F>),
+        ] {
+            let start = Instant::now();
+            for _ in 0..200 {
+                black_box(merge(black_box(&long), black_box(&short), true, true).unwrap());
+            }
+            eprintln!("{name} merge: {:?} per 200 updates", start.elapsed());
         }
     }
 
