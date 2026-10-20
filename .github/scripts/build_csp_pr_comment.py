@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import math
 from pathlib import Path
 
 MARKER = "<!-- csp-benchmarks-report -->"
@@ -48,7 +47,7 @@ def fmt_kb_to_bytes(rss_kb: float) -> str:
 
 
 def fmt_ms(ms: float) -> str:
-    if ms <= 0 or not math.isfinite(ms):
+    if ms <= 0:
         return "—"
     if ms < 1000:
         return f"{ms:.0f} ms"
@@ -79,7 +78,7 @@ def fmt_delta(current: float, baseline: float | None) -> str:
       for this circuit.
     - Returns "(±0.0%)" / "(+1.2%)" / "(-3.4%)" otherwise.
     """
-    if baseline is None or not math.isfinite(baseline) or not math.isfinite(current):
+    if baseline is None:
         return ""
     if baseline <= 0:
         # Baseline collected zero (e.g., older CSV without this metric).
@@ -88,8 +87,6 @@ def fmt_delta(current: float, baseline: float | None) -> str:
     if current <= 0:
         return ""
     delta_pct = (current - baseline) / baseline * 100.0
-    if not math.isfinite(delta_pct):
-        return ""
     if abs(delta_pct) < 0.05:
         return " (±0.0%)"
     sign = "+" if delta_pct > 0 else ""
@@ -112,32 +109,6 @@ def read_rows(csv_path: Path) -> list[dict[str, str]]:
         return []
     with csv_path.open(newline="") as f:
         return list(csv.DictReader(f))
-
-
-def render_field_comparison(results: Path, baseline: Path, base_sha: Path) -> str:
-    sha = base_sha.read_text().strip() if base_sha.is_file() else ""
-    valid_sha = len(sha) == 40 and all(c in "0123456789abcdef" for c in sha)
-    current = index_baseline(read_rows(results))
-    previous = index_baseline(read_rows(baseline)) if valid_sha else {}
-    lines = [
-        "### Field benchmarks: squaring chain",
-        "",
-        f"Main commit: `{sha}`." if valid_sha else "_Main commit unavailable; comparison unavailable._",
-        "ZK commitments; SHA-256; eight threads.",
-        "Mean of three runs after one warmup; commitment and proving only.",
-        "Negative changes mean less time. Missing or invalid timings appear as —.",
-        "",
-        "| Field | Witness entries | Main time | PR time | Change (%) |",
-        "|---|---:|---:|---:|---:|",
-    ]
-    for field in ("Goldilocks", "BN254"):
-        for size in (18, 20):
-            key = f"{field} squaring chain 2^{size}"
-            old = previous.get(key, {}).get("prover_time_ms", 0)
-            new = current.get(key, {}).get("prover_time_ms", 0)
-            change = fmt_delta(new, old).strip() or "—"
-            lines.append(f"| {field} | {2 ** size:,} | {fmt_ms(old)} | {fmt_ms(new)} | **{change}** |")
-    return "\n".join(lines)
 
 
 def index_baseline(rows: list[dict[str, str]]) -> dict[str, dict[str, float]]:
@@ -208,7 +179,6 @@ def compose_comment(
     sha: str,
     status: str,
     runs_per_circuit: str,
-    field_report: str = "",
 ) -> str:
     short_sha = sha[:12] if sha else "unknown"
     table = render_table(rows, baseline, has_baseline_file)
@@ -236,10 +206,6 @@ def compose_comment(
     lines = [
         MARKER,
         "## CSP benchmarks",
-        "",
-        field_report,
-        "",
-        "### Noir circuits",
         "",
         "| Metric | Value |",
         "|--------|-------|",
@@ -310,11 +276,6 @@ def main() -> None:
         sha=args.sha,
         status=args.status,
         runs_per_circuit=args.runs_per_circuit,
-        field_report=render_field_comparison(
-            args.results_csv.with_name("fields.csv"),
-            args.results_csv.with_name("fields-baseline.csv"),
-            args.results_csv.with_name("field-base-sha.txt"),
-        ),
     )
     if len(body) > MAX_COMMENT_CHARS:
         cut = body[: MAX_COMMENT_CHARS - 80].rstrip()

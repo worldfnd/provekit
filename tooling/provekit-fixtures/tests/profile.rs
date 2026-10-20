@@ -1,8 +1,11 @@
 //! `#[ignore]` prover profiling harness.
 //!
-//! Two probes (run with `--release`):
+//! Profiling probes (run with `--release`):
 //!
 //! ```text
+//! # Repeated squaring-chain benchmarks: Goldilocks first, then BN254
+//! RAYON_NUM_THREADS=8 cargo test -p provekit-fixtures --release --test profile field_benchmarks -- --exact --ignored --nocapture
+//!
 //! # Size sweep: BF vs EF vs bn254 at 2^14..2^20
 //! cargo test -p provekit-fixtures --release --test profile size_sweep -- --ignored --nocapture
 //!
@@ -69,19 +72,19 @@ where
         prove += run_one::<P>(log_size).0;
     }
     println!(
-        "field_bench,{field} squaring chain 2^{log_size},{:.3}",
+        "{field} squaring chain 2^{log_size},{:.3}",
         prove.as_secs_f64() * 1000.0 / 3.0,
     );
 }
 
 #[test]
-#[ignore = "CI benchmark; run --release -- --ignored --nocapture"]
-fn ci_field_benchmarks() {
+#[ignore = "manual benchmark; run --release -- --ignored --nocapture"]
+fn field_benchmarks() {
     assert_eq!(
         provekit_common::WitnessCommitmentMode::default(),
         provekit_common::WitnessCommitmentMode::ZeroKnowledge,
     );
-    println!("\nfield_bench,circuit,prover_time_ms");
+    println!("\ncircuit,prover_time_ms");
     for size in [18, 20] {
         benchmark_field::<provekit_backend_goldilocks::GoldilocksField>("Goldilocks", size);
     }

@@ -61,6 +61,14 @@ jobs:
         run: |
           bash scripts/run_csp_benchmarks.sh
 
+      - name: Upload bench artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: csp-bench-logs-${{ github.run_id }}
+          path: csp-bench-logs/
+          retention-days: 7
+
       - name: Fetch baseline from latest successful main run
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         continue-on-error: true
@@ -85,59 +93,10 @@ jobs:
           if gh run download "${BASELINE_RUN_ID}" \
               --name "csp-bench-logs-${BASELINE_RUN_ID}" \
               --dir csp-bench-logs/baseline; then
-            BASELINE_SHA=$(gh run view "$BASELINE_RUN_ID" --json headSha --jq .headSha)
             echo "BASELINE_RUN_ID=${BASELINE_RUN_ID}" >> "$GITHUB_ENV"
-            echo "BASELINE_SHA=${BASELINE_SHA}" >> "$GITHUB_ENV"
           else
             echo "Baseline artifact not retrievable; deltas will not be shown."
           fi
-
-      - name: Benchmark Goldilocks and BN254 against main
-        if: ${{ !cancelled() }}
-        shell: bash
-        env:
-          RAYON_NUM_THREADS: "8"
-        run: |
-          profile() {
-            # Separate targets keep main and PR build artifacts isolated.
-            cargo test --manifest-path "$1/Cargo.toml" --target-dir "$1/target" --locked --release \
-              -p provekit-fixtures --test profile "${@:2}"
-          }
-          measure() {
-            profile "$1" ci_field_benchmarks -- --exact --ignored --nocapture --test-threads=1 |
-              tee "csp-bench-logs/$2.log" | sed -n 's/^field_bench,//p' > "csp-bench-logs/$2.csv.tmp"
-            mv "csp-bench-logs/$2.csv.tmp" "csp-bench-logs/$2.csv"
-          }
-          mkdir -p csp-bench-logs
-          sha256sum .github/workflows/csp-benchmarks.yml rust-toolchain.toml \
-            tooling/provekit-fixtures/tests/profile.rs tooling/provekit-fixtures/src/{harness,builders}.rs \
-            > csp-bench-logs/fields-config.txt
-          if [[ -n "${BASELINE_SHA:-}" && -s csp-bench-logs/baseline/fields.csv ]] && \
-              cmp -s csp-bench-logs/fields-config.txt csp-bench-logs/baseline/fields-config.txt; then
-            cp csp-bench-logs/baseline/fields.csv csp-bench-logs/fields-baseline.csv
-            printf '%s\n' "$BASELINE_SHA" > csp-bench-logs/field-base-sha.txt
-          elif [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            git fetch --depth=1 origin main
-            git worktree add --detach field-baseline FETCH_HEAD
-            git -C field-baseline rev-parse HEAD > csp-bench-logs/field-base-sha.txt
-            for source in tooling/provekit-fixtures/tests/profile.rs tooling/provekit-fixtures/src/{harness,builders}.rs; do
-              cp "$source" "field-baseline/$source"
-            done
-            profile field-baseline --no-run
-          fi
-          profile . --no-run
-          if [[ -d field-baseline ]]; then
-            measure field-baseline fields-baseline
-          fi
-          measure . fields
-
-      - name: Upload bench artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: csp-bench-logs-${{ github.run_id }}
-          path: csp-bench-logs/
-          retention-days: 7
 
       - name: Build sticky PR comment body
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
