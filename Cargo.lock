@@ -3079,7 +3079,6 @@ checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 [[package]]
 name = "mavros-artifacts"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=a4f2a3d7aa430a27238bef401f772bfb9b2d0d01#a4f2a3d7aa430a27238bef401f772bfb9b2d0d01"
 dependencies = [
  "ark-bn254",
  "ark-ff",
@@ -3094,12 +3093,10 @@ dependencies = [
 [[package]]
 name = "mavros-limb-arith"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=a4f2a3d7aa430a27238bef401f772bfb9b2d0d01#a4f2a3d7aa430a27238bef401f772bfb9b2d0d01"
 
 [[package]]
 name = "mavros-opcode-gen"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=a4f2a3d7aa430a27238bef401f772bfb9b2d0d01#a4f2a3d7aa430a27238bef401f772bfb9b2d0d01"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3110,7 +3107,6 @@ dependencies = [
 [[package]]
 name = "mavros-vm"
 version = "0.1.0"
-source = "git+https://github.com/reilabs/mavros?rev=a4f2a3d7aa430a27238bef401f772bfb9b2d0d01#a4f2a3d7aa430a27238bef401f772bfb9b2d0d01"
 dependencies = [
  "ark-ff",
  "mavros-artifacts",
