@@ -1,5 +1,4 @@
 pub mod bigint_mod;
-mod compress;
 pub mod ec_arith;
 pub mod file;
 pub use file::binary_format;
@@ -21,7 +20,6 @@ mod whir_r1cs;
 #[doc(hidden)]
 pub use crate::interner::{InternedFieldElement, Interner};
 pub use {
-    compress::CompressedR1CS,
     field::{Base, Ext, FieldHash, ProofField},
     hash_config::{HashConfig, POSEIDON2, SKYSCRAPER},
     logging::log_commit_input,

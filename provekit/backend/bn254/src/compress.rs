@@ -1,8 +1,7 @@
 //! Memory-saving postcard compression of the witness-builder layers.
 //!
-//! Mirrors [`provekit_common::CompressedR1CS`]: the w2 layers are not needed
-//! until challenge-dependent witness solving, so we compress them to a compact
-//! blob to free memory during the w1 commit.
+//! The w2 layers are not needed until challenge-dependent witness solving.
+//! Compressing them frees memory during the w1 commit.
 
 use {
     crate::witness::LayeredWitnessBuilders,

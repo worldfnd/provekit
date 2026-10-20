@@ -15,7 +15,7 @@ use {
     ::tracing::{debug, info, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
-    provekit_common::{log_commit_input, CompressedR1CS, PublicInputs, PublicInputsHash},
+    provekit_common::{log_commit_input, PublicInputs, PublicInputsHash},
     provekit_prover::WhirR1CSProver,
     std::mem::{size_of, take},
     whir::transcript::ProverState,
@@ -153,12 +153,9 @@ fn prove_noir_inner(
     drop(prover.program);
     drop(prover.witness_generator);
 
-    // R1CS matrices are only needed at sumcheck; compress to free memory during
-    // commits.
-    let compressed_r1cs =
-        CompressedR1CS::compress(prover.r1cs).context("While compressing R1CS")?;
-    let num_witnesses = compressed_r1cs.num_witnesses();
-    let num_constraints = compressed_r1cs.num_constraints();
+    let r1cs = prover.r1cs;
+    let num_witnesses = r1cs.num_witnesses();
+    let num_constraints = r1cs.num_constraints();
 
     // Set up transcript with public inputs bound to the instance.
     let instance = public_inputs.hash_bytes::<Bn254Field>(prover.hash_config);
@@ -171,8 +168,7 @@ fn prove_noir_inner(
 
     // Allocate space for real + virtual witnesses. Virtual witnesses are
     // computation-only (zero entries in A/B/C) but needed by builders.
-    let mut witness: Vec<Option<FieldElement>> =
-        vec![None; compressed_r1cs.num_witnesses_for_solving()];
+    let mut witness: Vec<Option<FieldElement>> = vec![None; r1cs.num_witnesses_for_solving()];
 
     // Solve w1 (or all witnesses if no challenges).
     {
@@ -201,7 +197,6 @@ fn prove_noir_inner(
 
     debug!(
         witness_heap_bytes = witness.capacity() * size_of::<Option<FieldElement>>(),
-        compressed_r1cs_blob_bytes = compressed_r1cs.blob_len(),
         "component sizes after solve_w1"
     );
 
@@ -262,11 +257,6 @@ fn prove_noir_inner(
         drop(acir_witness_idx_to_value_map);
         vec![commitment_1]
     };
-
-    // Decompress R1CS for the sumcheck and matrix operations.
-    let r1cs = compressed_r1cs
-        .decompress()
-        .context("While decompressing R1CS")?;
 
     #[cfg(test)]
     r1cs.test_witness_satisfaction(
