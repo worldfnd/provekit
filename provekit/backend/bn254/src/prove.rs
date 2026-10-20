@@ -322,7 +322,8 @@ fn prove_mavros_inner(
 
     let (params, declared_return) =
         crate::frontend::input::ordered_mavros_inputs(&prover.abi, &input_map)?;
-    let supplied = mavros_interpreter::flattened_param_count(&params);
+    let inputs = mavros_interpreter::flatten_param_vec(&params);
+    let supplied = inputs.len();
     let expected = mavros_vm::bytecode::parse_program_header(&prover.binary).entry_blob_field_count;
     ensure!(
         supplied == expected,
@@ -333,7 +334,7 @@ fn prove_mavros_inner(
         &prover.binary,
         prover.witness_layout,
         prover.constraints_layout,
-        &params,
+        &inputs,
         None,
     )
     .context("While running Mavros witness phase 1")?;

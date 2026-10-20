@@ -29,7 +29,7 @@ pub trait MavrosR1CSProver {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
@@ -44,7 +44,7 @@ pub trait MavrosR1CSProver {
     fn prove_mavros_with_spark(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
@@ -59,7 +59,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
@@ -86,7 +86,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
     fn prove_mavros_with_spark(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
@@ -117,7 +117,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
 fn prove_mavros_inner(
     scheme: &WhirR1CSScheme<Bn254Field>,
     mut merlin: ProverState<TranscriptSponge>,
-    witgen: WitgenResult,
+    witgen: WitgenResult<FieldElement>,
     commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
     public_inputs: &PublicInputs<FieldElement>,
     witness_layout: WitnessLayout,
