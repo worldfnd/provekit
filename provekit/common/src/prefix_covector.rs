@@ -1,5 +1,7 @@
 use {
+    crate::utils::workload_size,
     ark_ff::{Field, One, Zero},
+    rayon::prelude::*,
     whir::{
         algebra::{embedding::Embedding, linear_form::LinearForm, mixed_dot, multilinear_extend},
         buffer::{Buffer, BufferOps},
@@ -77,12 +79,11 @@ impl<F: Field> LinearForm<F> for PrefixCovector<F> {
     }
 
     fn accumulate(&self, accumulator: &mut [F], scalar: F) {
-        for (acc, val) in accumulator[..self.vector.len()]
-            .iter_mut()
+        accumulator[..self.vector.len()]
+            .par_iter_mut()
             .zip(&self.vector)
-        {
-            *acc += scalar * *val;
-        }
+            .with_min_len(workload_size::<F>())
+            .for_each(|(acc, &val)| *acc += scalar * val);
     }
 }
 
@@ -379,6 +380,25 @@ mod tests {
     /// Deterministic field elements for reproducible tests.
     fn fe(n: u64) -> FieldElement {
         FieldElement::from(n)
+    }
+
+    #[test]
+    fn prefix_accumulation_preserves_existing_values_and_padding() {
+        use whir::algebra::fields::Field64_3;
+
+        let scalar = Field64_3::new(fe(2), fe(3), fe(5));
+        for size in [4, 1 << 14] {
+            let weights: Vec<_> = (0..size)
+                .map(|i| Field64_3::new(fe(i as u64), fe(7), fe(11)))
+                .collect();
+            let mut expected = vec![scalar; 2 * size];
+            let mut actual = expected.clone();
+            for (acc, &weight) in expected.iter_mut().zip(&weights) {
+                *acc += scalar * weight;
+            }
+            PrefixCovector::new(weights, 2 * size).accumulate(&mut actual, scalar);
+            assert_eq!(actual, expected);
+        }
     }
 
     #[test]

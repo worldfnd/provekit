@@ -362,7 +362,7 @@ where
             .into_iter()
             .next()
             .expect("single-commitment path requires at least one commitment");
-        let (mut weights, evals) = create_weights_and_evaluations::<3, _>(
+        let (mut weights, mut evals) = create_weights_and_evaluations::<3, _>(
             &embedding,
             scheme.m,
             &commitment.polynomial,
@@ -391,9 +391,8 @@ where
                 public_weight,
             );
             merlin.prover_message(&public_eval);
+            evals.insert(0, public_eval);
         }
-
-        let evaluations = compute_evaluations(&embedding, &weights, &commitment.polynomial);
 
         let WhirR1CSCommitment { witness, .. } = commitment;
 
@@ -401,7 +400,7 @@ where
 
         let final_claim = scheme
             .whir_witness
-            .prove(&mut merlin, witness, &form_refs, &evaluations);
+            .prove(&mut merlin, witness, &form_refs, &evals);
 
         spark_row.zip(spark_weights).map(|(row, spark_weights)| {
             let [claimed_a, claimed_b, claimed_c] =
@@ -887,18 +886,6 @@ fn create_weights_and_evaluations<const N: usize, M: Embedding>(
     }
 
     (weights, evals)
-}
-
-fn compute_evaluations<M: Embedding>(
-    embedding: &M,
-    weights: &[PrefixCovector<M::Target>],
-    polynomial: &Buffer<M::Source>,
-) -> Vec<M::Target> {
-    let polynomial = polynomial.to_slice();
-    weights
-        .iter()
-        .map(|w| mixed_dot(embedding, w.vector(), &polynomial[..w.vector().len()]))
-        .collect()
 }
 
 fn compute_public_weight_evaluation<M: Embedding>(
