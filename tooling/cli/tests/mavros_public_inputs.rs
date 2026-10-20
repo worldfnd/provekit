@@ -1,8 +1,7 @@
 //! Public-input and return regressions on `noir-examples/power`
-//! (`fn main(x: Field, y: pub Field) -> pub Field`), whose Mavros artifacts
-//! are committed next to it. Regenerate them with the pinned Mavros revision:
-//! `mavros compile <dir> --r1cs-output <dir>/r1cs.bin --binary-output
-//! <dir>/basic.json`.
+//! (`fn main(x: Field, y: pub Field) -> pub Field`), whose Mavros artifact is
+//! committed next to it. Regenerate it with the pinned Mavros revision:
+//! `mavros compile <dir> --output <dir>/program.mavros`.
 
 use {
     anyhow::Result,
@@ -19,8 +18,7 @@ use {
 fn fixture_scheme() -> NoirProofScheme {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../noir-examples/power");
     MavrosCompiler::compile(
-        dir.join("basic.json"),
-        dir.join("r1cs.bin"),
+        dir.join("program.mavros"),
         HashConfig::Sha256,
         WitnessCommitmentMode::default(),
     )

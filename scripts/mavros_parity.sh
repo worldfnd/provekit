@@ -44,7 +44,7 @@ run_frontend() {
     "$CLI" prepare "$dir" --pkp "$pkp" --pkv "$pkv" >>"$log" 2>&1 || { echo "fail - -"; return; }
   else
     (cd "$dir" && "$MAVROS" compile) >>"$log" 2>&1 || { echo "fail - -"; return; }
-    "$CLI" prepare --compiler mavros "$dir/target/basic.json" --r1cs "$dir/target/r1cs.bin" \
+    "$CLI" prepare --compiler mavros "$dir/target/program.mavros" \
       --pkp "$pkp" --pkv "$pkv" >>"$log" 2>&1 || { echo "fail - -"; return; }
   fi
   local t0 t1

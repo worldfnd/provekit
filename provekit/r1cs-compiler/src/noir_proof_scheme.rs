@@ -1,14 +1,13 @@
 use {
     crate::{noir_to_r1cs, witness_generator::NoirWitnessGeneratorBuilder},
     anyhow::{ensure, Context as _, Result},
-    mavros_artifacts::{ArtifactError, R1CSArtifact, R1CS as MavrosR1CS},
+    mavros_artifacts::{Artifact, ArtifactError, FieldId as MavrosFieldId, R1CS as MavrosR1CS},
     noirc_artifacts::program::ProgramArtifact,
     provekit_backend_bn254::{
         witness::WitnessBuilder, Bn254Field, MavrosColumnMap, MavrosSchemeData, NoirProofScheme,
         NoirSchemeData, NoirWitnessGenerator, PrintAbi,
     },
     provekit_common::WhirR1CSScheme,
-    serde::Deserialize,
     std::{collections::HashSet, fs::File, path::Path},
     tracing::{info, instrument},
 };
@@ -188,48 +187,44 @@ impl NoirCompiler {
     }
 }
 
-#[derive(Deserialize)]
-struct BasicArtifacts {
-    abi:    noirc_abi::Abi,
-    binary: Vec<u64>,
-}
-
 pub struct MavrosCompiler;
 
 impl MavrosCompiler {
     #[instrument(skip_all)]
     pub fn compile(
-        basic_path: impl AsRef<Path> + std::fmt::Debug,
-        r1cs_path: impl AsRef<Path> + std::fmt::Debug,
+        artifact_path: impl AsRef<Path> + std::fmt::Debug,
         hash_config: provekit_common::HashConfig,
         witness_mode: provekit_common::WitnessCommitmentMode,
     ) -> Result<NoirProofScheme> {
         provekit_backend_bn254::register();
-        info!("Reading basic artifacts from {:?}", basic_path);
-        let basic_file = File::open(&basic_path).context("while opening basic artifacts")?;
-        let basic: BasicArtifacts =
-            serde_json::from_reader(basic_file).context("while reading basic artifacts")?;
-        let abi = basic.abi;
-
-        info!("Reading R1CS from {:?}", r1cs_path);
-        let r1cs_bytes = std::fs::read(r1cs_path.as_ref()).context("while reading R1CS file")?;
-        let artifact =
-            R1CSArtifact::<provekit_backend_bn254::FieldElement>::from_bytes(&r1cs_bytes)
-                .map_err(|err| match err {
-                    ArtifactError::MissingHeader | ArtifactError::UnsupportedVersion(_) => {
-                        anyhow::anyhow!(
-                            "{err}; recompile the circuit with the Mavros revision pinned in the \
-                             workspace `Cargo.toml`"
-                        )
-                    }
-                    other => anyhow::Error::new(other),
-                })
-                .with_context(|| format!("while reading the Mavros R1CS artifact {r1cs_path:?}"))?;
+        info!("Reading Mavros artifact from {:?}", artifact_path);
+        let bytes =
+            std::fs::read(artifact_path.as_ref()).context("while reading the Mavros artifact")?;
+        let artifact = Artifact::from_bytes(&bytes)
+            .map_err(|err| match err {
+                ArtifactError::MissingHeader | ArtifactError::UnsupportedVersion(_) => {
+                    anyhow::anyhow!(
+                        "{err}; recompile the circuit with the Mavros revision pinned in the \
+                         workspace `Cargo.toml`"
+                    )
+                }
+                other => anyhow::Error::new(other),
+            })
+            .with_context(|| format!("while reading the Mavros artifact {artifact_path:?}"))?;
+        ensure!(
+            artifact.field() == MavrosFieldId::Bn254,
+            "Mavros artifact is over field {:?} but this backend proves over bn254",
+            artifact.field()
+        );
+        let abi: noirc_abi::Abi = serde_json::from_slice(artifact.abi())
+            .context("while decoding the ABI in the Mavros artifact")?;
         let mavros_digest = artifact.digest();
-        let (_, manifest, mavros_r1cs) = artifact.into_parts();
+        let compiler = artifact.compiler().to_owned();
+        let (_, manifest, mavros_r1cs, binary, _) = artifact.into_parts();
 
         info!(
-            "R1CS: {} constraints, witness layout: algebraic={}, challenges={}, digest={}",
+            "Mavros {compiler} R1CS: {} constraints, witness layout: algebraic={}, challenges={}, \
+             digest={}",
             mavros_r1cs.constraints.len(),
             mavros_r1cs.witness_layout.algebraic_size,
             mavros_r1cs.witness_layout.challenges_size,
@@ -263,7 +258,7 @@ impl MavrosCompiler {
             abi,
             num_public_inputs,
             whir_for_witness,
-            binary: basic.binary,
+            binary,
             r1cs,
             constraints_layout: mavros_r1cs.constraints_layout,
             witness_layout: mavros_r1cs.witness_layout,

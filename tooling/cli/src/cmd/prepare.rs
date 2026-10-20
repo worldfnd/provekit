@@ -46,14 +46,10 @@ impl argh::FromArgValue for Compiler {
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prepare")]
 pub struct Args {
-    /// directory containing Nargo.toml for noir, or path to the basic
-    /// artifacts JSON for mavros (default: current directory)
+    /// directory containing Nargo.toml for noir, or path to the `.mavros`
+    /// artifact for mavros (default: current directory)
     #[argh(positional, default = "PathBuf::from(\".\")")]
     program_path: PathBuf,
-
-    /// path to the R1CS file (required for mavros compiler)
-    #[argh(option, long = "r1cs")]
-    r1cs_path: Option<PathBuf>,
 
     /// compiler backend to use: "noir" (default) or "mavros"
     #[argh(option, long = "compiler", default = "Compiler::Noir")]
@@ -236,13 +232,8 @@ impl Args {
         hash_config: HashConfig,
         witness_mode: WitnessCommitmentMode,
     ) -> Result<()> {
-        let r1cs_path = self
-            .r1cs_path
-            .as_ref()
-            .context("--r1cs is required when using the mavros compiler")?;
-        let scheme =
-            MavrosCompiler::compile(&self.program_path, r1cs_path, hash_config, witness_mode)
-                .context("while compiling with Mavros")?;
+        let scheme = MavrosCompiler::compile(&self.program_path, hash_config, witness_mode)
+            .context("while compiling with Mavros")?;
         let spark_setup = self.maybe_build_spark(&scheme, hash_config)?;
         let pkp_path = resolve_key_path(self.pkp_path.as_deref(), "pkp")?;
         let pkv_path = resolve_key_path(self.pkv_path.as_deref(), "pkv")?;
