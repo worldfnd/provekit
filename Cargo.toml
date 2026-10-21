@@ -215,9 +215,3 @@ spongefish = { package = "provekit-spongefish", version = "=0.2.0", features = [
 ] }
 spongefish-pow = { package = "provekit-spongefish-pow", version = "=0.2.0" }
 whir = { git = "https://github.com/worldfnd/whir.git", rev = "afec1fac27c1c8cc7331aa5668bc9800f104d92c", features = ["tracing", "rs_in_order"] }
-
-# TEMPORARY: the pinned rev is the local head of mavros branch ys/single-artifact
-# (reilabs/mavros#418), not pushed yet; drop this patch once it is on GitHub.
-[patch."https://github.com/reilabs/mavros"]
-mavros-vm = { path = "../mavros/vm" }
-mavros-artifacts = { path = "../mavros/mavros-artifacts" }
