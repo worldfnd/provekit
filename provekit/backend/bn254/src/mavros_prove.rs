@@ -1,10 +1,8 @@
-//! Mavros WHIR proving for bn254. The Mavros VM's automatic-differentiation
-//! pass returns `ark_bn254::Fr`, so this proving path is bn254-specific; it
-//! composes the generic proving primitives from `provekit-prover`
-//! (`run_zk_sumcheck_prover`, `prove_from_alphas`).
+//! Mavros WHIR proving for bn254. It composes the generic proving primitives
+//! from `provekit-prover` (`run_zk_sumcheck_prover`, `prove_from_alphas`).
 //!
-//! TODO: make field-generic and fold into `WhirR1CSProver<P>` when the Mavros
-//! VM is field-agnostic.
+//! TODO: make field-generic and fold into `WhirR1CSProver<P>`; the Mavros VM
+//! is generic over its field.
 
 use {
     crate::{Bn254Field, FieldElement, MavrosColumnMap, TranscriptSponge},
@@ -29,7 +27,7 @@ pub trait MavrosR1CSProver {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
@@ -44,7 +42,7 @@ pub trait MavrosR1CSProver {
     fn prove_mavros_with_spark(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
@@ -59,7 +57,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
@@ -86,7 +84,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
     fn prove_mavros_with_spark(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
@@ -117,7 +115,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
 fn prove_mavros_inner(
     scheme: &WhirR1CSScheme<Bn254Field>,
     mut merlin: ProverState<TranscriptSponge>,
-    witgen: WitgenResult,
+    witgen: WitgenResult<FieldElement>,
     commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
     public_inputs: &PublicInputs<FieldElement>,
     witness_layout: WitnessLayout,
