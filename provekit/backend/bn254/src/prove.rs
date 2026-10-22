@@ -339,7 +339,7 @@ fn prove_mavros_inner(
 
     let column_map = &prover.column_map;
     let num_public_inputs = prover.num_public_inputs;
-    let w1 = column_map.permute(&phase1.out_wit_pre_comm);
+    let w1 = column_map.permute(phase1.out_wit_pre_comm.clone());
     let public_inputs = if num_public_inputs == 0 {
         PublicInputs::new()
     } else {
