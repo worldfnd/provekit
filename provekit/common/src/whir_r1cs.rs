@@ -157,7 +157,8 @@ pub struct WhirR1CSScheme<P: ProofField> {
     pub num_challenges:    usize,
     pub challenge_offsets: Vec<usize>,
     pub has_public_inputs: bool,
-    /// Base-field witness commitment, via zook.
+    /// Base-field witness commitment, via zook. Two-stage witnesses open
+    /// jointly.
     pub whir_witness:      ZookConfig<P::Embedding>,
     /// Separate ext-field commitment to the Spartan blinding polynomial `g`;
     /// masking the ext-valued sumcheck rounds needs ext randomness, so `g`
@@ -181,6 +182,17 @@ impl<P: ProofField> WhirR1CSScheme<P> {
         1usize << self.whir_blinding.initial_num_variables()
     }
 
+    /// Reject a missing or extra witness commitment before indexing
+    /// commitments.
+    pub fn validate_witness_commitment_count(&self, count: usize) -> anyhow::Result<()> {
+        let expected = if self.num_challenges > 0 { 2 } else { 1 };
+        anyhow::ensure!(
+            count == expected,
+            "Expected {expected} witness commitments, received {count}"
+        );
+        Ok(())
+    }
+
     /// Create a domain separator for the provekit outer protocol.
     ///
     /// The domain separator serializes the entire scheme (including
@@ -197,6 +209,37 @@ impl<P: ProofField> WhirR1CSScheme<P> {
 }
 
 impl<P: FieldHash> WhirR1CSScheme<P> {
+    /// Validate joint opening parameters before proving or verifying.
+    pub fn validate_joint_opening(&self) -> anyhow::Result<()> {
+        if self.num_challenges > 0 {
+            anyhow::ensure!(
+                self.num_challenges == self.challenge_offsets.len(),
+                "Challenge count does not match challenge offsets"
+            );
+            let block_size = 1usize
+                .checked_shl(u32::try_from(self.m)?)
+                .ok_or_else(|| anyhow::anyhow!("Invalid witness block dimension"))?;
+            anyhow::ensure!(
+                self.w1_size <= block_size,
+                "First witness size exceeds its commitment block"
+            );
+            anyhow::ensure!(
+                self.challenge_offsets
+                    .iter()
+                    .all(|offset| *offset < block_size),
+                "Challenge offset exceeds the second commitment block"
+            );
+            anyhow::ensure!(
+                self.whir_witness.tuning().vector_size == block_size,
+                "Joint opening source size does not match the witness block"
+            );
+            self.whir_witness
+                .validate_pair()
+                .map_err(|_| anyhow::anyhow!("Invalid joint opening parameters"))?;
+        }
+        Ok(())
+    }
+
     /// Build a scheme for a concrete R1CS instance, recording its hash so the
     /// transcript can later be bound to this instance (in
     /// [`Self::create_domain_separator`]).
@@ -256,7 +299,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         let m = m1_raw.max(m2_raw).max(MIN_WHIR_NUM_VARIABLES);
         let m_0 = m0_raw.max(MIN_SUMCHECK_NUM_VARIABLES);
 
-        Ok(Self {
+        let scheme = Self {
             m,
             m_0,
             a_num_terms: next_power_of_two(a_num_entries),
@@ -272,7 +315,9 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             has_public_inputs,
             r1cs_hash: R1csHash::UNSET,
             hash_config,
-        })
+        };
+        scheme.validate_joint_opening()?;
+        Ok(scheme)
     }
 
     /// Build the zook witness config: commits in `P`'s base field, opens at
