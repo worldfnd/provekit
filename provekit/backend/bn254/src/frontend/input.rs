@@ -1,6 +1,8 @@
 use {
+    crate::FieldElement,
     anyhow::{bail, ensure, Context, Result},
     mavros_artifacts::InputValueOrdered,
+    mavros_vm::interpreter::flatten_param_vec,
     noirc_abi::{
         input_parser::{Format, InputValue},
         Abi, AbiType, InputMap, MAIN_RETURN_NAME,
@@ -28,7 +30,7 @@ pub fn read_prover_inputs(file_path: &Path, abi: &Abi) -> Result<InputMap> {
 pub fn ordered_mavros_inputs(
     abi: &Abi,
     input_map: &InputMap,
-) -> Result<(Vec<InputValueOrdered>, Option<Vec<crate::FieldElement>>)> {
+) -> Result<(Vec<FieldElement>, Option<Vec<FieldElement>>)> {
     let mut params = Vec::with_capacity(abi.parameters.len());
     for param in &abi.parameters {
         let value = input_map
@@ -43,11 +45,11 @@ pub fn ordered_mavros_inputs(
         (Some(return_type), Some(value)) => {
             let ordered = ordered_value(&return_type.abi_type, value)
                 .with_context(|| format!("while ordering `{MAIN_RETURN_NAME}`"))?;
-            Some(mavros_vm::interpreter::flatten_param_vec(&[ordered]))
+            Some(flatten_param_vec(&[ordered]))
         }
         _ => None,
     };
-    Ok((params, declared_return))
+    Ok((flatten_param_vec(&params), declared_return))
 }
 
 fn ordered_value(abi_type: &AbiType, value: &InputValue) -> Result<InputValueOrdered> {

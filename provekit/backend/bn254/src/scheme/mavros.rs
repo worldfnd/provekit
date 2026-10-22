@@ -110,7 +110,11 @@ impl MavrosColumnMap {
 
 #[cfg(not(target_arch = "wasm32"))]
 impl MavrosColumnMap {
-    pub fn from_manifest(manifest: &WitnessManifest, abi: &Abi) -> Result<Self> {
+    pub fn from_manifest(
+        manifest: &WitnessManifest,
+        abi: &Abi,
+        witness_count: usize,
+    ) -> Result<Self> {
         ensure!(
             manifest.parameters.len() == abi.parameters.len(),
             "Mavros manifest lists {} parameters but the ABI declares {}",
@@ -168,7 +172,7 @@ impl MavrosColumnMap {
                 public_columns.extend(start..start + ret.len);
             }
         }
-        Self::build(manifest.witness_count, public_columns)
+        Self::build(witness_count, public_columns)
     }
 }
 
@@ -270,17 +274,17 @@ mod tests {
     fn param(
         name: &str,
         visibility: ParamVisibility,
-        blob_offset: usize,
         column_start: Option<usize>,
     ) -> ManifestParam {
         ManifestParam {
             name: name.to_string(),
             visibility,
-            blob_offset,
             width: 1,
             column_start,
         }
     }
+
+    const WITNESS_COUNT: usize = 12;
 
     /// `fn main(x: Field, y: pub Field) -> pub Field` with Mavros columns
     /// `[1, y, x, t3, t4, ret, t6 | m7, m8 | c9, d10, l11]`: the public `y`
@@ -301,27 +305,26 @@ mod tests {
 
     fn manifest_with_return() -> WitnessManifest {
         WitnessManifest {
-            entry_blob_field_count: 2,
-            parameters:             vec![
-                param("x", ParamVisibility::Private, 0, Some(2)),
-                param("y", ParamVisibility::Public, 1, Some(1)),
+            parameters: vec![
+                param("x", ParamVisibility::Private, Some(2)),
+                param("y", ParamVisibility::Public, Some(1)),
             ],
-            returns:                Some(ReturnSlot {
+            returns:    Some(ReturnSlot {
                 column_start: Some(5),
                 len:          1,
                 visibility:   ParamVisibility::Public,
             }),
-            challenges:             vec![],
-            pre_commitment_size:    9,
-            witness_count:          12,
-            constraint_count:       0,
         }
     }
 
     #[test]
     fn column_remap_brings_the_return_forward() {
-        let map =
-            MavrosColumnMap::from_manifest(&manifest_with_return(), &abi_with_return()).unwrap();
+        let map = MavrosColumnMap::from_manifest(
+            &manifest_with_return(),
+            &abi_with_return(),
+            WITNESS_COUNT,
+        )
+        .unwrap();
         assert_eq!(map.num_public_inputs(), 2);
         // y stays at 1, ret → 2, then x, t3, t4, t6 keep their relative order.
         let expected: Vec<u32> = vec![0, 1, 3, 4, 5, 2, 6, 7, 8, 9, 10, 11];
@@ -351,7 +354,7 @@ mod tests {
         let abi = abi_with_return();
         let manifest = manifest_with_return();
         let fails = |manifest: &WitnessManifest, abi: &Abi| {
-            MavrosColumnMap::from_manifest(manifest, abi).is_err()
+            MavrosColumnMap::from_manifest(manifest, abi, WITNESS_COUNT).is_err()
         };
 
         let mut renamed = manifest.clone();
@@ -369,7 +372,7 @@ mod tests {
         // An unused private parameter has no columns and changes nothing.
         let mut elided_private = manifest.clone();
         elided_private.parameters[0].column_start = None;
-        let map = MavrosColumnMap::from_manifest(&elided_private, &abi).unwrap();
+        let map = MavrosColumnMap::from_manifest(&elided_private, &abi, WITNESS_COUNT).unwrap();
         assert_eq!(map.num_public_inputs(), 2);
 
         let mut duplicated = manifest.clone();
@@ -387,7 +390,8 @@ mod tests {
         assert!(fails(&manifest, &private_return));
         let mut private_manifest = manifest.clone();
         private_manifest.returns.as_mut().unwrap().visibility = ParamVisibility::Private;
-        let map = MavrosColumnMap::from_manifest(&private_manifest, &private_return).unwrap();
+        let map = MavrosColumnMap::from_manifest(&private_manifest, &private_return, WITNESS_COUNT)
+            .unwrap();
         assert_eq!(map.num_public_inputs(), 1);
     }
 }

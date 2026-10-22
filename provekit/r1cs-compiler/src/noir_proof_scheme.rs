@@ -1,7 +1,7 @@
 use {
     crate::{noir_to_r1cs, witness_generator::NoirWitnessGeneratorBuilder},
     anyhow::{ensure, Context as _, Result},
-    mavros_artifacts::{ArtifactError, FieldId as MavrosFieldId, R1CSArtifact, R1CS as MavrosR1CS},
+    mavros_artifacts::{ArtifactError, R1CSArtifact, R1CS as MavrosR1CS},
     noirc_artifacts::program::ProgramArtifact,
     provekit_backend_bn254::{
         witness::WitnessBuilder, Bn254Field, MavrosColumnMap, MavrosSchemeData, NoirProofScheme,
@@ -213,22 +213,18 @@ impl MavrosCompiler {
 
         info!("Reading R1CS from {:?}", r1cs_path);
         let r1cs_bytes = std::fs::read(r1cs_path.as_ref()).context("while reading R1CS file")?;
-        let artifact = R1CSArtifact::from_bytes(&r1cs_bytes)
-            .map_err(|err| match err {
-                ArtifactError::MissingHeader | ArtifactError::UnsupportedVersion(_) => {
-                    anyhow::anyhow!(
-                        "{err}; recompile the circuit with the Mavros revision pinned in the \
-                         workspace `Cargo.toml`"
-                    )
-                }
-                other => anyhow::Error::new(other),
-            })
-            .with_context(|| format!("while reading the Mavros R1CS artifact {r1cs_path:?}"))?;
-        ensure!(
-            artifact.field() == MavrosFieldId::Bn254,
-            "Mavros artifact is over field {:?} but this backend proves over bn254",
-            artifact.field()
-        );
+        let artifact =
+            R1CSArtifact::<provekit_backend_bn254::FieldElement>::from_bytes(&r1cs_bytes)
+                .map_err(|err| match err {
+                    ArtifactError::MissingHeader | ArtifactError::UnsupportedVersion(_) => {
+                        anyhow::anyhow!(
+                            "{err}; recompile the circuit with the Mavros revision pinned in the \
+                             workspace `Cargo.toml`"
+                        )
+                    }
+                    other => anyhow::Error::new(other),
+                })
+                .with_context(|| format!("while reading the Mavros R1CS artifact {r1cs_path:?}"))?;
         let mavros_digest = artifact.digest();
         let (_, manifest, mavros_r1cs) = artifact.into_parts();
 
@@ -243,13 +239,13 @@ impl MavrosCompiler {
                 .collect::<String>(),
         );
 
-        let column_map = MavrosColumnMap::from_manifest(&manifest, &abi)
-            .context("while mapping Mavros columns onto ProveKit public inputs")?;
+        let column_map =
+            MavrosColumnMap::from_manifest(&manifest, &abi, mavros_r1cs.witness_layout.size())
+                .context("while mapping Mavros columns onto ProveKit public inputs")?;
         let num_public_inputs = column_map.num_public_inputs();
 
         let challenges_size = mavros_r1cs.witness_layout.challenges_size;
-        let challenge_offsets: Vec<usize> =
-            manifest.challenges.iter().map(|c| c.w2_offset).collect();
+        let challenge_offsets: Vec<usize> = (0..challenges_size).collect();
         let mut r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs, &column_map);
         r1cs.num_public_inputs = num_public_inputs;
 
