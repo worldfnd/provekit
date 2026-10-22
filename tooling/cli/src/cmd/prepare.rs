@@ -1,5 +1,5 @@
 use {
-    super::{util::resolve_key_path, Command},
+    super::{extract::MinimizeStrategy, util::resolve_key_path, Command},
     anyhow::{anyhow, bail, Context as _, Result},
     argh::FromArgs,
     mavros_artifacts::R1CS as MavrosR1CS,
@@ -59,6 +59,14 @@ pub struct Args {
     /// compiler backend to use: "noir" (default) or "mavros"
     #[argh(option, long = "compiler", default = "Compiler::Noir")]
     compiler: Compiler,
+
+    /// MBP optimization: "rank" (default) or "ternary" (noir only)
+    #[argh(option, long = "mbp-strategy", default = "MinimizeStrategy::Rank")]
+    mbp_strategy: MinimizeStrategy,
+
+    /// skip Gaussian elimination optimization of the R1CS (noir only)
+    #[argh(switch, long = "skip-ge")]
+    skip_ge: bool,
 
     /// name of the package to compile (noir only; default: enclosing package)
     #[argh(option)]
@@ -212,8 +220,16 @@ impl Args {
         )?;
 
         for (package, artifact) in binary_packages.iter().zip(artifacts) {
-            let scheme = NoirCompiler::from_program(artifact, hash_config, witness_mode)
-                .context("while building Noir proof scheme")?;
+            let scheme = NoirCompiler::from_program_with_ge(
+                artifact,
+                hash_config,
+                witness_mode,
+                !self.skip_ge,
+            )
+            .context("while building Noir proof scheme")?;
+
+            super::extract::extract(scheme.r1cs(), self.mbp_strategy);
+
             let spark_setup = self.maybe_build_spark(&scheme, hash_config)?;
             let pkp_path = self
                 .pkp_path
@@ -479,4 +495,27 @@ pub fn build_spark_r1cs_mavros(
     }
 
     Ok(SparkMatrix::new(row, col, val, 2 * row_cnt, 2 * col_cnt))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_mbp_strategy_and_preserves_rank_default() {
+        let default = Args::from_args(&["prepare"], &[]).unwrap();
+        assert_eq!(default.mbp_strategy, MinimizeStrategy::Rank);
+        assert!(!default.skip_ge);
+        let unoptimized = Args::from_args(&["prepare"], &["--skip-ge"]).unwrap();
+        assert!(unoptimized.skip_ge);
+        for (name, expected) in [
+            ("rank", MinimizeStrategy::Rank),
+            ("ternary", MinimizeStrategy::Ternary),
+        ] {
+            let args = Args::from_args(&["prepare"], &["--mbp-strategy", name]).unwrap();
+            assert_eq!(args.mbp_strategy, expected);
+        }
+        let error = Args::from_args(&["prepare"], &["--mbp-strategy", "unknown"]).unwrap_err();
+        assert!(error.output.contains("Unknown MBP strategy"));
+    }
 }

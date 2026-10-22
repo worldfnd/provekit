@@ -93,6 +93,20 @@ impl NoirCompiler {
         hash_config: provekit_common::HashConfig,
         witness_mode: provekit_common::WitnessCommitmentMode,
     ) -> Result<NoirProofScheme> {
+        Self::from_program_with_ge(program, hash_config, witness_mode, true)
+    }
+
+    /// Build a proof scheme, optionally running Gaussian elimination on the
+    /// lowered R1CS before scaling rows and preparing witness layers. Row
+    /// scaling and other preparation steps always run; `from_program` enables
+    /// GE by default.
+    #[instrument(skip_all)]
+    pub fn from_program_with_ge(
+        program: ProgramArtifact,
+        hash_config: provekit_common::HashConfig,
+        witness_mode: provekit_common::WitnessCommitmentMode,
+        ge_optimization: bool,
+    ) -> Result<NoirProofScheme> {
         provekit_backend_bn254::register();
 
         info!("Program noir version: {}", program.noir_version);
@@ -119,21 +133,29 @@ impl NoirCompiler {
             main.public_inputs().indices().iter().cloned().collect();
         r1cs.num_public_inputs = acir_public_inputs_indices_set.len();
 
-        // Gaussian elimination optimization pass
-        let opt_stats = crate::optimize_r1cs(
-            &mut r1cs,
-            &mut witness_builders,
-            &mut witness_map,
-            &acir_public_inputs_indices_set,
-        )?;
-        info!(
-            "After GE optimization: {} constraints, {} witnesses ({} eliminated, {:.1}% \
-             constraint reduction)",
-            opt_stats.constraints_after,
-            opt_stats.witnesses_after,
-            opt_stats.eliminated,
-            opt_stats.constraint_reduction_percent()
-        );
+        if ge_optimization {
+            let opt_stats = crate::optimize_r1cs(
+                &mut r1cs,
+                &mut witness_builders,
+                &mut witness_map,
+                &acir_public_inputs_indices_set,
+            )?;
+            info!(
+                "After GE optimization: {} constraints, {} witnesses ({} eliminated, {:.1}% \
+                 constraint reduction)",
+                opt_stats.constraints_after,
+                opt_stats.witnesses_after,
+                opt_stats.eliminated,
+                opt_stats.constraint_reduction_percent()
+            );
+        } else {
+            info!("Skipping GE optimization");
+        }
+
+        // Scale the actual R1CS after GE, before witness remapping and scheme
+        // construction. Extraction, WHIR preprocessing and serialized keys
+        // must all see these same coefficients.
+        crate::minimize_coefficient_triplets(&mut r1cs);
 
         let has_public_inputs = !acir_public_inputs_indices_set.is_empty();
         let (split_witness_builders, remapped_r1cs, remapped_witness_map, challenge_offsets) =
@@ -257,7 +279,7 @@ impl MavrosCompiler {
 #[cfg(test)]
 mod tests {
     use {
-        crate::NoirCompiler,
+        crate::{noir_to_r1cs, NoirCompiler},
         ark_std::One,
         provekit_backend_bn254::{
             witness::{ConstantTerm, DigitalDecompositionWitnesses, SumTerm, WitnessBuilder},
@@ -279,6 +301,35 @@ mod tests {
         let bin = postcard::to_allocvec(value).unwrap();
         let deserialized = postcard::from_bytes(&bin).unwrap();
         assert_eq!(value, &deserialized);
+    }
+
+    #[test]
+    fn ge_can_be_disabled_when_building_a_scheme() {
+        let path = PathBuf::from("../../tooling/provekit-bench/benches/poseidon_rounds.json");
+        let program: noirc_artifacts::program::ProgramArtifact =
+            serde_json::from_reader(std::fs::File::open(path).unwrap()).unwrap();
+        let (raw_r1cs, ..) = noir_to_r1cs(&program.bytecode.functions[0]).unwrap();
+        let unoptimized = NoirCompiler::from_program_with_ge(
+            program.clone(),
+            provekit_common::HashConfig::default(),
+            provekit_common::WitnessCommitmentMode::default(),
+            false,
+        )
+        .unwrap();
+        let optimized = NoirCompiler::from_program(
+            program,
+            provekit_common::HashConfig::default(),
+            provekit_common::WitnessCommitmentMode::default(),
+        )
+        .unwrap();
+
+        // Witness preparation still runs, but skipping GE retains the raw
+        // constraint rows. The default constructor still eliminates rows.
+        assert_eq!(
+            unoptimized.r1cs().num_constraints(),
+            raw_r1cs.num_constraints()
+        );
+        assert!(optimized.r1cs().num_constraints() < unoptimized.r1cs().num_constraints());
     }
 
     #[test]
