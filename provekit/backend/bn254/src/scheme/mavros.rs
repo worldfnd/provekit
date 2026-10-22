@@ -194,12 +194,22 @@ impl MavrosColumnMap {
         self.map[column] as usize
     }
 
-    pub fn permute(&self, values: &[FieldElement]) -> Vec<FieldElement> {
+    pub fn permute(&self, values: Vec<FieldElement>) -> Vec<FieldElement> {
+        if self.is_identity() {
+            return values;
+        }
         let mut out = vec![FieldElement::zero(); values.len()];
-        for (old, value) in values.iter().enumerate() {
-            out[self.constraint_column(old)] = *value;
+        for (old, value) in values.into_iter().enumerate() {
+            out[self.constraint_column(old)] = value;
         }
         out
+    }
+
+    fn is_identity(&self) -> bool {
+        self.public_columns
+            .iter()
+            .enumerate()
+            .all(|(new, &old)| old == new + 1)
     }
 }
 
@@ -334,7 +344,7 @@ mod tests {
         assert_eq!(map.constraint_column(7), 7);
 
         let w1: Vec<FieldElement> = (0..9).map(|i| FieldElement::from(100 + i as u64)).collect();
-        let permuted = map.permute(&w1);
+        let permuted = map.permute(w1.clone());
         assert_eq!(permuted[1], w1[1]);
         assert_eq!(permuted[2], w1[5]);
         assert_eq!(permuted[3], w1[2]);
@@ -343,7 +353,7 @@ mod tests {
 
         let derivatives: Vec<FieldElement> =
             (0..12).map(|i| FieldElement::from(1u64 << i)).collect();
-        let remapped = map.permute(&derivatives);
+        let remapped = map.permute(derivatives.clone());
         assert_eq!(remapped[0], derivatives[0]);
         assert_eq!(remapped[2], derivatives[5]);
         assert_eq!(remapped[3], derivatives[2]);

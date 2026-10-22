@@ -150,7 +150,7 @@ fn prove_mavros_inner(
         constraints_layout,
         None,
     )?;
-    let alphas = [ad_a, ad_b, ad_c].map(|d| column_map.permute(&d));
+    let alphas = [ad_a, ad_b, ad_c].map(|d| column_map.permute(d));
 
     let blinding_weights = expand_powers::<4, _>(&alpha);
 
