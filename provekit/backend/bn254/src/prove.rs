@@ -322,12 +322,11 @@ fn prove_mavros_inner(
 
     let (params, declared_return) =
         crate::frontend::input::ordered_mavros_inputs(&prover.abi, &input_map)?;
-    let supplied = mavros_interpreter::flattened_param_count(&params);
     let expected = mavros_vm::bytecode::parse_program_header(&prover.binary).entry_blob_field_count;
     ensure!(
-        supplied == expected,
-        "Mavros inputs flatten to {supplied} field elements but the program entry expects \
-         {expected}"
+        params.len() == expected,
+        "Mavros inputs flatten to {} field elements but the program entry expects {expected}",
+        params.len()
     );
     let phase1 = mavros_interpreter::run_phase1(
         &prover.binary,
