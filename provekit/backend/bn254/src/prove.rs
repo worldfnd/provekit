@@ -1,10 +1,18 @@
-#[cfg(not(target_arch = "wasm32"))]
-use crate::mavros_prove::MavrosR1CSProver;
 #[cfg(test)]
 use crate::solver::R1CSSolver;
 #[cfg(not(target_arch = "wasm32"))]
+use crate::MavrosProver;
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
 use {
-    crate::MavrosProver, mavros_vm::interpreter as mavros_interpreter, std::path::Path,
+    crate::mavros_prove::MavrosR1CSProver,
+    anyhow::ensure,
+    bn254_blackbox_solver::Bn254BlackBoxSolver,
+    mavros_vm::interpreter as mavros_interpreter,
+    nargo::foreign_calls::DefaultForeignCallBuilder,
+    noir_artifact_cli::fs::inputs::read_inputs_from_file,
+    noirc_abi::InputMap,
+    std::{mem::take, path::Path},
+    tracing::info,
     whir::transcript::VerifierMessage,
 };
 use {
@@ -12,18 +20,13 @@ use {
         noir_to_native, spark::SparkQueryBatch, Bn254Field, CompressedLayers, FieldElement,
         NoirElement, NoirProver, ProvekitProof, Prover, TranscriptSponge,
     },
-    ::tracing::{debug, info, info_span, instrument},
+    ::tracing::{debug, info_span, instrument},
     acir::native_types::{Witness, WitnessMap},
     anyhow::{Context, Result},
     provekit_common::{log_commit_input, CompressedR1CS, PublicInputs, PublicInputsHash},
     provekit_prover::WhirR1CSProver,
-    std::mem::{size_of, take},
+    std::mem::size_of,
     whir::transcript::ProverState,
-};
-#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
-use {
-    bn254_blackbox_solver::Bn254BlackBoxSolver, nargo::foreign_calls::DefaultForeignCallBuilder,
-    noir_artifact_cli::fs::inputs::read_inputs_from_file, noirc_abi::InputMap,
 };
 
 /// `prove` and `prove_with_toml` are native-only (cfg-gated out on wasm32).
@@ -317,7 +320,14 @@ fn prove_mavros_inner(
 ) -> Result<(ProvekitProof<Bn254Field>, Option<SparkQueryBatch>)> {
     crate::register();
 
-    let params = crate::frontend::input::ordered_params_from_btreemap(&prover.abi, &input_map)?;
+    let (params, declared_return) =
+        crate::frontend::input::ordered_mavros_inputs(&prover.abi, &input_map)?;
+    let expected = mavros_vm::bytecode::parse_program_header(&prover.binary).entry_blob_field_count;
+    ensure!(
+        params.len() == expected,
+        "Mavros inputs flatten to {} field elements but the program entry expects {expected}",
+        params.len()
+    );
     let phase1 = mavros_interpreter::run_phase1(
         &prover.binary,
         prover.witness_layout,
@@ -327,19 +337,34 @@ fn prove_mavros_inner(
     )
     .context("While running Mavros witness phase 1")?;
 
+    let column_map = &prover.column_map;
     let num_public_inputs = prover.num_public_inputs;
+    let w1 = column_map.permute(phase1.out_wit_pre_comm.clone());
     let public_inputs = if num_public_inputs == 0 {
         PublicInputs::new()
     } else {
-        PublicInputs::from_vec(phase1.out_wit_pre_comm[1..=num_public_inputs].to_vec())
+        PublicInputs::from_vec(w1[1..=num_public_inputs].to_vec())
     };
+
+    if let (Some(declared), Some(ret)) = (&declared_return, &prover.abi.return_type) {
+        let len = ret.abi_type.field_count() as usize;
+        ensure!(
+            ret.visibility == noirc_abi::AbiVisibility::Public,
+            "a declared `return` can only be checked against a public return"
+        );
+        let computed = &w1[1 + num_public_inputs - len..=num_public_inputs];
+        ensure!(
+            computed == declared.as_slice(),
+            "the declared `return` {declared:?} does not match the value the circuit computed \
+             {computed:?}"
+        );
+    }
 
     // Set up transcript with public inputs bound to the instance.
     let instance = public_inputs.hash_bytes::<Bn254Field>(prover.hash_config);
-    let ds = prover
-        .whir_for_witness
-        .create_domain_separator()
-        .instance(&instance);
+    let mut ds = prover.whir_for_witness.create_domain_separator();
+    ds.session_id = prover.mavros_digest;
+    let ds = ds.instance(&instance);
     let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(prover.hash_config));
 
     info!(
@@ -349,7 +374,6 @@ fn prove_mavros_inner(
         "Mavros witness layout"
     );
 
-    let w1 = phase1.out_wit_pre_comm.clone();
     log_commit_input(
         "mavros_w1_pre_commitment",
         &w1,
@@ -418,6 +442,7 @@ fn prove_mavros_inner(
                 prover.witness_layout,
                 prover.constraints_layout,
                 &prover.binary,
+                column_map,
             )
             .context("While proving R1CS instance")?;
         (proof, Some(SparkQueryBatch::from(queries)))
@@ -432,6 +457,7 @@ fn prove_mavros_inner(
                 prover.witness_layout,
                 prover.constraints_layout,
                 &prover.binary,
+                column_map,
             )
             .context("While proving R1CS instance")?;
         (proof, None)
@@ -446,14 +472,6 @@ fn prove_mavros_inner(
     ))
 }
 
-#[cfg(all(not(target_arch = "wasm32"), feature = "witness-generation"))]
-fn mavros_input_map_from_toml(abi: &noirc_abi::Abi, prover_toml: &Path) -> Result<InputMap> {
-    let project_path = prover_toml
-        .parent()
-        .context("Could not derive project path from Prover.toml path")?;
-    crate::frontend::input::read_prover_inputs(&project_path.to_path_buf(), abi)
-}
-
 #[cfg(not(target_arch = "wasm32"))]
 impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
@@ -465,7 +483,8 @@ impl Prove for MavrosProver {
     #[cfg(feature = "witness-generation")]
     #[instrument(skip_all)]
     fn prove_with_toml(self, prover_toml: impl AsRef<Path>) -> Result<ProvekitProof<Bn254Field>> {
-        let input_map = mavros_input_map_from_toml(&self.abi, prover_toml.as_ref())?;
+        let input_map =
+            crate::frontend::input::read_prover_inputs(prover_toml.as_ref(), &self.abi)?;
         self.prove(input_map)
     }
 
@@ -484,7 +503,8 @@ impl Prove for MavrosProver {
         self,
         prover_toml: impl AsRef<Path>,
     ) -> Result<(ProvekitProof<Bn254Field>, SparkQueryBatch)> {
-        let input_map = mavros_input_map_from_toml(&self.abi, prover_toml.as_ref())?;
+        let input_map =
+            crate::frontend::input::read_prover_inputs(prover_toml.as_ref(), &self.abi)?;
         let (proof, batch) = prove_mavros_inner(self, input_map, true)?;
         let batch = batch
             .ok_or_else(|| anyhow::anyhow!("SPARK query batch must be produced when requested"))?;
