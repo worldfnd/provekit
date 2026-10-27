@@ -225,6 +225,7 @@ mod wasm_stubs {
         pub algebraic_size:      usize,
         pub multiplicities_size: usize,
         pub challenges_size:     usize,
+        pub logup_repetitions:   usize,
         pub tables_data_size:    usize,
         pub lookups_data_size:   usize,
     }
