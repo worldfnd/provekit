@@ -57,6 +57,8 @@ find .. -name Nargo.toml -maxdepth 4
 
 **Fix.** Check out the `v1.0.2` tag, rerun `prepare` and `prove`, and use `provekit-common = "=1.0.2"` and `provekit-verifier = "=1.0.2"` in the Rust verifier. Do not mix newly generated artifacts with older ones.
 
+Keys from an older `main` fail the same way after a key-format major bump. Prover, verifier and scheme keys moved to 4.0 when they gained the Mavros column map and digest; rerun `prepare` and `prove` with the current build.
+
 ### Missing or stale artifacts
 
 **Symptom.** `prove` or `verify` cannot find expected `.pkp`, `.pkv`, or `proof.np` files.
