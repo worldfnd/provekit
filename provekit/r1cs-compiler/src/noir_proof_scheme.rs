@@ -1,7 +1,7 @@
 use {
     crate::{noir_to_r1cs, witness_generator::NoirWitnessGeneratorBuilder},
     anyhow::{ensure, Context as _, Result},
-    mavros_artifacts::{Artifact, ArtifactError, FieldId as MavrosFieldId, R1CS as MavrosR1CS},
+    mavros_artifacts::{Artifact, ArtifactError, ArtifactParts, R1CS as MavrosR1CS},
     noirc_artifacts::program::ProgramArtifact,
     provekit_backend_bn254::{
         witness::WitnessBuilder, Bn254Field, MavrosColumnMap, MavrosSchemeData, NoirProofScheme,
@@ -200,9 +200,9 @@ impl MavrosCompiler {
         info!("Reading Mavros artifact from {:?}", artifact_path);
         let bytes =
             std::fs::read(artifact_path.as_ref()).context("while reading the Mavros artifact")?;
-        let artifact = Artifact::from_bytes(&bytes)
+        let artifact = Artifact::<provekit_backend_bn254::FieldElement>::from_bytes(&bytes)
             .map_err(|err| match err {
-                ArtifactError::MissingHeader | ArtifactError::UnsupportedVersion(_) => {
+                ArtifactError::MissingHeader | ArtifactError::UnsupportedVersion { .. } => {
                     anyhow::anyhow!(
                         "{err}; recompile the circuit with the Mavros revision pinned in the \
                          workspace `Cargo.toml`"
@@ -211,27 +211,24 @@ impl MavrosCompiler {
                 other => anyhow::Error::new(other),
             })
             .with_context(|| format!("while reading the Mavros artifact {artifact_path:?}"))?;
-        ensure!(
-            artifact.field() == MavrosFieldId::Bn254,
-            "Mavros artifact is over field {:?} but this backend proves over bn254",
-            artifact.field()
-        );
         let abi: noirc_abi::Abi = serde_json::from_slice(artifact.abi())
             .context("while decoding the ABI in the Mavros artifact")?;
-        let mavros_digest = artifact.digest();
-        let compiler = artifact.compiler().to_owned();
-        let (_, manifest, mavros_r1cs, binary, _) = artifact.into_parts();
+        let mavros_digest = artifact.circuit_digest();
+        let ArtifactParts {
+            compiler,
+            manifest,
+            r1cs: mavros_r1cs,
+            bytecode: binary,
+            ..
+        } = artifact.into_parts();
 
         info!(
             "Mavros {compiler} R1CS: {} constraints, witness layout: algebraic={}, challenges={}, \
-             digest={}",
+             circuit digest={}",
             mavros_r1cs.constraints.len(),
             mavros_r1cs.witness_layout.algebraic_size,
             mavros_r1cs.witness_layout.challenges_size,
-            mavros_digest
-                .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<String>(),
+            mavros_artifacts::hex(&mavros_digest),
         );
 
         let column_map =
