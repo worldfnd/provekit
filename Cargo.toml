@@ -99,13 +99,13 @@ ntt = { package = "provekit-ntt", version = "0.1.0" }
 
 # Workspace members - ProveKit
 provekit-bench = { path = "tooling/provekit-bench" }
-provekit-cli = { path = "tooling/cli", version = "1.0.2" }
-provekit-common = { path = "provekit/common", version = "1.0.2" }
+provekit-cli = { path = "tooling/cli", version = "1.0.3" }
+provekit-common = { path = "provekit/common", version = "1.0.3" }
 provekit-ffi = { path = "tooling/provekit-ffi" }
-provekit-gnark = { path = "tooling/provekit-gnark", version = "1.0.2" }
-provekit-prover = { path = "provekit/prover", version = "1.0.2" }
-provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "1.0.2" }
-provekit-verifier = { path = "provekit/verifier", version = "1.0.2" }
+provekit-gnark = { path = "tooling/provekit-gnark", version = "1.0.3" }
+provekit-prover = { path = "provekit/prover", version = "1.0.3" }
+provekit-r1cs-compiler = { path = "provekit/r1cs-compiler", version = "1.0.3" }
+provekit-verifier = { path = "provekit/verifier", version = "1.0.3" }
 provekit-verifier-server = { path = "tooling/verifier-server" }
 provekit-wasm = { path = "tooling/provekit-wasm" }
 
@@ -157,7 +157,7 @@ parking_lot = "0.12"
 xz2 = "0.1.7"
 zerocopy = "0.8.25"
 zeroize = "1.8.1"
-zstd = "0.13"
+zstd = "0.14.3"
 
 # WASM-specific dependencies
 console_error_panic_hook = "0.1"
