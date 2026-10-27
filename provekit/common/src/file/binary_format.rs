@@ -16,18 +16,20 @@ pub const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
 // Major must match exactly on read (an incompatible layout is rejected); a
 // reader accepts any file whose minor is >= its own.
 //
-// 3.1: the Mavros prover and scheme records carry the column map, and the
-// Mavros prover, scheme and verifier records carry `mavros_digest`.
+// 4.0: the Mavros prover and scheme records carry the column map, and the
+// Mavros prover, scheme and verifier records carry `mavros_digest`. A 3.x
+// reader would silently drop the appended fields, so this is a major bump:
+// keys prepared before 4.0 are rejected and must be regenerated.
 // ---------------------------------------------------------------------------
 
 pub const PROVER_FORMAT: [u8; 8] = *b"PrvKitPr";
-pub const PROVER_VERSION: (u16, u16) = (3, 1);
+pub const PROVER_VERSION: (u16, u16) = (4, 0);
 
 pub const VERIFIER_FORMAT: [u8; 8] = *b"PrvKitVr";
-pub const VERIFIER_VERSION: (u16, u16) = (3, 1);
+pub const VERIFIER_VERSION: (u16, u16) = (4, 0);
 
 pub const NOIR_PROOF_SCHEME_FORMAT: [u8; 8] = *b"NrProScm";
-pub const NOIR_PROOF_SCHEME_VERSION: (u16, u16) = (3, 1);
+pub const NOIR_PROOF_SCHEME_VERSION: (u16, u16) = (4, 0);
 
 pub const NOIR_PROOF_FORMAT: [u8; 8] = *b"NPSProof";
 pub const NOIR_PROOF_VERSION: (u16, u16) = (3, 0);

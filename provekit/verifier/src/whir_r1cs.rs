@@ -70,6 +70,12 @@ where
             self.r1cs_hash,
             actual_r1cs_hash
         );
+        ensure!(
+            public_inputs.len() == r1cs.num_public_inputs,
+            "Public input count mismatch: R1CS expects {}, got {}",
+            r1cs.num_public_inputs,
+            public_inputs.len()
+        );
 
         let public_inputs_hash = P::hash_public_inputs(self.hash_config, &public_inputs.0);
         let instance = P::ext_to_bytes_le(&public_inputs_hash);
