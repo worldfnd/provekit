@@ -1,90 +1,88 @@
 use {
-    anyhow::{Context, Result},
+    crate::FieldElement,
+    anyhow::{bail, ensure, Context, Result},
     mavros_artifacts::InputValueOrdered,
+    mavros_vm::interpreter::flatten_param_vec,
     noirc_abi::{
         input_parser::{Format, InputValue},
-        AbiType, MAIN_RETURN_NAME,
+        Abi, AbiType, InputMap, MAIN_RETURN_NAME,
     },
-    std::{collections::BTreeMap, fs, path::Path},
+    std::{fs, path::Path},
 };
 
-pub fn read_prover_inputs(
-    root: &Path,
-    abi: &noirc_abi::Abi,
-) -> Result<BTreeMap<String, InputValue>, anyhow::Error> {
-    let file_path = root.join("Prover.toml");
+pub fn read_prover_inputs(file_path: &Path, abi: &Abi) -> Result<InputMap> {
     let ext = file_path
         .extension()
         .and_then(|e| e.to_str())
         .unwrap_or_default();
 
     let Some(format) = Format::from_ext(ext) else {
-        anyhow::bail!("Unsupported input extension: {}", ext);
+        bail!("Unsupported input extension: {}", ext);
     };
 
-    let inputs_src = fs::read_to_string(&file_path)?;
-    let inputs: BTreeMap<String, InputValue> = format
+    let inputs_src = fs::read_to_string(file_path)
+        .with_context(|| format!("while reading inputs from {}", file_path.display()))?;
+    format
         .parse(&inputs_src, abi)
-        .context("while parsing Prover.toml inputs")?;
-
-    Ok(inputs)
+        .with_context(|| format!("while parsing inputs from {}", file_path.display()))
 }
 
-pub fn ordered_params_from_btreemap(
-    abi: &noirc_abi::Abi,
-    unordered_params: &BTreeMap<String, InputValue>,
-) -> Result<Vec<InputValueOrdered>> {
-    let mut ordered_params = Vec::new();
+pub fn ordered_mavros_inputs(
+    abi: &Abi,
+    input_map: &InputMap,
+) -> Result<(Vec<FieldElement>, Option<Vec<FieldElement>>)> {
+    let mut params = Vec::with_capacity(abi.parameters.len());
     for param in &abi.parameters {
-        let param_value = unordered_params
+        let value = input_map
             .get(&param.name)
-            .ok_or_else(|| anyhow::anyhow!("Parameter '{}' not found in inputs", param.name))?;
-
-        ordered_params.push(ordered_param(&param.typ, param_value)?);
+            .ok_or_else(|| anyhow::anyhow!("inputs do not supply parameter `{}`", param.name))?;
+        params.push(
+            ordered_value(&param.typ, value)
+                .with_context(|| format!("while ordering parameter `{}`", param.name))?,
+        );
     }
-
-    if let Some(return_type) = &abi.return_type {
-        if let Some(return_value) = unordered_params.get(MAIN_RETURN_NAME) {
-            ordered_params.push(ordered_param(&return_type.abi_type, return_value)?);
+    let declared_return = match (&abi.return_type, input_map.get(MAIN_RETURN_NAME)) {
+        (Some(return_type), Some(value)) => {
+            let ordered = ordered_value(&return_type.abi_type, value)
+                .with_context(|| format!("while ordering `{MAIN_RETURN_NAME}`"))?;
+            Some(flatten_param_vec(&[ordered]))
         }
-    }
-
-    Ok(ordered_params)
+        _ => None,
+    };
+    Ok((flatten_param_vec(&params), declared_return))
 }
 
-fn ordered_param(abi_type: &AbiType, value: &InputValue) -> Result<InputValueOrdered> {
-    match (value, abi_type) {
-        (InputValue::Field(elem), _) => Ok(InputValueOrdered::Field(super::noir_to_native(*elem))),
-
-        (InputValue::Vec(vec_elements), AbiType::Array { typ, .. }) => {
-            let items = vec_elements
-                .iter()
-                .map(|elem| ordered_param(typ, elem))
-                .collect::<Result<Vec<_>>>()?;
-            Ok(InputValueOrdered::Vec(items))
+fn ordered_value(abi_type: &AbiType, value: &InputValue) -> Result<InputValueOrdered> {
+    Ok(match (value, abi_type) {
+        (InputValue::Field(elem), _) => InputValueOrdered::Field(super::noir_to_native(*elem)),
+        (InputValue::Vec(vec_elements), AbiType::Array { typ, length }) => {
+            ensure!(
+                vec_elements.len() == *length as usize,
+                "array value has {} elements but the ABI declares {length}",
+                vec_elements.len()
+            );
+            InputValueOrdered::Vec(
+                vec_elements
+                    .iter()
+                    .map(|elem| ordered_value(typ, elem))
+                    .collect::<Result<Vec<_>>>()?,
+            )
         }
-        (InputValue::Struct(object), AbiType::Struct { fields, .. }) => {
-            let items = fields
+        (InputValue::Struct(object), AbiType::Struct { fields, .. }) => InputValueOrdered::Struct(
+            fields
                 .iter()
                 .map(|(field_name, field_type)| {
                     let field_value = object.get(field_name).ok_or_else(|| {
-                        anyhow::anyhow!("Field '{}' not found in struct input", field_name)
+                        anyhow::anyhow!("field `{field_name}` not found in struct input")
                     })?;
-                    Ok((field_name.clone(), ordered_param(field_type, field_value)?))
+                    Ok((field_name.clone(), ordered_value(field_type, field_value)?))
                 })
-                .collect::<Result<Vec<_>>>()?;
-            Ok(InputValueOrdered::Struct(items))
-        }
-        (InputValue::String(_), _) => {
-            anyhow::bail!("String inputs are not supported for ordered params")
-        }
-        (InputValue::Vec(_), AbiType::Tuple { .. }) => {
-            anyhow::bail!("Tuple inputs are not supported for ordered params")
-        }
-        _ => anyhow::bail!(
-            "Input value does not match ABI type: {:?} vs {:?}",
-            value,
-            abi_type
+                .collect::<Result<Vec<_>>>()?,
         ),
-    }
+        (InputValue::String(_), _) => bail!("string inputs are not supported for ordered params"),
+        (InputValue::Vec(_), AbiType::Tuple { .. }) => {
+            bail!("tuple inputs are not supported for ordered params")
+        }
+        _ => bail!("input value does not match ABI type: {value:?} vs {abi_type:?}"),
+    })
 }

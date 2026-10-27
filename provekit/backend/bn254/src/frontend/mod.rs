@@ -2,7 +2,7 @@
 //! and the Noir↔native field conversion.
 
 mod abi;
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(feature = "witness-generation", not(target_arch = "wasm32")))]
 pub(crate) mod input;
 mod native;
 mod witness_generator;

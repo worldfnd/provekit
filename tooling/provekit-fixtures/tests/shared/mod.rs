@@ -299,6 +299,28 @@ where
     );
 }
 
+/// Public-input count: prover and verifier agree on fewer public inputs than
+/// the R1CS declares, so the hash guard and the binding covector both pass on
+/// the shorter list. Dropping the trailing input (a Noir return) or all of
+/// them leaves those columns unbound unless the count itself is checked.
+pub fn omitted_public_input_is_rejected<P>()
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
+{
+    let (r1cs, w) = two_public_inputs::<Base<P>>(6, 7);
+    assert!(satisfies(&r1cs, &w));
+    for omitted in [vec![w[1]], vec![]] {
+        let omitted = PublicInputs::from_vec(omitted);
+        let (scheme, proof) = prove::<P>(&r1cs, w.clone(), &omitted).expect("proving failed");
+        assert!(
+            scheme.verify(&proof, &omitted, &r1cs).is_err(),
+            "{} of 2 public inputs must reject",
+            omitted.len()
+        );
+    }
+}
+
 /// Challenge binding: a `w2` whose committed challenge differs from the drawn
 /// one must not verify.
 pub fn tampered_challenge_is_rejected<P>()
@@ -456,6 +478,11 @@ macro_rules! soundness_suite {
         fn tampered_public_input_is_rejected() {
             $register();
             $crate::shared::tampered_public_input_is_rejected::<$field>();
+        }
+        #[test]
+        fn omitted_public_input_is_rejected() {
+            $register();
+            $crate::shared::omitted_public_input_is_rejected::<$field>();
         }
     };
 }

@@ -20,6 +20,7 @@ pub struct Verifier {
     pub spark_setup:      Option<SparkSetup>,
     #[serde(with = "serde_jsonify")]
     pub abi:              Abi,
+    pub mavros_digest:    Option<[u8; 32]>,
 }
 
 impl Verifier {
@@ -31,6 +32,7 @@ impl Verifier {
                 spark_setup:      None,
                 abi:              d.witness_generator.abi.clone(),
                 hash_config:      d.hash_config,
+                mavros_digest:    None,
             },
             NoirProofScheme::Mavros(d) => Self {
                 r1cs:             d.r1cs,
@@ -38,6 +40,7 @@ impl Verifier {
                 spark_setup:      None,
                 abi:              d.abi.clone(),
                 hash_config:      d.hash_config,
+                mavros_digest:    Some(d.mavros_digest),
             },
         }
     }
