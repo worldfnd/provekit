@@ -41,9 +41,7 @@ impl std::error::Error for SplitError {}
 
 /// Analyzes witness builder dependencies and splits them into w1/w2 groups.
 ///
-/// Uses backward reachability from challenge consumers (lookup builders) to
-/// identify which builders must be committed before challenge extraction (w1),
-/// minimizing overhead. Balances witness counts between w1 and w2.
+/// Places challenge-dependent builders in w2 and all other builders in w1.
 pub struct WitnessSplitter<'a> {
     witness_builders: &'a [WitnessBuilder],
     deps:             DependencyInfo,
@@ -164,21 +162,10 @@ impl<'a> WitnessSplitter<'a> {
             }
         }
 
-        // Step 6: Calculate witness counts for balancing
-        let mut w1_witness_count: usize = mandatory_w1
-            .iter()
-            .map(|&idx| DependencyInfo::extract_writes(&self.witness_builders[idx]).len())
-            .sum();
-
-        let mut w2_witness_count: usize = mandatory_w2
-            .iter()
-            .map(|&idx| DependencyInfo::extract_writes(&self.witness_builders[idx]).len())
-            .sum();
-
-        // Step 7: Assign free builders greedily while respecting dependencies
+        // Step 6: Assign free builders while respecting dependencies.
         // Rule: if any dependency is in w2, the builder must also be in w2
-        // (because w1 is solved before w2)
-        // A free builder for public input witnesses goes in w1.
+        // (because w1 is solved before w2). A free builder for public input
+        // witnesses goes in w1.
         let mut w1_set = mandatory_w1;
         let mut w2_set = mandatory_w2;
 
@@ -191,30 +178,24 @@ impl<'a> WitnessSplitter<'a> {
                     .map_or(false, |&producer| w2_set.contains(&producer))
             });
 
-            let witness_count = DependencyInfo::extract_writes(&self.witness_builders[idx]).len();
-
             // If free builder writes a public witness, add it to w1_set.
             if let WitnessBuilder::Acir(_, acir_idx) = &self.witness_builders[idx] {
                 if acir_public_inputs_indices_set.contains(&(*acir_idx as u32)) {
                     w1_set.insert(idx);
-                    w1_witness_count += witness_count;
                     continue;
                 }
             }
 
+            // Commit challenge-independent witnesses, including lookup
+            // multiplicities, in w1 before sampling challenges.
             if must_be_w2 {
                 w2_set.insert(idx);
-                w2_witness_count += witness_count;
-            } else if w1_witness_count <= w2_witness_count {
-                w1_set.insert(idx);
-                w1_witness_count += witness_count;
             } else {
-                w2_set.insert(idx);
-                w2_witness_count += witness_count;
+                w1_set.insert(idx);
             }
         }
 
-        // Step 8: Convert sets to sorted vectors
+        // Step 7: Convert sets to sorted vectors
         let mut w1_indices: Vec<usize> = w1_set.into_iter().collect();
         let mut w2_indices: Vec<usize> = w2_set.into_iter().collect();
 
