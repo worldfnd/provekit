@@ -1,8 +1,11 @@
 //! `#[ignore]` prover profiling harness.
 //!
-//! Two probes (run with `--release`):
+//! Profiling probes (run with `--release`):
 //!
 //! ```text
+//! # Repeated squaring-chain benchmarks: Goldilocks first, then BN254
+//! RAYON_NUM_THREADS=8 cargo test -p provekit-fixtures --release --test profile field_benchmarks -- --exact --ignored --nocapture
+//!
 //! # Size sweep: BF vs EF vs bn254 at 2^14..2^20
 //! cargo test -p provekit-fixtures --release --test profile size_sweep -- --ignored --nocapture
 //!
@@ -55,6 +58,39 @@ where
         proof.narg_string.len(),
         proof.hints.len(),
     )
+}
+
+fn benchmark_field<P>(field: &str, log_size: u32)
+where
+    P: FieldHash,
+    Standard: Distribution<Ext<P>> + Distribution<Base<P>>,
+{
+    P::register();
+    run_one::<P>(log_size); // Warmup; every proof is verified.
+    let mut prove = Duration::ZERO;
+    for _ in 0..3 {
+        prove += run_one::<P>(log_size).0;
+    }
+    println!(
+        "{field} squaring chain 2^{log_size},{:.3}",
+        prove.as_secs_f64() * 1000.0 / 3.0,
+    );
+}
+
+#[test]
+#[ignore = "manual benchmark; run --release -- --ignored --nocapture"]
+fn field_benchmarks() {
+    assert_eq!(
+        provekit_common::WitnessCommitmentMode::default(),
+        provekit_common::WitnessCommitmentMode::ZeroKnowledge,
+    );
+    println!("\ncircuit,prover_time_ms");
+    for size in [18, 20] {
+        benchmark_field::<provekit_backend_goldilocks::GoldilocksField>("Goldilocks", size);
+    }
+    for size in [18, 20] {
+        benchmark_field::<provekit_backend_bn254::Bn254Field>("BN254", size);
+    }
 }
 
 /// Run one (field, size) cell and print its row immediately (so partial results
