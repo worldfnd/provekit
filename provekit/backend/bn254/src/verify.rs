@@ -17,7 +17,12 @@ impl Verify for Verifier {
         self.whir_for_witness
             .take()
             .context("Verifier has already been consumed; cannot verify twice")?
-            .verify(&proof.whir_r1cs_proof, &proof.public_inputs, &self.r1cs)?;
+            .verify_with_session(
+                &proof.whir_r1cs_proof,
+                &proof.public_inputs,
+                &self.r1cs,
+                self.mavros_digest.as_ref(),
+            )?;
 
         Ok(())
     }
