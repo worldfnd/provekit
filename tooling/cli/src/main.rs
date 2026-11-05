@@ -13,7 +13,9 @@ use {
     anyhow::Result,
     span_stats::SpanStats,
     tracing::subscriber,
-    tracing_subscriber::{self, filter::LevelFilter, layer::SubscriberExt as _, Layer, Registry},
+    tracing_subscriber::{
+        self, filter::LevelFilter, layer::SubscriberExt as _, EnvFilter, Layer, Registry,
+    },
 };
 
 #[cfg(feature = "profiling-allocator")]
@@ -28,7 +30,11 @@ fn main() -> Result<()> {
     let level = LevelFilter::TRACE;
     #[cfg(not(debug_assertions))]
     let level = LevelFilter::INFO;
-    let subscriber = Registry::default().with(SpanStats.with_filter(level));
+    // RUST_LOG can override the default level and filter individual crates.
+    let filter = EnvFilter::builder()
+        .with_default_directive(level.into())
+        .from_env()?;
+    let subscriber = Registry::default().with(SpanStats.with_filter(filter));
 
     #[cfg(feature = "tracy")]
     let subscriber = {

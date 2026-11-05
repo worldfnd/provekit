@@ -8,6 +8,7 @@ pub mod noir_to_r1cs;
 mod optimize;
 mod poseidon2;
 pub mod range_check;
+mod row_scaling;
 mod sha256_compression;
 mod spread;
 mod uints;
@@ -18,5 +19,6 @@ pub use {
     noir_proof_scheme::{MavrosCompiler, NoirCompiler},
     noir_to_r1cs::{noir_to_r1cs, noir_to_r1cs_with_breakdown, R1CSBreakdown},
     optimize::{optimize_r1cs, OptimizationStats},
+    row_scaling::{minimize_coefficient_triplets, RowScalingStats},
     whir_r1cs::MavrosSchemeBuilder,
 };

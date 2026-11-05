@@ -1,5 +1,6 @@
 mod analyze_pkp;
 mod circuit_stats;
+mod extract;
 mod generate_gnark_inputs;
 pub mod prepare;
 mod prove;
