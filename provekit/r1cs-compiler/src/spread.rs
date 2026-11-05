@@ -246,7 +246,9 @@ pub(crate) fn spread_decompose(
 
     // Combine coefficients for duplicate witness indices,
     // since R1CS set() overwrites rather than adds.
-    let mut combined: HashMap<usize, FieldElement> = HashMap::new();
+    // A BTreeMap keeps the term order deterministic: it fixes the order in
+    // which coefficients are interned, which `R1CS::hash()` covers.
+    let mut combined: BTreeMap<usize, FieldElement> = BTreeMap::new();
     for SumTerm(coeff, idx) in &sum_terms {
         *combined.entry(*idx).or_insert(FieldElement::zero()) += coeff.unwrap_or(FieldElement::ONE);
     }
