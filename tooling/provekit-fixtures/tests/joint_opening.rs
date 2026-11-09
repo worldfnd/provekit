@@ -29,8 +29,8 @@ use {
             zook::ProtocolConfig,
         },
         transcript::{
-            codecs::Empty, DomainSeparator, Proof, ProverState, VerificationError,
-            VerificationResult, VerifierMessage, VerifierState,
+            codecs::Empty, DomainSeparator, Proof, ProverState, VerificationResult,
+            VerifierMessage, VerifierState,
         },
     },
 };
@@ -70,27 +70,34 @@ where
     let instance = public.hash_bytes::<P>(HASH);
     let ds = scheme.create_domain_separator().instance(&instance);
     let mut prover = ProverState::new(&ds, P::transcript_sponge(HASH));
-    let mut full_witness = left.clone();
-    let committed = scheme
+    let mut first = scheme
+        .commit(&mut prover, 4, r1cs.num_constraints(), left.clone(), None)
+        .unwrap();
+    let mut challenges: Vec<Base<P>> = prover.verifier_message_vec(1);
+    if matches!(change, Change::StageChallenge) {
+        challenges[0] += Base::<P>::ONE;
+    }
+    let right = multi_challenge_inverses_w2(&challenges, &left).unwrap();
+    assert_eq!(right[0] * right[1], Base::<P>::ONE);
+    let second = scheme
         .commit(
             &mut prover,
             4,
             r1cs.num_constraints(),
-            left.clone(),
-            |prover| {
-                let mut challenges: Vec<Base<P>> = prover.verifier_message_vec(1);
-                if matches!(change, Change::StageChallenge) {
-                    challenges[0] += Base::<P>::ONE;
-                }
-                let right = multi_challenge_inverses_w2(&challenges, &left)?;
-                assert_eq!(right[0] * right[1], Base::<P>::ONE);
-                full_witness.extend_from_slice(&right);
-                Ok(right)
-            },
+            right.clone(),
+            Some(&mut first),
         )
         .unwrap();
+    let mut full_witness = left;
+    full_witness.extend(right);
     let (proof, queries) = scheme
-        .prove_noir_with_spark(prover, r1cs.clone(), vec![committed], full_witness, &public)
+        .prove_noir_with_spark(
+            prover,
+            r1cs.clone(),
+            vec![first, second],
+            full_witness,
+            &public,
+        )
         .unwrap();
 
     // One matrix query keeps the selector and every source coordinate.
@@ -203,12 +210,9 @@ fn check_base_field_pair(mode: Mode) {
             .with_pow_budget(PowBudget::per_slot(10))
             .with_hash(HASH.engine_id()),
         TuningSpec {
-            vector_size:           2 * n,
+            vector_size:           n,
             starting_log_inv_rate: 2,
-            folding_factor:        FoldingFactor::ConstantFromSecondRound {
-                initial: 3,
-                rest:    2,
-            },
+            folding_factor:        FoldingFactor::Constant(2),
             rate_schedule:         RateSchedule::Stepping,
         },
     )
@@ -235,34 +239,26 @@ fn check_base_field_pair(mode: Mode) {
     right[..2].copy_from_slice(&[5, 7].map(Field64::from));
     let ds = DomainSeparator::protocol(&"provekit-joint-forms").instance(&Empty);
     let mut prover = ProverState::new(&ds, P::transcript_sponge(HASH));
-    let mut challenge = F::ZERO;
-    let committed = source
-        .commit_pair(
-            &mut prover,
-            Buffer::from(left),
-            |prover| -> VerificationResult<_> {
-                challenge = prover.verifier_message();
-                Ok(Buffer::from(right))
-            },
-        )
+    let mut first = source
+        .commit_pair(&mut prover, Buffer::from(left), None)
         .unwrap();
-    prover.prover_messages(&values);
-    let result = source.prove(&mut prover, committed, &refs, &values);
+    let challenge: F = prover.verifier_message();
+    let second = source
+        .commit_pair(&mut prover, Buffer::from(right), Some(&mut first))
+        .unwrap();
+    let result = source
+        .prove_pair(&mut prover, [first, second], &refs, &values)
+        .unwrap();
     prover.prover_message(&F::from(987));
     let proof = prover.proof();
 
     let verify = |proof: &Proof, values: &[F]| -> VerificationResult<()> {
         let mut verifier = VerifierState::new(&ds, proof, P::transcript_sponge(HASH));
-        let committed =
-            source.receive_pair(&mut verifier, |verifier| -> VerificationResult<()> {
-                let received: F = verifier.verifier_message();
-                assert_eq!(received, challenge);
-                Ok(())
-            })?;
-        if verifier.prover_messages_vec::<F>(values.len())? != values {
-            return Err(VerificationError);
-        }
-        let final_claim = source.verify(&mut verifier, committed, &refs, values)?;
+        let first = source.receive_pair(&mut verifier, None)?;
+        let received: F = verifier.verifier_message();
+        assert_eq!(received, challenge);
+        let second = source.receive_pair(&mut verifier, Some(&first))?;
+        let final_claim = source.verify_pair(&mut verifier, [first, second], &refs, values)?;
         assert_eq!(final_claim.evaluation_point, result.evaluation_point);
         final_claim.verify(&refs)?;
         let trailing: F = verifier.prover_message()?;
@@ -307,8 +303,8 @@ fn bn254_scheme() -> WhirR1CSScheme<Bn254Field> {
 fn joint_preflight_checks_source_size_and_challenge_and_commitment_counts() {
     let scheme = bn254_scheme();
     scheme.validate_joint_opening().unwrap();
-    scheme.validate_witness_commitment_count(1).unwrap();
-    for count in [0, 2, 3] {
+    scheme.validate_witness_commitment_count(2).unwrap();
+    for count in [0, 1, 3] {
         assert!(scheme.validate_witness_commitment_count(count).is_err());
     }
     let mut wrong_size = scheme.clone();
@@ -344,20 +340,15 @@ fn single_stage_proofs_open_one_witness() {
         let instance = public.hash_bytes::<P>(HASH);
         let ds = scheme.create_domain_separator().instance(&instance);
         let mut prover = ProverState::new(&ds, P::transcript_sponge(HASH));
-        let mut callback_ran = false;
         let committed = scheme
             .commit(
                 &mut prover,
                 r1cs.num_witnesses(),
                 r1cs.num_constraints(),
                 witness.clone(),
-                |_| {
-                    callback_ran = true;
-                    Ok(Vec::new())
-                },
+                None,
             )
             .unwrap();
-        assert!(callback_ran);
         let proof = scheme
             .prove_noir(
                 prover,
@@ -369,23 +360,4 @@ fn single_stage_proofs_open_one_witness() {
             .unwrap();
         scheme.verify(&proof, &public, &r1cs).unwrap();
     }
-}
-
-#[test]
-fn second_witness_callback_errors_reach_the_caller() {
-    type P = Bn254Field;
-    let scheme = bn254_scheme();
-    let (r1cs, left, _) = challenge_with_public_input::<Base<P>>(3);
-    let public = PublicInputs::from_vec(vec![Base::<P>::from(3)]);
-    let instance = public.hash_bytes::<P>(HASH);
-    let ds = scheme.create_domain_separator().instance(&instance);
-    let mut prover = ProverState::new(&ds, P::transcript_sponge(HASH));
-    let result = scheme.commit(&mut prover, 4, r1cs.num_constraints(), left, |_| {
-        anyhow::bail!("second witness failed")
-    });
-    assert!(result
-        .err()
-        .unwrap()
-        .to_string()
-        .contains("second witness failed"));
 }

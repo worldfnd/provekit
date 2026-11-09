@@ -32,9 +32,7 @@ use {
         },
         buffer::{Buffer, BufferOps},
         protocols::{whir::Witness as WhirWitness, zook::CommittedWitness as ZookCommittedWitness},
-        transcript::{
-            Codec, DuplexSpongeInterface, ProverState, VerificationError, VerifierMessage,
-        },
+        transcript::{Codec, DuplexSpongeInterface, ProverState, VerifierMessage},
     },
 };
 
@@ -50,10 +48,9 @@ pub struct BlindingState<P: ProofField> {
 }
 
 pub struct WhirR1CSCommitment<P: ProofField> {
-    pub witness:           ZookCommittedWitness<P::Embedding>,
-    pub polynomial:        Buffer<Base<P>>,
-    pub second_polynomial: Option<Buffer<Base<P>>>,
-    pub blinding:          Option<BlindingState<P>>,
+    pub witness:    ZookCommittedWitness<P::Embedding>,
+    pub polynomial: Buffer<Base<P>>,
+    pub blinding:   Option<BlindingState<P>>,
 }
 
 /// A single column-axis SPARK query produced during a witness open: the final
@@ -82,7 +79,7 @@ pub trait WhirR1CSProver<P: FieldHash> {
         num_witnesses: usize,
         num_constraints: usize,
         witness: Vec<Base<P>>,
-        second: impl FnOnce(&mut ProverState<P::Sponge>) -> Result<Vec<Base<P>>>,
+        previous: Option<&mut WhirR1CSCommitment<P>>,
     ) -> Result<WhirR1CSCommitment<P>>;
 
     fn prove_noir(
@@ -117,9 +114,14 @@ where
         num_witnesses: usize,
         num_constraints: usize,
         witness: Vec<Base<P>>,
-        second: impl FnOnce(&mut ProverState<P::Sponge>) -> Result<Vec<Base<P>>>,
+        previous: Option<&mut WhirR1CSCommitment<P>>,
     ) -> Result<WhirR1CSCommitment<P>> {
-        let witness_size = self.w1_size;
+        let is_w1 = previous.is_none();
+        let witness_size = if is_w1 {
+            self.w1_size
+        } else {
+            num_witnesses - self.w1_size
+        };
 
         ensure!(
             witness.len() == witness_size,
@@ -134,7 +136,7 @@ where
             "R1CS constraints exceed scheme capacity"
         );
 
-        let target_len = self.domain_size();
+        let target_len = self.whir_witness.tuning().vector_size;
 
         let mut padded_witness = pad_to_power_of_two(witness);
         if padded_witness.len() < target_len {
@@ -149,59 +151,40 @@ where
         // zook's `commit` consumes the buffer; the prove stage still needs
         // the message for the covector evaluations, so pass a clone.
         let padded_witness = Buffer::from(padded_witness);
-        let mut blinding = None;
-        let mut second_polynomial = None;
-        // Commit g before the callback samples challenges and constructs w2.
-        let between = |merlin: &mut ProverState<P::Sponge>| -> Result<_> {
+        let witness_commitment = if self.num_challenges > 0 {
+            self.whir_witness
+                .commit_pair(
+                    merlin,
+                    padded_witness.clone(),
+                    previous.map(|first| &mut first.witness),
+                )
+                .map_err(|_| anyhow::anyhow!("Failed to commit witness"))?
+        } else {
+            self.whir_witness.commit(merlin, padded_witness.clone())
+        };
+
+        // Commit the Spartan sumcheck blinding `g` separately, natively in the
+        // extension field. Transcript order: this commitment is absorbed
+        // immediately after the witness commitment (mirrored in the verifier).
+        let blinding = if is_w1 {
             let g = generate_blinding_univariates::<Ext<P>>(self.m_0);
             let blind_len = self.blinding_domain_size();
             let mut g_vector: Vec<Ext<P>> = g.iter().flatten().copied().collect();
             g_vector.resize(blind_len, <Ext<P>>::zero());
             let g_vector = Buffer::from(g_vector);
             let blinding_witness = self.whir_blinding.commit(merlin, &[&g_vector]);
-            blinding = Some(BlindingState {
+            Some(BlindingState {
                 polynomial: g,
                 vector:     g_vector,
                 witness:    blinding_witness,
-            });
-            let mut right = second(merlin)?;
-            ensure!(
-                right.len() == num_witnesses - self.w1_size,
-                "Unexpected second witness length"
-            );
-            ensure!(
-                right.len() <= target_len,
-                "Second witness exceeds scheme capacity"
-            );
-            if self.num_challenges > 0 {
-                right.resize(target_len, <Base<P>>::zero());
-            }
-            let right = Buffer::from(right);
-            second_polynomial = (self.num_challenges > 0).then(|| right.clone());
-            Ok(right)
-        };
-        let witness_commitment = if self.num_challenges > 0 {
-            let mut callback_error = None;
-            self.whir_witness
-                .commit_pair(merlin, padded_witness.clone(), |merlin| {
-                    between(merlin).map_err(|error| {
-                        callback_error = Some(error);
-                        VerificationError
-                    })
-                })
-                .map_err(|_| {
-                    callback_error.unwrap_or_else(|| anyhow::anyhow!("Invalid pair commitment"))
-                })?
+            })
         } else {
-            let committed = self.whir_witness.commit(merlin, padded_witness.clone());
-            between(merlin)?;
-            committed
+            None
         };
 
         Ok(WhirR1CSCommitment {
             witness: witness_commitment,
             polynomial: padded_witness,
-            second_polynomial,
             blinding,
         })
     }
@@ -379,7 +362,7 @@ where
         .take()
         .ok_or_else(|| anyhow::anyhow!("c0 must carry blinding state"))?;
 
-    let is_single = scheme.num_challenges == 0;
+    let is_single = commitments.len() == 1;
     let (x, public_weight) =
         get_public_weights(public_inputs_hash, public_inputs_len, &mut merlin, scheme.m);
 
@@ -447,14 +430,12 @@ where
             }
         })
     } else {
-        let c1 = commitments.pop().expect("one combined commitment");
-        let right = c1
-            .second_polynomial
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Missing second witness"))?;
+        let [c1, c2]: [WhirR1CSCommitment<P>; 2] = commitments
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("Joint opening requires two commitments"))?;
         let matrix_evals = compute_joint_matrix_evals(&embedding, &alphas, scheme.w1_size, [
             &c1.polynomial,
-            right,
+            &c2.polynomial,
         ])?;
         let forms = build_joint_forms(
             scheme.m,
@@ -478,17 +459,22 @@ where
                 &embedding,
                 x,
                 &scheme.challenge_offsets,
-                right,
+                &c2.polynomial,
             ));
         }
         let form_refs = linear_form_refs(&forms);
         for evaluation in &evaluations {
             merlin.prover_message(evaluation);
         }
-        let final_claim =
-            scheme
-                .whir_witness
-                .prove(&mut merlin, c1.witness, &form_refs, &evaluations);
+        let final_claim = scheme
+            .whir_witness
+            .prove_pair(
+                &mut merlin,
+                [c1.witness, c2.witness],
+                &form_refs,
+                &evaluations,
+            )
+            .map_err(|_| anyhow::anyhow!("Joint WHIR opening failed"))?;
         spark_row.map(|row| {
             let col = final_claim.evaluation_point;
             SparkQueryData {

@@ -214,11 +214,12 @@ fn prove_noir_inner(
     };
 
     log_commit_input("noir_w1", &w1, prover.whir_for_witness.domain_size());
-    let second = |merlin: &mut ProverState<_>| -> Result<Vec<_>> {
-        if !has_challenges {
-            drop(acir_witness_idx_to_value_map);
-            return Ok(Vec::new());
-        }
+    let mut commitment_1 = prover
+        .whir_for_witness
+        .commit(&mut merlin, num_witnesses, num_constraints, w1, None)
+        .context("While committing to w1")?;
+
+    let commitments = if has_challenges {
         let w2_layers = compressed_w2_layers
             .unwrap()
             .decompress()
@@ -229,7 +230,7 @@ fn prove_noir_inner(
                 &mut witness,
                 w2_layers,
                 &acir_witness_idx_to_value_map,
-                merlin,
+                &mut merlin,
             )
             .context("While solving w2 witnesses")?;
         }
@@ -251,13 +252,22 @@ fn prove_noir_inner(
         };
 
         log_commit_input("noir_w2", &w2, prover.whir_for_witness.domain_size());
-        Ok(w2)
+        let commitment_2 = prover
+            .whir_for_witness
+            .commit(
+                &mut merlin,
+                num_witnesses,
+                num_constraints,
+                w2,
+                Some(&mut commitment_1),
+            )
+            .context("While committing to w2")?;
+
+        vec![commitment_1, commitment_2]
+    } else {
+        drop(acir_witness_idx_to_value_map);
+        vec![commitment_1]
     };
-    let commitment = prover
-        .whir_for_witness
-        .commit(&mut merlin, num_witnesses, num_constraints, w1, second)
-        .context("While committing to witnesses")?;
-    let commitments = vec![commitment];
 
     // Decompress R1CS for the sumcheck and matrix operations.
     let r1cs = compressed_r1cs
@@ -351,44 +361,57 @@ fn prove_mavros_inner(
         &w1,
         prover.whir_for_witness.domain_size(),
     );
-    let mut witgen_result = None;
-    let second = |merlin: &mut ProverState<_>| -> Result<Vec<_>> {
-        let challenges: Vec<FieldElement> = if prover.whir_for_witness.num_challenges > 0 {
-            (0..prover.witness_layout.challenges_size)
-                .map(|_| merlin.verifier_message())
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let result = witgen_result.insert(mavros_interpreter::run_phase2(
-            phase1,
-            &challenges,
-            prover.witness_layout,
-            prover.constraints_layout,
-        ));
-        if prover.whir_for_witness.num_challenges == 0 {
-            return Ok(Vec::new());
-        }
-        let w2 = take(&mut result.out_wit_post_comm);
-        log_commit_input(
-            "mavros_w2_post_commitment",
-            &w2,
-            prover.whir_for_witness.domain_size(),
-        );
-        Ok(w2)
-    };
-    let commitment = prover
+    let mut commitment_1 = prover
         .whir_for_witness
         .commit(
             &mut merlin,
             prover.witness_layout.size(),
             prover.constraints_layout.algebraic_size,
             w1,
-            second,
+            None,
         )
-        .context("While committing to witnesses")?;
-    let commitments = vec![commitment];
-    let witgen_result = witgen_result.expect("commit calls the second-stage witness builder");
+        .context("While committing to w1")?;
+
+    let (commitments, witgen_result) = if prover.whir_for_witness.num_challenges > 0 {
+        let challenges: Vec<FieldElement> = (0..prover.witness_layout.challenges_size)
+            .map(|_| merlin.verifier_message())
+            .collect();
+
+        let witgen_result = mavros_interpreter::run_phase2(
+            phase1,
+            &challenges,
+            prover.witness_layout,
+            prover.constraints_layout,
+        );
+
+        let mut witgen_result = witgen_result;
+        let w2 = take(&mut witgen_result.out_wit_post_comm);
+        log_commit_input(
+            "mavros_w2_post_commitment",
+            &w2,
+            prover.whir_for_witness.domain_size(),
+        );
+        let commitment_2 = prover
+            .whir_for_witness
+            .commit(
+                &mut merlin,
+                prover.witness_layout.size(),
+                prover.constraints_layout.algebraic_size,
+                w2,
+                Some(&mut commitment_1),
+            )
+            .context("While committing to w2")?;
+
+        (vec![commitment_1, commitment_2], witgen_result)
+    } else {
+        let witgen_result = mavros_interpreter::run_phase2(
+            phase1,
+            &[],
+            prover.witness_layout,
+            prover.constraints_layout,
+        );
+        (vec![commitment_1], witgen_result)
+    };
 
     let (whir_r1cs_proof, r1cs_spark_queries) = if produce_spark_query {
         let (proof, queries) = prover
