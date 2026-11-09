@@ -228,7 +228,8 @@ impl MavrosCompiler {
         // In Mavros, challenges occupy the first `challenges_size` positions of
         // w2 (immediately after the pre-commitment boundary).
         let challenge_offsets: Vec<usize> = (0..challenges_size).collect();
-        let r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs);
+        let mut r1cs = convert_mavros_r1cs_to_provekit(&mavros_r1cs);
+        r1cs.num_public_inputs = num_public_inputs;
 
         let mut whir_for_witness = WhirR1CSScheme::<Bn254Field>::new_from_mavros_r1cs(
             &mavros_r1cs,

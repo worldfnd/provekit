@@ -49,11 +49,12 @@ pub fn compute_joint_matrix_evals<M: Embedding>(
     }))
 }
 
-/// Build combined matrix forms and optional binding forms.
+/// Build combined matrix forms, a public-input binding, and optional challenge
+/// binding.
 ///
 /// Public inputs belong to the first block. Challenge offsets refer to the
-/// second block. The R1CS constant at index zero accompanies each public-input
-/// form.
+/// second block. The public-input form always binds the R1CS constant at index
+/// zero.
 pub fn build_joint_forms<F: Field + 'static>(
     m: usize,
     w1_size: usize,
@@ -80,12 +81,10 @@ pub fn build_joint_forms<F: Field + 'static>(
         w1_size <= block_size && total_size - w1_size <= block_size,
         "Witness block exceeds the joint block size"
     );
-    if num_public_inputs > 0 {
-        ensure!(
-            num_public_inputs < w1_size,
-            "Public inputs exceed the first witness block"
-        );
-    }
+    ensure!(
+        num_public_inputs < w1_size,
+        "Constant and public inputs exceed the first witness block"
+    );
     ensure!(
         challenge_offsets
             .iter()
@@ -101,13 +100,11 @@ pub fn build_joint_forms<F: Field + 'static>(
         let right = blocks.next().expect("second matrix block");
         forms.push(JointLinearForm::new(left, right));
     }
-    if num_public_inputs > 0 {
-        forms.push(JointLinearForm::left_only(make_public_weight(
-            binding_challenge,
-            num_public_inputs,
-            m,
-        )));
-    }
+    forms.push(JointLinearForm::left_only(make_public_weight(
+        binding_challenge,
+        num_public_inputs,
+        m,
+    )));
     if !challenge_offsets.is_empty() {
         forms.push(JointLinearForm::right_only(make_challenge_weight(
             binding_challenge,
@@ -161,7 +158,8 @@ mod tests {
             .iter()
             .map(|form| dot(&dense(form), &witness))
             .collect();
-        assert_eq!(values, fields(&[3, 4, 12]));
+        assert_eq!(values, fields(&[3, 4, 12, 1]));
+        assert_eq!(dense(&forms[3]), fields(&[1, 0, 0, 0, 0, 0, 0, 0]));
         assert_eq!(values[0] * values[1], values[2]);
 
         // Changing either selected witness breaks the same constraint.
@@ -197,7 +195,7 @@ mod tests {
             .iter()
             .map(|form| dot(&dense(form), &witness))
             .collect();
-        assert_eq!(values, fields(&[166, 9, 8]));
+        assert_eq!(values, fields(&[166, 9, 8, 1]));
     }
 
     #[test]
@@ -287,8 +285,8 @@ mod tests {
     }
 
     #[test]
-    fn joint_claims_support_a_larger_second_stage_and_empty_stage() {
-        for split in [0, 1, 3, 4] {
+    fn joint_claims_support_a_larger_second_stage_and_empty_second_stage() {
+        for split in [1, 3, 4] {
             let forms = build_joint_forms(
                 2,
                 split,
@@ -308,6 +306,15 @@ mod tests {
     #[test]
     fn joint_claims_reject_invalid_layouts_and_binding_positions() {
         let alphas = || std::array::from_fn(|_| fields(&[1, 2, 3, 4, 5]));
+        assert!(build_joint_forms(
+            2,
+            0,
+            std::array::from_fn(|_| fields(&[1])),
+            F::from(2),
+            0,
+            &[]
+        )
+        .is_err());
         assert!(build_joint_forms(2, 6, alphas(), F::from(2), 0, &[]).is_err());
         assert!(build_joint_forms(2, 0, alphas(), F::from(2), 0, &[]).is_err());
         assert!(build_joint_forms(2, 3, alphas(), F::from(2), 3, &[]).is_err());
