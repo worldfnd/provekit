@@ -386,16 +386,14 @@ where
                 .collect()
         });
 
-        if public_inputs_len > 0 {
-            let public_eval = compute_public_weight_evaluation(
-                &embedding,
-                &mut weights,
-                &commitment.polynomial,
-                public_weight,
-            );
-            merlin.prover_message(&public_eval);
-            evals.insert(0, public_eval);
-        }
+        let public_eval = compute_public_weight_evaluation(
+            &embedding,
+            &mut weights,
+            &commitment.polynomial,
+            public_weight,
+        );
+        merlin.prover_message(&public_eval);
+        evals.insert(0, public_eval);
 
         let WhirR1CSCommitment { witness, .. } = commitment;
 
@@ -435,14 +433,12 @@ where
             &scheme.challenge_offsets,
         )?;
         let mut evaluations = matrix_evals.to_vec();
-        if public_inputs_len > 0 {
-            evaluations.push(compute_public_eval(
-                &embedding,
-                x,
-                public_inputs_len,
-                &c1.polynomial,
-            ));
-        }
+        evaluations.push(compute_public_eval(
+            &embedding,
+            x,
+            public_inputs_len,
+            &c1.polynomial,
+        ));
         if !scheme.challenge_offsets.is_empty() {
             evaluations.push(compute_challenge_eval(
                 &embedding,

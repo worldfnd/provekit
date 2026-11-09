@@ -59,6 +59,12 @@ where
             self.r1cs_hash,
             actual_r1cs_hash
         );
+        ensure!(
+            public_inputs.len() == r1cs.num_public_inputs,
+            "Expected {} public inputs, received {}",
+            r1cs.num_public_inputs,
+            public_inputs.len()
+        );
 
         let public_inputs_hash = P::hash_public_inputs(self.hash_config, &public_inputs.0);
         let instance = P::ext_to_bytes_le(&public_inputs_hash);
@@ -146,13 +152,11 @@ where
                     .map_err(|_| anyhow::anyhow!("Failed to read joint C evaluation"))?,
             ];
             let mut evaluations = matrix_evals.to_vec();
-            if !public_inputs.is_empty() {
-                let public_eval = arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read joint public evaluation"))?;
-                verify_public_input_binding(&embedding, public_eval, x, public_inputs)?;
-                evaluations.push(public_eval);
-            }
+            let public_eval = arthur
+                .prover_message()
+                .map_err(|_| anyhow::anyhow!("Failed to read joint public evaluation"))?;
+            verify_public_input_binding(&embedding, public_eval, x, public_inputs)?;
+            evaluations.push(public_eval);
             if let Some(ref challenges) = logup_challenges {
                 let challenge_eval = arthur
                     .prover_message()
@@ -189,16 +193,12 @@ where
 
             let mut weights = build_prefix_covectors(self.m, alphas);
 
-            let evaluations = if !public_inputs.is_empty() {
-                let public_eval: Ext<P> = arthur
-                    .prover_message()
-                    .map_err(|_| anyhow::anyhow!("Failed to read public eval"))?;
-                verify_public_input_binding(&embedding, public_eval, x, public_inputs)?;
-                weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
-                vec![public_eval, evals[0], evals[1], evals[2]]
-            } else {
-                evals.to_vec()
-            };
+            let public_eval: Ext<P> = arthur
+                .prover_message()
+                .map_err(|_| anyhow::anyhow!("Failed to read public eval"))?;
+            verify_public_input_binding(&embedding, public_eval, x, public_inputs)?;
+            weights.insert(0, make_public_weight(x, public_inputs.len(), self.m));
+            let evaluations = vec![public_eval, evals[0], evals[1], evals[2]];
 
             let weight_refs = linear_form_refs(&weights);
 
