@@ -185,7 +185,7 @@ impl<P: ProofField> WhirR1CSScheme<P> {
     /// Reject a missing or extra witness commitment before indexing
     /// commitments.
     pub fn validate_witness_commitment_count(&self, count: usize) -> anyhow::Result<()> {
-        let expected = if self.num_challenges > 0 { 2 } else { 1 };
+        let expected = 1;
         anyhow::ensure!(
             count == expected,
             "Expected {expected} witness commitments, received {count}"
@@ -230,11 +230,11 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
                 "Challenge offset exceeds the second commitment block"
             );
             anyhow::ensure!(
-                self.whir_witness.tuning().vector_size == block_size,
-                "Joint opening source size does not match the witness block"
+                block_size.checked_mul(2) == Some(self.whir_witness.tuning().vector_size),
+                "Joint opening source size does not match both witness blocks"
             );
             self.whir_witness
-                .validate_pair()
+                .validate()
                 .map_err(|_| anyhow::anyhow!("Invalid joint opening parameters"))?;
         }
         Ok(())
@@ -307,6 +307,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
                 m,
                 hash_config.engine_id(),
                 witness_mode,
+                num_challenges > 0,
             )?,
             whir_blinding: Self::new_blinding_config_for_size(m_0, hash_config.engine_id()),
             w1_size,
@@ -326,6 +327,7 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
         num_variables: usize,
         hash_id: EngineId,
         witness_mode: WitnessCommitmentMode,
+        paired: bool,
     ) -> anyhow::Result<ZookConfig<P::Embedding>> {
         P::register();
         let nv = num_variables.max(MIN_WHIR_NUM_VARIABLES);
@@ -337,10 +339,10 @@ impl<P: FieldHash> WhirR1CSScheme<P> {
             hash_id,
         };
         let tuning = TuningSpec {
-            vector_size:           1 << nv,
+            vector_size:           1 << (nv + usize::from(paired)),
             starting_log_inv_rate: WHIR_STARTING_LOG_INV_RATE,
             folding_factor:        FoldingFactor::ConstantFromSecondRound {
-                initial: WHIR_INITIAL_FOLDING_FACTOR,
+                initial: WHIR_INITIAL_FOLDING_FACTOR + usize::from(paired),
                 rest:    WHIR_FOLDING_FACTOR,
             },
             rate_schedule:         ZOOK_RATE_SCHEDULE,

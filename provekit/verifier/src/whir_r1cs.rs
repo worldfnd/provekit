@@ -19,7 +19,9 @@ use {
     tracing::instrument,
     whir::{
         algebra::{embedding::Embedding, linear_form::LinearForm},
-        transcript::{Codec, DuplexSpongeInterface, Proof, VerifierMessage, VerifierState},
+        transcript::{
+            Codec, DuplexSpongeInterface, Proof, VerificationResult, VerifierMessage, VerifierState,
+        },
     },
 };
 
@@ -72,28 +74,32 @@ where
         let mut arthur =
             VerifierState::new(&ds, &whir_proof, P::transcript_sponge(self.hash_config));
 
-        let commitment_1 = self
-            .whir_witness
-            .receive_commitment(&mut arthur)
-            .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
-
-        // Mirror the prover: the ext blinding commitment is absorbed immediately
-        // after the (w1) witness commitment, before any challenge sampling.
-        let blinding_commitment = self
-            .whir_blinding
-            .receive_commitment(&mut arthur)
-            .map_err(|_| anyhow::anyhow!("Failed to parse blinding commitment"))?;
-
-        let (commitment_2, logup_challenges) = if self.num_challenges > 0 {
-            let challenges: Vec<Ext<P>> = arthur.verifier_message_vec(self.num_challenges);
+        // Mirror the prover: the ext blinding commitment is absorbed
+        // immediately after the (w1) witness commitment, before any
+        // challenge sampling.
+        let mut blinding_commitment = None;
+        let mut logup_challenges = None;
+        let mut between = |arthur: &mut VerifierState<'_, P::Sponge>| -> VerificationResult<()> {
+            blinding_commitment = Some(self.whir_blinding.receive_commitment(arthur)?);
+            if self.num_challenges > 0 {
+                logup_challenges = Some(arthur.verifier_message_vec::<Ext<P>>(self.num_challenges));
+            }
+            Ok(())
+        };
+        let commitment_1 = if self.num_challenges > 0 {
+            self.whir_witness
+                .receive_pair(&mut arthur, between)
+                .map_err(|_| anyhow::anyhow!("Failed to parse joint commitments"))?
+        } else {
             let commitment = self
                 .whir_witness
                 .receive_commitment(&mut arthur)
-                .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?;
-            (Some(commitment), Some(challenges))
-        } else {
-            (None, None)
+                .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
+            between(&mut arthur)
+                .map_err(|_| anyhow::anyhow!("Failed to parse blinding commitment"))?;
+            commitment
         };
+        let blinding_commitment = blinding_commitment.expect("commitment callback ran");
         let (transposed, sumcheck_result) = rayon::join(
             || transpose_r1cs_matrices(r1cs),
             || run_sumcheck_verifier::<Ext<P>, _>(&mut arthur, self.m_0),
@@ -125,7 +131,7 @@ where
         let blinding_eval = data_from_sumcheck_verifier.blinding_eval;
         let blinding_weights = expand_powers::<4, _>(&data_from_sumcheck_verifier.alpha);
 
-        let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if let Some(commitment_2) = commitment_2 {
+        let (az_at_alpha, bz_at_alpha, cz_at_alpha) = if self.num_challenges > 0 {
             let forms = build_joint_forms(
                 self.m,
                 self.w1_size,
@@ -163,12 +169,7 @@ where
             let form_refs = linear_form_refs(&forms);
             let final_claim = self
                 .whir_witness
-                .verify_pair(
-                    &mut arthur,
-                    [commitment_1, commitment_2],
-                    &form_refs,
-                    &evaluations,
-                )
+                .verify(&mut arthur, commitment_1, &form_refs, &evaluations)
                 .map_err(|_| anyhow::anyhow!("Joint WHIR verification failed"))?;
             final_claim
                 .verify(&form_refs)

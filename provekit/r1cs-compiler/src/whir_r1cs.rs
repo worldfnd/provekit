@@ -122,6 +122,7 @@ mod tests {
             size,
             whir::hash::SHA2,
             WitnessCommitmentMode::default(),
+            false,
         )
         .expect("witness config derivation");
         let blinding = WhirR1CSScheme::<P>::new_blinding_config_for_size(size, whir::hash::SHA2);
