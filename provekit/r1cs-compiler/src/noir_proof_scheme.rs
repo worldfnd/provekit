@@ -198,17 +198,22 @@ impl MavrosCompiler {
     ) -> Result<NoirProofScheme> {
         provekit_backend_bn254::register();
         info!("Reading Mavros artifact from {:?}", artifact_path);
-        let bytes =
-            std::fs::read(artifact_path.as_ref()).context("while reading the Mavros artifact")?;
+        let bytes = std::fs::read(artifact_path.as_ref())
+            .with_context(|| format!("while reading the Mavros artifact {artifact_path:?}"))?;
         let artifact = Artifact::<provekit_backend_bn254::FieldElement>::from_bytes(&bytes)
-            .map_err(|err| match err {
-                ArtifactError::MissingHeader | ArtifactError::UnsupportedVersion { .. } => {
-                    anyhow::anyhow!(
-                        "{err}; recompile the circuit with the Mavros revision pinned in the \
-                         workspace `Cargo.toml`"
-                    )
-                }
-                other => anyhow::Error::new(other),
+            .map_err(|err| {
+                // A file that fails any other check was written by another Mavros or damaged.
+                let hint = match err {
+                    ArtifactError::WrongField { .. } => {
+                        "this frontend proves over BN254: recompile the circuit with `mavros \
+                         compile --field bn254`"
+                    }
+                    _ => {
+                        "recompile the circuit with the Mavros revision pinned in the workspace \
+                         `Cargo.toml`"
+                    }
+                };
+                anyhow::anyhow!("{err}; {hint}")
             })
             .with_context(|| format!("while reading the Mavros artifact {artifact_path:?}"))?;
         let abi: noirc_abi::Abi = serde_json::from_slice(artifact.abi())
