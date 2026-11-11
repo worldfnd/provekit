@@ -214,6 +214,7 @@ impl MavrosCompiler {
         let abi: noirc_abi::Abi = serde_json::from_slice(artifact.abi())
             .context("while decoding the ABI in the Mavros artifact")?;
         let mavros_digest = artifact.circuit_digest();
+        let mavros_digest_hex = artifact.circuit_digest_hex();
         let ArtifactParts {
             compiler,
             manifest,
@@ -224,11 +225,10 @@ impl MavrosCompiler {
 
         info!(
             "Mavros {compiler} R1CS: {} constraints, witness layout: algebraic={}, challenges={}, \
-             circuit digest={}",
+             circuit digest={mavros_digest_hex}",
             mavros_r1cs.constraints.len(),
             mavros_r1cs.witness_layout.algebraic_size,
             mavros_r1cs.witness_layout.challenges_size,
-            mavros_artifacts::hex(&mavros_digest),
         );
 
         let column_map =
