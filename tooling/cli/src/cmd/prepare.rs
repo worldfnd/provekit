@@ -46,8 +46,9 @@ impl argh::FromArgValue for Compiler {
 #[derive(FromArgs, PartialEq, Eq, Debug)]
 #[argh(subcommand, name = "prepare")]
 pub struct Args {
-    /// directory containing Nargo.toml for noir, or path to the `.mavros`
-    /// artifact for mavros (default: current directory)
+    /// directory containing Nargo.toml; for mavros, that directory's
+    /// `target/program.mavros` or a path to the artifact (default: current
+    /// directory)
     #[argh(positional, default = "PathBuf::from(\".\")")]
     program_path: PathBuf,
 
@@ -232,7 +233,13 @@ impl Args {
         hash_config: HashConfig,
         witness_mode: WitnessCommitmentMode,
     ) -> Result<()> {
-        let scheme = MavrosCompiler::compile(&self.program_path, hash_config, witness_mode)
+        // `mavros compile` writes `target/program.mavros` under the package root.
+        let artifact_path = if self.program_path.is_dir() {
+            self.program_path.join("target/program.mavros")
+        } else {
+            self.program_path.clone()
+        };
+        let scheme = MavrosCompiler::compile(&artifact_path, hash_config, witness_mode)
             .context("while compiling with Mavros")?;
         let spark_setup = self.maybe_build_spark(&scheme, hash_config)?;
         let pkp_path = resolve_key_path(self.pkp_path.as_deref(), "pkp")?;
