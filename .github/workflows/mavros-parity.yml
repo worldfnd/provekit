@@ -1,0 +1,105 @@
+name: Mavros frontend parity
+
+on:
+  workflow_dispatch:
+    inputs:
+      circuits:
+        description: Space-separated circuit directories (default = all binary examples with inputs)
+        required: false
+        default: ""
+  schedule:
+    # Monday and Thursday 03:17 UTC, over all binary examples with inputs.
+    - cron: "17 3 * * 1,4"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+concurrency:
+  group: mavros-parity-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  parity:
+    name: Noir vs Mavros frontend
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup rust toolchain, cache and bins
+        uses: moonrepo/setup-rust@v1
+        with:
+          channel: nightly-2026-03-04
+          cache-base: main
+      - name: Setup Noir
+        uses: noir-lang/noirup@v0.1.2
+        with:
+          toolchain: v1.0.0-beta.26
+      - name: Read the pinned Mavros revision
+        id: mavros
+        run: |
+          rev=$(sed -nE 's/^mavros-vm = .*rev = "([0-9a-f]+)".*/\1/p' Cargo.toml)
+          test -n "$rev"
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+      - name: Cache the Mavros CLI
+        id: mavros-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.mavros
+          key: mavros-cli-${{ runner.os }}-${{ runner.arch }}-${{ steps.mavros.outputs.rev }}
+      - name: Install LLVM 22
+        if: steps.mavros-cache.outputs.cache-hit != 'true'
+        run: |
+          wget -qO- https://apt.llvm.org/llvm.sh | sudo bash -s -- 22
+          sudo apt-get install -y libpolly-22-dev libzstd-dev
+      # Mavros builds on stable; one of its transitive crates fails on the
+      # nightly this workspace pins.
+      - name: Build the Mavros CLI at the pinned revision
+        if: steps.mavros-cache.outputs.cache-hit != 'true'
+        env:
+          LLVM_SYS_221_PREFIX: /usr/lib/llvm-22
+          LIBCLANG_PATH: /usr/lib/llvm-22/lib
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable install --locked --bin mavros \
+            --git https://github.com/reilabs/mavros --rev ${{ steps.mavros.outputs.rev }} \
+            mavros-compiler --root ~/.mavros
+      - name: Build provekit-cli
+        run: cargo build --release -p provekit-cli
+      - name: Select circuits
+        id: circuits
+        env:
+          REQUESTED: ${{ github.event.inputs.circuits }}
+        run: |
+          if [[ -n "$REQUESTED" ]]; then
+            list="$REQUESTED"
+          else
+            list=$(python3 - <<'PY'
+          from pathlib import Path
+          import tomllib
+
+          circuits = []
+          for manifest in sorted(Path("noir-examples").glob("*/Nargo.toml")):
+              package = tomllib.loads(manifest.read_text()).get("package", {})
+              if package.get("type") == "bin" and manifest.with_name("Prover.toml").is_file():
+                  circuits.append(str(manifest.parent))
+          print(" ".join(circuits))
+          PY
+            )
+          fi
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+      - name: Run both frontends and compare
+        run: >
+          scripts/mavros_parity.sh
+          --cli target/release/provekit-cli
+          --mavros ~/.mavros/bin/mavros
+          --out target/mavros-parity
+          ${{ steps.circuits.outputs.list }}
+      - name: Upload parity artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mavros-parity-${{ github.run_id }}
+          path: |
+            target/mavros-parity/**/*.log
+            target/mavros-parity/**/*.inputs
+          if-no-files-found: ignore

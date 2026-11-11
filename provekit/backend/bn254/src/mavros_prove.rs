@@ -1,13 +1,11 @@
-//! Mavros WHIR proving for bn254. The Mavros VM's automatic-differentiation
-//! pass returns `ark_bn254::Fr`, so this proving path is bn254-specific; it
-//! composes the generic proving primitives from `provekit-prover`
-//! (`run_zk_sumcheck_prover`, `prove_from_alphas`).
+//! Mavros WHIR proving for bn254. It composes the generic proving primitives
+//! from `provekit-prover` (`run_zk_sumcheck_prover`, `prove_from_alphas`).
 //!
-//! TODO: make field-generic and fold into `WhirR1CSProver<P>` when the Mavros
-//! VM is field-agnostic.
+//! TODO: make field-generic and fold into `WhirR1CSProver<P>`; the Mavros VM
+//! is generic over its field.
 
 use {
-    crate::{Bn254Field, FieldElement, TranscriptSponge},
+    crate::{Bn254Field, FieldElement, MavrosColumnMap, TranscriptSponge},
     anyhow::{ensure, Result},
     mavros_artifacts::{ConstraintsLayout, WitnessLayout},
     mavros_vm::interpreter::{run_ad, WitgenResult},
@@ -29,12 +27,13 @@ pub trait MavrosR1CSProver {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         binary: &[u64],
+        column_map: &MavrosColumnMap,
     ) -> Result<WhirR1CSProof>;
 
     /// Like [`Self::prove_mavros`], but also produces the SPARK query data as
@@ -43,12 +42,13 @@ pub trait MavrosR1CSProver {
     fn prove_mavros_with_spark(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         binary: &[u64],
+        column_map: &MavrosColumnMap,
     ) -> Result<(WhirR1CSProof, SparkQueryData<Bn254Field>)>;
 }
 
@@ -57,12 +57,13 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
     fn prove_mavros(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         binary: &[u64],
+        column_map: &MavrosColumnMap,
     ) -> Result<WhirR1CSProof> {
         let (proof, _) = prove_mavros_inner(
             self,
@@ -73,6 +74,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
             witness_layout,
             constraints_layout,
             binary,
+            column_map,
             false,
         )?;
         Ok(proof)
@@ -82,12 +84,13 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
     fn prove_mavros_with_spark(
         &self,
         merlin: ProverState<TranscriptSponge>,
-        witgen: WitgenResult,
+        witgen: WitgenResult<FieldElement>,
         commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
         public_inputs: &PublicInputs<FieldElement>,
         witness_layout: WitnessLayout,
         constraints_layout: ConstraintsLayout,
         binary: &[u64],
+        column_map: &MavrosColumnMap,
     ) -> Result<(WhirR1CSProof, SparkQueryData<Bn254Field>)> {
         let (proof, queries) = prove_mavros_inner(
             self,
@@ -98,6 +101,7 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
             witness_layout,
             constraints_layout,
             binary,
+            column_map,
             true,
         )?;
         let queries = queries
@@ -111,12 +115,13 @@ impl MavrosR1CSProver for WhirR1CSScheme<Bn254Field> {
 fn prove_mavros_inner(
     scheme: &WhirR1CSScheme<Bn254Field>,
     mut merlin: ProverState<TranscriptSponge>,
-    witgen: WitgenResult,
+    witgen: WitgenResult<FieldElement>,
     commitments: Vec<WhirR1CSCommitment<Bn254Field>>,
     public_inputs: &PublicInputs<FieldElement>,
     witness_layout: WitnessLayout,
     constraints_layout: ConstraintsLayout,
     binary: &[u64],
+    column_map: &MavrosColumnMap,
     produce_spark_query: bool,
 ) -> Result<(WhirR1CSProof, Option<SparkQueryData<Bn254Field>>)> {
     ensure!(!commitments.is_empty(), "Need at least one commitment");
@@ -145,7 +150,7 @@ fn prove_mavros_inner(
         constraints_layout,
         None,
     )?;
-    let alphas = [ad_a, ad_b, ad_c];
+    let alphas = [ad_a, ad_b, ad_c].map(|d| column_map.permute(d));
 
     let blinding_weights = expand_powers::<4, _>(&alpha);
 

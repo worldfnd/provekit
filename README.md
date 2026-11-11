@@ -73,7 +73,7 @@ graph LR
     Recursive --> Groth16[Groth16 proof]
 ```
 
-The default Noir frontend reads a package, produces ACIR, lowers that ACIR into R1CS, and writes `.pkp`/`.pkv` key files. Circuits that benefit from a direct R1CS frontend can use [`mavros`](https://github.com/reilabs/mavros) with `prepare --compiler mavros` and an explicit `--r1cs` file.
+The default Noir frontend reads a package, produces ACIR, lowers that ACIR into R1CS, and writes `.pkp`/`.pkv` key files. Circuits that benefit from a direct R1CS frontend can use [`mavros`](https://github.com/reilabs/mavros) with `prepare --compiler mavros` and an explicit `--r1cs` file. Build the Mavros CLI from the `mavros-vm` revision pinned in `Cargo.toml` to ensure artifact compatibility.
 
 ## Example Circuit
 
@@ -114,7 +114,7 @@ Swift, Kotlin, troubleshooting, and deployment checklists, see
 
 ## Advanced Usage
 
-- **Direct R1CS frontend:** after generating Mavros artifacts, call `provekit-cli prepare --compiler mavros <artifacts.json> --r1cs <r1cs.bin>`.
+- **Direct R1CS frontend:** after generating Mavros artifacts, call `provekit-cli prepare --compiler mavros <artifacts.json> --r1cs <r1cs.bin>`. The circuit computes its return; a `return` entry in `Prover.toml` is optional and, when present, checked against it. The Mavros R1CS digest carried by `r1cs.bin` is verified on load and bound into every proof's transcript. Use `scripts/mavros_parity.sh` to compare both frontends.
 - **Recursive verifier inputs:** `provekit-cli generate-gnark-inputs <verifier.pkv> <proof.np>` writes `params_for_recursive_verifier` and `r1cs.json` by default; use `--params` and `--r1cs` to override those paths.
 - **Inspection commands:** use `circuit-stats` for Noir ACIR/R1CS structure, `analyze-pkp` for Noir prover-key size breakdowns, and `show-inputs` for public inputs.
 - **FFI integration:** start in [`tooling/provekit-ffi/`](tooling/provekit-ffi/) for C ABI headers, mobile build targets, and host-language examples.

@@ -11,6 +11,7 @@ pub mod range_check;
 mod sha256_compression;
 mod spread;
 mod uints;
+#[cfg(test)]
 mod whir_r1cs;
 mod witness_generator;
 
@@ -18,5 +19,4 @@ pub use {
     noir_proof_scheme::{MavrosCompiler, NoirCompiler},
     noir_to_r1cs::{noir_to_r1cs, noir_to_r1cs_with_breakdown, R1CSBreakdown},
     optimize::{optimize_r1cs, OptimizationStats},
-    whir_r1cs::MavrosSchemeBuilder,
 };
