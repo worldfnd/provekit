@@ -60,7 +60,7 @@ where
         r1cs.num_witnesses(),
         r1cs.num_constraints(),
         full_witness.clone(),
-        true,
+        None,
     )?;
     let proof = scheme.prove_noir(
         merlin,
@@ -195,12 +195,12 @@ where
     let mut merlin = ProverState::new(&ds, P::transcript_sponge(hash));
 
     // Commit w1, then draw the challenges bound to it.
-    let c1 = scheme.commit(
+    let mut c1 = scheme.commit(
         &mut merlin,
         num_witnesses,
         num_constraints,
         w1.clone(),
-        true,
+        None,
     )?;
 
     // Draw challenges as base-field elements (a no-op under `Base == Ext`).
@@ -227,7 +227,13 @@ where
     let mut full_witness = w1;
     full_witness.extend_from_slice(&w2);
 
-    let c2 = scheme.commit(&mut merlin, num_witnesses, num_constraints, w2, false)?;
+    let c2 = scheme.commit(
+        &mut merlin,
+        num_witnesses,
+        num_constraints,
+        w2,
+        Some(&mut c1),
+    )?;
     let proof = scheme.prove_noir(merlin, r1cs.clone(), vec![c1, c2], full_witness, public)?;
     scheme.verify(&proof, public, r1cs)
 }
@@ -284,9 +290,15 @@ where
 
     let start = Instant::now();
     let mut merlin = ProverState::new(&ds, P::transcript_sponge(HASH));
-    let c1 = scheme.commit(&mut merlin, num_witnesses, num_constraints, w1, true)?;
+    let mut c1 = scheme.commit(&mut merlin, num_witnesses, num_constraints, w1, None)?;
     let _challenges: Vec<Ext<P>> = merlin.verifier_message_vec(num_challenges);
-    let c2 = scheme.commit(&mut merlin, num_witnesses, num_constraints, w2, false)?;
+    let c2 = scheme.commit(
+        &mut merlin,
+        num_witnesses,
+        num_constraints,
+        w2,
+        Some(&mut c1),
+    )?;
     scheme.prove_noir(merlin, r1cs_owned, vec![c1, c2], full_witness, &public)?;
     Ok(start.elapsed())
 }
@@ -357,7 +369,7 @@ where
         num_witnesses,
         num_constraints,
         witness_commit,
-        true,
+        None,
     )?;
     let proof = scheme.prove_noir(merlin, r1cs, vec![commitment], witness_prove, public_inputs)?;
     Ok((start.elapsed(), proof, scheme))

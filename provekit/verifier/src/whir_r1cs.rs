@@ -93,10 +93,12 @@ where
         let mut arthur =
             VerifierState::new(&ds, &whir_proof, P::transcript_sponge(self.hash_config));
 
-        let commitment_1 = self
-            .whir_witness
-            .receive_commitment(&mut arthur)
-            .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
+        let commitment_1 = if self.num_challenges > 0 {
+            self.whir_witness.receive_pair(&mut arthur, None)
+        } else {
+            self.whir_witness.receive_commitment(&mut arthur)
+        }
+        .map_err(|_| anyhow::anyhow!("Failed to parse commitment 1"))?;
 
         // Mirror the prover: the ext blinding commitment is absorbed immediately
         // after the (w1) witness commitment, before any challenge sampling.
@@ -109,7 +111,7 @@ where
             let challenges: Vec<Ext<P>> = arthur.verifier_message_vec(self.num_challenges);
             let commitment = self
                 .whir_witness
-                .receive_commitment(&mut arthur)
+                .receive_pair(&mut arthur, Some(&commitment_1))
                 .map_err(|_| anyhow::anyhow!("Failed to parse commitment 2"))?;
             (Some(commitment), Some(challenges))
         } else {

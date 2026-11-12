@@ -70,8 +70,8 @@ where
     let instance = public.hash_bytes::<P>(HASH);
     let ds = scheme.create_domain_separator().instance(&instance);
     let mut prover = ProverState::new(&ds, P::transcript_sponge(HASH));
-    let first = scheme
-        .commit(&mut prover, 4, r1cs.num_constraints(), left.clone(), true)
+    let mut first = scheme
+        .commit(&mut prover, 4, r1cs.num_constraints(), left.clone(), None)
         .unwrap();
     let mut challenges: Vec<Base<P>> = prover.verifier_message_vec(1);
     if matches!(change, Change::StageChallenge) {
@@ -80,7 +80,13 @@ where
     let right = multi_challenge_inverses_w2(&challenges, &left).unwrap();
     assert_eq!(right[0] * right[1], Base::<P>::ONE);
     let second = scheme
-        .commit(&mut prover, 4, r1cs.num_constraints(), right.clone(), false)
+        .commit(
+            &mut prover,
+            4,
+            r1cs.num_constraints(),
+            right.clone(),
+            Some(&mut first),
+        )
         .unwrap();
     let mut full_witness = left;
     full_witness.extend(right);
@@ -197,7 +203,7 @@ fn check_base_field_pair(mode: Mode) {
     type P = GoldilocksField;
     type F = Field64_3;
     P::register();
-    let n = 256;
+    let n = 4096;
     let source = ProtocolConfig::<<P as provekit_common::ProofField>::Embedding>::derive(
         SecuritySpec::new(128)
             .with_mode(mode)
@@ -233,9 +239,13 @@ fn check_base_field_pair(mode: Mode) {
     right[..2].copy_from_slice(&[5, 7].map(Field64::from));
     let ds = DomainSeparator::protocol(&"provekit-joint-forms").instance(&Empty);
     let mut prover = ProverState::new(&ds, P::transcript_sponge(HASH));
-    let first = source.commit(&mut prover, Buffer::from(left));
+    let mut first = source
+        .commit_pair(&mut prover, Buffer::from(left), None)
+        .unwrap();
     let challenge: F = prover.verifier_message();
-    let second = source.commit(&mut prover, Buffer::from(right));
+    let second = source
+        .commit_pair(&mut prover, Buffer::from(right), Some(&mut first))
+        .unwrap();
     let result = source
         .prove_pair(&mut prover, [first, second], &refs, &values)
         .unwrap();
@@ -244,10 +254,10 @@ fn check_base_field_pair(mode: Mode) {
 
     let verify = |proof: &Proof, values: &[F]| -> VerificationResult<()> {
         let mut verifier = VerifierState::new(&ds, proof, P::transcript_sponge(HASH));
-        let first = source.receive_commitment(&mut verifier)?;
+        let first = source.receive_pair(&mut verifier, None)?;
         let received: F = verifier.verifier_message();
         assert_eq!(received, challenge);
-        let second = source.receive_commitment(&mut verifier)?;
+        let second = source.receive_pair(&mut verifier, Some(&first))?;
         let final_claim = source.verify_pair(&mut verifier, [first, second], &refs, values)?;
         assert_eq!(final_claim.evaluation_point, result.evaluation_point);
         final_claim.verify(&refs)?;
@@ -336,7 +346,7 @@ fn single_stage_proofs_open_one_witness() {
                 r1cs.num_witnesses(),
                 r1cs.num_constraints(),
                 witness.clone(),
-                true,
+                None,
             )
             .unwrap();
         let proof = scheme

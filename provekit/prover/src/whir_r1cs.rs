@@ -79,7 +79,7 @@ pub trait WhirR1CSProver<P: FieldHash> {
         num_witnesses: usize,
         num_constraints: usize,
         witness: Vec<Base<P>>,
-        is_w1: bool,
+        previous: Option<&mut WhirR1CSCommitment<P>>,
     ) -> Result<WhirR1CSCommitment<P>>;
 
     fn prove_noir(
@@ -114,8 +114,9 @@ where
         num_witnesses: usize,
         num_constraints: usize,
         witness: Vec<Base<P>>,
-        is_w1: bool,
+        previous: Option<&mut WhirR1CSCommitment<P>>,
     ) -> Result<WhirR1CSCommitment<P>> {
+        let is_w1 = previous.is_none();
         let witness_size = if is_w1 {
             self.w1_size
         } else {
@@ -150,7 +151,17 @@ where
         // zook's `commit` consumes the buffer; the prove stage still needs
         // the message for the covector evaluations, so pass a clone.
         let padded_witness = Buffer::from(padded_witness);
-        let witness_commitment = self.whir_witness.commit(merlin, padded_witness.clone());
+        let witness_commitment = if self.num_challenges > 0 {
+            self.whir_witness
+                .commit_pair(
+                    merlin,
+                    padded_witness.clone(),
+                    previous.map(|first| &mut first.witness),
+                )
+                .map_err(|_| anyhow::anyhow!("Failed to commit witness"))?
+        } else {
+            self.whir_witness.commit(merlin, padded_witness.clone())
+        };
 
         // Commit the Spartan sumcheck blinding `g` separately, natively in the
         // extension field. Transcript order: this commitment is absorbed

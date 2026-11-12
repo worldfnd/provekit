@@ -217,9 +217,9 @@ fn prove_noir_inner(
     };
 
     log_commit_input("noir_w1", &w1, prover.whir_for_witness.domain_size());
-    let commitment_1 = prover
+    let mut commitment_1 = prover
         .whir_for_witness
-        .commit(&mut merlin, num_witnesses, num_constraints, w1, true)
+        .commit(&mut merlin, num_witnesses, num_constraints, w1, None)
         .context("While committing to w1")?;
 
     let commitments = if has_challenges {
@@ -257,7 +257,13 @@ fn prove_noir_inner(
         log_commit_input("noir_w2", &w2, prover.whir_for_witness.domain_size());
         let commitment_2 = prover
             .whir_for_witness
-            .commit(&mut merlin, num_witnesses, num_constraints, w2, false)
+            .commit(
+                &mut merlin,
+                num_witnesses,
+                num_constraints,
+                w2,
+                Some(&mut commitment_1),
+            )
             .context("While committing to w2")?;
 
         vec![commitment_1, commitment_2]
@@ -384,14 +390,14 @@ fn prove_mavros_inner(
         &w1,
         prover.whir_for_witness.domain_size(),
     );
-    let commitment_1 = prover
+    let mut commitment_1 = prover
         .whir_for_witness
         .commit(
             &mut merlin,
             prover.witness_layout.size(),
             prover.constraints_layout.algebraic_size,
             w1,
-            true,
+            None,
         )
         .context("While committing to w1")?;
 
@@ -421,7 +427,7 @@ fn prove_mavros_inner(
                 prover.witness_layout.size(),
                 prover.constraints_layout.algebraic_size,
                 w2,
-                false,
+                Some(&mut commitment_1),
             )
             .context("While committing to w2")?;
 
