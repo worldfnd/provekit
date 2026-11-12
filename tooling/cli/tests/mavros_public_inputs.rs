@@ -1,8 +1,7 @@
-//! Public-input and return regressions on `noir-examples/power`
-//! (`fn main(x: Field, y: pub Field) -> pub Field`), whose Mavros artifacts
-//! are committed next to it. Regenerate them with the pinned Mavros revision:
-//! `mavros compile <dir> --r1cs-output <dir>/r1cs.bin --binary-output
-//! <dir>/basic.json`.
+//! Public-input, return and artifact regressions on `noir-examples/power`
+//! (`fn main(x: Field, y: pub Field) -> pub Field`), whose Mavros artifact is
+//! committed next to it. Regenerate it with the pinned Mavros revision:
+//! `mavros compile <dir> --output <dir>/program.mavros`.
 
 use {
     anyhow::Result,
@@ -16,21 +15,23 @@ use {
     std::path::PathBuf,
 };
 
-fn fixture_scheme() -> NoirProofScheme {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../noir-examples/power");
+fn fixture_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../noir-examples/power/program.mavros")
+}
+
+fn compile(artifact: PathBuf) -> Result<NoirProofScheme> {
     MavrosCompiler::compile(
-        dir.join("basic.json"),
-        dir.join("r1cs.bin"),
+        artifact,
         HashConfig::Sha256,
         WitnessCommitmentMode::default(),
     )
-    .unwrap()
 }
 
-fn prove(
-    scheme: &NoirProofScheme,
-    declared_return: Option<u64>,
-) -> Result<ProvekitProof<Bn254Field>> {
+fn fixture_scheme() -> NoirProofScheme {
+    compile(fixture_path()).unwrap()
+}
+
+fn inputs(declared_return: Option<u64>) -> InputMap {
     let mut inputs = InputMap::from([
         ("x".into(), InputValue::Field(2u64.into())),
         ("y".into(), InputValue::Field(1024u64.into())),
@@ -38,7 +39,14 @@ fn prove(
     if let Some(ret) = declared_return {
         inputs.insert("return".into(), InputValue::Field(ret.into()));
     }
-    Prover::from_noir_proof_scheme(scheme.clone()).prove(inputs)
+    inputs
+}
+
+fn prove(
+    scheme: &NoirProofScheme,
+    declared_return: Option<u64>,
+) -> Result<ProvekitProof<Bn254Field>> {
+    Prover::from_noir_proof_scheme(scheme.clone()).prove(inputs(declared_return))
 }
 
 fn verify(scheme: &NoirProofScheme, proof: &ProvekitProof<Bn254Field>) -> Result<()> {
@@ -78,4 +86,30 @@ fn verifier_is_bound_to_the_mavros_digest() {
         verifier.mavros_digest = digest;
         assert!(verifier.verify(&proof).is_err(), "{digest:?}");
     }
+}
+
+#[test]
+fn a_damaged_artifact_is_refused_with_the_fix() {
+    let mut bytes = std::fs::read(fixture_path()).unwrap();
+    *bytes.last_mut().unwrap() ^= 1;
+    let damaged = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("damaged.mavros");
+    std::fs::write(&damaged, bytes).unwrap();
+    let Err(err) = compile(damaged) else {
+        panic!("an artifact that fails its digest must not load");
+    };
+    let err = format!("{err:#}");
+    assert!(err.contains("digest mismatch"), "{err}");
+    assert!(err.contains("recompile the circuit"), "{err}");
+}
+
+/// The VM would panic on a program of another format version.
+#[test]
+fn a_key_from_another_mavros_revision_is_refused() {
+    let mut prover = Prover::from_noir_proof_scheme(fixture_scheme());
+    let Prover::Mavros(key) = &mut prover else {
+        panic!("the fixture is a Mavros circuit");
+    };
+    key.binary[1] += 1;
+    let err = prover.prove(inputs(None)).expect_err("a stale key");
+    assert!(format!("{err:#}").contains("rerun `prepare`"), "{err:#}");
 }

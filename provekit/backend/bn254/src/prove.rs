@@ -322,7 +322,12 @@ fn prove_mavros_inner(
 
     let (params, declared_return) =
         crate::frontend::input::ordered_mavros_inputs(&prover.abi, &input_map)?;
-    let expected = mavros_vm::bytecode::parse_program_header(&prover.binary).entry_blob_field_count;
+    // The VM panics on a binary it cannot run, such as one in a key prepared by a
+    // build pinned to another Mavros revision.
+    let expected = mavros_vm::bytecode::ProgramHeader::parse(&prover.binary)
+        .map_err(|err| anyhow::anyhow!("{err}; rerun `prepare` with this build"))
+        .context("while reading the Mavros program in the prover key")?
+        .entry_blob_field_count;
     ensure!(
         params.len() == expected,
         "Mavros inputs flatten to {} field elements but the program entry expects {expected}",

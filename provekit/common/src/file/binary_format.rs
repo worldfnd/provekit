@@ -16,10 +16,11 @@ pub const XZ_MAGIC: [u8; 6] = [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00];
 // Major must match exactly on read (an incompatible layout is rejected); a
 // reader accepts any file whose minor is >= its own.
 //
-// 4.0: the Mavros prover and scheme records carry the column map, and the
-// Mavros prover, scheme and verifier records carry `mavros_digest`. A 3.x
-// reader would silently drop the appended fields, so this is a major bump:
-// keys prepared before 4.0 are rejected and must be regenerated.
+// 4.0: the Mavros prover and scheme records carry the column map and a
+// witness layout with `logup_repetitions`, and the Mavros prover, scheme and
+// verifier records carry `mavros_digest`. A 3.x reader would misread the
+// changed records, so this is a major bump: keys prepared before 4.0 are
+// rejected and must be regenerated.
 // ---------------------------------------------------------------------------
 
 pub const PROVER_FORMAT: [u8; 8] = *b"PrvKitPr";
