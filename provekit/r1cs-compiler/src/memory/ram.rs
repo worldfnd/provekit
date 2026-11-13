@@ -226,11 +226,11 @@ pub fn add_ram_checking(
     //  1. retrieved_timer in 0..2^K
     //  2. (mem_op_index - retrieved_timer) in 0..2^K
     // where K is minimal such that 2^K >= block.operations.len().
-    // The above range check is sound so long as 2^K is less than the characteristic
-    // of the field. (Note that range checks implemented only for powers of
-    // two). The maximum value obtained by the global timestamp is the number of
-    // memory operations. This is also the maximum value for any valid read
-    // timestamp.
+    // The above range check is sound so long as 2^K < p/2 + 1, where p is the
+    // characteristic of the field. (Note that range checks implemented only for
+    // powers of two). The maximum value obtained by the global timestamp is the
+    // number of memory operations. This is also the maximum value for any valid
+    // read timestamp.
 
     // num_bits is the ceil log of one more than the maximum permitted value
     let num_bits = (block.operations.len() + 1).next_power_of_two().ilog2();
