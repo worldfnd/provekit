@@ -88,9 +88,8 @@ pub fn add_ram_checking(
 
     let memory_length = block.initial_value_witnesses.len();
 
-    // Track all the (mem_op_index, read timestamp) pairs so we can perform the two
-    // required range checks later.
-    let mut all_mem_op_index_and_rt = vec![];
+    // The read timestamps, for the two required range checks later.
+    let mut rts = vec![];
 
     // For each of the writes in the initialization, add a factor to the write
     // hash
@@ -128,7 +127,7 @@ pub fn add_ram_checking(
             match op {
                 SpiceMemoryOperation::Load(addr_witness, value_witness, rt_witness) => {
                     // GET
-                    all_mem_op_index_and_rt.push((mem_op_index, *rt_witness));
+                    rts.push(*rt_witness);
                     let factor = add_mem_op_multiset_factor(
                         r1cs_compiler,
                         sz_challenge,
@@ -162,7 +161,7 @@ pub fn add_ram_checking(
                     rt_witness,
                 ) => {
                     // GET
-                    all_mem_op_index_and_rt.push((mem_op_index, *rt_witness));
+                    rts.push(*rt_witness);
                     let factor = add_mem_op_multiset_factor(
                         r1cs_compiler,
                         sz_challenge,
@@ -192,15 +191,16 @@ pub fn add_ram_checking(
             }
         });
 
-    // audit(): for each of the cells of the memory block, add a factor to the read
-    // hash We don't need to keep incrementing the mem op index, since only GET
-    // operations remain. TODO: see what global timestamp is used in the AUDIT
-    // phase of the Spice protocol (check the Jolt implementation).
+    // audit(): for each of the cells of the memory block, add a factor to the
+    // read hash. Note that we don't need to keep incrementing the mem op index,
+    // since only GET operations remain.  Nor do we need to check the read
+    // timestamps that arise during audit, since they must match an earlier
+    // write for the multiset check to pass, and the write timestamps are
+    // hard-coded to be 0 .. block_operations.len() - 1).
     (0..memory_length).for_each(|addr| {
         // GET
         let value_witness = spice_witnesses.rv_final_start + addr;
         let rt_witness = spice_witnesses.rt_final_start + addr;
-        all_mem_op_index_and_rt.push((block.operations.len(), rt_witness));
         let factor = add_mem_op_multiset_factor(
             r1cs_compiler,
             sz_challenge,
@@ -234,16 +234,17 @@ pub fn add_ram_checking(
 
     // num_bits is the ceil log of one more than the maximum permitted value
     let num_bits = (block.operations.len() + 1).next_power_of_two().ilog2();
-    let mut range_check = Vec::with_capacity(2 * all_mem_op_index_and_rt.len());
-    all_mem_op_index_and_rt
+    let mut range_check = Vec::with_capacity(2 * rts.len());
+    rts
         .iter()
+        .enumerate()
         .for_each(|(mem_op_index, rt_witness)| {
             // Implementation note: we use an auxiliary witness to represent
             // mem_op_index - rt_witness, in order to interface with the range checking
             // code below.
             let difference_witness_idx = r1cs_compiler.add_sum(vec![
                 SumTerm(
-                    Some(FieldElement::from(*mem_op_index as u64)),
+                    Some(FieldElement::from(mem_op_index as u64)),
                     r1cs_compiler.witness_one(),
                 ),
                 SumTerm(Some(FieldElement::one().neg()), *rt_witness),
