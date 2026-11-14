@@ -196,7 +196,7 @@ pub fn add_ram_checking(
     // since only GET operations remain.  Nor do we need to check the read
     // timestamps that arise during audit, since they must match an earlier
     // write for the multiset check to pass, and the write timestamps are
-    // hard-coded to be 0 .. block_operations.len() - 1).
+    // hard-coded to be in range.
     (0..memory_length).for_each(|addr| {
         // GET
         let value_witness = spice_witnesses.rv_final_start + addr;
