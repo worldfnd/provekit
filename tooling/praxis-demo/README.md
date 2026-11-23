@@ -10,6 +10,37 @@ It encrypts a secret message to a Noir circuit ([`noir-examples/praxis-satoshi`]
 
 ---
 
+## Sample Output (16-core Apple Silicon)
+
+```text
+==================================================================
+  Praxis Witness Encryption + ProveKit Noir Demo
+  Security : 100-bit security (Praxis Table 4 on BN254)
+  Params   : lambda=100, n=4608, d_R=64, k=71, K1=192, K2=12, g=1736375024658487
+  Threads  : 16
+==================================================================
+
+[1] Noir -> ProveKit R1CS (121.28ms): 62 witnesses, 70 constraints, 0 public inputs, 0 challenges
+[2] R1CS -> BQS & Praxis Setup (197.81ms):
+    N = 1326 Boolean unknowns (56 native bools, 5 expanded Fr), n_c = 1640 (padded from 14 to meet n <= D)
+    QAP: nu = 2, D = 4608 evaluation points, |H| = 8192, MSIS matrix: 71x21 over R_q (ell <= k => trivial kernel)
+[3] One-time fixed-base tables (12-bit signed windows): 6.33ms
+
+[4] Encrypting secret message: "Only satoshi can read this!"
+    Ciphertext: 36.45 MiB compressed (517143 G1, 338600 G2, 1 GT)
+    Enc time  : 496.05ms (field: 44.74ms, G1 muls: 157.01ms, G2 muls: 290.56ms)
+
+[5] Solving witness with ProveKit & decrypting...
+    Using CLI --name="satoshi"
+    BQS satisfied by witness: true (wt(w) = 66/1326)
+    Dec time  : 2.46s (forms+QAP: 121.91ms, MSMs+pairings: 253.74ms, BSGS search: 2.08s)
+    Search    : b_bar=33554432, baby_steps=33554432, giant_steps=84140157, false_fp_hits=0, t=Some(-2959962334096681)
+    Decrypted : "Only satoshi can read this!"
+    Status    : SUCCESS (exact match!)
+```
+
+---
+
 ## Quick Start
 
 Run everything from the ProveKit repository root:
@@ -57,37 +88,6 @@ cargo run -p praxis-demo --profile release-fast -- \
    - Centered secret integer sampler $\mathcal{D}_g$ with $g = 1{,}736{,}375{,}024{,}658{,}487 \approx 2^{50.625}$
    - 12-bit signed-window fixed-base scalar multiplication tables in $\mathbb{G}_1$ and $\mathbb{G}_2$
 4. **Praxis `Dec` (Appendix A, Fig. 10):** Solves the R1CS witness via ProveKit, computes the QAP quotients/remainder via coset-FFT and extension-field cancellation polynomials, batches the pairings into 4 `multi_pairing` calls, and recovers the hidden search offset $t$ via a parallel baby-step giant-step (BSGS) search in $\mathbb{G}_T$ using the **degree-12 palindromic $\mathbb{F}_p$ linear recurrence** (6 muls + 11 adds per step) and a 22-bit bucketed 64-bit fingerprint table.
-
----
-
-## Sample Output (16-core Apple Silicon)
-
-```text
-==================================================================
-  Praxis Witness Encryption + ProveKit Noir Demo
-  Security : 100-bit security (Praxis Table 4 on BN254)
-  Params   : lambda=100, n=4608, d_R=64, k=71, K1=192, K2=12, g=1736375024658487
-  Threads  : 16
-==================================================================
-
-[1] Noir -> ProveKit R1CS (121.28ms): 62 witnesses, 70 constraints, 0 public inputs, 0 challenges
-[2] R1CS -> BQS & Praxis Setup (197.81ms):
-    N = 1326 Boolean unknowns (56 native bools, 5 expanded Fr), n_c = 1640 (padded from 14 to meet n <= D)
-    QAP: nu = 2, D = 4608 evaluation points, |H| = 8192, MSIS matrix: 71x21 over R_q (ell <= k => trivial kernel)
-[3] One-time fixed-base tables (12-bit signed windows): 6.33ms
-
-[4] Encrypting secret message: "Only satoshi can read this!"
-    Ciphertext: 36.45 MiB compressed (517143 G1, 338600 G2, 1 GT)
-    Enc time  : 496.05ms (field: 44.74ms, G1 muls: 157.01ms, G2 muls: 290.56ms)
-
-[5] Solving witness with ProveKit & decrypting...
-    Using CLI --name="satoshi"
-    BQS satisfied by witness: true (wt(w) = 66/1326)
-    Dec time  : 2.46s (forms+QAP: 121.91ms, MSMs+pairings: 253.74ms, BSGS search: 2.08s)
-    Search    : b_bar=33554432, baby_steps=33554432, giant_steps=84140157, false_fp_hits=0, t=Some(-2959962334096681)
-    Decrypted : "Only satoshi can read this!"
-    Status    : SUCCESS (exact match!)
-```
 
 ---
 
