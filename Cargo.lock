@@ -257,6 +257,7 @@ dependencies = [
  "num-bigint 0.4.6",
  "num-integer",
  "num-traits",
+ "rayon",
  "zeroize",
 ]
 
@@ -274,6 +275,7 @@ dependencies = [
  "educe",
  "num-bigint 0.4.6",
  "num-traits",
+ "rayon",
  "zeroize",
 ]
 
@@ -325,6 +327,7 @@ dependencies = [
  "educe",
  "fnv",
  "hashbrown 0.17.1",
+ "rayon",
 ]
 
 [[package]]
@@ -337,6 +340,7 @@ dependencies = [
  "ark-std",
  "digest 0.10.7",
  "num-bigint 0.4.6",
+ "rayon",
  "serde_with",
 ]
 
@@ -359,6 +363,7 @@ checksum = "367c9c827ed431bff6868b7aa926e05b16eb46603cc8b6e768e4a5553fa1d155"
 dependencies = [
  "num-traits",
  "rand 0.8.6",
+ "rayon",
 ]
 
 [[package]]
@@ -4410,6 +4415,37 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "85eae3c4ed2f50dcfe72643da4befc30deadb458a9b590d720cde2f2b1e97da9"
 dependencies = [
  "zerocopy",
+]
+
+[[package]]
+name = "praxis-demo"
+version = "0.1.0"
+dependencies = [
+ "acir",
+ "anyhow",
+ "argh",
+ "ark-bn254",
+ "ark-ec",
+ "ark-ff",
+ "ark-poly",
+ "ark-serialize",
+ "ark-std",
+ "blake3",
+ "bn254_blackbox_solver",
+ "nargo",
+ "nargo_cli",
+ "nargo_toml",
+ "noir_artifact_cli",
+ "noirc_abi",
+ "noirc_artifacts",
+ "noirc_driver",
+ "provekit-backend-bn254",
+ "provekit-common",
+ "provekit-r1cs-compiler",
+ "rand 0.9.4",
+ "rayon",
+ "serde_json",
+ "whir",
 ]
 
 [[package]]

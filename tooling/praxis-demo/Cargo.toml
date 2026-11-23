@@ -1,0 +1,36 @@
+[package]
+name = "praxis-demo"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+acir.workspace = true
+anyhow.workspace = true
+argh.workspace = true
+ark-bn254 = { workspace = true, features = ["curve"] }
+ark-ec.workspace = true
+ark-ff.workspace = true
+ark-poly.workspace = true
+ark-serialize.workspace = true
+ark-std.workspace = true
+blake3.workspace = true
+bn254_blackbox_solver.workspace = true
+nargo.workspace = true
+nargo_cli.workspace = true
+nargo_toml.workspace = true
+noir_artifact_cli.workspace = true
+noirc_abi.workspace = true
+noirc_artifacts.workspace = true
+noirc_driver.workspace = true
+provekit-backend-bn254 = { workspace = true, features = ["witness-generation"] }
+provekit-common.workspace = true
+provekit-r1cs-compiler.workspace = true
+rand.workspace = true
+rayon.workspace = true
+serde_json.workspace = true
+whir.workspace = true
+
+[lints]
+workspace = true

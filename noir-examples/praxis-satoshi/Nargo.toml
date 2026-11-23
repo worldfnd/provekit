@@ -1,0 +1,7 @@
+[package]
+name = "praxis_satoshi"
+type = "bin"
+authors = [""]
+compiler_version = ">=0.30.0"
+
+[dependencies]

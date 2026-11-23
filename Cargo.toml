@@ -20,6 +20,7 @@ members = [
   "tooling/provekit-gnark",
   "tooling/provekit-wasm",
   "tooling/verifier-server",
+  "tooling/praxis-demo",
   "ntt",
   "provekit/spark",
   "poseidon2",
@@ -203,8 +204,9 @@ ark-bn254 = { version = "0.6.0", default-features = false, features = [
   "scalar_field",
 ] }
 
+ark-ec = { version = "0.6", features = ["parallel"] }
 ark-ff = { version = "0.6", features = ["asm", "std"] }
-ark-poly = "0.6"
+ark-poly = { version = "0.6", features = ["parallel"] }
 ark-serialize = "0.6"
 ark-std = { version = "0.6", features = ["std"] }
 mavros-vm = { git = "https://github.com/reilabs/mavros", rev = "92ead6f2a919bbcc33ed07aa1bfa82062cfc652e" }
