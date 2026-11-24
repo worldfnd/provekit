@@ -13,7 +13,10 @@ use {
     provekit_common::{file::write, NoirProofScheme, Prover, Verifier},
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
     rayon::prelude::*,
-    std::path::{Path, PathBuf},
+    std::{
+        path::{Path, PathBuf},
+        sync::Arc,
+    },
     tracing::instrument,
 };
 
@@ -91,7 +94,8 @@ impl Command for Args {
         let options = self.compile_options();
         let mut file_manager = workspace.new_file_manager();
         insert_all_files_for_workspace_into_file_manager(&workspace, &mut file_manager);
-        let parsed_files = parse_all(&file_manager);
+        let file_manager = Arc::new(file_manager);
+        let parsed_files = Arc::new(parse_all(&file_manager));
 
         let binary_packages: Vec<_> = workspace
             .into_iter()

@@ -1,0 +1,35 @@
+rom_read = 2
+ram_write = 1
+ram_read = 1
+
+[[pairs]]
+a = 3
+b = 7
+
+[[pairs]]
+a = 6
+b = 4
+
+[[pairs]]
+a = 9
+b = 2
+
+[[pairs]]
+a = 5
+b = 8
+
+[[scratch]]
+a = 11
+b = 12
+
+[[scratch]]
+a = 13
+b = 14
+
+[[scratch]]
+a = 15
+b = 16
+
+[[scratch]]
+a = 17
+b = 18
