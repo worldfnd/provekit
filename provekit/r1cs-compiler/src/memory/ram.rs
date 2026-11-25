@@ -235,8 +235,7 @@ pub fn add_ram_checking(
     // num_bits is the ceil log of one more than the maximum permitted value
     let num_bits = (block.operations.len() + 1).next_power_of_two().ilog2();
     let mut range_check = Vec::with_capacity(2 * rts.len());
-    rts
-        .iter()
+    rts.iter()
         .enumerate()
         .for_each(|(mem_op_index, rt_witness)| {
             // Implementation note: we use an auxiliary witness to represent
