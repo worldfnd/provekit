@@ -1,5 +1,3 @@
-use dep::poseidon2;
-
 fn hash_variable_input(input: [Field]) -> Field {
     let input_size = input.len();
     // Number of permutation events needed (ceiling of input_size/3)

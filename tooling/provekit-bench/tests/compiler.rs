@@ -1,15 +1,24 @@
 use {
     anyhow::Result,
-    nargo::workspace::Workspace,
-    nargo_cli::cli::compile_cmd::compile_workspace_full,
+    nargo::{
+        insert_all_files_for_workspace_into_file_manager,
+        ops::{check_program, collect_errors, compile_program, report_errors},
+        parse_all,
+        workspace::Workspace,
+    },
     nargo_toml::{resolve_workspace_from_toml, PackageSelection},
-    noirc_driver::CompileOptions,
+    noir_artifact_cli::fs::artifact::save_program_to_file,
+    noirc_driver::{CompilationResult, CompileOptions},
     provekit_common::{Format, NoirProofScheme, Prover, Verifier},
     provekit_prover::Prove,
     provekit_r1cs_compiler::NoirProofSchemeBuilder,
     provekit_verifier::Verify,
+    rayon::prelude::*,
     serde::Deserialize,
-    std::path::{Path, PathBuf},
+    std::{
+        path::{Path, PathBuf},
+        sync::Arc,
+    },
     test_case::test_case,
 };
 
@@ -28,7 +37,7 @@ struct NargoTomlPackage {
 fn compile_workspace_once(workspace_path: &Path) {
     use std::{
         collections::HashMap,
-        sync::{Arc, Mutex, OnceLock},
+        sync::{Mutex, OnceLock},
     };
 
     static LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<bool>>>>> = OnceLock::new();
@@ -92,7 +101,44 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
         resolve_workspace_from_toml(&workspace_path, PackageSelection::DefaultOrAll, None)?;
     let compile_options = CompileOptions::default();
 
-    compile_workspace_full(&workspace, &compile_options, None)?;
+    let mut file_manager = workspace.new_file_manager();
+    insert_all_files_for_workspace_into_file_manager(&workspace, &mut file_manager);
+    let file_manager = Arc::new(file_manager);
+    let parsed_files = Arc::new(parse_all(&file_manager));
+    let target_dir = workspace.target_directory_path();
+    let binary_packages: Vec<_> = workspace.into_iter().filter(|p| p.is_binary()).collect();
+
+    // Large programs overflow the default 2 MB thread stack while compiling.
+    let pool = rayon::ThreadPoolBuilder::new()
+        .stack_size(4 * 1024 * 1024)
+        .build()?;
+    let results: Vec<CompilationResult<()>> = pool.install(|| {
+        binary_packages
+            .par_iter()
+            .map(|package| {
+                let (program, warnings) = compile_program(
+                    &file_manager,
+                    &parsed_files,
+                    &workspace,
+                    package,
+                    &compile_options,
+                    None,
+                )?;
+                check_program(&program)?;
+                save_program_to_file(&program.into(), &package.name, &target_dir)
+                    .expect("saving program artifact");
+                Ok(((), warnings))
+            })
+            .collect()
+    });
+
+    report_errors(
+        collect_errors(results),
+        &file_manager,
+        &parsed_files,
+        compile_options.deny_warnings,
+        compile_options.silence_warnings,
+    )?;
 
     Ok(workspace)
 }
@@ -105,6 +151,7 @@ pub fn compile_workspace(workspace_path: impl AsRef<Path>) -> Result<Workspace> 
 #[test_case("../../noir-examples/noir-r1cs-test-programs/range-check-mixed-bases")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/read-write-memory")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/conditional-write")]
+#[test_case("../../noir-examples/noir-r1cs-test-programs/struct-array-memory")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/bin-opcode")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/small-sha")]
 #[test_case("../../noir-examples/noir-r1cs-test-programs/bounded-vec")]
@@ -253,4 +300,62 @@ fn test_public_input_binding_exploit() {
         result.is_err(),
         "Verification should fail when public inputs are tampered, but it succeeded",
     );
+}
+
+/// Noir bounds an index into an array of multi-field elements with the memory
+/// opcode alone, so an out-of-range address must not yield an accepted proof.
+#[test]
+fn test_out_of_bounds_memory_address_is_rejected() {
+    use acir::circuit::Opcode;
+
+    let test_case_path =
+        Path::new("../../noir-examples/noir-r1cs-test-programs/struct-array-memory");
+
+    compile_workspace_once(test_case_path);
+
+    let circuit_path = test_case_path.join("target/main.json");
+    let schema = NoirProofScheme::from_file(&circuit_path).expect("Reading proof scheme");
+
+    // Widen every memory block by one element so the solver accepts index 4
+    // and returns a witness that satisfies everything except the memory checks
+    // of the unmodified circuit.
+    let mut widened = Prover::from_noir_proof_scheme(schema.clone());
+    let mut blocks = 0;
+    for opcode in &mut widened.program.functions[0].opcodes {
+        if let Opcode::MemoryInit { init, .. } = opcode {
+            assert_eq!(init.len(), 8, "four elements of two fields each");
+            init.extend_from_within(..2);
+            blocks += 1;
+        }
+    }
+    assert_eq!(blocks, 2, "one read-only and one read-write block");
+
+    let elements: String = (1..=4)
+        .map(|i| format!("[[pairs]]\na = {i}\nb = {i}\n\n[[scratch]]\na = {i}\nb = {i}\n\n"))
+        .collect();
+
+    for (rom_read, ram_write, ram_read) in [(4, 1, 1), (2, 4, 1), (2, 1, 4)] {
+        let inputs = format!(
+            "rom_read = {rom_read}\nram_write = {ram_write}\nram_read = {ram_read}\n\n{elements}"
+        );
+        let input_map = Format::Toml
+            .parse(&inputs, widened.witness_generator.abi())
+            .expect("Parsing inputs");
+        let forged = widened
+            .clone()
+            .generate_witness(input_map)
+            .expect("an explicit bounds check is back: forge the witness another way");
+
+        let accepted = Prover::from_noir_proof_scheme(schema.clone())
+            .prove_with_witness(forged)
+            .is_ok_and(|proof| {
+                Verifier::from_noir_proof_scheme(schema.clone())
+                    .verify(&proof)
+                    .is_ok()
+            });
+        assert!(
+            !accepted,
+            "accepted rom_read={rom_read} ram_write={ram_write} ram_read={ram_read}"
+        );
+    }
 }
