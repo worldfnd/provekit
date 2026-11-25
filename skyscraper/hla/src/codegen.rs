@@ -51,7 +51,13 @@ pub fn generate_rust_global_asm(
     outputs_registers: &[AllocatedVariable],
     instructions: &[Instruction<HardwareRegister>],
 ) -> String {
-    let operands = generate_asm_operands(inputs_registers, outputs_registers, instructions);
+    // The standalone function is reached with `bl`, which overwrites the link
+    // register. Inlined blocks never touch it.
+    let operands = [
+        generate_asm_operands(inputs_registers, outputs_registers, instructions),
+        "lateout(\"lr\") _".to_string(),
+    ]
+    .join(",\n");
     let standalone = generate_standalone_asm(label, instructions);
 
     let operands_with_comments: String = operands
@@ -123,13 +129,12 @@ pub fn generate_asm_operands(
 
     let clobbers = format_clobbers(&clobber_registers);
 
-    [
-        input_operands,
-        output_operands,
-        clobbers,
-        "lateout(\"lr\") _".to_string(),
-    ]
-    .join(",\n")
+    // Skip empty groups so that no empty operand is joined in.
+    [input_operands, output_operands, clobbers]
+        .into_iter()
+        .filter(|operands| !operands.is_empty())
+        .collect::<Vec<_>>()
+        .join(",\n")
 }
 
 /// Clobber registers are all the registers that have been used in the assembly

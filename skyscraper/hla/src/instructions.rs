@@ -33,8 +33,8 @@
 use {
     crate::{
         frontend::{Assembler, FreshAllocator, PointerReg, Reg, Simd, SizedIdx, D, SIMD},
-        ir::{FreshRegister, Instruction, Modifier},
-        reification::ReifyRegister,
+        ir::{FreshRegister, Instruction, Modifier, ShiftKind},
+        reification::{ReifiedRegister, ReifyRegister},
     },
     paste::paste,
 };
@@ -97,6 +97,17 @@ pub mod scalar {
         }
     }
 
+    /// Compares a register with an immediate: sets the flags of `a - imm`.
+    pub fn cmp_imm_inst(a: &Reg<u64>, imm: u64) -> Instruction<FreshRegister> {
+        assert!(imm < 4096, "cmp immediates are 12 bits");
+        Instruction {
+            opcode:    "cmp".to_string(),
+            results:   vec![],
+            operands:  vec![a.reify()],
+            modifiers: Modifier::Imm(imm),
+        }
+    }
+
     pub fn csel_inst(
         dest: &Reg<u64>,
         a: &Reg<u64>,
@@ -117,6 +128,16 @@ pub mod scalar {
             results:   vec![],
             operands:  vec![a.reify(), b.reify()],
             modifiers: Modifier::None,
+        }
+    }
+
+    /// All ones when `cond` holds, otherwise zero.
+    pub fn csetm_inst(dest: &Reg<u64>, cond: &str) -> Instruction<FreshRegister> {
+        Instruction {
+            opcode:    "csetm".to_string(),
+            results:   vec![dest.reify()],
+            operands:  vec![],
+            modifiers: Modifier::Cond(cond.to_string()),
         }
     }
 
@@ -157,6 +178,64 @@ pub mod scalar {
 
     embed_asm!(add, "add", (a: u64, b: u64) -> u64);
     embed_asm!(and, "and", (a: u64, b: u64) -> u64);
+    embed_asm!(eor, "eor", (a: u64, b: u64) -> u64);
+
+    /// `a + (b << shift)`: an addition with a shifted register operand.
+    pub fn add_lsl(
+        alloc: &mut FreshAllocator,
+        asm: &mut Assembler,
+        a: &Reg<u64>,
+        b: &Reg<u64>,
+        shift: u8,
+    ) -> Reg<u64> {
+        assert!(shift < 64);
+        let out = alloc.fresh();
+        asm.append_instruction(vec![Instruction {
+            opcode:    "add".to_owned(),
+            results:   vec![out.reify()],
+            operands:  vec![a.reify(), b.reify()],
+            modifiers: Modifier::ShiftedOperand(ShiftKind::Lsl, shift),
+        }]);
+        out
+    }
+
+    /// Logical right shift of a scalar register by an immediate count.
+    pub fn lsr(
+        alloc: &mut FreshAllocator,
+        asm: &mut Assembler,
+        a: &Reg<u64>,
+        shift: u8,
+    ) -> Reg<u64> {
+        shift_immediate(alloc, asm, a, shift, "lsr")
+    }
+
+    /// Logical left shift of a scalar register by an immediate count.
+    pub fn lsl(
+        alloc: &mut FreshAllocator,
+        asm: &mut Assembler,
+        a: &Reg<u64>,
+        shift: u8,
+    ) -> Reg<u64> {
+        shift_immediate(alloc, asm, a, shift, "lsl")
+    }
+
+    fn shift_immediate(
+        alloc: &mut FreshAllocator,
+        asm: &mut Assembler,
+        a: &Reg<u64>,
+        shift: u8,
+        opcode: &str,
+    ) -> Reg<u64> {
+        assert!(shift < 64);
+        let out = alloc.fresh();
+        asm.append_instruction(vec![Instruction {
+            opcode:    opcode.to_owned(),
+            results:   vec![out.reify()],
+            operands:  vec![a.reify()],
+            modifiers: Modifier::Shift(shift),
+        }]);
+        out
+    }
 }
 
 pub mod load_store {
@@ -164,21 +243,57 @@ pub mod load_store {
         super::*,
         crate::frontend::{MutablePointer, Pointer},
     };
+
+    /// Loads two adjacent words from an address held in a general register.
+    /// The byte offset is fixed at generation time; the base may be computed.
+    pub fn ldp_address(
+        alloc: &mut FreshAllocator,
+        asm: &mut Assembler,
+        address: &Reg<u64>,
+        byte_offset: usize,
+    ) -> (Reg<u64>, Reg<u64>) {
+        assert!(byte_offset <= 504 && byte_offset % 8 == 0);
+        let a = alloc.fresh();
+        let b = alloc.fresh();
+        let mut pointer = address.reify();
+        pointer.idx = crate::reification::Index::Pointer(byte_offset);
+        asm.append_instruction(vec![ldp_inst(&a, &b, pointer)]);
+        (a, b)
+    }
+
+    /// Loads one word from an address held in a general register.
+    /// The byte offset is fixed at generation time; the base may be computed.
+    pub fn ldr_address(
+        alloc: &mut FreshAllocator,
+        asm: &mut Assembler,
+        address: &Reg<u64>,
+        byte_offset: usize,
+    ) -> Reg<u64> {
+        assert!(byte_offset <= 32760 && byte_offset % 8 == 0);
+        let out = alloc.fresh();
+        let mut pointer = address.reify();
+        pointer.idx = crate::reification::Index::Pointer(byte_offset);
+        asm.append_instruction(vec![ldr_inst(&out, pointer)]);
+        out
+    }
     pub fn ldr<T>(
         alloc: &mut FreshAllocator,
         asm: &mut Assembler,
         ptr: &PointerReg<T>,
     ) -> Reg<u64> {
         let ret = alloc.fresh();
-        asm.append_instruction(vec![ldr_inst(&ret, ptr)]);
+        asm.append_instruction(vec![ldr_inst(&ret, ptr.reify())]);
         ret
     }
 
-    pub fn ldr_inst<T>(dest: &Reg<u64>, ptr: &PointerReg<T>) -> Instruction<FreshRegister> {
+    pub fn ldr_inst(
+        dest: &Reg<u64>,
+        ptr: ReifiedRegister<FreshRegister>,
+    ) -> Instruction<FreshRegister> {
         Instruction {
             opcode:    "ldr".to_string(),
             results:   vec![dest.reify()],
-            operands:  vec![ptr.reify()],
+            operands:  vec![ptr],
             modifiers: Modifier::None,
         }
     }
@@ -190,19 +305,19 @@ pub mod load_store {
     ) -> (Reg<u64>, Reg<u64>) {
         let ret0 = alloc.fresh();
         let ret1 = alloc.fresh();
-        asm.append_instruction(vec![ldp_inst(&ret0, &ret1, ptr)]);
+        asm.append_instruction(vec![ldp_inst(&ret0, &ret1, ptr.reify())]);
         (ret0, ret1)
     }
 
-    pub fn ldp_inst<PTR: Pointer>(
+    pub fn ldp_inst(
         dest: &Reg<u64>,
         dest2: &Reg<u64>,
-        ptr: &PTR,
+        ptr: ReifiedRegister<FreshRegister>,
     ) -> Instruction<FreshRegister> {
         Instruction {
             opcode:    "ldp".to_string(),
             results:   vec![dest.reify(), dest2.reify()],
-            operands:  vec![ptr.reify()],
+            operands:  vec![ptr],
             modifiers: Modifier::None,
         }
     }
@@ -339,7 +454,7 @@ pub mod simd {
             opcode:    "sli.2d".to_string(),
             results:   vec![dest.reify()],
             operands:  vec![source.reify()],
-            modifiers: Modifier::Lsl(shl),
+            modifiers: Modifier::Shift(shl),
         }
     }
 
@@ -387,7 +502,7 @@ pub mod simd {
             opcode:    "shl.2d".to_string(),
             results:   vec![dest.reify()],
             operands:  vec![a.reify()],
-            modifiers: Modifier::Lsl(imm),
+            modifiers: Modifier::Shift(imm),
         }
     }
 
@@ -411,7 +526,7 @@ pub mod simd {
             opcode:    "ushr.2d".to_string(),
             results:   vec![dest.reify()],
             operands:  vec![a.reify()],
-            modifiers: Modifier::Lsl(imm),
+            modifiers: Modifier::Shift(imm),
         }
     }
 
@@ -435,7 +550,7 @@ pub mod simd {
             opcode:    "usra.2d".to_string(),
             results:   vec![dest.reify()],
             operands:  vec![a.reify()],
-            modifiers: Modifier::Lsl(imm),
+            modifiers: Modifier::Shift(imm),
         }
     }
 
@@ -459,7 +574,7 @@ pub mod simd {
             opcode:    "ssra.2d".to_string(),
             results:   vec![dest.reify()],
             operands:  vec![a.reify()],
-            modifiers: Modifier::Lsl(imm),
+            modifiers: Modifier::Shift(imm),
         }
     }
 }

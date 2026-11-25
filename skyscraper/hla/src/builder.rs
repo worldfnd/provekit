@@ -71,6 +71,24 @@ where
         &[Instruction<HardwareRegister>],
     ) -> String,
 {
+    let assembly = generate(algos, codegen);
+
+    use std::io::Write;
+    let mut file = std::fs::File::create(&path)
+        .unwrap_or_else(|_| panic!("Unable to create file: {:#?}", path.as_ref()));
+    file.write_all(assembly.as_bytes())
+        .unwrap_or_else(|_| panic!("Unable to write assembly to file: {:#?}", path.as_ref()));
+}
+
+/// Runs the setups, allocates registers and returns `codegen`'s output.
+pub fn generate<C>(algos: Interleaving<Setup>, codegen: C) -> String
+where
+    C: FnOnce(
+        &[AllocatedVariable],
+        &[AllocatedVariable],
+        &[Instruction<HardwareRegister>],
+    ) -> String,
+{
     let mut alloc = FreshAllocator::new();
     let mut mapping = RegisterMapping::new();
     let mut register_bank = RegisterBank::new();
@@ -110,18 +128,11 @@ where
         .map(|fresh_variable| mapping.get_allocated_variable(fresh_variable))
         .collect();
 
-    // Write this info in the assembly file
-    let assembly = codegen(
+    codegen(
         &input_hw_registers,
         &output_hw_registers,
         &hardware_instructions,
-    );
-
-    use std::io::Write;
-    let mut file = std::fs::File::create(&path)
-        .unwrap_or_else(|_| panic!("Unable to create file: {:#?}", path.as_ref()));
-    file.write_all(assembly.as_bytes())
-        .unwrap_or_else(|_| panic!("Unable to write assembly to file: {:#?}", path.as_ref()));
+    )
 }
 
 /// Runs setup functions according to their interleaving pattern.
