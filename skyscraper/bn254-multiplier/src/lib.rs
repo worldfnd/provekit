@@ -20,9 +20,9 @@ mod test_utils;
 
 #[cfg(target_arch = "aarch64")]
 pub use crate::aarch64::{
-    montgomery_interleaved_3, montgomery_interleaved_4, montgomery_square_interleaved_3,
-    montgomery_square_interleaved_4, montgomery_square_log_interleaved_3,
-    montgomery_square_log_interleaved_4,
+    montgomery_interleaved_3, montgomery_interleaved_4, montgomery_mul,
+    montgomery_square_interleaved_3, montgomery_square_interleaved_4,
+    montgomery_square_log_interleaved_3, montgomery_square_log_interleaved_4,
 };
 pub use crate::scalar::{scalar_mul, scalar_sqr};
 

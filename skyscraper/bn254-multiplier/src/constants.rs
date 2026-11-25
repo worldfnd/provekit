@@ -89,6 +89,32 @@ pub const U64_I3: [u64; 4] = [
 ];
 pub const U64_MU0: u64 = 0xc2e1f593efffffff;
 
+// Limb positions in `REDUCTION_TABLE`.
+pub const I3_LIMB: usize = 0;
+pub const I2_LIMB: usize = 4;
+pub const I1_LIMB: usize = 8;
+pub const P_LIMB: usize = 12;
+pub const MU0_LIMB: usize = 16;
+
+/// Reduction constants in the layout the single assembly kernels load them
+/// from: `U64_I3`, `U64_I2`, `U64_I1`, `U64_P` (four limbs each), then
+/// `U64_MU0`. The kernel `bn254_multiplier_codegen::karatsuba::MUL` takes its
+/// address as the input `table` and loads from the limb positions above. The
+/// codegen crate includes this file, so the layout is defined once.
+pub static REDUCTION_TABLE: [u64; 17] = {
+    let mut table = [0; 17];
+    let mut i = 0;
+    while i < 4 {
+        table[I3_LIMB + i] = U64_I3[i];
+        table[I2_LIMB + i] = U64_I2[i];
+        table[I1_LIMB + i] = U64_I1[i];
+        table[P_LIMB + i] = U64_P[i];
+        i += 1;
+    }
+    table[MU0_LIMB] = U64_MU0;
+    table
+};
+
 // BOUNDS
 /// Upper bound of 2**256-2p
 pub const OUTPUT_MAX: [u64; 4] = [

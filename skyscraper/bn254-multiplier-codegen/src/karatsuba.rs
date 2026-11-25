@@ -1,7 +1,7 @@
 //! The scalar Montgomery multiplication kernel [`MUL`].
 //!
 //! `MUL` uses Domb's single-step reduction with a Karatsuba product, a
-//! balanced fold with constants from [`REDUCTION_TABLE`] and a split final
+//! balanced fold with constants from `REDUCTION_TABLE` and a split final
 //! step. It returns a loose residue below `2^256`. Inputs must satisfy the
 //! caller bound `a, b <= 2^256 - 2p`.
 
@@ -9,28 +9,6 @@ use {
     crate::{constants::*, schoolbook},
     hla::{builder::Setup, *},
     std::array,
-};
-
-// Limb positions in `REDUCTION_TABLE`.
-const I3_LIMB: usize = 0;
-const I2_LIMB: usize = 4;
-const I1_LIMB: usize = 8;
-const P_LIMB: usize = 12;
-const MU0_LIMB: usize = 16;
-
-/// Reduction constants in the layout `MUL` loads them from.
-pub const REDUCTION_TABLE: [u64; 17] = {
-    let mut table = [0; 17];
-    let mut i = 0;
-    while i < 4 {
-        table[I3_LIMB + i] = U64_I3[i];
-        table[I2_LIMB + i] = U64_I2[i];
-        table[I1_LIMB + i] = U64_I1[i];
-        table[P_LIMB + i] = U64_P[i];
-        i += 1;
-    }
-    table[MU0_LIMB] = U64_MU0;
-    table
 };
 
 /// Montgomery multiplication: the Karatsuba widening product, the balanced

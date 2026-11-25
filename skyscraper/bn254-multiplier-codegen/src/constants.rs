@@ -1,39 +1,13 @@
 // -- [Scalar CONSTANTS] -- //
 
-pub const U64_P: [u64; 4] = [
-    0x43e1f593f0000001,
-    0x2833e84879b97091,
-    0xb85045b68181585d,
-    0x30644e72e131a029,
-];
-
-pub const U64_2P: [u64; 4] = [
-    0x87c3eb27e0000002,
-    0x5067d090f372e122,
-    0x70a08b6d0302b0ba,
-    0x60c89ce5c2634053,
-];
-
-pub const U64_I1: [u64; 4] = [
-    0x2d3e8053e396ee4d,
-    0xca478dbeab3c92cd,
-    0xb2d8f06f77f52a93,
-    0x24d6ba07f7aa8f04,
-];
-pub const U64_I2: [u64; 4] = [
-    0x18ee753c76f9dc6f,
-    0x54ad7e14a329e70f,
-    0x2b16366f4f7684df,
-    0x133100d71fdf3579,
-];
-
-pub const U64_I3: [u64; 4] = [
-    0x9bacb016127cbe4e,
-    0x0b2051fa31944124,
-    0xb064eea46091c76c,
-    0x2b062aaa49f80c7d,
-];
-pub const U64_MU0: u64 = 0xc2e1f593efffffff;
+// The scalar constants are defined once, in `bn254-multiplier`, which loads
+// them at runtime through the same table the kernels here are generated for.
+#[allow(dead_code)]
+#[path = "../../bn254-multiplier/src/constants.rs"]
+mod multiplier;
+pub use multiplier::{
+    I1_LIMB, I2_LIMB, I3_LIMB, MU0_LIMB, P_LIMB, U64_2P, U64_I1, U64_I2, U64_I3, U64_MU0, U64_P,
+};
 
 // -- [FP SIMD CONSTANTS] -- //
 

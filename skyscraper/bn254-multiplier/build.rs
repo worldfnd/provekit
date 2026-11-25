@@ -1,5 +1,5 @@
 use {
-    bn254_multiplier_codegen::{schoolbook, simd},
+    bn254_multiplier_codegen::{karatsuba, schoolbook, simd},
     hla::builder::{build_includable, Interleaving},
     std::path::Path,
 };
@@ -10,7 +10,7 @@ fn main() {
         build_includable(
             path,
             Interleaving::par(
-                Interleaving::single(schoolbook::setup_single_step),
+                Interleaving::single(karatsuba::MUL),
                 Interleaving::single(simd::setup_single_step),
             ),
         );
@@ -50,5 +50,9 @@ fn main() {
                 Interleaving::single(simd::setup_square_single_step),
             ),
         );
+    }
+    let path = Path::new("./src/aarch64/montgomery_mul.s");
+    if !path.exists() {
+        build_includable(path, Interleaving::single(karatsuba::MUL));
     }
 }
