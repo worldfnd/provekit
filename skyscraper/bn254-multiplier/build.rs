@@ -1,5 +1,5 @@
 use {
-    bn254_multiplier_codegen::{scalar, simd},
+    bn254_multiplier_codegen::{schoolbook, simd},
     hla::builder::{build_includable, Interleaving},
     std::path::Path,
 };
@@ -10,7 +10,7 @@ fn main() {
         build_includable(
             path,
             Interleaving::par(
-                Interleaving::single(scalar::setup_single_step),
+                Interleaving::single(schoolbook::setup_single_step),
                 Interleaving::single(simd::setup_single_step),
             ),
         );
@@ -20,7 +20,10 @@ fn main() {
         build_includable(
             path,
             Interleaving::par(
-                Interleaving::seq(vec![scalar::setup_single_step, scalar::setup_single_step]),
+                Interleaving::seq(vec![
+                    schoolbook::setup_single_step,
+                    schoolbook::setup_single_step,
+                ]),
                 Interleaving::single(simd::setup_single_step),
             ),
         );
@@ -30,7 +33,7 @@ fn main() {
         build_includable(
             path,
             Interleaving::par(
-                Interleaving::single(scalar::setup_square_single_step),
+                Interleaving::single(schoolbook::setup_square_single_step),
                 Interleaving::single(simd::setup_square_single_step),
             ),
         );
@@ -41,8 +44,8 @@ fn main() {
             path,
             Interleaving::par(
                 Interleaving::seq(vec![
-                    scalar::setup_square_single_step,
-                    scalar::setup_square_single_step,
+                    schoolbook::setup_square_single_step,
+                    schoolbook::setup_square_single_step,
                 ]),
                 Interleaving::single(simd::setup_square_single_step),
             ),
