@@ -76,7 +76,7 @@ impl MemoryBlockStats {
 
     /// Number of range checks required for RAM.
     pub fn ram_range_check_count(&self) -> usize {
-        2 * (self.total_ops() + self.initial_size)
+        2 * self.total_ops()
     }
 
     /// R1CS constraint count for ROM (read-only memory).
