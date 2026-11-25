@@ -159,6 +159,14 @@ pub fn reserve_output_variable(
     }
 }
 
+/// General-purpose registers that are never allocated:
+/// - x18: platform register, reserved by the OS
+/// - x19: used internally by LLVM, rejected as an `asm!` operand
+/// - x29: frame pointer
+/// - x30: link register, left to the compiler
+/// - x31: stack pointer / zero register
+const RESERVED_GENERAL_PURPOSE: [u64; 5] = [18, 19, 29, 30, 31];
+
 /// Manages pools of hardware registers for allocation.
 ///
 /// RegisterBank maintains separate pools for general-purpose registers and
@@ -182,14 +190,12 @@ impl RegisterBank {
     /// # Returns
     ///
     /// A new RegisterBank with general-purpose and vector register pools.
-    /// Certain registers are excluded:
-    /// - Register 18 (reserved by OS)
-    /// - Register 19 (reserved by LLVM)
-    /// - Register 30 (reserved for link register)
-    /// - Register 31 (reserved for stack pointer)
+    /// The general-purpose pool excludes `RESERVED_GENERAL_PURPOSE`.
     pub fn new() -> Self {
         Self {
-            general_purpose: RegisterAllocator::new((0..=17).chain(20..29)),
+            general_purpose: RegisterAllocator::new(
+                (0..=31).filter(|register| !RESERVED_GENERAL_PURPOSE.contains(register)),
+            ),
             vector:          RegisterAllocator::new(0..=31),
         }
     }

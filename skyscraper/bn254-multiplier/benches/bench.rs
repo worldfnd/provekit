@@ -31,6 +31,14 @@ mod mul {
             .bench_local_values(|(a, b)| a * b);
     }
 
+    #[cfg(target_arch = "aarch64")]
+    #[divan::bench]
+    fn montgomery_mul(bencher: Bencher) {
+        bencher
+            .with_inputs(|| rng().random())
+            .bench_local_values(|(a, b)| bn254_multiplier::montgomery_mul(a, b));
+    }
+
     #[divan::bench]
     fn mono_mul_b51(bencher: Bencher) {
         bencher

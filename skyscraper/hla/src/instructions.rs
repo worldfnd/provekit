@@ -33,7 +33,7 @@
 use {
     crate::{
         frontend::{Assembler, FreshAllocator, PointerReg, Reg, Simd, SizedIdx, D, SIMD},
-        ir::{FreshRegister, Instruction, Modifier},
+        ir::{FreshRegister, Instruction, Modifier, ShiftKind},
         reification::ReifyRegister,
     },
     paste::paste,
@@ -97,6 +97,17 @@ pub mod scalar {
         }
     }
 
+    /// Compares a register with an immediate: sets the flags of `a - imm`.
+    pub fn cmp_imm_inst(a: &Reg<u64>, imm: u64) -> Instruction<FreshRegister> {
+        assert!(imm < 4096, "cmp immediates are 12 bits");
+        Instruction {
+            opcode:    "cmp".to_string(),
+            results:   vec![],
+            operands:  vec![a.reify()],
+            modifiers: Modifier::Imm(imm),
+        }
+    }
+
     pub fn csel_inst(
         dest: &Reg<u64>,
         a: &Reg<u64>,
@@ -117,6 +128,16 @@ pub mod scalar {
             results:   vec![],
             operands:  vec![a.reify(), b.reify()],
             modifiers: Modifier::None,
+        }
+    }
+
+    /// All ones when `cond` holds, otherwise zero.
+    pub fn csetm_inst(dest: &Reg<u64>, cond: &str) -> Instruction<FreshRegister> {
+        Instruction {
+            opcode:    "csetm".to_string(),
+            results:   vec![dest.reify()],
+            operands:  vec![],
+            modifiers: Modifier::Cond(cond.to_string()),
         }
     }
 
@@ -157,6 +178,64 @@ pub mod scalar {
 
     embed_asm!(add, "add", (a: u64, b: u64) -> u64);
     embed_asm!(and, "and", (a: u64, b: u64) -> u64);
+    embed_asm!(eor, "eor", (a: u64, b: u64) -> u64);
+
+    /// `a + (b << shift)`: an addition with a shifted register operand.
+    pub fn add_lsl(
+        alloc: &mut FreshAllocator,
+        asm: &mut Assembler,
+        a: &Reg<u64>,
+        b: &Reg<u64>,
+        shift: u8,
+    ) -> Reg<u64> {
+        assert!(shift < 64);
+        let out = alloc.fresh();
+        asm.append_instruction(vec![Instruction {
+            opcode:    "add".to_owned(),
+            results:   vec![out.reify()],
+            operands:  vec![a.reify(), b.reify()],
+            modifiers: Modifier::ShiftedOperand(ShiftKind::Lsl, shift),
+        }]);
+        out
+    }
+
+    /// Logical right shift of a scalar register by an immediate count.
+    pub fn lsr(
+        alloc: &mut FreshAllocator,
+        asm: &mut Assembler,
+        a: &Reg<u64>,
+        shift: u8,
+    ) -> Reg<u64> {
+        shift_immediate(alloc, asm, a, shift, "lsr")
+    }
+
+    /// Logical left shift of a scalar register by an immediate count.
+    pub fn lsl(
+        alloc: &mut FreshAllocator,
+        asm: &mut Assembler,
+        a: &Reg<u64>,
+        shift: u8,
+    ) -> Reg<u64> {
+        shift_immediate(alloc, asm, a, shift, "lsl")
+    }
+
+    fn shift_immediate(
+        alloc: &mut FreshAllocator,
+        asm: &mut Assembler,
+        a: &Reg<u64>,
+        shift: u8,
+        opcode: &str,
+    ) -> Reg<u64> {
+        assert!(shift < 64);
+        let out = alloc.fresh();
+        asm.append_instruction(vec![Instruction {
+            opcode:    opcode.to_owned(),
+            results:   vec![out.reify()],
+            operands:  vec![a.reify()],
+            modifiers: Modifier::Shift(shift),
+        }]);
+        out
+    }
 }
 
 pub mod load_store {
@@ -339,7 +418,7 @@ pub mod simd {
             opcode:    "sli.2d".to_string(),
             results:   vec![dest.reify()],
             operands:  vec![source.reify()],
-            modifiers: Modifier::Lsl(shl),
+            modifiers: Modifier::Shift(shl),
         }
     }
 
@@ -387,7 +466,7 @@ pub mod simd {
             opcode:    "shl.2d".to_string(),
             results:   vec![dest.reify()],
             operands:  vec![a.reify()],
-            modifiers: Modifier::Lsl(imm),
+            modifiers: Modifier::Shift(imm),
         }
     }
 
@@ -411,7 +490,7 @@ pub mod simd {
             opcode:    "ushr.2d".to_string(),
             results:   vec![dest.reify()],
             operands:  vec![a.reify()],
-            modifiers: Modifier::Lsl(imm),
+            modifiers: Modifier::Shift(imm),
         }
     }
 
@@ -435,7 +514,7 @@ pub mod simd {
             opcode:    "usra.2d".to_string(),
             results:   vec![dest.reify()],
             operands:  vec![a.reify()],
-            modifiers: Modifier::Lsl(imm),
+            modifiers: Modifier::Shift(imm),
         }
     }
 
@@ -459,7 +538,7 @@ pub mod simd {
             opcode:    "ssra.2d".to_string(),
             results:   vec![dest.reify()],
             operands:  vec![a.reify()],
-            modifiers: Modifier::Lsl(imm),
+            modifiers: Modifier::Shift(imm),
         }
     }
 }

@@ -712,6 +712,7 @@ dependencies = [
  "ark-bn254",
  "ark-ff",
  "bn254-multiplier-codegen",
+ "bn254-multiplier-constants",
  "divan",
  "fp-rounding",
  "hla",
@@ -725,8 +726,13 @@ dependencies = [
 name = "bn254-multiplier-codegen"
 version = "0.1.0"
 dependencies = [
+ "bn254-multiplier-constants",
  "hla",
 ]
+
+[[package]]
+name = "bn254-multiplier-constants"
+version = "0.1.0"
 
 [[package]]
 name = "bn254_blackbox_solver"
@@ -3773,6 +3779,7 @@ dependencies = [
  "ark-ff",
  "ark-std",
  "bn254-multiplier",
+ "bn254-multiplier-constants",
  "divan",
  "proptest",
  "rayon",

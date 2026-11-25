@@ -13,6 +13,9 @@ repository.workspace = true
 fp-rounding.workspace = true
 
 [dependencies]
+# Workspace crates
+bn254-multiplier-constants.workspace = true
+
 # 3rd party
 seq-macro.workspace = true
 

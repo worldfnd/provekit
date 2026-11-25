@@ -2,10 +2,10 @@ use {
     crate::{define_ntt, extend_roots_table},
     ark_bn254::Fr,
     bn254_multiplier::{
-        constants::{self, U64_P_MULTIPLES},
         rne,
         utils::{self, addv, div_p_2b, subtraction_reduce},
     },
+    bn254_multiplier_constants::U64_P_MULTIPLES,
     rayon::iter::{IntoParallelRefMutIterator, ParallelIterator},
     std::mem,
 };
@@ -31,10 +31,7 @@ fn b51_kernel(even: &mut [u64; 4], odd: &mut [u64; 4], omega: &[u64; 4]) {
     // creating our invariant
     let f = rne::mono::mul(*odd, *omega);
     let l = subtraction_reduce(div_p_2b, addv(*even, f));
-    let r = subtraction_reduce(
-        div_p_2b,
-        addv(*even, utils::sub(constants::U64_P_MULTIPLES[3], f)),
-    );
+    let r = subtraction_reduce(div_p_2b, addv(*even, utils::sub(U64_P_MULTIPLES[3], f)));
     (*even, *odd) = (l, r);
 }
 

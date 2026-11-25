@@ -1,3 +1,7 @@
+//! BN254 scalar-field constants shared by the multiplier and its assembly
+//! generator.
+#![no_std]
+
 pub const U64_P: [u64; 4] = U64_P_MULTIPLES[1];
 
 pub const U64_2P: [u64; 4] = U64_P_MULTIPLES[2];
@@ -88,6 +92,32 @@ pub const U64_I3: [u64; 4] = [
     0x2b062aaa49f80c7d,
 ];
 pub const U64_MU0: u64 = 0xc2e1f593efffffff;
+
+// Limb positions in `REDUCTION_TABLE`.
+pub const I3_LIMB: usize = 0;
+pub const I2_LIMB: usize = 4;
+pub const I1_LIMB: usize = 8;
+pub const P_LIMB: usize = 12;
+pub const MU0_LIMB: usize = 16;
+
+/// Limb array addressed by the scalar Montgomery kernel.
+pub type ReductionTable = [u64; 17];
+
+/// Four limbs each for I3, I2, I1 and the modulus, followed by the Montgomery
+/// factor.
+pub static REDUCTION_TABLE: ReductionTable = {
+    let mut table = [0; 17];
+    let mut i = 0;
+    while i < 4 {
+        table[I3_LIMB + i] = U64_I3[i];
+        table[I2_LIMB + i] = U64_I2[i];
+        table[I1_LIMB + i] = U64_I1[i];
+        table[P_LIMB + i] = U64_P[i];
+        i += 1;
+    }
+    table[MU0_LIMB] = U64_MU0;
+    table
+};
 
 // BOUNDS
 /// Upper bound of 2**256-2p

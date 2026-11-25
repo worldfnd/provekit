@@ -30,13 +30,33 @@ pub struct Instruction<R> {
     pub(crate) modifiers: Modifier,
 }
 
+/// Direction of a shifted register operand.
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub(crate) enum ShiftKind {
+    Lsl,
+    // Lsr,
+    // Asr,
+}
+
+impl std::fmt::Display for ShiftKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ShiftKind::Lsl => "lsl",
+            // ShiftKind::Lsr => "lsr",
+            // ShiftKind::Asr => "asr",
+        })
+    }
+}
+
 #[derive(Debug, PartialEq)]
 pub(crate) enum Modifier {
     None,
     Imm(u64),
     ImmLsl(u16, u8),
-    // Logical shift left
-    Lsl(u8),
+    // Immediate shift count of an instruction whose opcode fixes the direction
+    Shift(u8),
+    // Shift of the last register operand, with the direction as an argument
+    ShiftedOperand(ShiftKind, u8),
     Cond(String),
 }
 
@@ -53,7 +73,8 @@ impl<R: std::fmt::Display> std::fmt::Display for Instruction<R> {
             Modifier::Imm(imm) => format!(", #{imm}"),
             Modifier::Cond(cond) => format!(", {cond}"),
             Modifier::ImmLsl(imm, shift) => format!(", #{imm}, lsl {shift}"),
-            Modifier::Lsl(imm) => format!(", #{imm}"),
+            Modifier::Shift(imm) => format!(", #{imm}"),
+            Modifier::ShiftedOperand(kind, shift) => format!(", {kind} #{shift}"),
         };
 
         let inst = &self.opcode;

@@ -1,4 +1,4 @@
-use crate::constants::{self, U64_2P};
+use bn254_multiplier_constants::{U64_2P, U64_P, U64_P_MULTIPLES};
 
 /// Macro to extract a subarray from an array.
 ///
@@ -119,8 +119,6 @@ impl MulShift {
         // Based on Warren's "Hacker's Delight" (integer
         // division by constants) to find a magic multiplier for each bit-width.
 
-        use crate::constants::U64_P;
-
         let d = (U64_P[3] >> (max_bit_size - 192 - precision)) + 1; // d = divisor = ceil(p / 2^(max_bit_size-w))
         let nc = 2_u64.pow(precision) - 1 - (2_u64.pow(precision) % d); // nc = largest value s.t. nc mod d == d-1
         let mut s = precision; // start at precision; s < precision values are skipped
@@ -193,14 +191,14 @@ pub fn subtraction_reduce<F: Fn(u64) -> u64>(div_p: F, x: [u64; 4]) -> [u64; 4] 
     // No clamping as the max value of x can't go past 5. Which is the maximum of
     // the table.
     let q = div_p(x[3]) as usize;
-    sub(x, constants::U64_P_MULTIPLES[q])
+    sub(x, U64_P_MULTIPLES[q])
 }
 
 #[cfg(kani)]
 mod proofs {
     use {
-        super::{constants::U64_2P, div_p_32b, div_p_6b},
-        crate::constants::U64_P_MULTIPLES,
+        super::{div_p_32b, div_p_6b},
+        bn254_multiplier_constants::{U64_2P, U64_P_MULTIPLES},
     };
 
     /// Lexicographic ≤ on little-endian 256-bit integers.

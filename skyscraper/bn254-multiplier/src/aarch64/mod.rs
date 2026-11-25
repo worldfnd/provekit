@@ -10,11 +10,40 @@
 //! 3p         | 4.75 [0.54] |    3.94 [1.3517] | 3.86 [1.43]
 //! 2ˆ256-2p   | 5.09 [0.20] |    4.28 [1.0067] | 4.20 [1.09]
 use {
+    bn254_multiplier_constants::REDUCTION_TABLE,
     core::{arch::asm, simd::Simd},
     fp_rounding::{RoundingGuard, Zero},
 };
 
+/// Montgomery multiplication `a * b * 2^-256 mod p` without interleaving:
+/// Karatsuba product (one level on the 128-bit halves), balanced single-step
+/// reduction and split final step, with the reduction constants loaded from
+/// `REDUCTION_TABLE`. Inputs up to `OUTPUT_MAX`; the output is loose, as for
+/// the other single-step kernels.
+#[inline]
+pub fn montgomery_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
+    let mut out = [0; 4];
+    let table = REDUCTION_TABLE.as_ptr();
+    // SAFETY: the generated block only reads the immutable `REDUCTION_TABLE`;
+    // every register it writes is declared as an output or clobber.
+    unsafe {
+        asm!(include_str!("montgomery_mul.s"),
+        in("x0") a[0], in("x1") a[1], in("x2") a[2], in("x3") a[3],
+        in("x4") b[0], in("x5") b[1], in("x6") b[2], in("x7") b[3],
+        in("x8") table,
+        lateout("x0") out[0], lateout("x1") out[1], lateout("x2") out[2], lateout("x3") out[3],
+        lateout("x4") _, lateout("x5") _, lateout("x6") _, lateout("x7") _, lateout("x8") _, lateout("x9") _, lateout("x10") _, lateout("x11") _, lateout("x12") _, lateout("x13") _, lateout("x14") _, lateout("x15") _, lateout("x16") _, lateout("x17") _, lateout("x20") _, lateout("x21") _, lateout("x22") _,
+        options(readonly, nostack)
+        )
+    };
+    out
+}
+
 /// A block multiplier with 3 concurrent multiplications.
+///
+/// The scalar input uses the kernel of [`montgomery_mul`] (constants from
+/// `REDUCTION_TABLE`) and the SIMD input uses `single_step_simd`. See the
+/// module documentation for the implications of this.
 #[inline]
 pub fn montgomery_interleaved_3(
     _rtz: &RoundingGuard<Zero>,
@@ -25,17 +54,20 @@ pub fn montgomery_interleaved_3(
 ) -> ([u64; 4], [Simd<u64, 2>; 4]) {
     let mut out = [0; 4];
     let mut outv = [Simd::splat(0); 4];
+    let table = REDUCTION_TABLE.as_ptr();
+    // SAFETY: the generated block only reads the immutable `REDUCTION_TABLE`;
+    // every register it writes is declared as an output or clobber.
     unsafe {
         asm!(include_str!("montgomery_interleaved_3.s"),
         in("x0") a[0], in("x1") a[1], in("x2") a[2], in("x3") a[3],
         in("x4") b[0], in("x5") b[1], in("x6") b[2], in("x7") b[3],
+        in("x8") table,
         in("v0") av[0], in("v1") av[1], in("v2") av[2], in("v3") av[3],
         in("v4") bv[0], in("v5") bv[1], in("v6") bv[2], in("v7") bv[3],
         lateout("x0") out[0], lateout("x1") out[1], lateout("x2") out[2], lateout("x3") out[3],
         lateout("v0") outv[0], lateout("v1") outv[1], lateout("v2") outv[2], lateout("v3") outv[3],
-        lateout("x4") _, lateout("x5") _, lateout("x6") _, lateout("x7") _, lateout("x8") _, lateout("x9") _, lateout("x10") _, lateout("x11") _, lateout("x12") _, lateout("x13") _, lateout("x14") _, lateout("x15") _, lateout("x16") _, lateout("v4") _, lateout("v5") _, lateout("v6") _, lateout("v7") _, lateout("v8") _, lateout("v9") _, lateout("v10") _, lateout("v11") _, lateout("v12") _, lateout("v13") _, lateout("v14") _, lateout("v15") _, lateout("v16") _, lateout("v17") _, lateout("v18") _, lateout("v19") _, lateout("v20") _, lateout("v21") _, lateout("v22") _, lateout("v23") _, lateout("v24") _,
-        lateout("lr") _,
-        options(nomem, nostack)
+        lateout("x4") _, lateout("x5") _, lateout("x6") _, lateout("x7") _, lateout("x8") _, lateout("x9") _, lateout("x10") _, lateout("x11") _, lateout("x12") _, lateout("x13") _, lateout("x14") _, lateout("x15") _, lateout("x16") _, lateout("x17") _, lateout("x20") _, lateout("x21") _, lateout("x22") _, lateout("x23") _, lateout("x24") _, lateout("v4") _, lateout("v5") _, lateout("v6") _, lateout("v7") _, lateout("v8") _, lateout("v9") _, lateout("v10") _, lateout("v11") _, lateout("v12") _, lateout("v13") _, lateout("v14") _, lateout("v15") _, lateout("v16") _, lateout("v17") _, lateout("v18") _, lateout("v19") _, lateout("v20") _, lateout("v21") _, lateout("v22") _, lateout("v23") _, lateout("v24") _,
+        options(readonly, nostack)
         )
     };
     (out, outv)
@@ -61,7 +93,6 @@ pub fn montgomery_square_interleaved_3(
         lateout("x0") out[0], lateout("x1") out[1], lateout("x2") out[2], lateout("x3") out[3],
         lateout("v0") outv[0], lateout("v1") outv[1], lateout("v2") outv[2], lateout("v3") outv[3],
         lateout("x4") _, lateout("x5") _, lateout("x6") _, lateout("x7") _, lateout("x8") _, lateout("x9") _, lateout("x10") _, lateout("x11") _, lateout("x12") _, lateout("x13") _, lateout("x14") _, lateout("x15") _, lateout("x16") _, lateout("x17") _, lateout("v4") _, lateout("v5") _, lateout("v6") _, lateout("v7") _, lateout("v8") _, lateout("v9") _, lateout("v10") _, lateout("v11") _, lateout("v12") _, lateout("v13") _, lateout("v14") _, lateout("v15") _, lateout("v16") _, lateout("v17") _, lateout("v18") _, lateout("v19") _,
-        lateout("lr") _,
         options(nomem, nostack)
         )
     };
@@ -95,7 +126,7 @@ pub fn montgomery_square_log_interleaved_3(
             lateout("v6") _, lateout("v7") _, lateout("v8") _, lateout("v9") _,
             lateout("v10") _, lateout("v11") _, lateout("v12") _, lateout("v13") _,
             lateout("v14") _, lateout("v15") _, lateout("v16") _, lateout("v17") _,
-            lateout("v18") _, lateout("v19") _, lateout("lr") _,
+            lateout("v18") _, lateout("v19") _,
             options(nomem, nostack)
         )
     };
@@ -132,8 +163,7 @@ pub fn montgomery_interleaved_4(
             lateout("x4") out1[0], lateout("x5") out1[1], lateout("x6") out1[2], lateout("x7") out1[3],
             lateout("v0") outv[0], lateout("v1") outv[1], lateout("v2") outv[2], lateout("v3") outv[3],
             lateout("x8") _, lateout("x9") _, lateout("x10") _, lateout("x11") _, lateout("x12") _, lateout("x13") _, lateout("x14") _, lateout("x15") _, lateout("x16") _, lateout("x17") _, lateout("x20") _, lateout("x21") _, lateout("x22") _, lateout("x23") _, lateout("x24") _, lateout("x25") _, lateout("x26") _, lateout("v4") _, lateout("v5") _, lateout("v6") _, lateout("v7") _, lateout("v8") _, lateout("v9") _, lateout("v10") _, lateout("v11") _, lateout("v12") _, lateout("v13") _, lateout("v14") _, lateout("v15") _, lateout("v16") _, lateout("v17") _, lateout("v18") _, lateout("v19") _, lateout("v20") _, lateout("v21") _, lateout("v22") _, lateout("v23") _, lateout("v24") _,
-            lateout("lr") _,
-            options(nomem, nostack)
+                options(nomem, nostack)
         )
     };
     (out, out1, outv)
@@ -171,7 +201,7 @@ pub fn montgomery_square_interleaved_4(
             lateout("v7") _, lateout("v8") _, lateout("v9") _, lateout("v10") _,
             lateout("v11") _, lateout("v12") _, lateout("v13") _, lateout("v14") _,
             lateout("v15") _, lateout("v16") _, lateout("v17") _, lateout("v18") _,
-            lateout("v19") _, lateout("lr") _,
+            lateout("v19") _,
             options(nomem, nostack)
         )
     };
@@ -210,7 +240,7 @@ pub fn montgomery_square_log_interleaved_4(
             lateout("v7") _, lateout("v8") _, lateout("v9") _, lateout("v10") _,
             lateout("v11") _, lateout("v12") _, lateout("v13") _, lateout("v14") _,
             lateout("v15") _, lateout("v16") _, lateout("v17") _, lateout("v18") _,
-            lateout("v19") _, lateout("lr") _,
+            lateout("v19") _,
             options(nomem, nostack)
         )
     };
@@ -221,7 +251,11 @@ pub fn montgomery_square_log_interleaved_4(
 mod tests {
     use {
         super::*,
-        crate::test_utils::{ark_ff_reference, safe_bn254_montgomery_input},
+        crate::{
+            scalar_mul,
+            test_utils::{ark_ff_reference, safe_bn254_montgomery_input},
+            utils::reduce_ct,
+        },
         ark_bn254::Fr,
         ark_ff::BigInt,
         fp_rounding::with_rounding_mode,
@@ -276,6 +310,51 @@ mod tests {
                     assert_eq!(a_squared, a_squared_interleaved);
                     assert_eq!(b_squared, b_squared_interleaved);
                     assert_eq!(c_squared, c_squared_interleaved);
+                });
+            }
+        });
+    }
+
+    /// The multiplication kernel computes the same residue as `scalar_mul`,
+    /// which applies `reduce_ct` to the single-step result.
+    #[test]
+    fn test_montgomery_mul() {
+        proptest!(|(
+            a in safe_bn254_montgomery_input(),
+            b in safe_bn254_montgomery_input(),
+        )| {
+            let result = montgomery_mul(a, b);
+            assert_eq!(reduce_ct(result), scalar_mul(a, b));
+            assert_eq!(ark_ff_reference(a, b), Fr::new(BigInt(result)));
+        });
+    }
+
+    /// The scalar lane (the `MUL` kernel with its constants table) and both
+    /// SIMD lanes of the 3-way block agree with arkworks.
+    #[test]
+    fn test_montgomery_interleaved_3() {
+        proptest!(|(
+            a in safe_bn254_montgomery_input(),
+            b in safe_bn254_montgomery_input(),
+            c in safe_bn254_montgomery_input(),
+            d in safe_bn254_montgomery_input(),
+            e in safe_bn254_montgomery_input(),
+            f in safe_bn254_montgomery_input(),
+        )| {
+            let av = array::from_fn(|i| Simd::from_array([c[i], d[i]]));
+            let bv = array::from_fn(|i| Simd::from_array([e[i], f[i]]));
+            unsafe {
+                with_rounding_mode((), |rtz, _| {
+                    let (out, outv) = montgomery_interleaved_3(rtz, a, b, av, bv);
+                    assert_eq!(ark_ff_reference(a, b), Fr::new(BigInt(out)));
+                    assert_eq!(
+                        ark_ff_reference(c, e),
+                        Fr::new(BigInt(outv.map(|x| x[0])))
+                    );
+                    assert_eq!(
+                        ark_ff_reference(d, f),
+                        Fr::new(BigInt(outv.map(|x| x[1])))
+                    );
                 });
             }
         });

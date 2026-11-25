@@ -10,6 +10,7 @@ repository.workspace = true
 
 [dependencies]
 # Workspace crates
+bn254-multiplier-constants.workspace = true
 hla.workspace = true
 
 [lints]

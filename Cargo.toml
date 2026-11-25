@@ -6,6 +6,7 @@ members = [
   "skyscraper/hla",
   "skyscraper/bn254-multiplier",
   "skyscraper/bn254-multiplier-codegen",
+  "skyscraper/bn254-multiplier-constants",
   "skyscraper/core",
   "provekit/common",
   "provekit/backend/bn254",
@@ -93,6 +94,7 @@ opt-level = 3
 # Workspace members - Skyscraper
 bn254-multiplier = { path = "skyscraper/bn254-multiplier" }
 bn254-multiplier-codegen = { path = "skyscraper/bn254-multiplier-codegen" }
+bn254-multiplier-constants = { path = "skyscraper/bn254-multiplier-constants" }
 fp-rounding = { path = "skyscraper/fp-rounding" }
 hla = { path = "skyscraper/hla" }
 skyscraper = { path = "skyscraper/core" }

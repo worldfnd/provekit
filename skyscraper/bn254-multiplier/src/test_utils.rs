@@ -1,9 +1,9 @@
 #![cfg(test)]
 
 use {
-    crate::constants::OUTPUT_MAX,
     ark_bn254::Fr,
     ark_ff::{BigInt, Field},
+    bn254_multiplier_constants::OUTPUT_MAX,
     proptest::{
         collection,
         prelude::{any, prop, Strategy},
