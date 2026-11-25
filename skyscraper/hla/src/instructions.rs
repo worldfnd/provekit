@@ -34,7 +34,7 @@ use {
     crate::{
         frontend::{Assembler, FreshAllocator, PointerReg, Reg, Simd, SizedIdx, D, SIMD},
         ir::{FreshRegister, Instruction, Modifier, ShiftKind},
-        reification::{ReifiedRegister, ReifyRegister},
+        reification::ReifyRegister,
     },
     paste::paste,
 };
@@ -243,57 +243,21 @@ pub mod load_store {
         super::*,
         crate::frontend::{MutablePointer, Pointer},
     };
-
-    /// Loads two adjacent words from an address held in a general register.
-    /// The byte offset is fixed at generation time; the base may be computed.
-    pub fn ldp_address(
-        alloc: &mut FreshAllocator,
-        asm: &mut Assembler,
-        address: &Reg<u64>,
-        byte_offset: usize,
-    ) -> (Reg<u64>, Reg<u64>) {
-        assert!(byte_offset <= 504 && byte_offset % 8 == 0);
-        let a = alloc.fresh();
-        let b = alloc.fresh();
-        let mut pointer = address.reify();
-        pointer.idx = crate::reification::Index::Pointer(byte_offset);
-        asm.append_instruction(vec![ldp_inst(&a, &b, pointer)]);
-        (a, b)
-    }
-
-    /// Loads one word from an address held in a general register.
-    /// The byte offset is fixed at generation time; the base may be computed.
-    pub fn ldr_address(
-        alloc: &mut FreshAllocator,
-        asm: &mut Assembler,
-        address: &Reg<u64>,
-        byte_offset: usize,
-    ) -> Reg<u64> {
-        assert!(byte_offset <= 32760 && byte_offset % 8 == 0);
-        let out = alloc.fresh();
-        let mut pointer = address.reify();
-        pointer.idx = crate::reification::Index::Pointer(byte_offset);
-        asm.append_instruction(vec![ldr_inst(&out, pointer)]);
-        out
-    }
     pub fn ldr<T>(
         alloc: &mut FreshAllocator,
         asm: &mut Assembler,
         ptr: &PointerReg<T>,
     ) -> Reg<u64> {
         let ret = alloc.fresh();
-        asm.append_instruction(vec![ldr_inst(&ret, ptr.reify())]);
+        asm.append_instruction(vec![ldr_inst(&ret, ptr)]);
         ret
     }
 
-    pub fn ldr_inst(
-        dest: &Reg<u64>,
-        ptr: ReifiedRegister<FreshRegister>,
-    ) -> Instruction<FreshRegister> {
+    pub fn ldr_inst<T>(dest: &Reg<u64>, ptr: &PointerReg<T>) -> Instruction<FreshRegister> {
         Instruction {
             opcode:    "ldr".to_string(),
             results:   vec![dest.reify()],
-            operands:  vec![ptr],
+            operands:  vec![ptr.reify()],
             modifiers: Modifier::None,
         }
     }
@@ -305,19 +269,19 @@ pub mod load_store {
     ) -> (Reg<u64>, Reg<u64>) {
         let ret0 = alloc.fresh();
         let ret1 = alloc.fresh();
-        asm.append_instruction(vec![ldp_inst(&ret0, &ret1, ptr.reify())]);
+        asm.append_instruction(vec![ldp_inst(&ret0, &ret1, ptr)]);
         (ret0, ret1)
     }
 
-    pub fn ldp_inst(
+    pub fn ldp_inst<PTR: Pointer>(
         dest: &Reg<u64>,
         dest2: &Reg<u64>,
-        ptr: ReifiedRegister<FreshRegister>,
+        ptr: &PTR,
     ) -> Instruction<FreshRegister> {
         Instruction {
             opcode:    "ldp".to_string(),
             results:   vec![dest.reify(), dest2.reify()],
-            operands:  vec![ptr],
+            operands:  vec![ptr.reify()],
             modifiers: Modifier::None,
         }
     }

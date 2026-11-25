@@ -1,7 +1,9 @@
-use crate::{
-    constants::*,
-    subarray,
-    utils::{addv, carrying_mul_add, reduce_ct},
+use {
+    crate::{
+        subarray,
+        utils::{addv, carrying_mul_add, reduce_ct},
+    },
+    bn254_multiplier_constants::{U64_I1, U64_I2, U64_I3, U64_MU0, U64_P},
 };
 
 /// Montgomery squaring in Bn254 scalar field.
@@ -135,10 +137,11 @@ pub fn scalar_mul(a: [u64; 4], b: [u64; 4]) -> [u64; 4] {
 #[cfg(test)]
 mod tests {
     use {
-        super::*,
-        crate::{constants, test_utils::*},
+        super::{scalar_mul, scalar_sqr},
+        crate::test_utils::*,
         ark_bn254::Fr,
         ark_ff::BigInt,
+        bn254_multiplier_constants::{OUTPUT_MAX, U64_P, U64_R, U64_R_INV},
         primitive_types::U256,
         proptest::proptest,
         rand::{rngs, Rng, SeedableRng},
@@ -155,7 +158,7 @@ mod tests {
     }
 
     fn mod_mul(a: U256, b: U256) -> U256 {
-        let p = U256(constants::U64_P);
+        let p = U256(U64_P);
         let mut c = [0u64; 4];
         c.copy_from_slice(&(a.full_mul(b) % p).0[0..4]);
         U256(c)
@@ -164,9 +167,9 @@ mod tests {
     #[test]
     fn test_scalar_mul() {
         let mut rng = rngs::StdRng::seed_from_u64(0);
-        let p = U256(constants::U64_P);
-        let r = U256(constants::U64_R);
-        let r_inv = U256(constants::U64_R_INV);
+        let p = U256(U64_P);
+        let r = U256(U64_R);
+        let r_inv = U256(U64_R_INV);
 
         let mut s0_a_bytes = [0u8; 32];
         let mut s0_b_bytes = [0u8; 32];
@@ -180,7 +183,7 @@ mod tests {
             let s0_b_mont = mod_mul(s0_b, r);
 
             let s0 = scalar_mul(s0_a_mont.0, s0_b_mont.0);
-            assert!(U256(s0) < U256(constants::OUTPUT_MAX));
+            assert!(U256(s0) < U256(OUTPUT_MAX));
             assert_eq!(mod_mul(U256(s0), r_inv), mod_mul(s0_a, s0_b));
         }
     }
@@ -188,9 +191,9 @@ mod tests {
     #[test]
     fn test_scalar_sqr() {
         let mut rng = rngs::StdRng::seed_from_u64(0);
-        let p = U256(constants::U64_P);
-        let r = U256(constants::U64_R);
-        let r_inv = U256(constants::U64_R_INV);
+        let p = U256(U64_P);
+        let r = U256(U64_R);
+        let r_inv = U256(U64_R_INV);
 
         let mut s0_a_bytes = [0u8; 32];
 

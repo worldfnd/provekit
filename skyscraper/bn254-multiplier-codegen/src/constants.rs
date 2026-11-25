@@ -1,11 +1,6 @@
 // -- [Scalar CONSTANTS] -- //
 
-// The scalar constants are defined once, in `bn254-multiplier`, which loads
-// them at runtime through the same table the kernels here are generated for.
-#[allow(dead_code)]
-#[path = "../../bn254-multiplier/src/constants.rs"]
-mod multiplier;
-pub use multiplier::{
+pub use bn254_multiplier_constants::{
     I1_LIMB, I2_LIMB, I3_LIMB, MU0_LIMB, P_LIMB, U64_2P, U64_I1, U64_I2, U64_I3, U64_MU0, U64_P,
 };
 

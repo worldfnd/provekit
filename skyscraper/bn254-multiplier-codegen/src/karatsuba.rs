@@ -7,6 +7,7 @@
 
 use {
     crate::{constants::*, schoolbook},
+    bn254_multiplier_constants::ReductionTable,
     hla::{builder::Setup, *},
     std::array,
 };
@@ -162,7 +163,7 @@ fn fold_balanced(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     t: [Reg<u64>; 8],
-    table: &Reg<u64>,
+    table: &Reg<*const ReductionTable>,
 ) -> [Reg<u64>; 5] {
     let [t0, t1, t2, upper @ ..] = t;
     let p0 = mul_constant(alloc, asm, &t0, I3_LIMB, table);
@@ -183,12 +184,12 @@ fn mul_constant(
     asm: &mut Assembler,
     limb: &Reg<u64>,
     first: usize,
-    table: &Reg<u64>,
+    table: &Reg<*const ReductionTable>,
 ) -> [Reg<u64>; 5] {
-    let (c0, c1) = ldp_address(alloc, asm, table, first * 8);
+    let (c0, c1) = ldp(alloc, asm, &table.get(first));
     let p0 = schoolbook::widening_mul(alloc, asm, limb, &c0);
     let p1 = schoolbook::widening_mul(alloc, asm, limb, &c1);
-    let (c2, c3) = ldp_address(alloc, asm, table, (first + 2) * 8);
+    let (c2, c3) = ldp(alloc, asm, &table.get(first + 2));
     let p2 = schoolbook::widening_mul(alloc, asm, limb, &c2);
     let p3 = schoolbook::widening_mul(alloc, asm, limb, &c3);
     add_rows(alloc, asm, [p0, p1, p2, p3])
@@ -237,12 +238,12 @@ fn finish(
     alloc: &mut FreshAllocator,
     asm: &mut Assembler,
     s: [Reg<u64>; 5],
-    table: &Reg<u64>,
+    table: &Reg<*const ReductionTable>,
 ) -> [Reg<u64>; 4] {
-    let mu = ldr_address(alloc, asm, table, MU0_LIMB * 8);
+    let mu = ldr(alloc, asm, &table.get(MU0_LIMB));
     let m = hla::mul(alloc, asm, &mu, &s[0]);
-    let (p0, p1) = ldp_address(alloc, asm, table, P_LIMB * 8);
-    let (p2, p3) = ldp_address(alloc, asm, table, (P_LIMB + 2) * 8);
+    let (p0, p1) = ldp(alloc, asm, &table.get(P_LIMB));
+    let (p2, p3) = ldp(alloc, asm, &table.get(P_LIMB + 2));
     cancel_split(alloc, asm, s, &[p0, p1, p2, p3], &m)
 }
 

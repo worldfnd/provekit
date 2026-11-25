@@ -1,3 +1,7 @@
+//! BN254 scalar-field constants shared by the multiplier and its assembly
+//! generator.
+#![no_std]
+
 pub const U64_P: [u64; 4] = U64_P_MULTIPLES[1];
 
 pub const U64_2P: [u64; 4] = U64_P_MULTIPLES[2];
@@ -96,12 +100,12 @@ pub const I1_LIMB: usize = 8;
 pub const P_LIMB: usize = 12;
 pub const MU0_LIMB: usize = 16;
 
-/// Reduction constants in the layout the single assembly kernels load them
-/// from: `U64_I3`, `U64_I2`, `U64_I1`, `U64_P` (four limbs each), then
-/// `U64_MU0`. The kernel `bn254_multiplier_codegen::karatsuba::MUL` takes its
-/// address as the input `table` and loads from the limb positions above. The
-/// codegen crate includes this file, so the layout is defined once.
-pub static REDUCTION_TABLE: [u64; 17] = {
+/// Limb array addressed by the scalar Montgomery kernel.
+pub type ReductionTable = [u64; 17];
+
+/// Four limbs each for I3, I2, I1 and the modulus, followed by the Montgomery
+/// factor.
+pub static REDUCTION_TABLE: ReductionTable = {
     let mut table = [0; 17];
     let mut i = 0;
     while i < 4 {

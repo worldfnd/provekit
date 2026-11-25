@@ -10,7 +10,6 @@ mod aarch64;
 #[cfg(target_arch = "aarch64")]
 pub mod rtz;
 
-pub mod constants;
 pub mod rne;
 mod scalar;
 pub mod utils;

@@ -1,6 +1,5 @@
 use {
     crate::{
-        constants::*,
         rtz::{
             constants::*,
             simd_utils::{
@@ -11,6 +10,7 @@ use {
         subarray,
         utils::{addv, carrying_mul_add, reduce_ct},
     },
+    bn254_multiplier_constants::{U64_I1, U64_I2, U64_I3, U64_MU0, U64_P},
     core::{
         arch::aarch64::vcvtq_f64_u64,
         ops::BitAnd,

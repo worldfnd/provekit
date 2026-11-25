@@ -10,7 +10,7 @@
 //! 3p         | 4.75 [0.54] |    3.94 [1.3517] | 3.86 [1.43]
 //! 2ˆ256-2p   | 5.09 [0.20] |    4.28 [1.0067] | 4.20 [1.09]
 use {
-    crate::constants::REDUCTION_TABLE,
+    bn254_multiplier_constants::REDUCTION_TABLE,
     core::{arch::asm, simd::Simd},
     fp_rounding::{RoundingGuard, Zero},
 };
