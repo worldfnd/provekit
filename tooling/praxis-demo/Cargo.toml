@@ -24,6 +24,7 @@ noir_artifact_cli.workspace = true
 noirc_abi.workspace = true
 noirc_artifacts.workspace = true
 noirc_driver.workspace = true
+postcard.workspace = true
 provekit-backend-bn254 = { workspace = true, features = ["witness-generation"] }
 provekit-common.workspace = true
 provekit-r1cs-compiler.workspace = true

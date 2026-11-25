@@ -4439,6 +4439,7 @@ dependencies = [
  "noirc_abi",
  "noirc_artifacts",
  "noirc_driver",
+ "postcard",
  "provekit-backend-bn254",
  "provekit-common",
  "provekit-r1cs-compiler",

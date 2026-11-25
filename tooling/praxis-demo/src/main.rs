@@ -1,56 +1,47 @@
-//! Praxis 100-bit Witness Encryption + ProveKit Noir Demo ("satoshi" name
-//! check).
+//! Praxis 100-bit Witness Encryption + ProveKit Noir Demo.
 //!
-//! Compiles a real Noir circuit (`noir-examples/praxis-satoshi`) via ProveKit's
-//! R1CS compiler, converts its R1CS into a Boolean Quadratic System (BQS),
-//! encrypts a secret message under **full 100-bit Praxis parameters** (Table 4
-//! on BN254), and decrypts it using the witness solved by ProveKit for
-//! `"satoshi"` (while rejecting `"vitalik"`).
-
-mod bqs;
-mod ext;
-mod params;
-mod praxis;
-mod qap;
-mod search;
+//! Supports two modes via `--mode`:
+//! - `direct`: Noir -> ProveKit `R1CS<Fr>` -> Praxis `Bqs` -> 100-bit Praxis WE
+//!   (best for small challenge-free circuits like `noir-examples/praxis-satoshi`)
+//! - `kzg`: Noir -> ProveKit 2-round `Spartan + HyperKZG` (pure-Rust BN254,
+//!   universal SRS, **2 pairings**, zero Groth16 / zero gnark) -> Praxis WE
+//!   (supports multi-challenge passport circuits like `t_attest` and
+//!   `complete_age_check` at ~8 GiB verifier BQS)
 
 use {
-    anyhow::{ensure, Context, Result},
+    anyhow::Result,
     argh::FromArgs,
-    ark_bn254::{Fr, G1Projective, G2Projective},
-    ark_ec::PrimeGroup,
-    bn254_blackbox_solver::Bn254BlackBoxSolver,
-    bqs::{r1cs_to_bqs, WitnessBitMap},
-    nargo::foreign_calls::DefaultForeignCallBuilder,
-    nargo_cli::cli::compile_cmd::compile_workspace_full,
-    nargo_toml::{resolve_workspace_from_toml, PackageSelection},
-    noir_artifact_cli::fs::inputs::read_inputs_from_file,
-    noirc_abi::{input_parser::InputValue, InputMap},
-    noirc_artifacts::program::ProgramArtifact,
-    noirc_driver::CompileOptions,
-    params::PraxisParams,
-    praxis::{decrypt, encrypt, setup, FixedBaseTable},
-    provekit_backend_bn254::{
-        solve_witness_vec,
-        witness::{LayerScheduler, WitnessBuilder},
-        TranscriptSponge,
-    },
-    provekit_common::HashConfig,
-    provekit_r1cs_compiler::noir_to_r1cs,
-    rand::rng,
-    std::{
-        fs::File,
-        path::{Path, PathBuf},
-        time::Instant,
-    },
-    whir::transcript::{DomainSeparator, ProverState},
+    praxis_demo::{direct, kzg},
+    std::path::PathBuf,
 };
 
-/// Praxis 100-bit Witness Encryption demo with a real ProveKit Noir circuit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Direct,
+    Kzg,
+}
+
+impl argh::FromArgValue for Mode {
+    fn from_arg_value(value: &str) -> std::result::Result<Self, String> {
+        match value.to_ascii_lowercase().as_str() {
+            "direct" => Ok(Self::Direct),
+            "kzg" => Ok(Self::Kzg),
+            other => Err(format!(
+                "unknown mode '{other}'; expected 'direct' or 'kzg'"
+            )),
+        }
+    }
+}
+
+/// Praxis 100-bit Witness Encryption demo with ProveKit (`direct` or `kzg`).
 #[derive(FromArgs)]
 struct Cli {
-    /// path to the Noir circuit directory (default:
-    /// noir-examples/praxis-satoshi)
+    /// proving/encryption mode: "direct" (default) or "kzg" (Spartan+HyperKZG)
+    #[argh(option, short = 'M', default = "Mode::Direct")]
+    mode: Mode,
+
+    /// path to the Noir circuit directory or compiled .json artifact
+    /// (default: noir-examples/praxis-satoshi)
     #[argh(
         option,
         short = 'c',
@@ -71,336 +62,54 @@ struct Cli {
     )]
     message: String,
 
-    /// optional 7-byte ASCII name override for decryption (e.g. "satoshi" or
-    /// "vitalik")
+    /// optional 7-byte ASCII name override for praxis-satoshi (e.g. "satoshi"
+    /// or "vitalik")
     #[argh(option, short = 'n')]
     name: Option<String>,
-}
-
-/// Compile a Noir workspace using the embedded `nargo_cli` (matching ProveKit's
-/// Noir version) and return the path to `target/<pkg>.json`.
-fn compile_noir_circuit(circuit_dir: &Path) -> Result<PathBuf> {
-    let toml_path = circuit_dir
-        .join("Nargo.toml")
-        .canonicalize()
-        .with_context(|| format!("missing Nargo.toml in {}", circuit_dir.display()))?;
-    let workspace = resolve_workspace_from_toml(&toml_path, PackageSelection::DefaultOrAll, None)?;
-    compile_workspace_full(&workspace, &CompileOptions::default(), None)?;
-
-    let pkg = workspace
-        .members
-        .first()
-        .context("Noir workspace has no packages")?;
-    let artifact = circuit_dir.join(format!("target/{}.json", pkg.name));
-    ensure!(
-        artifact.exists(),
-        "compiled artifact not found at {}",
-        artifact.display()
-    );
-    Ok(artifact)
-}
-
-/// Execute the compiled Noir program on `input_map` and solve the full ProveKit
-/// R1CS witness.
-fn solve_provekit_witness_from_inputs(
-    program: &ProgramArtifact,
-    witness_builders: &[WitnessBuilder],
-    num_witnesses_for_solving: usize,
-    input_map: &InputMap,
-) -> Result<Vec<Fr>> {
-    let initial_witness = program.abi.encode(input_map, None)?;
-
-    let solver = Bn254BlackBoxSolver::default();
-    let mut output_buf = Vec::new();
-    let mut foreign_calls = DefaultForeignCallBuilder {
-        output:       &mut output_buf,
-        enable_mocks: false,
-        resolver_url: None,
-        root_path:    None,
-        package_name: None,
-    }
-    .build();
-
-    let mut stack = nargo::ops::execute_program(
-        &program.bytecode,
-        initial_witness,
-        &solver,
-        &mut foreign_calls,
-    )
-    .context("Noir program execution failed (constraints not satisfied)")?;
-
-    let acir_map = stack.pop().context("missing ACIR witness stack")?.witness;
-
-    let scheduler = LayerScheduler::new(witness_builders);
-    let layers = scheduler.build_layers();
-
-    let mut witness: Vec<Option<Fr>> = vec![None; num_witnesses_for_solving];
-    let ds = DomainSeparator::protocol(&"praxis-demo").instance(&0u8);
-    let mut merlin = ProverState::new(&ds, TranscriptSponge::from_config(HashConfig::Sha256));
-    solve_witness_vec(&mut witness, layers, &acir_map, &mut merlin)?;
-
-    witness
-        .into_iter()
-        .map(|v| v.context("unsolved R1CS witness entry"))
-        .collect()
-}
-
-/// Build an `InputMap` for `name_bits: [bool; 56]` from a 7-byte ASCII string.
-fn name_to_input_map(name: &str) -> Result<InputMap> {
-    let bytes = name.as_bytes();
-    ensure!(
-        bytes.len() == 7,
-        "name must be exactly 7 ASCII bytes, got {} ('{}')",
-        bytes.len(),
-        name
-    );
-    let mut bits = Vec::with_capacity(56);
-    for &byte in bytes {
-        for k in 0..8 {
-            bits.push(InputValue::Field(u128::from((byte >> k) & 1).into()));
-        }
-    }
-    let mut map = InputMap::new();
-    map.insert("name_bits".to_string(), InputValue::Vec(bits));
-    Ok(map)
-}
-
-/// Encode a 7-byte ASCII name directly into the 56-bit BQS witness `[1, b_0,
-/// ..., b_55]` for demonstrating wrong-witness decryption rejection.
-fn encode_name_bits_as_witness(name: &str, bit_map: &WitnessBitMap) -> Result<Vec<u8>> {
-    let bytes = name.as_bytes();
-    ensure!(
-        bytes.len() == 7,
-        "name must be exactly 7 ASCII bytes, got {} ('{}')",
-        bytes.len(),
-        name
-    );
-    ensure!(
-        bit_map.n_unknowns >= 56,
-        "BQS has {} unknowns (< 56)",
-        bit_map.n_unknowns
-    );
-    let mut w = vec![0u8; bit_map.n_unknowns + 1];
-    w[0] = 1;
-    for (b_idx, &byte) in bytes.iter().enumerate() {
-        for k in 0..8 {
-            w[1 + b_idx * 8 + k] = (byte >> k) & 1;
-        }
-    }
-    Ok(w)
 }
 
 fn main() -> Result<()> {
     let cli: Cli = argh::from_env();
     provekit_backend_bn254::register();
 
-    let params = PraxisParams::table4_100bit();
-    let msg_bytes = cli.message.as_bytes();
-    ensure!(
-        msg_bytes.len() <= params.msg_bytes,
-        "message too long ({} bytes, max {})",
-        msg_bytes.len(),
-        params.msg_bytes
-    );
-    let mut msg_padded = vec![0u8; params.msg_bytes];
-    msg_padded[..msg_bytes.len()].copy_from_slice(msg_bytes);
-
-    println!("==================================================================");
-    println!("  Praxis Witness Encryption + ProveKit Noir Demo");
-    println!("  Security : {}", params.name);
-    println!(
-        "  Params   : lambda={}, n={}, d_R={}, k={}, K1={}, K2={}, g={}",
-        params.lambda, params.n, params.d_r, params.k, params.k1, params.k2, params.g
-    );
-    println!("  Threads  : {}", rayon::current_num_threads());
-    println!("==================================================================\n");
-
-    // 1. Compile Noir circuit -> ACIR -> ProveKit R1CS.
-    let t0 = Instant::now();
-    let artifact_path = compile_noir_circuit(&cli.circuit)?;
-    let program: ProgramArtifact = serde_json::from_reader(File::open(&artifact_path)?)?;
-    ensure!(
-        program.bytecode.functions.len() == 1,
-        "expected single Noir entry point"
-    );
-    let main_fn = &program.bytecode.functions[0];
-    let (r1cs, _witness_map, witness_builders) = noir_to_r1cs(main_fn)?;
-
-    let has_challenges = witness_builders
-        .iter()
-        .any(|b| matches!(b, WitnessBuilder::Challenge(_)));
-    ensure!(
-        !has_challenges,
-        "compiled R1CS contains Challenge builders; use Boolean constraints for direct BQS"
-    );
-
-    println!(
-        "[1] Noir -> ProveKit R1CS ({:.2?}): {} witnesses, {} constraints, {} public inputs, 0 \
-         challenges",
-        t0.elapsed(),
-        r1cs.num_witnesses(),
-        r1cs.num_constraints(),
-        r1cs.num_public_inputs
-    );
-
-    // 2. Convert ProveKit R1CS -> Praxis BQS & run deterministic Praxis Setup.
-    let t1 = Instant::now();
-    let (bqs, bit_map) = r1cs_to_bqs(&r1cs, &[])?;
-    let raw_nc = bqs.constraints.len();
-    let pp = setup(bqs, params.clone())?;
-    let ell = params.ell(pp.qap.bqs.n_unknowns);
-    println!("[2] R1CS -> BQS & Praxis Setup ({:.2?}):", t1.elapsed());
-    println!(
-        "    N = {} Boolean unknowns ({} native bools, {} expanded Fr), n_c = {} (padded from {} \
-         to meet n <= D)",
-        pp.qap.bqs.n_unknowns,
-        bit_map.num_native_bools,
-        bit_map.num_expanded_fields,
-        pp.qap.bqs.constraints.len(),
-        raw_nc
-    );
-    println!(
-        "    QAP: nu = {}, D = {} evaluation points, |H| = {}, MSIS matrix: {}x{} over R_q (ell \
-         <= k => trivial kernel)",
-        pp.qap.nu, pp.qap.d, pp.qap.domain_h.size, params.k, ell
-    );
-
-    // 3. One-time fixed-base generator tables (reusable across all ciphertexts).
-    let t_tbl = Instant::now();
-    let g1_table = FixedBaseTable::new(G1Projective::generator());
-    let g2_table = FixedBaseTable::new(G2Projective::generator());
-    println!(
-        "[3] One-time fixed-base tables (12-bit signed windows): {:.2?}",
-        t_tbl.elapsed()
-    );
-
-    // 4. Encrypt secret message to the Noir circuit statement (needs NO witness!).
-    let mut rng = rng();
-    println!("\n[4] Encrypting secret message: \"{}\"", cli.message);
-    let (ct, enc_t) = encrypt(&pp, &msg_padded, &g1_table, &g2_table, &mut rng)?;
-    let (n_g1, n_g2, n_gt) = ct.element_counts();
-    let ct_mb = ct.compressed_bytes() as f64 / (1024.0 * 1024.0);
-    println!(
-        "    Ciphertext: {:.2} MiB compressed ({} G1, {} G2, {} GT)",
-        ct_mb, n_g1, n_g2, n_gt
-    );
-    println!(
-        "    Enc time  : {:.2?} (field: {:.2?}, G1 muls: {:.2?}, G2 muls: {:.2?})",
-        enc_t.total, enc_t.field_work, enc_t.g1_muls, enc_t.g2_muls
-    );
-
-    // 5. Decrypt using the witness solved by ProveKit (or CLI --name override).
-    println!("\n[5] Solving witness with ProveKit & decrypting...");
-    let w_bits = if let Some(ref name) = cli.name {
-        println!("    Using CLI --name=\"{}\"", name);
-        let input_map = name_to_input_map(name)?;
-        match solve_provekit_witness_from_inputs(
-            &program,
-            &witness_builders,
-            r1cs.num_witnesses_for_solving(),
-            &input_map,
-        ) {
-            Ok(r1cs_witness) => bit_map.expand_witness(&r1cs_witness)?,
-            Err(_) => {
-                println!(
-                    "    Noir execution rejected \"{}\" (expected for wrong name); feeding raw \
-                     bits to Praxis::Dec...",
-                    name
-                );
-                encode_name_bits_as_witness(name, &bit_map)?
-            }
-        }
-    } else {
-        let input_path = cli.input.unwrap_or_else(|| cli.circuit.join("Prover.toml"));
-        println!("    Solving witness from {}", input_path.display());
-        let (input_map, _ret) = read_inputs_from_file(&input_path, &program.abi)
-            .with_context(|| format!("reading inputs from {}", input_path.display()))?;
-        let r1cs_witness = solve_provekit_witness_from_inputs(
-            &program,
-            &witness_builders,
-            r1cs.num_witnesses_for_solving(),
-            &input_map,
-        )?;
-        bit_map.expand_witness(&r1cs_witness)?
-    };
-
-    let sat = pp.qap.bqs.is_satisfied(&w_bits)?;
-    println!(
-        "    BQS satisfied by witness: {} (wt(w) = {}/{})",
-        sat,
-        w_bits[1..].iter().filter(|&&b| b == 1).count(),
-        pp.qap.bqs.n_unknowns
-    );
-
-    let (dec_opt, dec_t) = decrypt(&pp, &ct, &w_bits, &mut rng)?;
-    println!(
-        "    Dec time  : {:.2?} (forms+QAP: {:.2?}, MSMs+pairings: {:.2?}, BSGS search: {:.2?})",
-        dec_t.total, dec_t.forms_and_qap, dec_t.group_comb_and_pairings, dec_t.search
-    );
-    println!(
-        "    Search    : b_bar={}, baby_steps={}, giant_steps={}, false_fp_hits={}, t={:?}",
-        dec_t.search_stats.b_bar,
-        dec_t.search_stats.baby_steps,
-        dec_t.search_stats.giant_steps,
-        dec_t.search_stats.false_fp_hits,
-        dec_t.recovered_t
-    );
-
-    match dec_opt {
-        Some(pt) => {
-            let trimmed = pt
-                .iter()
-                .copied()
-                .take_while(|&b| b != 0)
-                .collect::<Vec<_>>();
-            let recovered = String::from_utf8_lossy(&trimmed);
-            println!("    Decrypted : \"{}\"", recovered);
-            ensure!(
-                pt == msg_padded,
-                "decrypted bytes do not match original message!"
-            );
-            println!("    Status    : SUCCESS (exact match!)");
-        }
-        None => {
-            println!("    Decrypted : <bottom / decryption failed>");
-            if sat {
-                anyhow::bail!("unexpected decryption failure on a valid witness!");
-            }
-        }
+    match cli.mode {
+        Mode::Direct => direct::run(
+            &cli.circuit,
+            cli.input.as_deref(),
+            &cli.message,
+            cli.name.as_deref(),
+        ),
+        Mode::Kzg => kzg::run(
+            &cli.circuit,
+            cli.input.as_deref(),
+            &cli.message,
+            cli.name.as_deref(),
+        ),
     }
-
-    // 6. Negative test: demonstrate that wrong name ("vitalik") cannot decrypt.
-    if cli.name.is_none() {
-        println!("\n[6] Negative check: attempting decryption with wrong name \"vitalik\"...");
-        let wrong_w = encode_name_bits_as_witness("vitalik", &bit_map)?;
-        let (wrong_dec, wrong_t) = decrypt(&pp, &ct, &wrong_w, &mut rng)?;
-        ensure!(
-            wrong_dec.is_none(),
-            "SECURITY BUG: wrong name should never decrypt!"
-        );
-        println!(
-            "    Result    : REJECTED (<bottom>) in {:.2?}",
-            wrong_t.total
-        );
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use {
-        super::*,
-        crate::{
+        anyhow::Result,
+        ark_bn254::{Bn254, Fq, Fr, G1Affine, G1Projective, G2Affine, G2Projective},
+        ark_ec::{pairing::Pairing, AffineRepr, PrimeGroup},
+        ark_ff::{One, PrimeField},
+        praxis_demo::{
             bqs::{Bqs, BqsConstraint},
             ext::FormMatrix,
+            kzg::{
+                spartan::{prove, verify, SpartanKzgCircuit},
+                univariate::KzgSrs,
+            },
+            load_or_compile_noir,
+            params::PraxisParams,
+            praxis::{decrypt, encrypt, setup, FixedBaseTable},
             qap::poly_eval,
             search::{gt_pow_signed, PalindromicRecurrence},
         },
-        ark_bn254::{Bn254, Fq, G1Affine, G2Affine},
-        ark_ec::{pairing::Pairing, AffineRepr},
-        ark_ff::{One, PrimeField},
         rand::{RngCore, SeedableRng},
+        std::path::Path,
     };
 
     #[test]
@@ -465,8 +174,6 @@ mod tests {
 
     #[test]
     fn test_praxis_example_2_1_roundtrip_and_rejection() -> Result<()> {
-        // Example 2.1 (p. 9): w1 * w3 = 1, w2 * (w1 + w3) = 0, unique witness w = (1,
-        // 1, 0, 1).
         let bqs = Bqs {
             n_unknowns:  3,
             f_max:       1,
@@ -491,14 +198,40 @@ mod tests {
         let msg = b"praxis-toy-system-secret-32bytes";
         let (ct, _) = encrypt(&pp, msg, &g1_tbl, &g2_tbl, &mut rng)?;
 
-        // Valid witness w = (1, 1, 0, 1).
         let (pt, _) = decrypt(&pp, &ct, &[1, 1, 0, 1], &mut rng)?;
         assert_eq!(pt.as_deref(), Some(msg.as_slice()));
 
-        // Invalid witness w = (1, 1, 1, 1).
         let (bad, _) = decrypt(&pp, &ct, &[1, 1, 1, 1], &mut rng)?;
         assert!(bad.is_none());
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_spartan_hyperkzg_praxis_satoshi_roundtrip() -> Result<()> {
+        provekit_backend_bn254::register();
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
+        let circuit_dir = root.join("noir-examples/praxis-satoshi");
+        let program = load_or_compile_noir(&circuit_dir)?;
+        let circuit = SpartanKzgCircuit::prepare(program)?;
+
+        let mut rng = rand::rngs::StdRng::seed_from_u64(99);
+        let g1_tbl = FixedBaseTable::new(G1Projective::generator());
+        let (srs, _) = KzgSrs::setup_with_table(circuit.required_srs_len(), &g1_tbl, &mut rng)?;
+
+        let input_map = praxis_demo::direct::name_to_input_map("satoshi")?;
+        let (proof, _) = prove(&circuit, &srs, &input_map)?;
+        let (_vdata, vt) = verify(&circuit, &srs, &proof)?;
+        assert_eq!(vt.num_pairings, 2);
+
+        // Tamper with outer sumcheck -> must fail!
+        let mut bad = proof.clone();
+        bad.outer_sumcheck[0][0] += Fr::one();
+        assert!(verify(&circuit, &srs, &bad).is_err());
         Ok(())
     }
 }

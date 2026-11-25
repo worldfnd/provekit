@@ -67,7 +67,6 @@ impl PraxisParams {
 
     /// Tiny parameters for fast unit tests (Example 5.2 / Figure 5: `n = 4, K_1
     /// = 2, K_2 = 1`).
-    #[cfg(test)]
     #[must_use]
     pub fn tiny_test() -> Self {
         Self {
